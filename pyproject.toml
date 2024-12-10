@@ -21,7 +21,7 @@ dependencies = [
     "rich>=13.9.4",
 ]
 [project.scripts]
-mcp-cli = "mcpcli.__main__:main"
+mcp-cli = "mcpcli.__main__:cli_main"
 
 [tool.ruff.lint]
 unfixable = [

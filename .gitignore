@@ -1,3 +1,5 @@
 __pycache__
 .env
 .venv
+.pytest_cache
+dist/
