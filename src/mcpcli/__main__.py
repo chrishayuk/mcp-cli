@@ -1,3 +1,4 @@
+# src/__main__.py
 import argparse
 import asyncio
 import json
@@ -274,7 +275,7 @@ class GracefulExit(Exception):
     pass
 
 
-async def main(config_path: str, server_names: List[str], command: str = None) -> None:
+async def run(config_path: str, server_names: List[str], command: str = None) -> None:
     """Main function to manage server initialization, communication, and shutdown."""
     # Clear screen before rendering anything
     if sys.platform == "win32":
@@ -312,8 +313,8 @@ async def main(config_path: str, server_names: List[str], command: str = None) -
             with anyio.move_on_after(1):  # wait up to 1 second
                 await cm.__aexit__()
 
-
-if __name__ == "__main__":
+def cli_main():
+    # setup the parser
     parser = argparse.ArgumentParser(description="MCP Command-Line Tool")
 
     parser.add_argument(
@@ -346,9 +347,7 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--model",
-        help=(
-            "Model to use. Defaults to 'gpt-4o-mini' for 'openai' and 'qwen2.5-coder' for 'ollama'."
-        ),
+        help=("Model to use. Defaults to 'gpt-4o-mini' for 'openai' and 'qwen2.5-coder' for 'ollama'."),
     )
 
     args = parser.parse_args()
@@ -360,8 +359,13 @@ if __name__ == "__main__":
     os.environ["LLM_MODEL"] = model
 
     try:
-        result = anyio.run(main, args.config_file, args.servers, args.command)
+        result = anyio.run(run, args.config_file, args.servers, args.command)
         sys.exit(result)
     except Exception as e:
         print(f"[red]Error occurred:[/red] {e}")
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    cli_main()
+

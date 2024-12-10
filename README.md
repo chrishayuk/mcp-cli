@@ -38,7 +38,7 @@ uv sync --reinstall
 To start the client and interact with the SQLite server, run the following command:
 
 ```bash
-uv run main.py --server sqlite
+uv run --server sqlite
 ```
 
 ### Command-line Arguments
@@ -53,13 +53,13 @@ uv run main.py --server sqlite
 Run the client with the default OpenAI provider and model:
 
 ```bash
-uv run main.py --server sqlite
+uv run --server sqlite
 ```
 
 Run the client with a specific configuration and Ollama provider:
 
 ```bash
-uv run main.py --server sqlite --provider ollama --model llama3.2
+uv run --server sqlite --provider ollama --model llama3.2
 ```
 
 ## Interactive Mode
