@@ -1,8 +1,10 @@
 # messages/send_message.py
 import logging
+
 import anyio
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
-from messages.json_rpc_message import JSONRPCMessage
+
+from mcpcli.messages.json_rpc_message import JSONRPCMessage
 
 
 async def send_message(
@@ -53,14 +55,18 @@ async def send_message(
 
         except TimeoutError:
             # timeout
-            logging.error(f"Timeout waiting for response to method '{method}' (Attempt {attempt}/{retries})")
+            logging.error(
+                f"Timeout waiting for response to method '{method}' (Attempt {attempt}/{retries})"
+            )
             if attempt == retries:
                 raise
         except Exception as e:
             # exception
-            logging.error(f"Unexpected error during '{method}' request: {e} (Attempt {attempt}/{retries})")
+            logging.error(
+                f"Unexpected error during '{method}' request: {e} (Attempt {attempt}/{retries})"
+            )
             if attempt == retries:
                 raise
-        
+
         # Delay before retrying
-        await anyio.sleep(2)  
+        await anyio.sleep(2)

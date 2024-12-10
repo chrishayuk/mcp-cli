@@ -1,6 +1,8 @@
 # messages/json_rpc_message.py
-from pydantic import BaseModel, Field
 from typing import Any, Dict, Optional
+
+from pydantic import BaseModel, Field
+
 
 class JSONRPCMessage(BaseModel):
     jsonrpc: str = "2.0"

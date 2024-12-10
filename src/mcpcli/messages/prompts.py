@@ -1,16 +1,18 @@
-# messages/resources.py
+# messages/prompts.py
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
-from messages.send_message import send_message
 
-async def send_resources_list(
+from mcpcli.messages.send_message import send_message
+
+
+async def send_prompts_list(
     read_stream: MemoryObjectReceiveStream,
     write_stream: MemoryObjectSendStream,
 ) -> list:
-    """Send a 'resources/list' message and return the list of resources."""
+    """Send a 'prompts/list' message and return the list of prompts."""
     response = await send_message(
         read_stream=read_stream,
         write_stream=write_stream,
-        method="resources/list",
+        method="prompts/list",
     )
 
     # return the result

@@ -1,9 +1,16 @@
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
 [project]
 name = "mcp-cli"
 version = "0.1.0"
-description = "a cli for the Model Context Provider"
-readme = "README.md"
+description = "A cli for the Model Context Provider"
 requires-python = ">=3.12"
+readme = "README.md"
+authors = [{ name = "Chris Hay", email = "chrishayuk@googlemail.com" }]
+keywords = ['llm', 'openai', 'claude', 'mcp', 'cli']
+license = { text = "MIT" }
 dependencies = [
     "anyio>=4.6.2.post1",
     "asyncio>=3.4.3",
@@ -12,4 +19,12 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "requests>=2.32.3",
     "rich>=13.9.4",
+]
+[project.scripts]
+mcp-cli = "mcpcli.__main__:cli_main"
+
+[tool.ruff.lint]
+unfixable = [
+    "I",
+    "F401", # Don't touch unused imports
 ]
