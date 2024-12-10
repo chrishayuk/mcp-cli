@@ -14,6 +14,7 @@ from messages.send_initialize_message import send_initialize
 from messages.ping import send_ping
 from chat_handler import handle_chat_mode
 from transport.stdio.stdio_client import stdio_client
+from typing import List
 
 # Rich imports
 from rich import print
@@ -27,6 +28,7 @@ DEFAULT_CONFIG_FILE = "server_config.json"
 # Configure logging
 logging.basicConfig(
     level=logging.CRITICAL,
+    # level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
     stream=sys.stderr
 )
@@ -44,30 +46,35 @@ def signal_handler(sig, frame):
 # signal handler
 signal.signal(signal.SIGINT, signal_handler)
 
-async def handle_command(command: str, read_stream, write_stream):
-    """Handle specific commands dynamically."""
+async def handle_command(command: str, server_streams: List[tuple]) -> bool:
+    """Handle specific commands dynamically with multiple servers."""
     try:
         if command == "ping":
-            print("[cyan]\nPinging Server...[/cyan]")
-            result = await send_ping(read_stream, write_stream)
-            if result:
-                ping_md = "## Ping Result\n\n✅ **Server is up and running**"
-                print(Panel(Markdown(ping_md), style="bold green"))
-            else:
-                ping_md = "## Ping Result\n\n❌ **Server ping failed**"
-                print(Panel(Markdown(ping_md), style="bold red"))
+            print("[cyan]\nPinging Servers...[/cyan]")
+            for i, (read_stream, write_stream) in enumerate(server_streams):
+                result = await send_ping(read_stream, write_stream)
+                server_num = i + 1
+                if result:
+                    ping_md = f"## Server {server_num} Ping Result\n\n✅ **Server is up and running**"
+                    print(Panel(Markdown(ping_md), style="bold green"))
+                else:
+                    ping_md = f"## Server {server_num} Ping Result\n\n❌ **Server ping failed**"
+                    print(Panel(Markdown(ping_md), style="bold red"))
 
         elif command == "list-tools":
-            print("[cyan]\nFetching Tools List...[/cyan]")
-            response = await send_tools_list(read_stream, write_stream)
-            tools_list = response.get("tools", [])
-            if not tools_list:
-                tools_md = "## Tools List\n\nNo tools available."
-            else:
-                tools_md = "## Tools List\n\n" + "\n".join(
-                    [f"- **{t.get('name')}**: {t.get('description', 'No description')}" for t in tools_list]
-                )
-            print(Panel(Markdown(tools_md), title="Tools", style="bold cyan"))
+            print("[cyan]\nFetching Tools List from all servers...[/cyan]")
+            for i, (read_stream, write_stream) in enumerate(server_streams):
+                response = await send_tools_list(read_stream, write_stream)
+                tools_list = response.get("tools", [])
+                server_num = i + 1
+                
+                if not tools_list:
+                    tools_md = f"## Server {server_num} Tools List\n\nNo tools available."
+                else:
+                    tools_md = f"## Server {server_num} Tools List\n\n" + "\n".join(
+                        [f"- **{t.get('name')}**: {t.get('description', 'No description')}" for t in tools_list]
+                    )
+                print(Panel(Markdown(tools_md), title=f"Server {server_num} Tools", style="bold cyan"))
 
         elif command == "call-tool":
             tool_name = Prompt.ask("[bold magenta]Enter tool name[/bold magenta]").strip()
@@ -85,7 +92,7 @@ async def handle_command(command: str, read_stream, write_stream):
             print(f"[cyan]\nCalling tool '{tool_name}' with arguments:\n[/cyan]")
             print(Panel(Markdown(f"```json\n{json.dumps(arguments, indent=2)}\n```"), style="dim"))
 
-            result = await send_call_tool(tool_name, arguments, read_stream, write_stream)
+            result = await send_call_tool(tool_name, arguments, server_streams)
             if result.get("isError"):
                 print(f"[red]Error calling tool:[/red] {result.get('error')}")
             else:
@@ -93,30 +100,36 @@ async def handle_command(command: str, read_stream, write_stream):
                 print(Panel(Markdown(f"### Tool Response\n\n{response_content}"), style="green"))
 
         elif command == "list-resources":
-            print("[cyan]\nFetching Resources List...[/cyan]")
-            response = await send_resources_list(read_stream, write_stream)
-            resources_list = response.get("resources", [])
-            if not resources_list:
-                resources_md = "## Resources List\n\nNo resources available."
-            else:
-                resources_md = "## Resources List\n"
-                for r in resources_list:
-                    if isinstance(r, dict):
-                        json_str = json.dumps(r, indent=2)
-                        resources_md += f"\n```json\n{json_str}\n```"
-                    else:
-                        resources_md += f"\n- {r}"
-            print(Panel(Markdown(resources_md), title="Resources", style="bold cyan"))
+            print("[cyan]\nFetching Resources List from all servers...[/cyan]")
+            for i, (read_stream, write_stream) in enumerate(server_streams):
+                response = await send_resources_list(read_stream, write_stream)
+                resources_list = response.get("resources", [])
+                server_num = i + 1
+                
+                if not resources_list:
+                    resources_md = f"## Server {server_num} Resources List\n\nNo resources available."
+                else:
+                    resources_md = f"## Server {server_num} Resources List\n"
+                    for r in resources_list:
+                        if isinstance(r, dict):
+                            json_str = json.dumps(r, indent=2)
+                            resources_md += f"\n```json\n{json_str}\n```"
+                        else:
+                            resources_md += f"\n- {r}"
+                print(Panel(Markdown(resources_md), title=f"Server {server_num} Resources", style="bold cyan"))
 
         elif command == "list-prompts":
-            print("[cyan]\nFetching Prompts List...[/cyan]")
-            response = await send_prompts_list(read_stream, write_stream)
-            prompts_list = response.get("prompts", [])
-            if not prompts_list:
-                prompts_md = "## Prompts List\n\nNo prompts available."
-            else:
-                prompts_md = "## Prompts List\n\n" + "\n".join([f"- {p}" for p in prompts_list])
-            print(Panel(Markdown(prompts_md), title="Prompts", style="bold cyan"))
+            print("[cyan]\nFetching Prompts List from all servers...[/cyan]")
+            for i, (read_stream, write_stream) in enumerate(server_streams):
+                response = await send_prompts_list(read_stream, write_stream)
+                prompts_list = response.get("prompts", [])
+                server_num = i + 1
+                
+                if not prompts_list:
+                    prompts_md = f"## Server {server_num} Prompts List\n\nNo prompts available."
+                else:
+                    prompts_md = f"## Server {server_num} Prompts List\n\n" + "\n".join([f"- {p}" for p in prompts_list])
+                print(Panel(Markdown(prompts_md), title=f"Server {server_num} Prompts", style="bold cyan"))
 
         elif command == "chat":
             provider = os.getenv("LLM_PROVIDER", "openai")
@@ -135,7 +148,7 @@ async def handle_command(command: str, read_stream, write_stream):
             )
 
             print(Panel(Markdown(chat_info_text), style="bold cyan", title="Chat Mode", title_align="center"))
-            await handle_chat_mode(read_stream, write_stream, provider, model)
+            await handle_chat_mode(server_streams, provider, model)
 
         elif command in ["quit", "exit"]:
             print("\n[bold red]Goodbye![/bold red]")
@@ -179,10 +192,10 @@ async def get_input():
     return await loop.run_in_executor(None, lambda: input().strip().lower())
 
 
-async def interactive_mode(read_stream, write_stream):
-    """Run the CLI in interactive mode."""
+async def interactive_mode(server_streams: List[tuple]):
+    """Run the CLI in interactive mode with multiple servers."""
     welcome_text = """
-# Welcome to the Interactive MCP Command-Line Tool
+# Welcome to the Interactive MCP Command-Line Tool (Multi-Server Mode)
 
 Type 'help' for available commands or 'quit' to exit.
 """
@@ -193,7 +206,7 @@ Type 'help' for available commands or 'quit' to exit.
             command = Prompt.ask("[bold green]\n>[/bold green]").strip().lower()
             if not command:
                 continue
-            should_continue = await handle_command(command, read_stream, write_stream)
+            should_continue = await handle_command(command, server_streams)
             if not should_continue:
                 return
         except EOFError:
@@ -207,7 +220,7 @@ class GracefulExit(Exception):
     pass
 
 
-async def main(config_path: str, server_name: str, command: str = None) -> None:
+async def main(config_path: str, server_names: List[str], command: str = None) -> None:
     """Main function to manage server initialization, communication, and shutdown."""
     # Clear screen before rendering anything
     if sys.platform == "win32":
@@ -215,30 +228,35 @@ async def main(config_path: str, server_name: str, command: str = None) -> None:
     else:
         os.system("clear")
 
-    # Load server configuration
-    server_params = await load_config(config_path, server_name)
+    # Load server configurations and establish connections for all servers
+    server_streams = []
+    context_managers = []
+    for server_name in server_names:
+        server_params = await load_config(config_path, server_name)
 
-    # Establish stdio communication
-    async with stdio_client(server_params) as (read_stream, write_stream):
-        # Initialize the server
+        # Establish stdio communication for each server
+        cm = stdio_client(server_params)
+        (read_stream, write_stream) = await cm.__aenter__()
+        context_managers.append(cm)
+        server_streams.append((read_stream, write_stream))
+
         init_result = await send_initialize(read_stream, write_stream)
         if not init_result:
-            print("[red]Server initialization failed[/red]")
+            print(f"[red]Server initialization failed for {server_name}[/red]")
             return
 
+    try:
         if command:
             # Single command mode
-            await handle_command(command, read_stream, write_stream)
+            await handle_command(command, server_streams)
         else:
             # Interactive mode
-            await interactive_mode(read_stream, write_stream)
-
-        loop = asyncio.get_event_loop()
-        
-        # Try closing streams with a timeout
-        with anyio.move_on_after(1):  # wait up to 1 second
-            await read_stream.aclose()
-            await write_stream.aclose()
+            await interactive_mode(server_streams)
+    finally:
+        # Clean up all streams
+        for cm in context_managers:
+            with anyio.move_on_after(1):  # wait up to 1 second
+                await cm.__aexit__()
 
 
 
@@ -253,8 +271,10 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--server",
-        required=True,
-        help="Name of the server configuration to use from the config file.",
+        action="append",
+        dest="servers",
+        help="Server configuration(s) to use. Can be specified multiple times.",
+        default=[]
     )
 
     parser.add_argument(
@@ -285,7 +305,7 @@ if __name__ == "__main__":
     os.environ["LLM_MODEL"] = model
 
     try:
-        result = anyio.run(main, args.config_file, args.server, args.command)
+        result = anyio.run(main, args.config_file, args.servers, args.command)
         sys.exit(result)
     except Exception as e:
         print(f"[red]Error occurred:[/red] {e}")

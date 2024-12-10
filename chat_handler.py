@@ -9,10 +9,15 @@ from rich.markdown import Markdown
 from rich.prompt import Prompt
 import json
 
-async def handle_chat_mode(read_stream, write_stream, provider="openai", model="gpt-4o-mini"):
+async def handle_chat_mode(server_streams, provider="openai", model="gpt-4o-mini"):
     """Enter chat mode with multi-call support for autonomous tool chaining."""
     try:
-        tools = await fetch_tools(read_stream, write_stream)
+        tools = []
+        for read_stream, write_stream in server_streams:
+            tools.extend(await fetch_tools(read_stream, write_stream))
+
+        # for (read_stream, write_stream) in server_streams:
+            # tools = await fetch_tools(read_stream, write_stream)
         if not tools:
             print("[red]No tools available. Exiting chat mode.[/red]")
             return
@@ -35,7 +40,7 @@ async def handle_chat_mode(read_stream, write_stream, provider="openai", model="
                 print(Panel(user_panel_text, style="bold yellow", title="You"))
 
                 conversation_history.append({"role": "user", "content": user_message})
-                await process_conversation(client, conversation_history, openai_tools, read_stream, write_stream)
+                await process_conversation(client, conversation_history, openai_tools, server_streams)
 
             except Exception as e:
                 print(f"[red]Error processing message:[/red] {e}")
@@ -44,7 +49,7 @@ async def handle_chat_mode(read_stream, write_stream, provider="openai", model="
         print(f"[red]Error in chat mode:[/red] {e}")
 
 
-async def process_conversation(client, conversation_history, openai_tools, read_stream, write_stream):
+async def process_conversation(client, conversation_history, openai_tools, server_streams):
     """Process the conversation loop, handling tool calls and responses."""
     while True:
         completion = client.create_completion(
@@ -83,7 +88,7 @@ async def process_conversation(client, conversation_history, openai_tools, read_
               tool_md = f"**Tool Call:** {tool_name}\n\n```json\n{tool_args_str}\n```"
               print(Panel(Markdown(tool_md), style="bold magenta", title="Tool Invocation"))
 
-              await handle_tool_call(tool_call, conversation_history, read_stream, write_stream)
+              await handle_tool_call(tool_call, conversation_history, server_streams)
           continue
 
 

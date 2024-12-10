@@ -21,7 +21,7 @@ def parse_tool_response(response: str) -> Optional[Dict[str, Any]]:
             logging.debug(f"Error parsing function arguments: {error}")
     return None
 
-async def handle_tool_call(tool_call, conversation_history, read_stream, write_stream):
+async def handle_tool_call(tool_call, conversation_history, server_streams):
     """
     Handle a single tool call for both OpenAI and Llama formats.
     This function no longer prints directly to stdout. It updates the conversation_history
@@ -55,7 +55,10 @@ async def handle_tool_call(tool_call, conversation_history, read_stream, write_s
         tool_args = json.loads(raw_arguments) if isinstance(raw_arguments, str) else raw_arguments
         
         # Call the tool (no direct print here)
-        tool_response = await send_call_tool(tool_name, tool_args, read_stream, write_stream)
+        for read_stream, write_stream in server_streams:
+            tool_response = await send_call_tool(tool_name, tool_args, read_stream, write_stream)
+            if not tool_response.get("isError"):
+                break
         if tool_response.get("isError"):
             logging.debug(f"Error calling tool '{tool_name}': {tool_response.get('error')}")
             return
