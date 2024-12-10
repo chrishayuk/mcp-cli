@@ -1,8 +1,9 @@
 # transport/stdio/stdio_server_shutdown.py
 import logging
+from typing import Optional
+
 import anyio
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
-from typing import Optional
 
 
 async def shutdown_stdio_server(
@@ -45,7 +46,9 @@ async def shutdown_stdio_server(
                 return
 
     except TimeoutError:
-        logging.warning(f"Server did not exit within {timeout} seconds, sending SIGTERM")
+        logging.warning(
+            f"Server did not exit within {timeout} seconds, sending SIGTERM"
+        )
 
         # ensure we have a process
         if process:

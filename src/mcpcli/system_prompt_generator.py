@@ -1,5 +1,6 @@
 import json
 
+
 class SystemPromptGenerator:
     """
     A class for generating system prompts dynamically based on tools JSON and user inputs.
@@ -21,7 +22,9 @@ class SystemPromptGenerator:
         self.default_user_system_prompt = "You are an intelligent assistant capable of using tools to solve user queries effectively."
         self.default_tool_config = "No additional configuration is required."
 
-    def generate_prompt(self, tools: dict, user_system_prompt: str = None, tool_config: str = None) -> str:
+    def generate_prompt(
+        self, tools: dict, user_system_prompt: str = None, tool_config: str = None
+    ) -> str:
         """
         Generate a system prompt based on the provided tools JSON, user prompt, and tool configuration.
 
@@ -44,7 +47,9 @@ class SystemPromptGenerator:
         tools_json_schema = json.dumps(tools, indent=2)
 
         # perform replacements
-        prompt = self.template.replace("{{ TOOL DEFINITIONS IN JSON SCHEMA }}", tools_json_schema)
+        prompt = self.template.replace(
+            "{{ TOOL DEFINITIONS IN JSON SCHEMA }}", tools_json_schema
+        )
         prompt = prompt.replace("{{ FORMATTING INSTRUCTIONS }}", "")
         prompt = prompt.replace("{{ USER SYSTEM PROMPT }}", user_system_prompt)
         prompt = prompt.replace("{{ TOOL CONFIGURATION }}", tool_config)
