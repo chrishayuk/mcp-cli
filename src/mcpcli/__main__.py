@@ -15,14 +15,14 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
 
-from chat_handler import handle_chat_mode
-from config import load_config
-from messages.ping import send_ping
-from messages.prompts import send_prompts_list
-from messages.resources import send_resources_list
-from messages.send_initialize_message import send_initialize
-from messages.tools import send_call_tool, send_tools_list
-from transport.stdio.stdio_client import stdio_client
+from mcpcli.chat_handler import handle_chat_mode
+from mcpcli.config import load_config
+from mcpcli.messages.ping import send_ping
+from mcpcli.messages.prompts import send_prompts_list
+from mcpcli.messages.resources import send_resources_list
+from mcpcli.messages.send_initialize_message import send_initialize
+from mcpcli.messages.tools import send_call_tool, send_tools_list
+from mcpcli.transport.stdio.stdio_client import stdio_client
 
 # Default path for the configuration file
 DEFAULT_CONFIG_FILE = "server_config.json"

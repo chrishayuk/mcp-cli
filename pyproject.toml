@@ -20,10 +20,8 @@ dependencies = [
     "requests>=2.32.3",
     "rich>=13.9.4",
 ]
-
-[tool.pdm.build.wheel-data]
-# Install all files under scripts/ to the $prefix/bin directory.
-scripts = ["scripts/*"]
+[project.scripts]
+mcp-cli = "mcpcli.__main__:main"
 
 [tool.ruff.lint]
 unfixable = [

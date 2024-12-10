@@ -1,12 +1,14 @@
 # messages/ping.py
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
-from messages.send_message import send_message
+
+from mcpcli.messages.send_message import send_message
+
 
 async def send_ping(
     read_stream: MemoryObjectReceiveStream,
     write_stream: MemoryObjectSendStream,
 ) -> bool:
-    """ Send a ping message to the server and log the response. """
+    """Send a ping message to the server and log the response."""
 
     # send the ping message
     response = await send_message(
