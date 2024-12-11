@@ -31,7 +31,6 @@ DEFAULT_CONFIG_FILE = "server_config.json"
 # Configure logging
 logging.basicConfig(
     level=logging.CRITICAL,
-    # level=logging.DEBUG,
     format="%(asctime)s - %(levelname)s - %(message)s",
     stream=sys.stderr,
 )
@@ -134,7 +133,7 @@ async def handle_command(command: str, server_streams: List[tuple]) -> bool:
             print("[cyan]\nFetching Resources List from all servers...[/cyan]")
             for i, (read_stream, write_stream) in enumerate(server_streams):
                 response = await send_resources_list(read_stream, write_stream)
-                resources_list = response.get("resources", [])
+                resources_list = response.get("resources", []) if response else None
                 server_num = i + 1
 
                 if not resources_list:

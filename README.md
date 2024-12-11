@@ -38,7 +38,7 @@ uv sync --reinstall
 To start the client and interact with the SQLite server, run the following command:
 
 ```bash
-uv run --server sqlite
+uv run mcp-cli --server sqlite
 ```
 
 ### Command-line Arguments
@@ -53,13 +53,13 @@ uv run --server sqlite
 Run the client with the default OpenAI provider and model:
 
 ```bash
-uv run --server sqlite
+uv run mcp-cli --server sqlite
 ```
 
 Run the client with a specific configuration and Ollama provider:
 
 ```bash
-uv run --server sqlite --provider ollama --model llama3.2
+uv run mcp-cli --server sqlite --provider ollama --model llama3.2
 ```
 
 ## Interactive Mode
@@ -78,7 +78,7 @@ The client supports interactive mode, allowing you to execute commands dynamical
 ### Chat Mode
 To enter chat mode and interact with the server:
 
-uv run main.py --server sqlite
+uv run mcp-cli --server sqlite
 
 In chat mode, you can use tools and query the server interactively. The provider and model used are specified during startup and displayed as follows:
 
