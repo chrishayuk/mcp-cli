@@ -30,7 +30,7 @@ async def stdio_client(server: StdioServerParameters):
     # start the subprocess
     process = await anyio.open_process(
         [server.command, *server.args],
-        env=server.env or get_default_environment(),
+        env={**get_default_environment(), **(server.env or {})},
         stderr=sys.stderr,
     )
 
