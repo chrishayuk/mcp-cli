@@ -40,9 +40,9 @@ async def main():
         result = await send_ping(read_stream, write_stream)
         print("Ping successful" if result else "Ping failed")
 
-        # # get tools
-        # result = await send_tools_list(read_stream, write_stream)
-        # print(result)
+        # get tools
+        result = await send_tools_list(read_stream, write_stream)
+        print(result)
 
 # Run the script
 if __name__ == "__main__":
