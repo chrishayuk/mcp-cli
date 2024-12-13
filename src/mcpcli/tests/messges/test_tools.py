@@ -3,8 +3,7 @@ import pytest
 from unittest.mock import patch, AsyncMock
 from mcpcli.messages.send_call_tool import send_call_tool
 from mcpcli.messages.send_tools_list import send_tools_list
-from mcpcli.messages.message_types.tools_list_message import ToolsListMessage
-from mcpcli.messages.message_types.tools_call_message import CallToolMessage
+from mcpcli.messages.message_types.tools_messages import CallToolMessage, ToolsListMessage
 
 @pytest.mark.asyncio
 async def test_send_tools_list_success():

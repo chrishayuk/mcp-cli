@@ -1,8 +1,7 @@
 # messages/send_initialize_message.py
 import logging
-from typing import Optional
-
 import anyio
+from typing import Optional
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 
 from mcpcli.messages.message_types.initialize_message import (

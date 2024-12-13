@@ -1,4 +1,4 @@
-# messages/message_types/prompts_message.py
+# messages/message_types/prompts_messages.py
 from mcpcli.messages.message_types.incrementing_id_message import IncrementingIDMessage
 
 class PromptsListMessage(IncrementingIDMessage):

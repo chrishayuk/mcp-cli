@@ -2,7 +2,7 @@
 import pytest
 from unittest.mock import patch, AsyncMock
 from mcpcli.messages.send_resources import send_resources_list
-from mcpcli.messages.message_types.resources_message import ResourcesListMessage
+from mcpcli.messages.message_types.resources_messages import ResourcesListMessage
 
 @pytest.mark.asyncio
 async def test_send_resources_list_success():

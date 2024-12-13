@@ -1,7 +1,7 @@
 # messages/send_resources.py
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcpcli.messages.send_message import send_message
-from mcpcli.messages.message_types.resources_message import ResourcesListMessage
+from mcpcli.messages.message_types.resources_messages import ResourcesListMessage
 
 async def send_resources_list(
     read_stream: MemoryObjectReceiveStream,
