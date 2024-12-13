@@ -1,8 +1,6 @@
-# messages/json_rpc_message.py
+# messages/message_types/json_rpc_message.py
 from typing import Any, Dict, Optional
-
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, ConfigDict
 
 class JSONRPCMessage(BaseModel):
     jsonrpc: str = "2.0"
@@ -12,5 +10,4 @@ class JSONRPCMessage(BaseModel):
     result: Optional[Dict[str, Any]] = None
     error: Optional[Dict[str, Any]] = None
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")

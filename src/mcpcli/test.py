@@ -1,11 +1,11 @@
 import anyio
 import logging
 import sys
-from config import load_config
-from messages.send_initialize_message import send_initialize
-from messages.ping import send_ping
-from messages.tools import send_tools_list
-from transport.stdio.stdio_client import stdio_client
+from mcpcli.config import load_config
+from mcpcli.messages.send_initialize_message import send_initialize
+from mcpcli.messages.send_ping import send_ping
+from mcpcli.messages.send_tools_list import send_tools_list
+from mcpcli.transport.stdio.stdio_client import stdio_client
 
 # Configure logging
 logging.basicConfig(

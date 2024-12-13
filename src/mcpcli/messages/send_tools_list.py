@@ -1,22 +1,21 @@
-# messages/ping.py
+# mcpcli/messages/tools.py
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
-
 from mcpcli.messages.send_message import send_message
+from mcpcli.messages.message_types.tools_list_message import ToolsListMessage
 
-
-async def send_ping(
+async def send_tools_list(
     read_stream: MemoryObjectReceiveStream,
     write_stream: MemoryObjectSendStream,
-) -> bool:
-    """Send a ping message to the server and log the response."""
+) -> list:
+    # create the tools list message
+    message = ToolsListMessage()
 
-    # send the ping message
+    # send the message
     response = await send_message(
         read_stream=read_stream,
         write_stream=write_stream,
-        method="ping",
-        message_id="ping-1",
+        message=message,
     )
 
-    # return the response
-    return response is not None
+    # get the response
+    return response.get("result", [])

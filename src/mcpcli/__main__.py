@@ -18,11 +18,12 @@ from rich.prompt import Prompt
 
 from mcpcli.chat_handler import handle_chat_mode
 from mcpcli.config import load_config
-from mcpcli.messages.ping import send_ping
-from mcpcli.messages.prompts import send_prompts_list
-from mcpcli.messages.resources import send_resources_list
+from mcpcli.messages.send_ping import send_ping
+from mcpcli.messages.send_prompts import send_prompts_list
+from mcpcli.messages.send_resources import send_resources_list
 from mcpcli.messages.send_initialize_message import send_initialize
-from mcpcli.messages.tools import send_call_tool, send_tools_list
+from mcpcli.messages.send_call_tool import send_call_tool
+from mcpcli.messages.send_tools_list import send_tools_list
 from mcpcli.transport.stdio.stdio_client import stdio_client
 
 # Default path for the configuration file
