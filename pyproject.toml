@@ -28,3 +28,10 @@ unfixable = [
     "I",
     "F401", # Don't touch unused imports
 ]
+
+[dependency-groups]
+dev = [
+    "pytest-anyio>=0.0.0",
+    "pytest>=8.3.4",
+    "pytest-asyncio>=0.24.0",
+]
