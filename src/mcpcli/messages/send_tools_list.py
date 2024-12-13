@@ -1,7 +1,7 @@
 # mcpcli/messages/tools.py
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcpcli.messages.send_message import send_message
-from mcpcli.messages.message_types.tools_list_message import ToolsListMessage
+from mcpcli.messages.message_types.tools_messages import ToolsListMessage
 
 async def send_tools_list(
     read_stream: MemoryObjectReceiveStream,

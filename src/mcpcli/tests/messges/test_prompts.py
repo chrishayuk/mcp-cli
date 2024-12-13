@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, AsyncMock
 from mcpcli.messages.send_prompts import send_prompts_list
-from mcpcli.messages.message_types.prompts_message import PromptsListMessage
+from mcpcli.messages.message_types.prompts_messages import PromptsListMessage
 
 @pytest.mark.asyncio
 async def test_send_prompts_list_success():

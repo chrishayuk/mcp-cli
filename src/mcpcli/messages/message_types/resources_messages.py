@@ -1,4 +1,4 @@
-# messages/message_types/resources_message.py
+# messages/message_types/resources_messages.py
 from typing import ClassVar
 from mcpcli.messages.message_types.incrementing_id_message import IncrementingIDMessage
 

@@ -1,7 +1,7 @@
 # messages/prompts.py
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcpcli.messages.send_message import send_message
-from mcpcli.messages.message_types.prompts_message import PromptsListMessage
+from mcpcli.messages.message_types.prompts_messages import PromptsListMessage
 
 async def send_prompts_list(
     read_stream: MemoryObjectReceiveStream,
