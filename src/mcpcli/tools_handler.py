@@ -153,6 +153,7 @@ def convert_to_openai_tools(tools):
             "type": "function",
             "function": {
                 "name": tool["name"],
+                "description": tool.get("description", ""),
                 "parameters": tool.get("inputSchema", {}),
             },
         }
