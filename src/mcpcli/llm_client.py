@@ -2,10 +2,12 @@ import logging
 import os
 import uuid
 from typing import Any, Dict, List
+import json
 
 import ollama
 from dotenv import load_dotenv
 from openai import OpenAI
+from anthropic import Anthropic
 
 # Load environment variables
 load_dotenv()
@@ -16,14 +18,20 @@ class LLMClient:
         # set the provider, model and api key
         self.provider = provider
         self.model = model
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.api_key = api_key
 
         # ensure we have the api key for openai if set
-        if provider == "openai" and not self.api_key:
-            raise ValueError("The OPENAI_API_KEY environment variable is not set.")
-
+        if provider == "openai":
+            self.api_key = self.api_key or os.getenv("OPENAI_API_KEY")
+            if not self.api_key:
+                raise ValueError("The OPENAI_API_KEY environment variable is not set.")
+        # check anthropic api key
+        elif provider == "anthropic":
+            self.api_key = self.api_key or os.getenv("ANTHROPIC_API_KEY")
+            if not self.api_key:
+                raise ValueError("The ANTHROPIC_API_KEY environment variable is not set.")
         # check ollama is good
-        if provider == "ollama" and not hasattr(ollama, "chat"):
+        elif provider == "ollama" and not hasattr(ollama, "chat"):
             raise ValueError("Ollama is not properly configured in this environment.")
 
     def create_completion(
@@ -33,6 +41,9 @@ class LLMClient:
         if self.provider == "openai":
             # perform an openai completion
             return self._openai_completion(messages, tools)
+        elif self.provider == "anthropic":
+            # perform an anthropic completion
+            return self._anthropic_completion(messages, tools)
         elif self.provider == "ollama":
             # perform an ollama completion
             return self._ollama_completion(messages, tools)
@@ -62,6 +73,117 @@ class LLMClient:
             # error
             logging.error(f"OpenAI API Error: {str(e)}")
             raise ValueError(f"OpenAI API Error: {str(e)}")
+
+    def _anthropic_completion(self, messages: List[Dict], tools: List) -> Dict[str, Any]:
+        """Handle Anthropic chat completions."""
+        # get the anthropic client
+        client = Anthropic(api_key=self.api_key)
+
+        try:
+            # format messages for anthropic api
+            anthropic_messages = []
+            system_messages = []
+            for msg in messages:
+                if msg["role"] == "system":
+                    system_messages.append({
+                        "type": "text",
+                        "text": msg["content"]
+                    })
+                elif msg["role"] == "tool":
+                    anthropic_messages.append({
+                        "role": "user",
+                        "content": [{
+                            "type": "tool_result",
+                            "tool_use_id": msg["tool_call_id"],
+                            "content": msg["content"]
+                        }]
+                    })
+                elif msg["role"] == "assistant" and "tool_calls" in msg:
+                    content = []
+                    if msg["content"]:
+                        content.append({
+                            "type": "text",
+                            "content": msg["content"]
+                        })
+
+                    for tool_call in msg["tool_calls"]:
+                        content.append({
+                            "type": "tool_use",
+                            "id": tool_call["id"],
+                            "name": tool_call["function"]["name"],
+                            "input":(
+                                json.loads(tool_call["function"]["arguments"])
+                                if isinstance(tool_call["function"]["arguments"], str)
+                                else tool_call["function"]["arguments"]
+                            )
+                        })
+
+                    anthropic_messages.append({
+                        "role": msg["role"],
+                        "content": content
+                    })
+                else:
+                    anthropic_messages.append({
+                        "role": msg["role"],
+                        "content": [{
+                            "type": "text",
+                            "text": msg["content"]
+                        }]
+                    })
+
+            # add prompt caching markers
+            if len(system_messages) > 0:
+                system_messages[-1]["cache_control"] = {"type": "ephemeral"}
+            if len(anthropic_messages) > 0:
+                anthropic_messages[-1]["content"][-1]["cache_control"] = {"type": "ephemeral"}
+            if len(anthropic_messages) > 2:
+                anthropic_messages[-3]["content"][-1]["cache_control"] = {"type": "ephemeral"}
+
+            # format tools for anthropic api
+            if tools:
+                anthropic_tools = []
+                for tool in tools:
+                    anthropic_tools.append({
+                        "name": tool["function"]["name"],
+                        "description": tool["function"]["description"],
+                        "input_schema": tool["function"]["parameters"]
+                    })
+                # add prompt caching marker
+                if len(anthropic_tools) > 0:
+                    anthropic_tools[-1]["cache_control"] = {"type": "ephemeral"}
+            else:
+                anthropic_tools = None
+
+            # make a reuest, passing in tools
+            response = client.messages.create(
+                model=self.model,
+                system=system_messages,
+                tools=anthropic_tools,
+                messages=anthropic_messages,
+                max_tokens=8192
+            )
+
+            # format tool calls
+            tool_calls = []
+            for block in response.content:
+                if block.type == "tool_use":
+                    tool_calls.append({
+                        "id": block.id,
+                        "type": "function",
+                        "function": {
+                            "name": block.name,
+                            "arguments": block.input
+                        }
+                    })
+
+            # return the response
+            return {
+                "response": response.content[0].text if response.content[0].type == "text" else "",
+                "tool_calls": tool_calls
+            }
+        except Exception as e:
+            # error
+            raise ValueError(f"Anthropic API Error: {repr(e)}")
 
     def _ollama_completion(self, messages: List[Dict], tools: List) -> Dict[str, Any]:
         """Handle Ollama chat completions."""
