@@ -19,6 +19,7 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "requests>=2.32.3",
     "rich>=13.9.4",
+    "anthropic>=0.19.2",
 ]
 [project.scripts]
 mcp-cli = "mcpcli.__main__:cli_main"
