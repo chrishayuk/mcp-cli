@@ -77,9 +77,8 @@ async def handle_tool_call(tool_call, conversation_history, server_streams):
                 break
         if tool_response.get("isError"):
             logging.debug(
-                f"Error calling tool '{tool_name}': {tool_response.get('error')}"
+                f"Error calling tool '{tool_name}': {tool_response.get('content')}"
             )
-            return
 
         # Format the tool response
         formatted_response = format_tool_response(tool_response.get("content", []))
