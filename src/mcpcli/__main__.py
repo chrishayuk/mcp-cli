@@ -165,7 +165,7 @@ async def handle_command(command: str, server_streams: List[tuple]) -> bool:
             print("[cyan]\nFetching Prompts List from all servers...[/cyan]")
             for i, (read_stream, write_stream) in enumerate(server_streams):
                 response = await send_prompts_list(read_stream, write_stream)
-                prompts_list = response.get("prompts", [])
+                prompts_list = response.get("prompts", []) if response else None
                 server_num = i + 1
 
                 if not prompts_list:
