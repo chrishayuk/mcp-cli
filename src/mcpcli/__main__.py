@@ -118,11 +118,17 @@ async def handle_command(command: str, server_streams: List[tuple]) -> bool:
                 )
             )
 
-            result = await send_call_tool(tool_name, arguments, server_streams)
-            if result.get("isError"):
-                print(f"[red]Error calling tool:[/red] {result.get('error')}")
-            else:
+            for read_stream, write_stream in server_streams:
+                result = await send_call_tool(tool_name, arguments, read_stream, write_stream)
+                if result.get("isError"):
+                    # print(f"[red]Error calling tool:[/red] {result.get('error')}")
+                    continue
                 response_content = result.get("content", "No content")
+                try:
+                    if response_content[0]['text'].startswith('Error:'):
+                        continue
+                except:
+                    pass
                 print(
                     Panel(
                         Markdown(f"### Tool Response\n\n{response_content}"),
@@ -159,7 +165,7 @@ async def handle_command(command: str, server_streams: List[tuple]) -> bool:
             print("[cyan]\nFetching Prompts List from all servers...[/cyan]")
             for i, (read_stream, write_stream) in enumerate(server_streams):
                 response = await send_prompts_list(read_stream, write_stream)
-                prompts_list = response.get("prompts", [])
+                prompts_list = response.get("prompts", []) if response else None
                 server_num = i + 1
 
                 if not prompts_list:
