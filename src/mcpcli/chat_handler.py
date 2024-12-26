@@ -18,11 +18,8 @@ async def handle_chat_mode(server_streams, provider="openai", model="gpt-4o-mini
         for read_stream, write_stream in server_streams:
             tools.extend(await fetch_tools(read_stream, write_stream))
 
-        # for (read_stream, write_stream) in server_streams:
-        # tools = await fetch_tools(read_stream, write_stream)
         if not tools:
-            print("[red]No tools available. Exiting chat mode.[/red]")
-            return
+            print("[red]No tools are available.[/red]")
 
         system_prompt = generate_system_prompt(tools)
         openai_tools = convert_to_openai_tools(tools)
