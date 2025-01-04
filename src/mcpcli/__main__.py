@@ -52,10 +52,31 @@ def signal_handler(sig, frame):
 signal.signal(signal.SIGINT, signal_handler)
 
 
-async def handle_command(command: str, server_streams: List[tuple]) -> bool:
+async def handle_command(
+    command: str,
+    server_streams: List[tuple],
+    server_names: List[str],
+    tool_name: str = None
+) -> bool:
     """Handle specific commands dynamically with multiple servers."""
     try:
-        if command == "ping":
+        if command == "list-servers":
+            try:
+                with open(DEFAULT_CONFIG_FILE, 'r') as f:
+                    config = json.load(f)
+                print("[cyan]\nAvailable Server Configurations:[/cyan]")
+                for server_name, details in config.items():
+                    print(Panel(
+                        Markdown(f"### {server_name}\n{json.dumps(details, indent=2)}"),
+                        style="green"
+                    ))
+            except FileNotFoundError:
+                print(f"[red]Error: Configuration file '{DEFAULT_CONFIG_FILE}' not found[/red]")
+            except json.JSONDecodeError:
+                print(f"[red]Error: Invalid JSON in configuration file '{DEFAULT_CONFIG_FILE}'[/red]")
+            return True
+            
+        elif command == "ping":
             print("[cyan]\nPinging Servers...[/cyan]")
             for i, (read_stream, write_stream) in enumerate(server_streams):
                 result = await send_ping(read_stream, write_stream)
@@ -68,30 +89,88 @@ async def handle_command(command: str, server_streams: List[tuple]) -> bool:
                     print(Panel(Markdown(ping_md), style="bold red"))
 
         elif command == "list-tools":
-            print("[cyan]\nFetching Tools List from all servers...[/cyan]")
+            for i, (read_stream, write_stream) in enumerate(server_streams):
+                server_num = i + 1
+                server_name = server_names[i] if i < len(server_names) else f"Server {server_num}"
+                print(f"[cyan]\nFetching tools from {server_name}...[/cyan]")
+                response = await send_tools_list(read_stream, write_stream)
+                tools_list = response.get("tools", [])
+
+                if not tools_list:
+                    print(f"[yellow]No tools available for {server_name}[/yellow]")
+                else:
+                    print(f"\n[bold cyan]{server_name} Tools:[/bold cyan]")
+                    for t in tools_list:
+                        name = t.get('name', 'Unnamed')
+                        desc = t.get('description', 'No description')
+                        schema = t.get('inputSchema', {})
+                        properties = schema.get('properties', {})
+                        required = schema.get('required', [])
+                        
+                        # Format parameters info
+                        params_list = []
+                        for param, details in properties.items():
+                            req_str = " [red bold]required[/red bold]" if param in required else ""
+                            desc_str = details.get('description', 'No description')
+                            type_str = details.get('type', 'unknown')
+                            
+                            param_header = f"  [cyan]■[/cyan] [bold white]{param}[/bold white]{req_str}"
+                            param_desc = f"    [dim white]{desc_str}[/dim white]"
+                            param_type = f"    [magenta]type: {type_str}[/magenta]"
+                            
+                            param_line = f"{param_header}\n{param_desc}\n{param_type}"
+                            params_list.append(param_line)
+                        
+                        params_info = "\n".join(params_list) if params_list else "  [dim]No parameters required[/dim]"
+                        
+                        # Build panel content in parts to avoid long lines
+                        panel_content = [
+                            f"[bold white]{name}[/bold white]",
+                            f"[dim]{desc}[/dim]",
+                            "",
+                            "[yellow]Parameters:[/yellow]",
+                            params_info
+                        ]
+                        
+                        print(Panel(
+                            "\n".join(panel_content),
+                            expand=True,
+                            padding=(1, 2),
+                            border_style="cyan"
+                        ))
+
+        elif command == "describe-tool":
+            if not tool_name:
+                print("[red]Error: --tool argument is required for describe-tool command[/red]")
+                return True
+
+            print(f"[cyan]\nFetching details for tool '{tool_name}'...[/cyan]")
             for i, (read_stream, write_stream) in enumerate(server_streams):
                 response = await send_tools_list(read_stream, write_stream)
                 tools_list = response.get("tools", [])
                 server_num = i + 1
 
-                if not tools_list:
-                    tools_md = (
-                        f"## Server {server_num} Tools List\n\nNo tools available."
-                    )
-                else:
-                    tools_md = f"## Server {server_num} Tools List\n\n" + "\n".join(
-                        [
-                            f"- **{t.get('name')}**: {t.get('description', 'No description')}"
-                            for t in tools_list
-                        ]
-                    )
-                print(
-                    Panel(
-                        Markdown(tools_md),
-                        title=f"Server {server_num} Tools",
-                        style="bold cyan",
-                    )
-                )
+                tool = next((t for t in tools_list if t.get('name') == tool_name), None)
+                if tool:
+                    name = tool.get('name', 'Unnamed')
+                    desc = tool.get('description', 'No description')
+                    params = tool.get('parameters', {}).get('properties', {})
+                    required = tool.get('parameters', {}).get('required', [])
+                    
+                    # Format parameters info
+                    params_info = "\n".join([
+                        f"### {param}\n- Description: {details.get('description', 'No description')}\n"
+                        f"- Type: `{details.get('type', 'unknown')}`\n"
+                        f"- Required: {'Yes' if param in required else 'No'}"
+                        for param, details in params.items()
+                    ])
+                    
+                    tool_md = f"# {name}\n\n{desc}\n\n## Parameters\n\n{params_info}"
+                    print(Panel(Markdown(tool_md), style="green"))
+                    return True
+
+            print(f"[red]Tool '{tool_name}' not found[/red]")
+            return True
 
         elif command == "call-tool":
             tool_name = Prompt.ask(
@@ -216,20 +295,57 @@ async def handle_command(command: str, server_streams: List[tuple]) -> bool:
 
         elif command == "help":
             help_md = """
-# Available Commands
+# MCP CLI Commands
 
-- **ping**: Check if server is responsive
-- **list-tools**: Display available tools
-- **list-resources**: Display available resources
-- **list-prompts**: Display available prompts
-- **chat**: Enter chat mode
-- **clear**: Clear the screen
-- **help**: Show this help message
-- **quit/exit**: Exit the program
+## Server Management
+[cyan]list-servers[/cyan]
+  List all available server configurations
 
-**Note:** Commands use dashes (e.g., `list-tools` not `list tools`).
+[cyan]ping[/cyan]
+  Check if servers are responsive
+
+## Tool Commands
+[cyan]list-tools[/cyan]
+  Display all available tools and their parameters
+
+[cyan]describe-tool[/cyan] [dim]--tool <tool-name>[/dim]
+  Show detailed information about a specific tool
+
+[cyan]call-tool[/cyan] [dim]--tool <tool-name> --tool-args '{"param": "value"}'[/dim]
+  Execute a tool with the specified arguments
+
+## Resource Management
+[cyan]list-resources[/cyan]
+  Display available resources
+
+[cyan]list-prompts[/cyan]
+  Display available prompts
+
+## Interactive Mode
+[cyan]chat[/cyan]
+  Enter interactive chat mode with the LLM
+
+## General
+[cyan]clear[/cyan]
+  Clear the screen
+
+[cyan]help[/cyan]
+  Show this help message
+
+[cyan]quit/exit[/cyan]
+  Exit the program
+
+## Examples
+Call a tool:
+  [dim]mcp-cli --server sqlite call-tool --tool read-query --tool-args '{"query": "SELECT * FROM products"}'[/dim]
+
+List tools:
+  [dim]mcp-cli --server sqlite list-tools[/dim]
+
+Describe a tool:
+  [dim]mcp-cli --server sqlite describe-tool --tool read-query[/dim]
 """
-            print(Panel(Markdown(help_md), style="yellow"))
+            print(Panel(Markdown(help_md), style="bold blue", title="Help", border_style="cyan"))
 
         else:
             print(f"[red]\nUnknown command: {command}[/red]")
@@ -246,7 +362,7 @@ async def get_input():
     return await loop.run_in_executor(None, lambda: input().strip().lower())
 
 
-async def interactive_mode(server_streams: List[tuple]):
+async def interactive_mode(server_streams: List[tuple], server_names: List[str]):
     """Run the CLI in interactive mode with multiple servers."""
     welcome_text = """
 # Welcome to the Interactive MCP Command-Line Tool (Multi-Server Mode)
@@ -260,7 +376,7 @@ Type 'help' for available commands or 'quit' to exit.
             command = Prompt.ask("[bold green]\n>[/bold green]").strip().lower()
             if not command:
                 continue
-            should_continue = await handle_command(command, server_streams)
+            should_continue = await handle_command(command, server_streams, server_names)
             if not should_continue:
                 return
         except EOFError:
@@ -275,13 +391,24 @@ class GracefulExit(Exception):
     pass
 
 
-async def run(config_path: str, server_names: List[str], command: str = None) -> None:
+async def run(
+    config_path: str,
+    server_names: List[str],
+    command: str = None,
+    tool_name: str = None,
+    tool_args: dict = None
+) -> None:
     """Main function to manage server initialization, communication, and shutdown."""
     # Clear screen before rendering anything
     if sys.platform == "win32":
         os.system("cls")
     else:
         os.system("clear")
+
+    # Special case for list-servers command - doesn't need server connections
+    if command == "list-servers":
+        await handle_command(command, [], [], None)
+        return
 
     # Load server configurations and establish connections for all servers
     server_streams = []
@@ -302,11 +429,26 @@ async def run(config_path: str, server_names: List[str], command: str = None) ->
 
     try:
         if command:
-            # Single command mode
-            await handle_command(command, server_streams)
+            if command == "call-tool" and tool_name:
+                # Direct tool call mode
+                read_stream, write_stream = server_streams[0]  # Use first server for now
+                result = await send_call_tool(tool_name, tool_args or {}, read_stream, write_stream)
+                if result.get("isError"):
+                    print(f"[red]Error calling tool:[/red] {result.get('error')}")
+                else:
+                    response_content = result.get("content", "No content")
+                    print(
+                        Panel(
+                            Markdown(f"### Tool Response\n\n{response_content}"),
+                            style="green",
+                        )
+                    )
+            else:
+                # Single command mode
+                await handle_command(command, server_streams, server_names, tool_name)
         else:
             # Interactive mode
-            await interactive_mode(server_streams)
+            await interactive_mode(server_streams, server_names)
     finally:
         # Clean up all streams with a timeout
         with anyio.fail_after(2):  # 2 second timeout for cleanup
@@ -319,42 +461,96 @@ async def run(config_path: str, server_names: List[str], command: str = None) ->
 
 def cli_main():
     # setup the parser
-    parser = argparse.ArgumentParser(description="MCP Command-Line Tool")
+    parser = argparse.ArgumentParser(
+        description="MCP (Model Context Provider) Command-Line Interface",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  List available tools:
+    mcp-cli --server sqlite list-tools
 
-    parser.add_argument(
+  Call a tool:
+    mcp-cli --server sqlite call-tool \\
+      --tool read-query \\
+      --tool-args '{"query": "SELECT * FROM products"}'
+
+  Describe a specific tool:
+    mcp-cli --server sqlite describe-tool --tool read-query
+
+  Start interactive mode:
+    mcp-cli --server sqlite""")
+
+    server_group = parser.add_argument_group("CLI Commands")
+    server_group.add_argument(
+        "command",
+        nargs="?",
+        choices=[
+            "ping", "list-tools", "list-resources", "list-prompts",
+            "call-tool", "list-servers", "describe-tool"
+        ],
+        metavar="COMMAND",
+        help="Command to execute (see categories below)")
+
+    server_group.description = """
+Server Commands
+  list-servers     List server configurations
+  ping            Check server status
+
+Tool Commands
+  list-tools      List available tools
+  describe-tool   Show tool details
+  call-tool      Execute a tool
+
+Resource Commands
+  list-resources  List resources
+  list-prompts    List prompts
+
+Note: Running without a command starts interactive mode."""
+
+    options_group = parser.add_argument_group("Options")
+    options_group.add_argument(
         "--config-file",
         default=DEFAULT_CONFIG_FILE,
-        help="Path to the JSON configuration file containing server details.",
+        help="Path to the JSON configuration file (default: %(default)s)",
+        metavar="PATH",
     )
 
-    parser.add_argument(
+    options_group.add_argument(
         "--server",
         action="append",
         dest="servers",
-        help="Server configuration(s) to use. Can be specified multiple times.",
+        help="Server configuration to use (can be specified multiple times)",
         default=[],
+        metavar="SERVER",
     )
 
-    parser.add_argument(
-        "command",
-        nargs="?",
-        choices=["ping", "list-tools", "list-resources", "list-prompts"],
-        help="Command to execute (optional - if not provided, enters interactive mode).",
+    options_group.add_argument(
+        "--tool",
+        help="Name of the tool to call or describe (required for call-tool and describe-tool)",
+        metavar="TOOL",
     )
 
-    parser.add_argument(
+    options_group.add_argument(
+        "--tool-args",
+        help="""JSON string of tool arguments.
+Example: '{"query": "SELECT * FROM table"}'""",
+        metavar="JSON",
+    )
+
+    llm_group = parser.add_argument_group("LLM Options")
+    llm_group.add_argument(
         "--provider",
         choices=["openai", "anthropic", "ollama"],
         default="openai",
-        help="LLM provider to use. Defaults to 'openai'.",
+        help="LLM provider to use (default: %(default)s)",
     )
 
-    parser.add_argument(
+    llm_group.add_argument(
         "--model",
-        help=(
-            "Model to use. Defaults to 'gpt-4o-mini' for openai, "
-            "'claude-3-5-haiku-latest' for anthropic and 'qwen2.5-coder' for ollama"
-        ),
+        help="""Model to use. Defaults:
+  openai    = gpt-4o-mini
+  anthropic = claude-3-5-haiku-latest
+  ollama    = qwen2.5-coder""",
+        metavar="MODEL",
     )
 
     args = parser.parse_args()
@@ -369,7 +565,25 @@ def cli_main():
     os.environ["LLM_MODEL"] = model
 
     try:
-        result = anyio.run(run, args.config_file, args.servers, args.command)
+        # Handle direct tool call if specified
+        if args.command == "call-tool":
+            if not args.tool:
+                print("[red]Error: --tool argument is required for call-tool command[/red]")
+                sys.exit(1)
+            try:
+                tool_args = json.loads(args.tool_args) if args.tool_args else {}
+            except json.JSONDecodeError:
+                print("[red]Error: --tool-args must be valid JSON[/red]")
+                sys.exit(1)
+            
+            result = anyio.run(run, args.config_file, args.servers, args.command, args.tool, tool_args)
+        elif args.command == "describe-tool":
+            if not args.tool:
+                print("[red]Error: --tool argument is required for describe-tool command[/red]")
+                sys.exit(1)
+            result = anyio.run(run, args.config_file, args.servers, args.command, args.tool)
+        else:
+            result = anyio.run(run, args.config_file, args.servers, args.command)
         sys.exit(result)
     except Exception as e:
         print(f"[red]Error occurred:[/red] {e}")
