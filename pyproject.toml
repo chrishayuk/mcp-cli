@@ -29,6 +29,7 @@ unfixable = [
     "I",
     "F401", # Don't touch unused imports
 ]
+line-length = 120
 
 [dependency-groups]
 dev = [

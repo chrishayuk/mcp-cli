@@ -1,4 +1,4 @@
-# src/__main__.py
+# mcpcli/__main__.py
 import argparse
 import asyncio
 import json
@@ -308,10 +308,14 @@ async def run(config_path: str, server_names: List[str], command: str = None) ->
             # Interactive mode
             await interactive_mode(server_streams)
     finally:
-        # Clean up all streams
-        for cm in context_managers:
-            with anyio.move_on_after(1):  # wait up to 1 second
-                await cm.__aexit__()
+        # Clean up all streams with a timeout
+        with anyio.fail_after(2):  # 2 second timeout for cleanup
+            for cm in context_managers:
+                try:
+                    await cm.__aexit__(None, None, None)
+                except Exception as e:
+                    logging.error(f"Error during cleanup: {e}")
+
 
 def cli_main():
     # setup the parser
@@ -347,7 +351,10 @@ def cli_main():
 
     parser.add_argument(
         "--model",
-        help=("Model to use. Defaults to 'gpt-4o-mini' for openai, 'claude-3-5-haiku-latest' for anthropic and 'qwen2.5-coder' for ollama"),
+        help=(
+            "Model to use. Defaults to 'gpt-4o-mini' for openai, "
+            "'claude-3-5-haiku-latest' for anthropic and 'qwen2.5-coder' for ollama"
+        ),
     )
 
     args = parser.parse_args()
