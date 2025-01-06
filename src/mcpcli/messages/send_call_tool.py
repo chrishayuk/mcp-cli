@@ -3,6 +3,7 @@ from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStre
 from mcpcli.messages.send_message import send_message
 from mcpcli.messages.message_types.tools_messages import CallToolMessage
 
+
 async def send_call_tool(
     tool_name: str,
     arguments: dict,
@@ -13,7 +14,6 @@ async def send_call_tool(
     message = CallToolMessage(tool_name=tool_name, arguments=arguments)
 
     try:
-        # send the message
         response = await send_message(
             read_stream=read_stream,
             write_stream=write_stream,
