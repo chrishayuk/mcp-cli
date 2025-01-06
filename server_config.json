@@ -3,6 +3,17 @@
     "sqlite": {
       "command": "uvx",
       "args": ["mcp-server-sqlite", "--db-path", "test.db"]
+    },
+    "playwright": {
+      "command": "poetry",
+      "args": [
+        "--directory",
+        "/Users/adamholsinger/production_monitor/playwright_mcp",
+        "run",
+        "python",
+        "-m",
+        "playwright_mcp.server"
+      ]
     }
   }
-}
+} 

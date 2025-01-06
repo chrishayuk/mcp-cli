@@ -37,3 +37,6 @@ dev = [
     "pytest>=8.3.4",
     "pytest-asyncio>=0.24.0",
 ]
+
+[tool.setuptools.package-data]
+mcpcli = ["server_config.json"]

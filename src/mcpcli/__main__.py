@@ -7,6 +7,7 @@ import os
 import signal
 import sys
 from typing import List
+import pathlib
 
 import anyio
 
@@ -26,8 +27,23 @@ from mcpcli.messages.send_call_tool import send_call_tool
 from mcpcli.messages.send_tools_list import send_tools_list
 from mcpcli.transport.stdio.stdio_client import stdio_client
 
+
+def get_default_config_path():
+    """Get the default config file path, checking current directory then home directory."""
+    # First check if config exists in current directory
+    local_config = pathlib.Path.cwd() / "server_config.json"
+    if local_config.exists():
+        print(f"[cyan]Using config file:[/cyan] {local_config}")
+        return str(local_config)
+    
+    # Use home directory config
+    home_config = pathlib.Path.home() / '.mcp-cli' / 'server_config.json'
+    print(f"[cyan]Using config file:[/cyan] {home_config}")
+    return str(home_config)
+
+
 # Default path for the configuration file
-DEFAULT_CONFIG_FILE = "server_config.json"
+DEFAULT_CONFIG_FILE = get_default_config_path()
 
 # Configure logging
 logging.basicConfig(
@@ -40,12 +56,12 @@ logging.basicConfig(
 def signal_handler(sig, frame):
     # Ignore subsequent SIGINT signals
     signal.signal(signal.SIGINT, signal.SIG_IGN)
-
+    
     # pretty exit
-    print("\n[bold red]Goodbye![/bold red]")
-
-    # Immediately and forcibly kill the process
-    os.kill(os.getpid(), signal.SIGKILL)
+    print("\n[bold red]Gracefully shutting down...[/bold red]")
+    
+    # Exit with a normal signal, allowing cleanup to occur
+    sys.exit(0)
 
 
 # signal handler
@@ -64,12 +80,10 @@ async def handle_command(
             try:
                 with open(DEFAULT_CONFIG_FILE, 'r') as f:
                     config = json.load(f)
-                print("[cyan]\nAvailable Server Configurations:[/cyan]")
-                for server_name, details in config.items():
-                    print(Panel(
-                        Markdown(f"### {server_name}\n{json.dumps(details, indent=2)}"),
-                        style="green"
-                    ))
+                print(f"[cyan]\nConfig file:[/cyan] {os.path.abspath(DEFAULT_CONFIG_FILE)}")
+                print("\n[cyan]Available Servers:[/cyan]")
+                for server_name in config.get("mcpServers", {}).keys():
+                    print(f"  • {server_name}")
             except FileNotFoundError:
                 print(f"[red]Error: Configuration file '{DEFAULT_CONFIG_FILE}' not found[/red]")
             except json.JSONDecodeError:
@@ -396,7 +410,7 @@ async def run(
     server_names: List[str],
     command: str = None,
     tool_name: str = None,
-    tool_args: dict = None
+    tool_args: dict = None,
 ) -> None:
     """Main function to manage server initialization, communication, and shutdown."""
     # Clear screen before rendering anything
@@ -432,7 +446,12 @@ async def run(
             if command == "call-tool" and tool_name:
                 # Direct tool call mode
                 read_stream, write_stream = server_streams[0]  # Use first server for now
-                result = await send_call_tool(tool_name, tool_args or {}, read_stream, write_stream)
+                result = await send_call_tool(
+                    tool_name,
+                    tool_args or {},
+                    read_stream,
+                    write_stream,
+                )
                 if result.get("isError"):
                     print(f"[red]Error calling tool:[/red] {result.get('error')}")
                 else:
@@ -565,7 +584,6 @@ Example: '{"query": "SELECT * FROM table"}'""",
     os.environ["LLM_MODEL"] = model
 
     try:
-        # Handle direct tool call if specified
         if args.command == "call-tool":
             if not args.tool:
                 print("[red]Error: --tool argument is required for call-tool command[/red]")
@@ -576,12 +594,19 @@ Example: '{"query": "SELECT * FROM table"}'""",
                 print("[red]Error: --tool-args must be valid JSON[/red]")
                 sys.exit(1)
             
-            result = anyio.run(run, args.config_file, args.servers, args.command, args.tool, tool_args)
+            result = anyio.run(
+                run,
+                args.config_file,
+                args.servers,
+                args.command,
+                args.tool,
+                tool_args,
+            )
         elif args.command == "describe-tool":
             if not args.tool:
                 print("[red]Error: --tool argument is required for describe-tool command[/red]")
                 sys.exit(1)
-            result = anyio.run(run, args.config_file, args.servers, args.command, args.tool)
+            result = anyio.run(run, args.config_file, args.servers, args.command)
         else:
             result = anyio.run(run, args.config_file, args.servers, args.command)
         sys.exit(result)

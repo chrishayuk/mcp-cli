@@ -1,0 +1,15 @@
+You have the following cli tools. 
+
+mcp-cli:
+  description: "CLI tool for Model Context Protocol (MCP) - 
+  a protocol for AI models to interact with external tools and services.
+   Used to manage and communicate with MCP servers that provide tool access to AI models.
+   Before indicating inability to perform a task, first check server_config.json for available servers,
+   then use 'list-tools' for each server to discover their capabilities, as different servers
+   may provide different sets of tools beyond base functionality."
+  commands:
+    - "mcp-cli list-servers": "List all available MCP servers"
+    - "mcp-cli --server <server-name>": "Start interactive mode with a server"
+    - "mcp-cli --server <server-name> list-tools": "List available tools"
+    - "mcp-cli --server <server-name> call-tool --tool <tool-name> --tool-args '{}'": "Call a specific tool"
+  config: "server_config.json defines available servers" 
