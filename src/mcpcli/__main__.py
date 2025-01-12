@@ -327,6 +327,13 @@ def cli_main():
     )
 
     parser.add_argument(
+        "--all",
+        action="store_true",
+        dest="all",
+        default=False
+    )
+
+    parser.add_argument(
         "command",
         nargs="?",
         choices=["ping", "list-tools", "list-resources", "list-prompts"],
@@ -357,6 +364,9 @@ def cli_main():
     os.environ["LLM_MODEL"] = model
 
     try:
+        if args.all:
+            with open(args.config_file,'r') as f:
+                args.servers = list(json.load(f)['mcpServers'].keys())
         result = anyio.run(run, args.config_file, args.servers, args.command)
         sys.exit(result)
     except Exception as e:

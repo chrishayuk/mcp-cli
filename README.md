@@ -44,6 +44,7 @@ uv run mcp-cli --server sqlite
 ### Command-line Arguments
 - `--server`: Specifies the server configuration to use. Required.
 - `--config-file`: (Optional) Path to the JSON configuration file. Defaults to `server_config.json`.
+  - `--all`: (Optional) Use all the servers provided in the config
 - `--provider`: (Optional) Specifies the provider to use (`openai` or `ollama`). Defaults to `openai`.
 - `--model`: (Optional) Specifies the model to use. Defaults depend on the provider:
   - `gpt-4o-mini` for OpenAI.
@@ -60,6 +61,12 @@ Run the client with a specific configuration and Ollama provider:
 
 ```bash
 uv run mcp-cli --server sqlite --provider ollama --model llama3.2
+```
+
+Run the client with the default OpenAI provider and model, with all the servers in the config provided:
+
+```bash
+uv run mcp-cli --config "path to your server_config.json" --all
 ```
 
 ## Interactive Mode
