@@ -14,9 +14,8 @@ import anyio
 from rich import print
 from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.prompt import Prompt
 
-from mcpcli.chat_handler import handle_chat_mode
+from mcpcli.chat_handler import handle_chat_mode, get_input
 from mcpcli.config import load_config
 from mcpcli.messages.send_ping import send_ping
 from mcpcli.messages.send_prompts import send_prompts_list
@@ -94,16 +93,12 @@ async def handle_command(command: str, server_streams: List[tuple]) -> bool:
                 )
 
         elif command == "call-tool":
-            tool_name = Prompt.ask(
-                "[bold magenta]Enter tool name[/bold magenta]"
-            ).strip()
+            tool_name = await get_input("[bold magenta]Enter tool name[/bold magenta]")
             if not tool_name:
                 print("[red]Tool name cannot be empty.[/red]")
                 return True
 
-            arguments_str = Prompt.ask(
-                "[bold magenta]Enter tool arguments as JSON (e.g., {'key': 'value'})[/bold magenta]"
-            ).strip()
+            arguments_str = await get_input("[bold magenta]Enter tool arguments as JSON (e.g., {'key': 'value'})[/bold magenta]")
             try:
                 arguments = json.loads(arguments_str)
             except json.JSONDecodeError as e:
@@ -118,11 +113,17 @@ async def handle_command(command: str, server_streams: List[tuple]) -> bool:
                 )
             )
 
-            result = await send_call_tool(tool_name, arguments, server_streams)
-            if result.get("isError"):
-                print(f"[red]Error calling tool:[/red] {result.get('error')}")
-            else:
+            for read_stream, write_stream in server_streams:
+                result = await send_call_tool(tool_name, arguments, read_stream, write_stream)
+                if result.get("isError"):
+                    # print(f"[red]Error calling tool:[/red] {result.get('error')}")
+                    continue
                 response_content = result.get("content", "No content")
+                try:
+                    if response_content[0]['text'].startswith('Error:'):
+                        continue
+                except:
+                    pass
                 print(
                     Panel(
                         Markdown(f"### Tool Response\n\n{response_content}"),
@@ -239,13 +240,6 @@ async def handle_command(command: str, server_streams: List[tuple]) -> bool:
 
     return True
 
-
-async def get_input():
-    """Get input asynchronously."""
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, lambda: input().strip().lower())
-
-
 async def interactive_mode(server_streams: List[tuple]):
     """Run the CLI in interactive mode with multiple servers."""
     welcome_text = """
@@ -257,7 +251,8 @@ Type 'help' for available commands or 'quit' to exit.
 
     while True:
         try:
-            command = Prompt.ask("[bold green]\n>[/bold green]").strip().lower()
+            command = await get_input("[bold green]\n>[/bold green]")
+            command = command.lower()
             if not command:
                 continue
             should_continue = await handle_command(command, server_streams)
