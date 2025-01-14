@@ -1,7 +1,7 @@
 import logging
 import os
 import uuid
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import json
 
 import ollama
@@ -19,6 +19,7 @@ class LLMClient:
         self.provider = provider
         self.model = model
         self.api_key = api_key
+        self.api_url = os.getenv("OPENAI_API_URL") or "https://api.openai.com/v1"
 
         # ensure we have the api key for openai if set
         if provider == "openai":
@@ -35,7 +36,7 @@ class LLMClient:
             raise ValueError("Ollama is not properly configured in this environment.")
 
     def create_completion(
-        self, messages: List[Dict], tools: List = None
+        self, messages: List[Dict], tools: List = []
     ) -> Dict[str, Any]:
         """Create a chat completion using the specified LLM provider."""
         if self.provider == "openai":
@@ -54,7 +55,7 @@ class LLMClient:
     def _openai_completion(self, messages: List[Dict], tools: List) -> Dict[str, Any]:
         """Handle OpenAI chat completions."""
         # get the openai client
-        client = OpenAI(api_key=self.api_key)
+        client = OpenAI(api_key=self.api_key, base_url=self.api_url)
 
         try:
             # make a request, passing in tools
