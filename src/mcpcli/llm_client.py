@@ -6,7 +6,7 @@ import json
 
 import ollama
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import OpenAI, AzureOpenAI
 from anthropic import Anthropic
 
 # Load environment variables
@@ -25,6 +25,18 @@ class LLMClient:
             self.api_key = self.api_key or os.getenv("OPENAI_API_KEY")
             if not self.api_key:
                 raise ValueError("The OPENAI_API_KEY environment variable is not set.")
+        # check azure openai api key
+        elif provider == "azure-openai":
+            self.az_endpoint = os.getenv("AZ_OPENAI_ENDPOINT")
+            self.az_api_key = os.getenv("AZ_OPENAI_API_KEY")
+            self.az_api_version = os.getenv("AZ_OPENAI_API_VERSION")
+
+            if not self.az_endpoint:
+                raise ValueError("The AZ_OPENAI_ENDPOINT environment variable is not set.")
+            if not self.az_api_key:
+                raise ValueError("The AZ_OPENAI_API_KEY environment variable is not set.")
+            if not self.az_api_version:
+                raise ValueError("The AZ_OPENAI_API_VERSION environment variable is not set.")
         # check anthropic api key
         elif provider == "anthropic":
             self.api_key = self.api_key or os.getenv("ANTHROPIC_API_KEY")
@@ -41,6 +53,9 @@ class LLMClient:
         if self.provider == "openai":
             # perform an openai completion
             return self._openai_completion(messages, tools)
+        elif self.provider == "azure-openai":
+            # perform an azure openai completion
+            return self._azure_openai_completion(messages, tools)
         elif self.provider == "anthropic":
             # perform an anthropic completion
             return self._anthropic_completion(messages, tools)
@@ -73,6 +88,27 @@ class LLMClient:
             # error
             logging.error(f"OpenAI API Error: {str(e)}")
             raise ValueError(f"OpenAI API Error: {str(e)}")
+    
+    def _azure_openai_completion(self, messages: List[Dict], tools: List) -> Dict[str, Any]:
+        # get the azure openai client
+        client = AzureOpenAI(
+            api_key=self.az_api_key,
+            azure_endpoint=self.az_endpoint,
+            api_version=self.az_api_version,
+        )
+
+        # make a request, passing in tools
+        response = client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            tools=tools or [],
+        )
+
+        # return the response
+        return {
+            "response": response.choices[0].message.content,
+            "tool_calls": getattr(response.choices[0].message, "tool_calls", []),
+        }
 
     def _anthropic_completion(self, messages: List[Dict], tools: List) -> Dict[str, Any]:
         """Handle Anthropic chat completions."""
