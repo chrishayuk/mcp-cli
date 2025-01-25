@@ -20,6 +20,7 @@ dependencies = [
     "requests>=2.32.3",
     "rich>=13.9.4",
     "anthropic>=0.19.2",
+    "litellm>=1.59.6",
 ]
 [project.scripts]
 mcp-cli = "mcpcli.__main__:cli_main"

@@ -13,6 +13,9 @@ This repository contains a protocol-level CLI designed to interact with a Model 
 - Required dependencies (see [Installation](#installation))
 - If using ollama you should have ollama installed and running.
 - If using openai you should have an api key set in your environment variables (OPENAI_API_KEY=yourkey)
+- If using deepseek you should have an api key set in your environment variables (DEEPSEEK_API_KEY=yourkey)
+- If using azure you should have environment variables AZURE_OPENAI_ENDPOINT, AZURE_DEPLOYMENT_NAME, and AZURE_OPENAI_API_KEY
+- All other models: Use litellm provider and add set required environment variables. (e.g. Anthropic: https://docs.litellm.ai/docs/providers/anthropic)
 
 ## Installation
 1. Clone the repository:
