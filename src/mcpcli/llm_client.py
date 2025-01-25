@@ -6,9 +6,9 @@ import json
 
 import ollama
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import OpenAI, AzureOpenAI
 from anthropic import Anthropic
-
+from litellm import completion
 # Load environment variables
 load_dotenv()
 
@@ -19,7 +19,8 @@ class LLMClient:
         self.provider = provider
         self.model = model
         self.api_key = api_key
-
+        self.base_url = None
+        
         # ensure we have the api key for openai if set
         if provider == "openai":
             self.api_key = self.api_key or os.getenv("OPENAI_API_KEY")
@@ -29,18 +30,40 @@ class LLMClient:
         elif provider == "anthropic":
             self.api_key = self.api_key or os.getenv("ANTHROPIC_API_KEY")
             if not self.api_key:
-                raise ValueError("The ANTHROPIC_API_KEY environment variable is not set.")
+                raise ValueError(
+                    "The ANTHROPIC_API_KEY environment variable is not set."
+                )
         # check ollama is good
         elif provider == "ollama" and not hasattr(ollama, "chat"):
             raise ValueError("Ollama is not properly configured in this environment.")
 
+        elif provider == "deepseek":
+            self.base_url = "https://api.deepseek.com/v1"
+            self.api_key = self.api_key or os.getenv("DEEPSEEK_API_KEY")
+            if not self.api_key:
+                raise ValueError(
+                    "The DEEPSEEK_API_KEY environment variable is not set."
+                )
+        elif provider == "azure":
+            self.base_url = os.getenv("AZURE_OPENAI_ENDPOINT")
+            self.api_key = self.api_key or os.getenv("AZURE_OPENAI_API_KEY")
+            self.model = self.model or os.getenv("AZURE_DEPLOYMENT_NAME")
+            if not all([self.api_key, self.base_url, self.model]):
+                raise ValueError(
+                    "Please set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY environment variables."
+                )
+        elif provider == "litellm":
+            pass
+        
     def create_completion(
         self, messages: List[Dict], tools: List = None
     ) -> Dict[str, Any]:
         """Create a chat completion using the specified LLM provider."""
-        if self.provider == "openai":
+        if self.provider in ["openai", "deepseek", "azure"]:
             # perform an openai completion
             return self._openai_completion(messages, tools)
+        elif self.provider == "litellm":
+            return self._litellm_completion(messages, tools)
         elif self.provider == "anthropic":
             # perform an anthropic completion
             return self._anthropic_completion(messages, tools)
@@ -51,11 +74,32 @@ class LLMClient:
             # unsupported providers
             raise ValueError(f"Unsupported provider: {self.provider}")
 
+    def _litellm_completion(self, messages: List[Dict], tools: List) -> Dict[str, Any]:
+        """Handle LiteLLM chat completions."""
+        # litellm completion request
+        response = completion(
+            model=self.model,
+            messages=messages,
+            tools=tools or []
+        )
+        # return the response
+        return {
+            "response": response.choices[0].message.content,
+            "tool_calls": getattr(response.choices[0].message, "tool_calls", []),
+        }
+            
     def _openai_completion(self, messages: List[Dict], tools: List) -> Dict[str, Any]:
         """Handle OpenAI chat completions."""
         # get the openai client
-        client = OpenAI(api_key=self.api_key)
-
+        client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+        if self.provider == "azure":
+            client = AzureOpenAI(
+                azure_endpoint=self.base_url,
+                api_key=self.api_key,
+                api_version=os.getenv("OPENAI_API_VERSION"),
+                azure_deployment=self.model,
+                
+            )
         try:
             # make a request, passing in tools
             response = client.chat.completions.create(
