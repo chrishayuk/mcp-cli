@@ -86,7 +86,7 @@ async def handle_tool_call(tool_call, conversation_history, server_streams):
                 continue
 
         if tool_response.get("isError"):
-             logging.debug(
+            logging.debug(
                 f"Error calling tool '{tool_name}': {tool_response.get('content')}"
             )
 
