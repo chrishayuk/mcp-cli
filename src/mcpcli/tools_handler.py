@@ -68,7 +68,7 @@ async def handle_tool_call(tool_call, conversation_history, server_streams):
             else raw_arguments
         )
 
-        # Call the tool (no direct print here)       
+        # Call the tool (no direct print here)
         for read_stream, write_stream in server_streams:
             tools = await fetch_tools(read_stream, write_stream)
             server_has_tool = False
@@ -89,7 +89,6 @@ async def handle_tool_call(tool_call, conversation_history, server_streams):
             logging.debug(
                 f"Error calling tool '{tool_name}': {tool_response.get('content')}"
             )
-
 
         # Format the tool response
         formatted_response = format_tool_response(tool_response.get("content", []))
