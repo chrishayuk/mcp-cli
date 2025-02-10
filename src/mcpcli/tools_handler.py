@@ -68,17 +68,28 @@ async def handle_tool_call(tool_call, conversation_history, server_streams):
             else raw_arguments
         )
 
-        # Call the tool (no direct print here)
+        # Call the tool (no direct print here)       
         for read_stream, write_stream in server_streams:
-            tool_response = await send_call_tool(
-                tool_name, tool_args, read_stream, write_stream
-            )
-            if not tool_response.get("isError"):
-                break
+            tools = await fetch_tools(read_stream, write_stream)
+            server_has_tool = False
+            for tool in tools:
+                if tool["name"] == tool_name:
+                    server_has_tool = True
+            if server_has_tool:
+                tool_response = await send_call_tool(
+                    tool_name, tool_args, read_stream, write_stream
+                )
+
+                if not tool_response.get("isError"):
+                    break
+            else:
+                continue
+
         if tool_response.get("isError"):
-            logging.debug(
+            print(
                 f"Error calling tool '{tool_name}': {tool_response.get('content')}"
             )
+
 
         # Format the tool response
         formatted_response = format_tool_response(tool_response.get("content", []))
