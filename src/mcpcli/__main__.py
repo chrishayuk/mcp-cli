@@ -342,7 +342,7 @@ def cli_main():
 
     parser.add_argument(
         "--provider",
-        choices=["openai", "anthropic", "ollama"],
+        choices=["openai", "anthropic", "ollama","groq"],
         default="openai",
         help="LLM provider to use. Defaults to 'openai'.",
     )
