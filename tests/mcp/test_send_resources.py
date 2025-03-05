@@ -2,8 +2,8 @@ import pytest
 import anyio
 
 # imports
-from mcp.messages.message_types.json_rpc_message import JSONRPCMessage
-from mcp.messages.message_types.message_method import MessageMethod
+from mcp.messages.json_rpc_message import JSONRPCMessage
+from mcp.messages.message_method import MessageMethod
 from mcp.messages.resources.send_messages import (
     send_resources_list,
     send_resources_read,

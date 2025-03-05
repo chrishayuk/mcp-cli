@@ -11,3 +11,7 @@ class MessageMethod(str, Enum):
     RESOURCES_READ = "resources/read"
     RESOURCES_SUBSCRIBE = "resources/subscribe"
     RESOURCES_TEMPLATES_LIST = "resources/templates/list"
+
+    # Tool methods
+    TOOLS_LIST = "tools/list"
+    TOOLS_CALL = "tools/call"

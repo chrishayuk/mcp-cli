@@ -5,7 +5,7 @@ from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStre
 
 # imports
 from mcp.messages.send_message import send_message
-from mcp.messages.message_types.message_method import MessageMethod
+from mcp.messages.message_method import MessageMethod
 
 
 async def send_resources_list(

@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional, Union
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 
 # imports
-from mcp.messages.message_types.json_rpc_message import JSONRPCMessage
+from mcp.messages.json_rpc_message import JSONRPCMessage
 
 
 async def send_message(
