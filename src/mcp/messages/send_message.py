@@ -1,10 +1,11 @@
 # mcp/messages/send_message.py
 import logging
 import uuid
-from typing import Any, Dict, Optional, Union
-
 import anyio
+from typing import Any, Dict, Optional, Union
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
+
+# imports
 from mcp.messages.message_types.json_rpc_message import JSONRPCMessage
 
 
