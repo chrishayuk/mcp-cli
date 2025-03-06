@@ -32,8 +32,7 @@ async def send_tools_list(
         Exception: If the server returns an error or the request fails
     """
     params = {"cursor": cursor} if cursor else {}
-
-    # send the message
+    
     response = await send_message(
         read_stream=read_stream,
         write_stream=write_stream,
@@ -43,7 +42,6 @@ async def send_tools_list(
         retries=retries,
     )
     
-    # return the response
     return response
 
 
@@ -72,19 +70,26 @@ async def send_tools_call(
     Raises:
         Exception: If the server returns an error or the request fails
     """
-
-    # send the message
+    # Validate inputs to prevent common errors
+    if not isinstance(name, str):
+        raise TypeError(f"Tool name must be a string, got {type(name).__name__}")
+    
+    if not isinstance(arguments, dict):
+        raise TypeError(f"Tool arguments must be a dictionary, got {type(arguments).__name__}")
+    
+    # Construct the parameters with proper validation
+    params = {
+        "name": name,
+        "arguments": arguments
+    }
+    
     response = await send_message(
         read_stream=read_stream,
         write_stream=write_stream,
         method=MessageMethod.TOOLS_CALL,
-        params={
-            "name": name,
-            "arguments": arguments
-        },
-        timeout=timeout,  # Tool calls may take longer
-        retries=retries,  # Fewer retries for idempotency concerns
+        params=params,
+        timeout=timeout,
+        retries=retries,
     )
     
-    # return the response
     return response

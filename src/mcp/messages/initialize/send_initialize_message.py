@@ -1,12 +1,12 @@
 # messages/send_initialize_message.py
 import logging
-from typing import Optional
-
 import anyio
+from typing import Optional
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from pydantic import BaseModel, Field
 
-from mcpcli.messages.json_rpc_message import JSONRPCMessage
+# imports
+from mcp.messages.json_rpc_message import JSONRPCMessage
 
 
 # Models for JSON-RPC Communication

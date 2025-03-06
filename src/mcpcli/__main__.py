@@ -18,20 +18,22 @@ from rich.prompt import Prompt
 
 from mcpcli.chat_handler import handle_chat_mode
 from mcpcli.config import load_config
-from mcpcli.messages.ping import send_ping
-from mcpcli.messages.prompts import send_prompts_list
-from mcpcli.messages.resources import send_resources_list
-from mcpcli.messages.send_initialize_message import send_initialize
-from mcpcli.messages.tools import send_call_tool, send_tools_list
-from mcpcli.transport.stdio.stdio_client import stdio_client
+
+# imports
+from mcp.messages.ping.send_ping_message import send_ping
+from mcp.messages.prompts.send_messages import send_prompts_list
+from mcp.messages.resources.send_messages import send_resources_list
+from mcp.messages.initialize.send_initialize_message import send_initialize
+from mcp.messages.tools.send_messages import send_tools_call, send_tools_list
+from mcp.transport.stdio.stdio_client import stdio_client
 
 # Default path for the configuration file
 DEFAULT_CONFIG_FILE = "server_config.json"
 
 # Configure logging
 logging.basicConfig(
-    level=logging.CRITICAL,
-    # level=logging.DEBUG,
+    #level=logging.CRITICAL,
+    level=logging.DEBUG,
     format="%(asctime)s - %(levelname)s - %(message)s",
     stream=sys.stderr,
 )
@@ -118,7 +120,7 @@ async def handle_command(command: str, server_streams: List[tuple]) -> bool:
                 )
             )
 
-            result = await send_call_tool(tool_name, arguments, server_streams)
+            result = await send_tools_call(tool_name, arguments, server_streams)
             if result.get("isError"):
                 print(f"[red]Error calling tool:[/red] {result.get('error')}")
             else:

@@ -2,7 +2,7 @@
 import json
 import logging
 
-from mcpcli.transport.stdio.stdio_server_parameters import StdioServerParameters
+from mcp.transport.stdio.stdio_server_parameters import StdioServerParameters
 
 
 async def load_config(config_path: str, server_name: str) -> StdioServerParameters:

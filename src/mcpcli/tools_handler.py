@@ -3,7 +3,8 @@ import logging
 import re
 from typing import Any, Dict, Optional
 
-from mcpcli.messages.tools import send_call_tool, send_tools_list
+# imports
+from mcp.messages.tools.send_messages import send_tools_call, send_tools_list
 
 
 def parse_tool_response(response: str) -> Optional[Dict[str, Any]]:
@@ -65,7 +66,7 @@ async def handle_tool_call(tool_call, conversation_history, server_streams):
 
         # Call the tool (no direct print here)
         for read_stream, write_stream in server_streams:
-            tool_response = await send_call_tool(
+            tool_response = await send_tools_call(
                 tool_name, tool_args, read_stream, write_stream
             )
             if not tool_response.get("isError"):

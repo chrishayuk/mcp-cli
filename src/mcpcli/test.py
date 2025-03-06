@@ -1,11 +1,15 @@
 import anyio
 import logging
 import sys
-from config import load_config
-from messages.send_initialize_message import send_initialize
-from messages.ping import send_ping
-from messages.tools import send_tools_list
-from transport.stdio.stdio_client import stdio_client
+
+# mcp imports
+from mcp.messages.initialize.send_initialize_message import send_initialize
+from mcp.messages.ping.send_ping_message import send_ping
+from mcp.messages.tools.send_messages import send_tools_list
+from mcp.transport.stdio.stdio_client import stdio_client
+
+# imports
+from mcpcli.config import load_config
 
 # Configure logging
 logging.basicConfig(
@@ -40,9 +44,9 @@ async def main():
         result = await send_ping(read_stream, write_stream)
         print("Ping successful" if result else "Ping failed")
 
-        # # get tools
-        # result = await send_tools_list(read_stream, write_stream)
-        # print(result)
+        # get tools
+        result = await send_tools_list(read_stream, write_stream)
+        print(result)
 
 # Run the script
 if __name__ == "__main__":

@@ -38,7 +38,7 @@ uv sync --reinstall
 To start the client and interact with the SQLite server, run the following command:
 
 ```bash
-uv run --server sqlite
+uv run mcp-cli --server sqlite
 ```
 
 ### Command-line Arguments
