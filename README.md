@@ -1,8 +1,8 @@
-# Model Context Protocol CLI
-This repository contains a protocol-level CLI designed to interact with a Model Context Protocol server. The client allows users to send commands, query data, and interact with various resources provided by the server.
+# Model Context Provider CLI
+This repository contains a protocol-level CLI designed to interact with a Model Context Provider server. The client allows users to send commands, query data, and interact with various resources provided by the server.
 
 ## Features
-- Protocol-level communication with the MCP Server.
+- Protocol-level communication with the Model Context Provider.
 - Dynamic tool and resource exploration.
 - Support for multiple providers and models:
   - Providers: OpenAI, Ollama.
@@ -44,7 +44,6 @@ uv run mcp-cli --server sqlite
 ### Command-line Arguments
 - `--server`: Specifies the server configuration to use. Required.
 - `--config-file`: (Optional) Path to the JSON configuration file. Defaults to `server_config.json`.
-  - `--all`: (Optional) Use all the servers provided in the config
 - `--provider`: (Optional) Specifies the provider to use (`openai` or `ollama`). Defaults to `openai`.
 - `--model`: (Optional) Specifies the model to use. Defaults depend on the provider:
   - `gpt-4o-mini` for OpenAI.
@@ -63,12 +62,6 @@ Run the client with a specific configuration and Ollama provider:
 uv run mcp-cli --server sqlite --provider ollama --model llama3.2
 ```
 
-Run the client with the default OpenAI provider and model, with all the servers in the config provided:
-
-```bash
-uv run mcp-cli --config "path to your server_config.json" --all
-```
-
 ## Interactive Mode
 The client supports interactive mode, allowing you to execute commands dynamically. Type `help` for a list of available commands or `quit` to exit the program.
 
@@ -85,7 +78,7 @@ The client supports interactive mode, allowing you to execute commands dynamical
 ### Chat Mode
 To enter chat mode and interact with the server:
 
-uv run mcp-cli --server sqlite
+uv run mcp-cli main.py --server sqlite
 
 In chat mode, you can use tools and query the server interactively. The provider and model used are specified during startup and displayed as follows:
 

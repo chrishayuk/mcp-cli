@@ -14,16 +14,18 @@ import anyio
 from rich import print
 from rich.markdown import Markdown
 from rich.panel import Panel
+from rich.prompt import Prompt
 
-from mcpcli.chat_handler import handle_chat_mode, get_input
+from mcpcli.chat_handler import handle_chat_mode
 from mcpcli.config import load_config
-from mcpcli.messages.send_ping import send_ping
-from mcpcli.messages.send_prompts import send_prompts_list
-from mcpcli.messages.send_resources import send_resources_list
-from mcpcli.messages.send_initialize_message import send_initialize
-from mcpcli.messages.send_call_tool import send_call_tool
-from mcpcli.messages.send_tools_list import send_tools_list
-from mcpcli.transport.stdio.stdio_client import stdio_client
+
+# imports
+from mcp.messages.ping.send_ping_message import send_ping
+from mcp.messages.prompts.send_messages import send_prompts_list
+from mcp.messages.resources.send_messages import send_resources_list
+from mcp.messages.initialize.send_initialize_message import send_initialize
+from mcp.messages.tools.send_messages import send_tools_call, send_tools_list
+from mcp.transport.stdio.stdio_client import stdio_client
 
 # Default path for the configuration file
 DEFAULT_CONFIG_FILE = "server_config.json"
@@ -31,6 +33,7 @@ DEFAULT_CONFIG_FILE = "server_config.json"
 # Configure logging
 logging.basicConfig(
     level=logging.CRITICAL,
+    #level=logging.DEBUG,
     format="%(asctime)s - %(levelname)s - %(message)s",
     stream=sys.stderr,
 )
@@ -93,12 +96,16 @@ async def handle_command(command: str, server_streams: List[tuple]) -> bool:
                 )
 
         elif command == "call-tool":
-            tool_name = await get_input("[bold magenta]Enter tool name[/bold magenta]")
+            tool_name = Prompt.ask(
+                "[bold magenta]Enter tool name[/bold magenta]"
+            ).strip()
             if not tool_name:
                 print("[red]Tool name cannot be empty.[/red]")
                 return True
 
-            arguments_str = await get_input("[bold magenta]Enter tool arguments as JSON (e.g., {'key': 'value'})[/bold magenta]")
+            arguments_str = Prompt.ask(
+                "[bold magenta]Enter tool arguments as JSON (e.g., {'key': 'value'})[/bold magenta]"
+            ).strip()
             try:
                 arguments = json.loads(arguments_str)
             except json.JSONDecodeError as e:
@@ -113,17 +120,11 @@ async def handle_command(command: str, server_streams: List[tuple]) -> bool:
                 )
             )
 
-            for read_stream, write_stream in server_streams:
-                result = await send_call_tool(tool_name, arguments, read_stream, write_stream)
-                if result.get("isError"):
-                    # print(f"[red]Error calling tool:[/red] {result.get('error')}")
-                    continue
+            result = await send_tools_call(tool_name, arguments, server_streams)
+            if result.get("isError"):
+                print(f"[red]Error calling tool:[/red] {result.get('error')}")
+            else:
                 response_content = result.get("content", "No content")
-                try:
-                    if response_content[0]['text'].startswith('Error:'):
-                        continue
-                except:
-                    pass
                 print(
                     Panel(
                         Markdown(f"### Tool Response\n\n{response_content}"),
@@ -135,7 +136,7 @@ async def handle_command(command: str, server_streams: List[tuple]) -> bool:
             print("[cyan]\nFetching Resources List from all servers...[/cyan]")
             for i, (read_stream, write_stream) in enumerate(server_streams):
                 response = await send_resources_list(read_stream, write_stream)
-                resources_list = response.get("resources", []) if response else None
+                resources_list = response.get("resources", [])
                 server_num = i + 1
 
                 if not resources_list:
@@ -160,7 +161,7 @@ async def handle_command(command: str, server_streams: List[tuple]) -> bool:
             print("[cyan]\nFetching Prompts List from all servers...[/cyan]")
             for i, (read_stream, write_stream) in enumerate(server_streams):
                 response = await send_prompts_list(read_stream, write_stream)
-                prompts_list = response.get("prompts", []) if response else None
+                prompts_list = response.get("prompts", [])
                 server_num = i + 1
 
                 if not prompts_list:
@@ -240,6 +241,13 @@ async def handle_command(command: str, server_streams: List[tuple]) -> bool:
 
     return True
 
+
+async def get_input():
+    """Get input asynchronously."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, lambda: input().strip().lower())
+
+
 async def interactive_mode(server_streams: List[tuple]):
     """Run the CLI in interactive mode with multiple servers."""
     welcome_text = """
@@ -251,8 +259,7 @@ Type 'help' for available commands or 'quit' to exit.
 
     while True:
         try:
-            command = await get_input("[bold green]\n>[/bold green]")
-            command = command.lower()
+            command = Prompt.ask("[bold green]\n>[/bold green]").strip().lower()
             if not command:
                 continue
             should_continue = await handle_command(command, server_streams)
@@ -327,13 +334,6 @@ def cli_main():
     )
 
     parser.add_argument(
-        "--all",
-        action="store_true",
-        dest="all",
-        default=False
-    )
-
-    parser.add_argument(
         "command",
         nargs="?",
         choices=["ping", "list-tools", "list-resources", "list-prompts"],
@@ -342,31 +342,25 @@ def cli_main():
 
     parser.add_argument(
         "--provider",
-        choices=["openai", "anthropic", "ollama"],
+        choices=["openai", "ollama"],
         default="openai",
         help="LLM provider to use. Defaults to 'openai'.",
     )
 
     parser.add_argument(
         "--model",
-        help=("Model to use. Defaults to 'gpt-4o-mini' for openai, 'claude-3-5-haiku-latest' for anthropic and 'qwen2.5-coder' for ollama"),
+        help=("Model to use. Defaults to 'gpt-4o-mini' for 'openai' and 'qwen2.5-coder' for 'ollama'."),
     )
 
     args = parser.parse_args()
 
-    # Set default model based on provider
     model = args.model or (
-        "gpt-4o-mini" if args.provider == "openai"
-        else "claude-3-5-haiku-latest" if args.provider == "anthropic"
-        else "qwen2.5-coder"
+        "gpt-4o-mini" if args.provider == "openai" else "qwen2.5-coder"
     )
     os.environ["LLM_PROVIDER"] = args.provider
     os.environ["LLM_MODEL"] = model
 
     try:
-        if args.all:
-            with open(args.config_file,'r') as f:
-                args.servers = list(json.load(f)['mcpServers'].keys())
         result = anyio.run(run, args.config_file, args.servers, args.command)
         sys.exit(result)
     except Exception as e:

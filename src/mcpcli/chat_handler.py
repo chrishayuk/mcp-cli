@@ -1,6 +1,5 @@
 # chat_handler.py
 import json
-import asyncio
 
 from rich import print
 from rich.markdown import Markdown
@@ -11,10 +10,6 @@ from mcpcli.llm_client import LLMClient
 from mcpcli.system_prompt_generator import SystemPromptGenerator
 from mcpcli.tools_handler import convert_to_openai_tools, fetch_tools, handle_tool_call
 
-async def get_input(prompt: str):
-    """Get input asynchronously."""
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, lambda: Prompt.ask(prompt).strip())
 
 async def handle_chat_mode(server_streams, provider="openai", model="gpt-4o-mini"):
     """Enter chat mode with multi-call support for autonomous tool chaining."""
@@ -37,7 +32,7 @@ async def handle_chat_mode(server_streams, provider="openai", model="gpt-4o-mini
         while True:
             try:
                 # Change prompt to yellow
-                user_message = await get_input("[bold yellow]>[/bold yellow]")
+                user_message = Prompt.ask("[bold yellow]>[/bold yellow]").strip()
                 if user_message.lower() in ["exit", "quit"]:
                     print(Panel("Exiting chat mode.", style="bold red"))
                     break
