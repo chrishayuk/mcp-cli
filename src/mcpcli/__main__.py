@@ -32,8 +32,8 @@ DEFAULT_CONFIG_FILE = "server_config.json"
 
 # Configure logging
 logging.basicConfig(
-    #level=logging.CRITICAL,
-    level=logging.DEBUG,
+    level=logging.CRITICAL,
+    #level=logging.DEBUG,
     format="%(asctime)s - %(levelname)s - %(message)s",
     stream=sys.stderr,
 )

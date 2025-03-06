@@ -3,7 +3,7 @@ import logging
 import re
 from typing import Any, Dict, Optional
 
-# imports
+# imports
 from mcp.messages.tools.send_messages import send_tools_call, send_tools_list
 
 
@@ -66,8 +66,12 @@ async def handle_tool_call(tool_call, conversation_history, server_streams):
 
         # Call the tool (no direct print here)
         for read_stream, write_stream in server_streams:
+            # FIXED: Correct parameter order - streams first, then tool name and arguments
             tool_response = await send_tools_call(
-                tool_name, tool_args, read_stream, write_stream
+                read_stream=read_stream,
+                write_stream=write_stream,
+                name=tool_name,
+                arguments=tool_args
             )
             if not tool_response.get("isError"):
                 break
@@ -135,8 +139,11 @@ async def fetch_tools(read_stream, write_stream):
     """Fetch tools from the server."""
     logging.debug("\nFetching tools for chat mode...")
 
-    # get the tools list
-    tools_response = await send_tools_list(read_stream, write_stream)
+    # get the tools list - FIXED: Pass read_stream and write_stream as named parameters
+    tools_response = await send_tools_list(
+        read_stream=read_stream, 
+        write_stream=write_stream
+    )
     tools = tools_response.get("tools", [])
 
     # check if tools are valid
