@@ -32,7 +32,8 @@ async def send_tools_list(
         Exception: If the server returns an error or the request fails
     """
     params = {"cursor": cursor} if cursor else {}
-    
+
+    # send the message
     response = await send_message(
         read_stream=read_stream,
         write_stream=write_stream,
@@ -42,6 +43,7 @@ async def send_tools_list(
         retries=retries,
     )
     
+    # return the response
     return response
 
 
@@ -70,6 +72,8 @@ async def send_tools_call(
     Raises:
         Exception: If the server returns an error or the request fails
     """
+
+    # send the message
     response = await send_message(
         read_stream=read_stream,
         write_stream=write_stream,
@@ -82,4 +86,5 @@ async def send_tools_call(
         retries=retries,  # Fewer retries for idempotency concerns
     )
     
+    # return the response
     return response
