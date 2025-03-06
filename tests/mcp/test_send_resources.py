@@ -1,4 +1,4 @@
-# tests/mcp/test_send_ping_resources.py
+# tests/mcp/test_send_resources.py
 import pytest
 import anyio
 
