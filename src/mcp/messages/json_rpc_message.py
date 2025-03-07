@@ -1,4 +1,4 @@
-# mcp/messages/message_types/json_rpc_message.py
+# mcp/messages/json_rpc_message.py
 from typing import Any, Dict, Optional
 from pydantic import BaseModel, ConfigDict, Field
 

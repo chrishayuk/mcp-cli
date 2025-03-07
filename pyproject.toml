@@ -19,9 +19,10 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "requests>=2.32.3",
     "rich>=13.9.4",
+    "typer>=0.15.2",
 ]
 [project.scripts]
-mcp-cli = "mcpcli.__main__:cli_main"
+mcp-cli = "cli.main:app"
 
 [tool.ruff.lint]
 unfixable = [
