@@ -1,4 +1,4 @@
-# transport/stdio/stdio_server_parameters.py
+# mcp/transport/stdio/stdio_server_parameters.py
 from pydantic import BaseModel, Field
 from typing import Any, Dict, Optional
 
