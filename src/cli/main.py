@@ -1,3 +1,4 @@
+# src/cli/main.py
 """
 Fixed version of the CLI with proper option passing to commands
 """
@@ -7,6 +8,7 @@ import json
 import sys
 import anyio
 import typer
+import asyncio
 
 # imports
 from mcpcli.config import load_config
@@ -227,44 +229,90 @@ def run_command(command_func, config_file, server_names):
     async def _run_clients():
         server_streams = []
         context_managers = []
+        clean_exit = False
         
         # Create all server connections first
         for sname in server_names:
-            server_params = await load_config(config_file, sname)
-            cm = stdio_client(server_params)
-            context_managers.append(cm)
             try:
+                server_params = await load_config(config_file, sname)
+                cm = stdio_client(server_params)
                 streams = await cm.__aenter__()
+                context_managers.append((cm, streams))
+                
                 r_stream, w_stream = streams
                 
                 # Initialize this server
                 init_result = await send_initialize(r_stream, w_stream)
                 if not init_result:
                     print(f"Server initialization failed for {sname}")
+                    # Close this specific context manager
+                    try:
+                        await cm.__aexit__(None, None, None)
+                    except Exception as e:
+                        print(f"Error closing connection to {sname}: {e}")
+                    context_managers.pop()
                     continue
                 
                 server_streams.append(streams)
             except Exception as e:
                 print(f"Error connecting to server {sname}: {e}")
-                await cm.__aexit__(None, None, None)
-                context_managers.pop()
+                continue
         
         # Run the command if we have valid streams
-        if server_streams:
-            try:
-                await command_func(server_streams)
-            finally:
-                # Close all connections properly
-                for cm in context_managers:
-                    await cm.__aexit__(None, None, None)
-        else:
-            print("No valid server connections established")
+        try:
+            if server_streams:
+                # Check if it's interactive mode or chat mode by looking at the function name
+                is_interactive = command_func.__name__ == 'interactive_mode'
+                is_chat = command_func.__name__ == 'chat_run'
+                
+                if is_interactive or is_chat:
+                    # For interactive/chat mode, wait for the return value
+                    result = await command_func(server_streams)
+                    if result is True:
+                        # Mode returned True, signal clean exit
+                        clean_exit = True
+                else:
+                    # For other commands, just run them
+                    await command_func(server_streams)
+            else:
+                print("No valid server connections established")
+        except KeyboardInterrupt:
+            print("\nKeyboard interrupt detected, cleaning up...")
+        except Exception as e:
+            print(f"\nError in command: {e}")
+        finally:
+            # Suppress cleanup messages for clean exits
+            should_log = not clean_exit
+            
+            # Clean up all context managers - but handle each one separately
+            for i, (cm, _) in enumerate(list(context_managers)):
+                try:
+                    # Close each context manager with a timeout to prevent hanging
+                    close_task = asyncio.create_task(cm.__aexit__(None, None, None))
+                    try:
+                        # Add a timeout for the cleanup
+                        await asyncio.wait_for(close_task, timeout=2.0)
+                    except asyncio.TimeoutError:
+                        # If timeout, log and continue
+                        if should_log:
+                            print(f"Connection cleanup {i+1}/{len(context_managers)} timed out")
+                    except (asyncio.CancelledError, RuntimeError):
+                        # Suppress these errors for clean exits
+                        pass
+                except Exception as e:
+                    if should_log and not isinstance(e, (asyncio.CancelledError, RuntimeError)):
+                        print(f"Error during server shutdown {i+1}/{len(context_managers)}: {e}")
     
     # Clear the screen
     os.system("cls" if sys.platform == "win32" else "clear")
     
-    # Run the async function in a single anyio call
-    anyio.run(_run_clients)
+    # Run the async function with anyio
+    try:
+        anyio.run(_run_clients)
+    except KeyboardInterrupt:
+        print("\nOperation interrupted. Exiting...")
+    except Exception as e:
+        print(f"\nError: {e}")
 
 if __name__ == "__main__":
     app()

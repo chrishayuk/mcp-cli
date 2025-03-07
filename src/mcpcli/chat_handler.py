@@ -1,5 +1,6 @@
-# chat_handler.py
+# src/mcpcli/chat_handler.py
 import json
+import asyncio
 
 from rich import print
 from rich.markdown import Markdown
@@ -16,10 +17,13 @@ async def handle_chat_mode(server_streams, provider="openai", model="gpt-4o-mini
     try:
         tools = []
         for read_stream, write_stream in server_streams:
-            tools.extend(await fetch_tools(read_stream, write_stream))
+            try:
+                fetched_tools = await fetch_tools(read_stream, write_stream)
+                tools.extend(fetched_tools)
+            except Exception as e:
+                print(f"[yellow]Warning: Failed to fetch tools from a server: {e}[/yellow]")
+                continue
 
-        # for (read_stream, write_stream) in server_streams:
-        # tools = await fetch_tools(read_stream, write_stream)
         if not tools:
             print("[red]No tools available. Exiting chat mode.[/red]")
             return
@@ -46,68 +50,94 @@ async def handle_chat_mode(server_streams, provider="openai", model="gpt-4o-mini
                     client, conversation_history, openai_tools, server_streams
                 )
 
+            except KeyboardInterrupt:
+                print("\n[yellow]Chat interrupted. Type 'exit' to quit.[/yellow]")
+            except EOFError:
+                # EOF (Ctrl+D) should exit cleanly
+                print(Panel("EOF detected. Exiting chat mode.", style="bold red"))
+                break
             except Exception as e:
                 print(f"[red]Error processing message:[/red] {e}")
                 continue
+    except asyncio.CancelledError:
+        # Handle task cancellation gracefully
+        print("[yellow]Chat task cancelled.[/yellow]")
     except Exception as e:
         print(f"[red]Error in chat mode:[/red] {e}")
+    
+    # Clean return to ensure proper exit
+    return
 
 
 async def process_conversation(
     client, conversation_history, openai_tools, server_streams
 ):
     """Process the conversation loop, handling tool calls and responses."""
-    while True:
-        completion = client.create_completion(
-            messages=conversation_history,
-            tools=openai_tools,
-        )
-
-        response_content = completion.get("response", "No response")
-        tool_calls = completion.get("tool_calls", [])
-
-        if tool_calls:
-            for tool_call in tool_calls:
-                # Extract tool_name and raw_arguments as before
-                if hasattr(tool_call, "function"):
-                    tool_name = getattr(tool_call.function, "name", "unknown tool")
-                    raw_arguments = getattr(tool_call.function, "arguments", {})
-                elif isinstance(tool_call, dict) and "function" in tool_call:
-                    fn_info = tool_call["function"]
-                    tool_name = fn_info.get("name", "unknown tool")
-                    raw_arguments = fn_info.get("arguments", {})
-                else:
-                    tool_name = "unknown tool"
-                    raw_arguments = {}
-
-                # If raw_arguments is a string, try to parse it as JSON
-                if isinstance(raw_arguments, str):
-                    try:
-                        raw_arguments = json.loads(raw_arguments)
-                    except json.JSONDecodeError:
-                        # If it's not valid JSON, just display as is
-                        pass
-
-                # Now raw_arguments should be a dict or something we can pretty-print as JSON
-                tool_args_str = json.dumps(raw_arguments, indent=2)
-
-                tool_md = f"**Tool Call:** {tool_name}\n\n```json\n{tool_args_str}\n```"
-                print(
-                    Panel(
-                        Markdown(tool_md), style="bold magenta", title="Tool Invocation"
-                    )
+    try:
+        while True:
+            try:
+                completion = client.create_completion(
+                    messages=conversation_history,
+                    tools=openai_tools,
                 )
 
-                await handle_tool_call(tool_call, conversation_history, server_streams)
-            continue
+                response_content = completion.get("response", "No response")
+                tool_calls = completion.get("tool_calls", [])
 
-        # Assistant panel with Markdown
-        assistant_panel_text = response_content if response_content else "[No Response]"
-        print(
-            Panel(Markdown(assistant_panel_text), style="bold blue", title="Assistant")
-        )
-        conversation_history.append({"role": "assistant", "content": response_content})
-        break
+                if tool_calls:
+                    for tool_call in tool_calls:
+                        # Extract tool_name and raw_arguments as before
+                        if hasattr(tool_call, "function"):
+                            tool_name = getattr(tool_call.function, "name", "unknown tool")
+                            raw_arguments = getattr(tool_call.function, "arguments", {})
+                        elif isinstance(tool_call, dict) and "function" in tool_call:
+                            fn_info = tool_call["function"]
+                            tool_name = fn_info.get("name", "unknown tool")
+                            raw_arguments = fn_info.get("arguments", {})
+                        else:
+                            tool_name = "unknown tool"
+                            raw_arguments = {}
+
+                        # If raw_arguments is a string, try to parse it as JSON
+                        if isinstance(raw_arguments, str):
+                            try:
+                                raw_arguments = json.loads(raw_arguments)
+                            except json.JSONDecodeError:
+                                # If it's not valid JSON, just display as is
+                                pass
+
+                        # Now raw_arguments should be a dict or something we can pretty-print as JSON
+                        tool_args_str = json.dumps(raw_arguments, indent=2)
+
+                        tool_md = f"**Tool Call:** {tool_name}\n\n```json\n{tool_args_str}\n```"
+                        print(
+                            Panel(
+                                Markdown(tool_md), style="bold magenta", title="Tool Invocation"
+                            )
+                        )
+
+                        await handle_tool_call(tool_call, conversation_history, server_streams)
+                    continue
+
+                # Assistant panel with Markdown
+                assistant_panel_text = response_content if response_content else "[No Response]"
+                print(
+                    Panel(Markdown(assistant_panel_text), style="bold blue", title="Assistant")
+                )
+                conversation_history.append({"role": "assistant", "content": response_content})
+                break
+            except asyncio.CancelledError:
+                # Handle cancellation during API calls
+                raise
+            except Exception as e:
+                print(f"[red]Error during conversation processing:[/red] {e}")
+                conversation_history.append(
+                    {"role": "assistant", "content": f"I encountered an error: {str(e)}"}
+                )
+                break
+    except asyncio.CancelledError:
+        # Propagate cancellation up
+        raise
 
 
 def generate_system_prompt(tools):

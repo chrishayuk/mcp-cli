@@ -1,3 +1,4 @@
+# src/cli/commands/interactive.py
 import os
 from rich import print
 from rich.markdown import Markdown
@@ -34,7 +35,7 @@ Type 'help' for available commands or 'quit' to exit.
                 await chat.chat_run(server_streams)
             elif command in ["quit", "exit"]:
                 print("\n[bold red]Goodbye![/bold red]")
-                break
+                return True  # Signal clean exit
             elif command == "clear":
                 os.system("cls" if os.name == "nt" else "clear")
             elif command == "help":
@@ -56,9 +57,11 @@ Type 'help' for available commands or 'quit' to exit.
                 print(f"[red]\nUnknown command: {command}[/red]")
                 print("[yellow]Type 'help' for available commands[/yellow]")
         except EOFError:
-            break
+            return True  # Signal clean exit for EOF
         except Exception as e:
             print(f"\n[red]Error:[/red] {e}")
+    
+    return False  # This is technically unreachable but good practice
 
 # Create a Typer app for interactive mode if needed
 import typer
