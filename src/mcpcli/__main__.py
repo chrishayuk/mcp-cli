@@ -23,7 +23,7 @@ from mcpcli.config import load_config
 from mcp.messages.ping.send_messages import send_ping
 from mcp.messages.prompts.send_messages import send_prompts_list
 from mcp.messages.resources.send_messages import send_resources_list
-from mcp.messages.initialize.send_initialize_message import send_initialize
+from mcp.messages.initialize.send_messages import send_initialize
 from mcp.messages.tools.send_messages import send_tools_call, send_tools_list
 from mcp.transport.stdio.stdio_client import stdio_client
 
