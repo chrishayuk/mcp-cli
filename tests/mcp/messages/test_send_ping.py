@@ -1,10 +1,10 @@
-# tests/mcp/test_send_ping_message.py
+# tests/mcp/test_send_ping.py
 import pytest
 import anyio
 
 from mcp.messages.json_rpc_message import JSONRPCMessage
 from mcp.messages.message_method import MessageMethod
-from mcp.messages.ping.send_ping_message import send_ping
+from mcp.messages.ping.send_messages import send_ping
 
 # Force asyncio only for all tests in this file
 pytestmark = [pytest.mark.asyncio]

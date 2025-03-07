@@ -1,4 +1,4 @@
-# messages/ping/send_ping_message.py
+# messages/ping/send_messages.py
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 
 # logging

@@ -19,8 +19,8 @@ from rich.prompt import Prompt
 from mcpcli.chat_handler import handle_chat_mode
 from mcpcli.config import load_config
 
-# imports
-from mcp.messages.ping.send_ping_message import send_ping
+# mcp messages imports
+from mcp.messages.ping.send_messages import send_ping
 from mcp.messages.prompts.send_messages import send_prompts_list
 from mcp.messages.resources.send_messages import send_resources_list
 from mcp.messages.initialize.send_initialize_message import send_initialize
