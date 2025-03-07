@@ -3,8 +3,8 @@ import logging
 import sys
 
 # mcp imports
-from mcp.messages.initialize.send_initialize_message import send_initialize
-from mcp.messages.ping.send_ping_message import send_ping
+from mcp.messages.initialize.send_messages import send_initialize
+from mcp.messages.ping.send_messages import send_ping
 from mcp.messages.tools.send_messages import send_tools_list
 from mcp.transport.stdio.stdio_client import stdio_client
 

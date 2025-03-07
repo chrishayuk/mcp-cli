@@ -3,11 +3,11 @@ import json
 import logging
 import sys
 import traceback
-from contextlib import asynccontextmanager
-
 import anyio
 from anyio.streams.text import TextReceiveStream
+from contextlib import asynccontextmanager
 
+# imports
 from mcpcli.environment import get_default_environment
 from mcp.messages.json_rpc_message import JSONRPCMessage
 from mcp.transport.stdio.stdio_server_parameters import StdioServerParameters

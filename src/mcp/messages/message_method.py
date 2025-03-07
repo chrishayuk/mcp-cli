@@ -15,3 +15,10 @@ class MessageMethod(str, Enum):
     # Tool methods
     TOOLS_LIST = "tools/list"
     TOOLS_CALL = "tools/call"
+
+    # Prompt methods
+    PROMPTS_LIST = "prompts/list"
+    PROMPTS_GET = "prompts/get"
+
+    # Notification methods
+    NOTIFICATION_PROMPTS_LIST_CHANGED = "notifications/prompts/list_changed"

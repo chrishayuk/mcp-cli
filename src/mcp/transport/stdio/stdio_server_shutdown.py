@@ -1,7 +1,6 @@
-# transport/stdio/stdio_server_shutdown.py
+# mcp/transport/stdio/stdio_server_shutdown.py
 import logging
 from typing import Optional
-
 import anyio
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 
