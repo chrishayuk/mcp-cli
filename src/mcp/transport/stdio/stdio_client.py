@@ -8,10 +8,9 @@ from anyio.streams.text import TextReceiveStream
 from contextlib import asynccontextmanager
 
 # imports
-from mcpcli.environment import get_default_environment
+from host.environment import get_default_environment
 from mcp.messages.json_rpc_message import JSONRPCMessage
 from mcp.transport.stdio.stdio_server_parameters import StdioServerParameters
-
 
 @asynccontextmanager
 async def stdio_client(server: StdioServerParameters):
