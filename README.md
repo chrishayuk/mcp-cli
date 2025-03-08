@@ -7,6 +7,8 @@ This repository contains a protocol-level CLI designed to interact with a Model 
 - Support for multiple providers and models:
   - Providers: OpenAI, Ollama.
   - Default models: `gpt-4o-mini` for OpenAI, `qwen2.5-coder` for Ollama.
+- Enhanced modular chat system with server-aware tools.
+- Rich command system with context-aware completions.
 
 ## Prerequisites
 - Python 3.8 or higher.
@@ -78,16 +80,51 @@ The client supports interactive mode, allowing you to execute commands dynamical
 ### Chat Mode
 To enter chat mode and interact with the server:
 
+```bash
 uv run mcp-cli main.py --server sqlite
+```
 
-In chat mode, you can use tools and query the server interactively. The provider and model used are specified during startup and displayed as follows:
+In chat mode, you can use tools and query the server interactively. The provider and model used are specified during startup and displayed in the welcome banner.
 
-Entering chat mode using provider 'ollama' and model 'llama3.2'...
+#### Chat Commands
+While in chat mode, you can use the following slash commands:
+
+- `/tools`: Display all available tools with their server information
+  - `/tools --all`: Show detailed tool information including parameters
+  - `/tools --raw`: Show raw tool definitions
+- `/cls`: Clear the screen while keeping conversation history
+- `/clear`: Clear both the screen and conversation history
+- `/compact`: Condense conversation history into a summary
+- `/save <filename>`: Save conversation history to a JSON file
+- `/help`: Show available commands
+- `/help <command>`: Show detailed help for a specific command
+
+Type `exit` or `quit` to leave chat mode.
 
 #### Using OpenAI Provider:
-If you wish to use openai models, you should
+If you wish to use openai models, you should:
 
-- set the `OPENAI_API_KEY` environment variable before running the client, either in .env or as an environment variable.
+- Set the `OPENAI_API_KEY` environment variable before running the client, either in .env or as an environment variable.
+
+## Project Structure
+
+The project follows a modular architecture:
+
+```
+src/
+├── cli/
+│   ├── chat/
+│   │   ├── commands/         # Chat slash commands
+│   │   ├── chat_context.py   # Chat state management
+│   │   ├── chat_handler.py   # Main chat logic
+│   │   ├── conversation.py   # Conversation processing
+│   │   ├── ui_helpers.py     # UI utilities
+│   │   └── ui_manager.py     # User interface management
+│   ├── commands/             # Main CLI commands
+│   └── ...
+├── llm/                      # LLM client and tools
+└── ...
+```
 
 ## Contributing
 Contributions are welcome! Please open an issue or submit a pull request with your proposed changes.
