@@ -9,6 +9,9 @@ This repository contains a protocol-level CLI designed to interact with a Model 
   - Default models: `gpt-4o-mini` for OpenAI, `qwen2.5-coder` for Ollama.
 - Enhanced modular chat system with server-aware tools.
 - Rich command system with context-aware completions.
+- Two operational modes:
+  - **Interactive Mode**: Command-line interface with slash commands
+  - **Chat Mode**: Conversational interface with LLM
 
 ## Prerequisites
 - Python 3.8 or higher.
@@ -37,10 +40,16 @@ uv sync --reinstall
 ```
 
 ## Usage
-To start the client and interact with the SQLite server, run the following command:
+To start the client and interact with the SQLite server, you can use either chat mode or interactive mode:
 
+### Chat Mode
 ```bash
-uv run mcp-cli --server sqlite
+uv run mcp-cli chat --server sqlite
+```
+
+### Interactive Mode
+```bash
+uv run mcp-cli interactive --server sqlite
 ```
 
 ### Command-line Arguments
@@ -52,42 +61,50 @@ uv run mcp-cli --server sqlite
   - `llama3.2` for Ollama.
 
 ### Examples
-Run the client with the default OpenAI provider and model:
+Run in chat mode with the default OpenAI provider and model:
 
 ```bash
-uv run mcp-cli --server sqlite
+uv run mcp-cli chat --server sqlite
 ```
 
-Run the client with a specific configuration and Ollama provider:
+Run in interactive mode with a specific provider and model:
 
 ```bash
-uv run mcp-cli --server sqlite --provider ollama --model llama3.2
+uv run mcp-cli interactive --server sqlite --provider ollama --model llama3.2
 ```
 
 ## Interactive Mode
-The client supports interactive mode, allowing you to execute commands dynamically. Type `help` for a list of available commands or `quit` to exit the program.
-
-## Supported Commands
-- `ping`: Check if the server is responsive.
-- `list-tools`: Display available tools.
-- `list-resources`: Display available resources.
-- `list-prompts`: Display available prompts.
-- `chat`: Enter interactive chat mode.
-- `clear`: Clear the terminal screen.
-- `help`: Show a list of supported commands.
-- `quit`/`exit`: Exit the client.
-
-### Chat Mode
-To enter chat mode and interact with the server:
+Interactive mode provides a command-line interface with slash commands:
 
 ```bash
-uv run mcp-cli main.py --server sqlite
+uv run mcp-cli interactive --server sqlite
 ```
 
-In chat mode, you can use tools and query the server interactively. The provider and model used are specified during startup and displayed in the welcome banner.
+### Interactive Commands
+In interactive mode, you can use the following slash commands:
 
-#### Chat Commands
-While in chat mode, you can use the following slash commands:
+- `/ping`: Check if server is responsive
+- `/prompts`: List available prompts
+- `/tools`: List available tools
+- `/tools-all`: Show detailed tool information with parameters
+- `/tools-raw`: Show raw tool definitions in JSON
+- `/resources`: List available resources
+- `/chat`: Enter chat mode
+- `/cls`: Clear the screen
+- `/clear`: Clear the screen and show welcome message
+- `/help`: Show this help message
+- `/exit` or `/quit`: Exit the program
+
+You can also exit by typing `exit` or `quit` without the slash prefix.
+
+## Chat Mode
+Chat mode provides a conversational interface with the LLM:
+
+```bash
+uv run mcp-cli chat --server sqlite
+```
+
+In chat mode, you can interact with the model in natural language, and it will automatically use the available tools when needed. You can also use the following slash commands:
 
 - `/tools`: Display all available tools with their server information
   - `/tools --all`: Show detailed tool information including parameters
@@ -101,7 +118,7 @@ While in chat mode, you can use the following slash commands:
 
 Type `exit` or `quit` to leave chat mode.
 
-#### Using OpenAI Provider:
+### Using OpenAI Provider:
 If you wish to use openai models, you should:
 
 - Set the `OPENAI_API_KEY` environment variable before running the client, either in .env or as an environment variable.
@@ -120,7 +137,7 @@ src/
 │   │   ├── conversation.py   # Conversation processing
 │   │   ├── ui_helpers.py     # UI utilities
 │   │   └── ui_manager.py     # User interface management
-│   ├── commands/             # Main CLI commands
+│   ├── commands/             # Main CLI commands (including interactive mode)
 │   └── ...
 ├── llm/                      # LLM client and tools
 └── ...
