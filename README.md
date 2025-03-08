@@ -109,12 +109,17 @@ In chat mode, you can interact with the model in natural language, and it will a
 - `/tools`: Display all available tools with their server information
   - `/tools --all`: Show detailed tool information including parameters
   - `/tools --raw`: Show raw tool definitions
+- `/toolhistory` or `/th`: Show history of tool calls in the current session
+  - `/th -n 5`: Show only the last 5 tool calls
+  - `/th --json`: Show tool calls in JSON format
 - `/cls`: Clear the screen while keeping conversation history
 - `/clear`: Clear both the screen and conversation history
 - `/compact`: Condense conversation history into a summary
 - `/save <filename>`: Save conversation history to a JSON file
 - `/help`: Show available commands
 - `/help <command>`: Show detailed help for a specific command
+- `/quickhelp` or `/qh`: Display a quick reference of common commands
+- `/interrupt`, `/stop`, or `/cancel`: Interrupt running tool execution
 
 Type `exit` or `quit` to leave chat mode.
 
