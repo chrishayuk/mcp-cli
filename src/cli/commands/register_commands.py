@@ -2,7 +2,8 @@
 import typer
 from cli.commands import ping, chat, prompts, tools, resources, interactive
 
-# Define the individual command functions at module scope.
+# Remove the import for conversation_history_command as it's not needed at this level
+# from cli.chat.commands.conversation_history import conversation_history_command
 
 def ping_command(
     config_file: str = "server_config.json",

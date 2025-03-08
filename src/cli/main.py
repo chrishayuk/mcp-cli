@@ -2,6 +2,8 @@
 import logging
 import sys
 import typer
+import atexit
+import os
 
 # mcp imports
 from mcp.transport.stdio.stdio_client import stdio_client
@@ -20,6 +22,14 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     stream=sys.stderr,
 )
+
+# Ensure terminal is reset on exit.
+def restore_terminal():
+    # Restore the terminal settings to normal.
+    os.system("stty sane")
+
+# Register terminal restore on exit.
+atexit.register(restore_terminal)
 
 # Create Typer app instance
 app = typer.Typer()
@@ -43,13 +53,17 @@ def common_options(
     Global options are specified here.
     If no subcommand is provided, chat mode is launched by default.
     """
+    # Process the options, getting the servers, etc.
     servers, user_specified = process_options(server, disable_filesystem, provider, model)
+    
+    # Set the context.
     ctx.obj = {
         "config_file": config_file,
         "servers": servers,
         "user_specified": user_specified,
     }
     
+    # Check if a subcommand was invoked.
     if ctx.invoked_subcommand is None:
         # Call the chat command (imported from the commands module)
         chat_command(
@@ -59,9 +73,13 @@ def common_options(
             model=model,
             disable_filesystem=disable_filesystem,
         )
+        # Exit chat mode.
         raise typer.Exit()
 
 if __name__ == "__main__":
-    # call app
-    app()
-
+    try:
+        # Start the Typer app.
+        app()
+    finally:
+        # Restore the terminal upon exit.
+        restore_terminal()

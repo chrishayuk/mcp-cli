@@ -9,6 +9,9 @@ This repository contains a protocol-level CLI designed to interact with a Model 
   - Default models: `gpt-4o-mini` for OpenAI, `qwen2.5-coder` for Ollama.
 - Enhanced modular chat system with server-aware tools.
 - Rich command system with context-aware completions.
+- **Conversation History**:
+  - Track and review all messages exchanged during a session.
+  - Export or analyze conversation logs for debugging or reference.
 - Two operational modes:
   - **Chat Mode**: Conversational interface with LLM
   - **Interactive Mode**: Command-line interface with slash commands
@@ -67,6 +70,20 @@ uv run mcp-cli chat --server sqlite --provider ollama --model llama3.2
 ### Using Chat Mode
 In chat mode, you can interact with the model in natural language, and it will automatically use the available tools when needed. The LLM can execute queries, access data, and leverage other capabilities provided by the server.
 
+### Conversation History
+The client maintains a complete conversation history, which records every message exchanged during a session. This feature allows you to:
+
+- **Review Previous Interactions**: Retrieve a complete log of the conversation to track context and decisions.
+- **Analyze Dialogue Flow**: Use the conversation history to analyze how queries were resolved or to re-run commands.
+- **Save Sessions**: Export conversation history to JSON files for later reference or analysis.
+
+To work with conversation history, use the following commands:
+
+- `/conversation` or its alias `/ch`: Displays the entire conversation history.
+- `/conversation --json`: Outputs the conversation history in raw JSON format.
+- `/save <filename>`: Saves the current conversation history to a JSON file.
+- `/compact`: Condenses conversation history into a summary to maintain context while reducing token usage.
+
 ### Changing Provider and Model in Chat Mode
 You can specify the provider and model when starting chat mode:
 
@@ -82,24 +99,32 @@ You can also change the provider and model during a chat session using the follo
 ### Chat Commands
 In chat mode, you can use the following slash commands:
 
+#### General Commands
+- `/help`: Show available commands
+- `/help <command>`: Show detailed help for a specific command
+- `/quickhelp` or `/qh`: Display a quick reference of common commands
+- `exit` or `quit`: Exit chat mode
+
+#### Tool Commands
 - `/tools`: Display all available tools with their server information
   - `/tools --all`: Show detailed tool information including parameters
   - `/tools --raw`: Show raw tool definitions
 - `/toolhistory` or `/th`: Show history of tool calls in the current session
   - `/th -n 5`: Show only the last 5 tool calls
   - `/th --json`: Show tool calls in JSON format
+
+#### Conversation Commands
+- `/conversation` or `/ch`: Show the conversation history
+- `/conversation --json`: View the conversation history in raw JSON format
+- `/save <filename>`: Save conversation history to a JSON file
+- `/compact`: Condense conversation history into a summary
+
+#### Other Commands
 - `/cls`: Clear the screen while keeping conversation history
 - `/clear`: Clear both the screen and conversation history
-- `/compact`: Condense conversation history into a summary
-- `/save <filename>`: Save conversation history to a JSON file
-- `/help`: Show available commands
-- `/help <command>`: Show detailed help for a specific command
-- `/quickhelp` or `/qh`: Display a quick reference of common commands
 - `/interrupt`, `/stop`, or `/cancel`: Interrupt running tool execution
 - `/provider <name>`: Change the current LLM provider 
 - `/model <name>`: Change the current LLM model
-
-Type `exit` or `quit` to leave chat mode.
 
 ## Interactive Mode
 Interactive mode provides a command-line interface with slash commands for direct interaction with the server:
@@ -145,6 +170,10 @@ src/
 ├── cli/
 │   ├── chat/
 │   │   ├── commands/         # Chat slash commands
+│   │   │   ├── conversation_history.py   # Conversation history command
+│   │   │   ├── help.py                   # Help commands
+│   │   │   ├── quickhelp.py              # Quick help command
+│   │   │   └── tool_history.py           # Tool history command
 │   │   ├── chat_context.py   # Chat state management
 │   │   ├── chat_handler.py   # Main chat logic
 │   │   ├── conversation.py   # Conversation processing

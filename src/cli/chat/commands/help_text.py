@@ -25,3 +25,17 @@ MCP provides several commands for working with tools:
 In compact mode (default), tool calls are shown in a condensed format.
 Use `/toolhistory` to see all tools that have been called in the session.
 """
+
+CONVERSATION_COMMANDS_HELP = """
+## Conversation Commands
+
+MCP also provides commands to view and manage the conversation history:
+
+- `/conversation` or `/ch`: Display the conversation history for the current session
+  - `/conversation --json`: Show the conversation history in raw JSON format
+
+These commands allow you to review all the messages exchanged during the session, making it easier to track the flow of your conversation.
+"""
+
+# You can concatenate these texts or export them separately as needed.
+ALL_HELP_TEXT = TOOL_COMMANDS_HELP + "\n" + CONVERSATION_COMMANDS_HELP

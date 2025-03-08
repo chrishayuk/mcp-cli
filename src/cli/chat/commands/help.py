@@ -36,7 +36,6 @@ except ImportError:
     Use `/toolhistory` to see all tools that have been called in the session.
     """
 
-
 async def cmd_help(cmd_parts: List[str], context: Dict[str, Any]) -> bool:
     """
     Display help information for all commands or a specific command.
@@ -45,6 +44,7 @@ async def cmd_help(cmd_parts: List[str], context: Dict[str, Any]) -> bool:
       /help           - Show all commands
       /help <command> - Show help for a specific command
       /help tools     - Show help about tool-related commands
+      /help conversation - Show help about conversation history commands
     """
     console = Console()
     
@@ -53,6 +53,13 @@ async def cmd_help(cmd_parts: List[str], context: Dict[str, Any]) -> bool:
         print(Panel(Markdown(TOOL_COMMANDS_HELP), style="cyan", title="Tool Commands Help"))
         return True
     
+    # Special case for conversation history help
+    if len(cmd_parts) > 1 and cmd_parts[1].lower() in ("conversation", "ch"):
+        from cli.chat.commands.conversation_history import conversation_history_command
+        help_text = conversation_history_command.__doc__ or "No detailed help available for conversation history."
+        print(Panel(Markdown(help_text), style="cyan", title="Conversation History Help"))
+        return True
+
     # Help for a specific command
     if len(cmd_parts) > 1:
         specific_cmd = cmd_parts[1].lower()
@@ -133,7 +140,8 @@ async def cmd_help(cmd_parts: List[str], context: Dict[str, Any]) -> bool:
     
     # Show help note
     console.print("\nType [green]/help <command>[/green] for more information about a specific command.")
-    console.print("For detailed information about tool commands, type [green]/help tools[/green]")
+    console.print("For detailed information about tool commands, type [green]/help tools[/green].")
+    console.print("For conversation history, type [green]/help conversation[/green] or [green]/help ch[/green].")
     
     return True
 
@@ -153,10 +161,11 @@ async def display_quick_help(cmd_parts: List[str], context: Dict[str, Any]) -> b
     table.add_column("Command", style="green")
     table.add_column("Description")
     
-    # Add rows for common commands - removed verbose command
+    # Add rows for common commands - now including conversation history
     table.add_row("/help", "Display detailed help")
     table.add_row("/tools", "List available tools")
     table.add_row("/toolhistory, /th", "View history of tool calls")
+    table.add_row("/conversation, /ch", "Show conversation history")
     table.add_row("/clear", "Clear conversation or screen")
     table.add_row("/interrupt, /stop", "Interrupt running tools")
     table.add_row("exit, quit", "Exit chat mode")

@@ -3,7 +3,7 @@ from rich import print
 from rich.console import Console
 
 # llm imports
-from llm.llm_client import LLMClient
+from llm.llm_client import get_llm_client
 from llm.tools_handler import convert_to_openai_tools, fetch_tools
 
 # cli imports
@@ -71,7 +71,7 @@ class ChatContext:
         self.openai_tools = convert_to_openai_tools(self.tools)
         
         # Initialize the LLM client
-        self.client = LLMClient(provider=self.provider, model=self.model)
+        self.client = get_llm_client(provider=self.provider, model=self.model)
         self.conversation_history = [{"role": "system", "content": system_prompt}]
         
         return True
