@@ -1,4 +1,4 @@
-# config.py
+# src/cli/config.py
 import json
 import logging
 
