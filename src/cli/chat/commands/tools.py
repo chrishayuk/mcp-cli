@@ -1,97 +1,115 @@
-# src/cli/chat/commands/tools.py
+# src/cli/chat/commands/tools_command.py
 """
-Commands for working with MCP tools.
+Tools command module for listing available tools with their server sources.
 """
 
-from typing import List, Dict, Any
-from rich import print
-from rich.table import Table
 from rich.console import Console
+from rich.table import Table
 
 from cli.chat.commands import register_command
 
 
-async def cmd_tools(cmd_parts: List[str], context: Dict[str, Any]) -> bool:
+async def tools_command(args, context):
     """
-    List available tools or get details about a specific tool.
+    Display all available tools with their server information.
     
-    Usage: /tools [tool_name]
+    Usage:
+      /tools         - Show tools with descriptions
+      /tools --all   - Show all tool details including parameters
+      /tools --raw   - Show raw tool definitions (for debugging)
     
-    Examples:
-    - /tools - Lists all available tools
-    - /tools read_file - Shows details about the read_file tool
+    This command shows all tools available across all connected servers,
+    making it clear which server provides each tool.
     """
-    tools = context['tools']
+    console = Console()
     
-    if len(cmd_parts) > 1:
-        # Look up specific tool
-        tool_name = cmd_parts[1]
-        found = False
-        for t in tools:
-            if t['name'].lower() == tool_name.lower():
-                found = True
-                console = Console()
-                console.print(f"[bold cyan]Tool: {t['name']}[/bold cyan]")
-                
-                # Print details
-                if 'description' in t:
-                    console.print(f"\n[green]Description:[/green] {t['description']}")
-                
-                if 'parameters' in t:
-                    console.print("\n[green]Parameters:[/green]")
-                    params_table = Table(show_header=True)
-                    params_table.add_column("Name", style="cyan")
-                    params_table.add_column("Type", style="magenta")
-                    params_table.add_column("Required", style="yellow")
-                    params_table.add_column("Description", style="green")
-                    
-                    for param_name, param_info in t['parameters'].items():
-                        req = "Yes" if param_name in t.get('required', []) else "No"
-                        desc = param_info.get('description', 'No description')
-                        param_type = param_info.get('type', 'unknown')
-                        params_table.add_row(param_name, param_type, req, desc)
-                    
-                    console.print(params_table)
-                    
-                # Print example usage if available
-                if 'examples' in t:
-                    console.print("\n[green]Examples:[/green]")
-                    for i, example in enumerate(t['examples']):
-                        console.print(f"\n[bold]Example {i+1}:[/bold]")
-                        console.print(f"```json\n{example}\n```")
-                break
-        
-        if not found:
-            print(f"[yellow]Tool '{tool_name}' not found.[/yellow]")
-    else:
-        # List all tools
-        tools_table = Table(title=f"{len(tools)} Available Tools")
-        tools_table.add_column("Tool", style="cyan")
-        tools_table.add_column("Description", style="green")
-        
-        for t in tools:
-            name = t['name']
-            desc = t.get('description', 'No description')
-            # Truncate description if too long
-            if len(desc) > 80:
-                desc = desc[:77] + "..."
-            tools_table.add_row(name, desc)
+    # Parse arguments
+    show_all = "--all" in args
+    show_raw = "--raw" in args
+    
+    # Get tools and server mapping
+    tools = context["tools"]
+    tool_to_server_map = context.get("tool_to_server_map", {})
+    
+    # If no server mapping exists in context, build one
+    if not tool_to_server_map:
+        tool_to_server_map = {}
+        for server_info in context["server_info"]:
+            server_id = server_info["id"]
+            server_name = server_info["name"]
             
-        console = Console()
-        console.print(tools_table)
+            # Calculate tool ranges for each server
+            start_idx = 0
+            for prev_server in context["server_info"]:
+                if prev_server["id"] < server_id:
+                    start_idx += prev_server.get("tools", 0)
+            
+            end_idx = start_idx + server_info.get("tools", 0)
+            
+            # Associate tools with this server
+            for i in range(start_idx, end_idx):
+                if i < len(tools):
+                    tool_name = tools[i]["name"]
+                    tool_to_server_map[tool_name] = server_name
+    
+    if show_raw:
+        # Show raw tool definitions (useful for debugging)
+        from rich.syntax import Syntax
+        import json
+        
+        raw_json = json.dumps(tools, indent=2)
+        console.print(Syntax(raw_json, "json", theme="monokai", line_numbers=True))
+        return True
+    
+    # Create a rich table
+    table = Table(title=f"{len(tools)} Available Tools")
+    
+    # Add columns
+    table.add_column("Server", style="cyan")
+    table.add_column("Tool", style="green")
+    table.add_column("Description")
+    
+    if show_all:
+        # Show additional columns for detailed view
+        table.add_column("Parameters", style="yellow")
+    
+    # Add rows for each tool
+    for tool in tools:
+        tool_name = tool["name"]
+        server_name = tool_to_server_map.get(tool_name, "Unknown")
+        
+        # Truncate descriptions based on mode
+        description = tool.get("description", "No description")
+        if not show_all and len(description) > 75:
+            description = description[:72] + "..."
+        
+        if show_all:
+            # Get parameters information
+            parameters = tool.get("parameters", {})
+            properties = parameters.get("properties", {})
+            required = parameters.get("required", [])
+            
+            # Format parameters as a string
+            param_strs = []
+            for param_name, param_info in properties.items():
+                param_type = param_info.get("type", "any")
+                is_required = "*" if param_name in required else ""
+                param_strs.append(f"{param_name}{is_required} ({param_type})")
+            
+            param_text = "\n".join(param_strs) if param_strs else "None"
+            
+            table.add_row(server_name, tool_name, description, param_text)
+        else:
+            table.add_row(server_name, tool_name, description)
+    
+    console.print(table)
+    
+    # Show parameter legend for detailed view
+    if show_all:
+        console.print("[yellow]* Required parameter[/yellow]")
     
     return True
 
 
-# Get tool names for auto-completion
-def get_tool_completions(context):
-    """Generate completions for tool names."""
-    if 'tools' in context:
-        return [f"/tools {t['name']}" for t in context['tools']]
-    return []
-
-
-# Register command with completions
-# Note: We can't access context here at module level, 
-# so completions will be added dynamically during runtime
-register_command("/tools", cmd_tools)
+# Register the command with completions
+register_command("/tools", tools_command, ["--all", "--raw"])

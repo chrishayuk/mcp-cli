@@ -11,7 +11,7 @@ import typer
 import asyncio
 
 # imports
-from mcpcli.config import load_config
+from cli.config import load_config
 
 # import mcp
 from mcp.transport.stdio.stdio_client import stdio_client

@@ -9,8 +9,8 @@ from mcp.messages.ping.send_messages import send_ping
 from mcp.messages.tools.send_messages import send_tools_list
 from mcp.transport.stdio.stdio_client import stdio_client
 
-# imports
-from mcpcli.config import load_config
+# cli imports
+from cli.config import load_config
 
 # Configure logging
 logging.basicConfig(

@@ -1,6 +1,6 @@
 # src/cli/chat/tool_processor.py
 from rich.console import Console
-from mcpcli.tools_handler import handle_tool_call
+from llm.tools_handler import handle_tool_call
 
 class ToolProcessor:
     """Class to handle tool processing."""

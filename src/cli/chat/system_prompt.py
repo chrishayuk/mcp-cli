@@ -1,5 +1,5 @@
 # src/cli/chat/system_prompt.py
-from mcpcli.system_prompt_generator import SystemPromptGenerator
+from llm.system_prompt_generator import SystemPromptGenerator
 
 def generate_system_prompt(tools):
     """Generate a concise system prompt for the assistant."""

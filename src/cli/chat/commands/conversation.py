@@ -2,7 +2,6 @@
 """
 Commands for managing conversation history and context.
 """
-import os
 import json
 from typing import List, Dict, Any
 from rich import print
@@ -12,22 +11,49 @@ from rich.console import Console
 
 # imports
 from cli.chat.commands import register_command
+from cli.chat.ui_helpers import display_welcome_banner, clear_screen
+
+
+async def cmd_cls(cmd_parts: List[str], context: Dict[str, Any]) -> bool:
+    """
+    Clear the terminal screen only, preserving conversation history.
+    
+    Usage: /cls
+    
+    This command clears the screen but keeps your conversation history intact.
+    It's useful for decluttering your terminal without losing context.
+    """
+    # Clear the screen
+    clear_screen()
+    
+    # Redisplay welcome banner
+    display_welcome_banner(context)
+    
+    print("[green]Screen cleared. Conversation history preserved.[/green]")
+    return True
 
 
 async def cmd_clear(cmd_parts: List[str], context: Dict[str, Any]) -> bool:
     """
-    Clear screen and conversation history.
+    Clear screen and reset conversation history.
     
     Usage: /clear
-    """
-    # Clear screen
-    os.system('cls' if os.name == 'nt' else 'clear')
     
-    # Keep only the system prompt
+    This command clears both the screen and resets conversation history to start fresh.
+    Only the system prompt is preserved.
+    """
+    # Clear the screen
+    clear_screen()
+    
+    # Reset conversation history
     history = context['conversation_history']
-    system_prompt = history[0]["content"]
-    history.clear()
-    history.append({"role": "system", "content": system_prompt})
+    if history and history[0]["role"] == "system":
+        system_prompt = history[0]["content"]
+        history.clear()
+        history.append({"role": "system", "content": system_prompt})
+    
+    # Redisplay welcome banner
+    display_welcome_banner(context)
     
     print("[green]Screen cleared and conversation history reset.[/green]")
     return True
@@ -107,6 +133,7 @@ async def cmd_save(cmd_parts: List[str], context: Dict[str, Any]) -> bool:
 
 
 # Register all commands in this module
+register_command("/cls", cmd_cls)
 register_command("/clear", cmd_clear)
 register_command("/compact", cmd_compact)
-register_command("/save", cmd_save)
+register_command("/save", cmd_save, ["<filename>"])

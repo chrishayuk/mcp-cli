@@ -6,14 +6,21 @@ from rich.panel import Panel
 from cli.chat.chat_context import ChatContext
 from cli.chat.ui_manager import ChatUIManager
 from cli.chat.conversation import ConversationProcessor
+from cli.chat.ui_helpers import display_welcome_banner, clear_screen
 
 async def handle_chat_mode(server_streams, provider="openai", model="gpt-4o-mini"):
     """Enter chat mode with multi-call support for autonomous tool chaining."""
     try:
+        # Clear the screen to start fresh
+        clear_screen()
+        
         # Initialize chat context
         chat_context = ChatContext(server_streams, provider, model)
         if not await chat_context.initialize():
             return False
+        
+        # Display the welcome banner (and show tools info here only)
+        display_welcome_banner(chat_context.to_dict())
         
         # Initialize UI manager
         ui_manager = ChatUIManager(chat_context)
