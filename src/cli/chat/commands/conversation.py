@@ -11,7 +11,7 @@ from rich.console import Console
 
 # imports
 from cli.chat.commands import register_command
-from cli.chat.ui_helpers import display_welcome_banner, clear_screen
+from cli.ui.ui_helpers import display_welcome_banner, clear_screen
 
 
 async def cmd_cls(cmd_parts: List[str], context: Dict[str, Any]) -> bool:

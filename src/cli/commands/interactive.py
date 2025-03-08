@@ -12,7 +12,7 @@ from cli.commands import ping, prompts, resources, chat
 
 # Direct import from chat mode
 from cli.chat.commands.tools import tools_command
-from cli.chat.ui_helpers import clear_screen
+from cli.ui.ui_helpers import clear_screen
 
 # Import any tool handling that chat mode uses
 try:

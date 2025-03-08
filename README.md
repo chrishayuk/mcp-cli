@@ -10,8 +10,8 @@ This repository contains a protocol-level CLI designed to interact with a Model 
 - Enhanced modular chat system with server-aware tools.
 - Rich command system with context-aware completions.
 - Two operational modes:
-  - **Interactive Mode**: Command-line interface with slash commands
   - **Chat Mode**: Conversational interface with LLM
+  - **Interactive Mode**: Command-line interface with slash commands
 
 ## Prerequisites
 - Python 3.8 or higher.
@@ -39,20 +39,7 @@ pip install uv
 uv sync --reinstall
 ```
 
-## Usage
-To start the client and interact with the SQLite server, you can use either chat mode or interactive mode:
-
-### Chat Mode
-```bash
-uv run mcp-cli chat --server sqlite
-```
-
-### Interactive Mode
-```bash
-uv run mcp-cli interactive --server sqlite
-```
-
-### Command-line Arguments
+## Command-line Arguments
 - `--server`: Specifies the server configuration to use. Required.
 - `--config-file`: (Optional) Path to the JSON configuration file. Defaults to `server_config.json`.
 - `--provider`: (Optional) Specifies the provider to use (`openai` or `ollama`). Defaults to `openai`.
@@ -60,24 +47,71 @@ uv run mcp-cli interactive --server sqlite
   - `gpt-4o-mini` for OpenAI.
   - `llama3.2` for Ollama.
 
-### Examples
-Run in chat mode with the default OpenAI provider and model:
+## Chat Mode
+Chat mode provides a conversational interface with the LLM and is the primary way to interact with the client:
 
 ```bash
 uv run mcp-cli chat --server sqlite
 ```
 
-Run in interactive mode with a specific provider and model:
+You can specify the provider and model to use in chat mode:
 
 ```bash
-uv run mcp-cli interactive --server sqlite --provider ollama --model llama3.2
+uv run mcp-cli chat --server sqlite --provider openai --model gpt-4o
 ```
 
+```bash
+uv run mcp-cli chat --server sqlite --provider ollama --model llama3.2
+```
+
+### Using Chat Mode
+In chat mode, you can interact with the model in natural language, and it will automatically use the available tools when needed. The LLM can execute queries, access data, and leverage other capabilities provided by the server.
+
+### Changing Provider and Model in Chat Mode
+You can specify the provider and model when starting chat mode:
+
+```bash
+uv run mcp-cli chat --server sqlite --provider openai --model gpt-4o
+```
+
+You can also change the provider and model during a chat session using the following commands:
+
+- `/provider <name>`: Change the current LLM provider (e.g., `openai`, `ollama`)
+- `/model <name>`: Change the current LLM model (e.g., `gpt-4o`, `llama3.2`)
+
+### Chat Commands
+In chat mode, you can use the following slash commands:
+
+- `/tools`: Display all available tools with their server information
+  - `/tools --all`: Show detailed tool information including parameters
+  - `/tools --raw`: Show raw tool definitions
+- `/toolhistory` or `/th`: Show history of tool calls in the current session
+  - `/th -n 5`: Show only the last 5 tool calls
+  - `/th --json`: Show tool calls in JSON format
+- `/cls`: Clear the screen while keeping conversation history
+- `/clear`: Clear both the screen and conversation history
+- `/compact`: Condense conversation history into a summary
+- `/save <filename>`: Save conversation history to a JSON file
+- `/help`: Show available commands
+- `/help <command>`: Show detailed help for a specific command
+- `/quickhelp` or `/qh`: Display a quick reference of common commands
+- `/interrupt`, `/stop`, or `/cancel`: Interrupt running tool execution
+- `/provider <name>`: Change the current LLM provider 
+- `/model <name>`: Change the current LLM model
+
+Type `exit` or `quit` to leave chat mode.
+
 ## Interactive Mode
-Interactive mode provides a command-line interface with slash commands:
+Interactive mode provides a command-line interface with slash commands for direct interaction with the server:
 
 ```bash
 uv run mcp-cli interactive --server sqlite
+```
+
+You can also specify provider and model in interactive mode:
+
+```bash
+uv run mcp-cli interactive --server sqlite --provider ollama --model llama3.2
 ```
 
 ### Interactive Commands
@@ -97,34 +131,8 @@ In interactive mode, you can use the following slash commands:
 
 You can also exit by typing `exit` or `quit` without the slash prefix.
 
-## Chat Mode
-Chat mode provides a conversational interface with the LLM:
-
-```bash
-uv run mcp-cli chat --server sqlite
-```
-
-In chat mode, you can interact with the model in natural language, and it will automatically use the available tools when needed. You can also use the following slash commands:
-
-- `/tools`: Display all available tools with their server information
-  - `/tools --all`: Show detailed tool information including parameters
-  - `/tools --raw`: Show raw tool definitions
-- `/toolhistory` or `/th`: Show history of tool calls in the current session
-  - `/th -n 5`: Show only the last 5 tool calls
-  - `/th --json`: Show tool calls in JSON format
-- `/cls`: Clear the screen while keeping conversation history
-- `/clear`: Clear both the screen and conversation history
-- `/compact`: Condense conversation history into a summary
-- `/save <filename>`: Save conversation history to a JSON file
-- `/help`: Show available commands
-- `/help <command>`: Show detailed help for a specific command
-- `/quickhelp` or `/qh`: Display a quick reference of common commands
-- `/interrupt`, `/stop`, or `/cancel`: Interrupt running tool execution
-
-Type `exit` or `quit` to leave chat mode.
-
-### Using OpenAI Provider:
-If you wish to use openai models, you should:
+## Using OpenAI Provider
+If you wish to use OpenAI models, you should:
 
 - Set the `OPENAI_API_KEY` environment variable before running the client, either in .env or as an environment variable.
 
