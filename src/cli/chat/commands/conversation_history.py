@@ -1,8 +1,10 @@
 # src/cli/chat/commands/conversation_history.py
 import json
+import traceback
 from rich.console import Console
 from rich.table import Table
 from rich.syntax import Syntax
+from rich.panel import Panel
 
 # Import the registration function from your commands package
 from cli.chat.commands import register_command
@@ -13,49 +15,119 @@ async def conversation_history_command(args, context):
 
     Usage:
       /conversation         - Show the conversation history in a tabular view.
+      /conversation -n 5    - Show only the last 5 messages.
       /conversation --json  - Show the conversation history in JSON format.
-
-    The conversation history should be stored in the context under the "conversation_history" key.
-    Each message is expected to be a dictionary with at least "role" and "content" keys.
+      /conversation <row>   - Show details for the specified message row (e.g., /conversation 3).
+      /conversation <row> --json - Show message #<row> in JSON format.
     """
     console = Console()
-    conversation_history = context.get("conversation_history", [])
     
-    if not conversation_history:
-        console.print("[italic yellow]No conversation history available.[/italic yellow]")
-        return True
+    try:
+        conversation_history = context.get("conversation_history", [])
+        
+        if not conversation_history:
+            console.print("[italic yellow]No conversation history available.[/italic yellow]")
+            return True
 
-    # Check if the user requested JSON output.
-    show_json = "--json" in args
+        # Parse arguments - skip the first arg which is the command name itself
+        clean_args = args[1:] if args else []
+        row_specified = False
+        row_number = None
+        show_json = "--json" in clean_args
+        limit = None
+        
+        # Check for row number specification - first real argument
+        if clean_args and clean_args[0].isdigit():
+            row_specified = True
+            row_number = int(clean_args[0])
+            
+            if not (1 <= row_number <= len(conversation_history)):
+                console.print(f"[red]Invalid row number. Please enter a number between 1 and {len(conversation_history)}.[/red]")
+                return True
 
-    if show_json:
-        raw_json = json.dumps(conversation_history, indent=2)
-        console.print(Syntax(raw_json, "json", theme="monokai", line_numbers=True))
-        return True
-
-    # Otherwise, show a table of conversation messages.
-    table = Table(title=f"Conversation History ({len(conversation_history)} messages)")
-    table.add_column("#", style="dim")
-    table.add_column("Role", style="cyan")
-    table.add_column("Content", style="white")
-
-    for i, message in enumerate(conversation_history):
-        role = message.get("role", "unknown")
-        content = message.get("content", "")
-        if isinstance(content, str):
-            # Truncate long messages for display purposes.
-            if len(content) > 100:
-                content = content[:97] + "..."
-        else:
+        # Check for limit flag
+        if "-n" in clean_args:
             try:
-                content = json.dumps(content, indent=2)
-            except Exception:
-                content = str(content)
-        table.add_row(str(i + 1), role, content)
-
-    console.print(table)
+                n_index = clean_args.index("-n")
+                if n_index + 1 < len(clean_args):
+                    limit = int(clean_args[n_index + 1])
+            except (ValueError, IndexError):
+                console.print("[bold red]Invalid -n argument. Showing all messages.[/bold red]")
+        
+        # Filter the history based on our arguments
+        if row_specified:
+            # Just show the one requested message
+            filtered_history = [conversation_history[row_number - 1]]
+        elif limit is not None and limit > 0:
+            # Show the last N messages
+            filtered_history = conversation_history[-limit:]
+        else:
+            # Show all messages
+            filtered_history = conversation_history
+        
+        # Display the appropriate format
+        if show_json:
+            if row_specified:
+                # Show just the one message as JSON
+                console.print(Syntax(json.dumps(filtered_history[0], indent=2), "json", theme="monokai", line_numbers=True))
+            else:
+                # Show all filtered messages as JSON
+                console.print(Syntax(json.dumps(filtered_history, indent=2), "json", theme="monokai", line_numbers=True))
+        else:
+            # Display in table format
+            table = Table(title=f"Conversation History ({len(filtered_history)} messages)")
+            table.add_column("#", style="dim")
+            table.add_column("Role", style="cyan")
+            table.add_column("Content", style="white")
+            
+            for message in filtered_history:
+                # Get original index
+                original_index = conversation_history.index(message) + 1
+                
+                # Format role
+                role = message.get("role", "unknown")
+                name = message.get("name", "")
+                if name:
+                    role = f"{role} ({name})"
+                
+                # Format content
+                content = message.get("content", "")
+                if content is None:
+                    if "tool_calls" in message and message["tool_calls"]:
+                        tool_calls = message["tool_calls"]
+                        tool_names = []
+                        for tc in tool_calls:
+                            if "function" in tc:
+                                tool_names.append(tc["function"].get("name", "unknown"))
+                        content = f"[Tool call: {', '.join(tool_names)}]"
+                    else:
+                        content = "[None]"
+                elif isinstance(content, str):
+                    if len(content) > 100:
+                        content = content[:97] + "..."
+                else:
+                    try:
+                        content = json.dumps(content)
+                        if len(content) > 100:
+                            content = content[:97] + "..."
+                    except Exception:
+                        content = str(content)
+                        if len(content) > 100:
+                            content = content[:97] + "..."
+                
+                # Add row to table
+                table.add_row(str(original_index), role, content)
+            
+            # Display table
+            console.print(table)
+        
+    except Exception as e:
+        # Print exception for debugging
+        console.print(f"[bold red]ERROR: An exception occurred:[/bold red]")
+        console.print(f"[red]{traceback.format_exc()}[/red]")
+    
     return True
 
-# Register the command with aliases.
-register_command("/conversation", conversation_history_command, ["--json"])
-register_command("/ch", conversation_history_command, ["--json"])
+# Register commands
+register_command("/conversation", conversation_history_command, ["-n", "--json"])
+register_command("/ch", conversation_history_command, ["-n", "--json"])
