@@ -2,7 +2,8 @@
 import typer
 from cli.commands import ping, chat, prompts, tools, resources, interactive
 
-# Define the individual command functions at module scope.
+# Import conversation history command from chat commands.
+from cli.chat.commands.conversation_history import conversation_history_command
 
 def ping_command(
     config_file: str = "server_config.json",
@@ -100,6 +101,10 @@ def register_commands(app: typer.Typer, process_options, run_command):
     app.command("ping")(ping_command)
     app.command("chat")(chat_command)
     app.command("interactive")(interactive_command)
+    
+    # Register conversation history command at the top level.
+    app.command("conversation")(conversation_history_command)
+    app.command("ch")(conversation_history_command)
     
     # Create sub-typer apps for prompts, tools, and resources.
     prompts_app = typer.Typer(help="Prompts commands")

@@ -18,7 +18,7 @@ from host.server_manager import run_command
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.CRITICAL,
     format="%(asctime)s - %(levelname)s - %(message)s",
     stream=sys.stderr,
 )
