@@ -10,6 +10,7 @@ from cli.chat.ui_helpers import display_welcome_banner, clear_screen
 
 async def handle_chat_mode(server_streams, provider="openai", model="gpt-4o-mini"):
     """Enter chat mode with multi-call support for autonomous tool chaining."""
+    ui_manager = None
     try:
         # Clear the screen to start fresh
         clear_screen()
@@ -76,6 +77,10 @@ async def handle_chat_mode(server_streams, provider="openai", model="gpt-4o-mini
         print("[yellow]Chat task cancelled.[/yellow]")
     except Exception as e:
         print(f"[red]Error in chat mode:[/red] {e}")
+    finally:
+        # Ensure we clean up the UI manager resources
+        if ui_manager:
+            ui_manager.cleanup()
     
     # Clean return to ensure proper exit
     return True
