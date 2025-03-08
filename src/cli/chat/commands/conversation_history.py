@@ -5,6 +5,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.syntax import Syntax
 from rich.panel import Panel
+from rich import box
 
 # Import the registration function from your commands package
 from cli.chat.commands import register_command
@@ -68,11 +69,33 @@ async def conversation_history_command(args, context):
         # Display the appropriate format
         if show_json:
             if row_specified:
-                # Show just the one message as JSON
-                console.print(Syntax(json.dumps(filtered_history[0], indent=2), "json", theme="monokai", line_numbers=True))
+                # Show just the one message as JSON with full content, not truncated
+                message_json = json.dumps(filtered_history[0], indent=2, ensure_ascii=False)
+                
+                # Use a Panel with a larger width constraint to prevent truncation
+                console.print(
+                    Panel(
+                        Syntax(message_json, "json", theme="monokai", word_wrap=True),
+                        title=f"Message #{row_number} (JSON)",
+                        border_style="cyan",
+                        box=box.ROUNDED,
+                        expand=True,  # Allow panel to expand to full width
+                        padding=(1, 2)  # Add some padding
+                    )
+                )
             else:
                 # Show all filtered messages as JSON
-                console.print(Syntax(json.dumps(filtered_history, indent=2), "json", theme="monokai", line_numbers=True))
+                all_json = json.dumps(filtered_history, indent=2, ensure_ascii=False)
+                console.print(
+                    Panel(
+                        Syntax(all_json, "json", theme="monokai", word_wrap=True),
+                        title="Conversation History (JSON)",
+                        border_style="cyan",
+                        box=box.ROUNDED,
+                        expand=True,  # Allow panel to expand to full width
+                        padding=(1, 2)  # Add some padding
+                    )
+                )
         else:
             # Display in table format
             table = Table(title=f"Conversation History ({len(filtered_history)} messages)")
