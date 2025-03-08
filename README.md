@@ -11,6 +11,7 @@ This repository contains a protocol-level CLI designed to interact with a Model 
 - Rich command system with context-aware completions.
 - **Conversation History**:
   - Track and review all messages exchanged during a session.
+  - Filter to view specific messages or ranges.
   - Export or analyze conversation logs for debugging or reference.
 - Two operational modes:
   - **Chat Mode**: Conversational interface with LLM
@@ -76,13 +77,25 @@ The client maintains a complete conversation history, which records every messag
 - **Review Previous Interactions**: Retrieve a complete log of the conversation to track context and decisions.
 - **Analyze Dialogue Flow**: Use the conversation history to analyze how queries were resolved or to re-run commands.
 - **Save Sessions**: Export conversation history to JSON files for later reference or analysis.
+- **Filter Messages**: Display specific messages or ranges to focus on particular parts of the conversation.
 
 To work with conversation history, use the following commands:
 
 - `/conversation` or its alias `/ch`: Displays the entire conversation history.
-- `/conversation --json`: Outputs the conversation history in raw JSON format.
+- `/conversation <N>` or `/ch <N>`: Shows only message #N from the history (e.g., `/ch 4` shows only message #4).
+- `/conversation <N> --json` or `/ch <N> --json`: Outputs a specific message in JSON format.
+- `/conversation --json`: Outputs the entire conversation history in raw JSON format.
+- `/conversation -n 5`: Shows only the last 5 messages.
 - `/save <filename>`: Saves the current conversation history to a JSON file.
 - `/compact`: Condenses conversation history into a summary to maintain context while reducing token usage.
+
+### Tool History
+The client also keeps track of tool calls made during the session, providing insight into how the model interacts with available tools:
+
+- `/toolhistory` or `/th`: Shows all tool calls made during the session.
+- `/toolhistory <N>` or `/th <N>`: Displays details for a specific tool call (e.g., `/th 3` shows only tool call #3).
+- `/toolhistory -n 5` or `/th -n 5`: Shows only the last 5 tool calls.
+- `/toolhistory --json` or `/th --json`: Outputs all tool calls in JSON format.
 
 ### Changing Provider and Model in Chat Mode
 You can specify the provider and model when starting chat mode:
@@ -110,12 +123,16 @@ In chat mode, you can use the following slash commands:
   - `/tools --all`: Show detailed tool information including parameters
   - `/tools --raw`: Show raw tool definitions
 - `/toolhistory` or `/th`: Show history of tool calls in the current session
+  - `/th <N>`: Show details for a specific tool call
   - `/th -n 5`: Show only the last 5 tool calls
   - `/th --json`: Show tool calls in JSON format
 
 #### Conversation Commands
 - `/conversation` or `/ch`: Show the conversation history
-- `/conversation --json`: View the conversation history in raw JSON format
+  - `/ch <N>`: Show a specific message from history
+  - `/ch -n 5`: Show only the last 5 messages
+  - `/ch <N> --json`: Show a specific message in JSON format
+  - `/ch --json`: View the entire conversation history in raw JSON format
 - `/save <filename>`: Save conversation history to a JSON file
 - `/compact`: Condense conversation history into a summary
 
