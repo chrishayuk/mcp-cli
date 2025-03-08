@@ -16,6 +16,7 @@ dependencies = [
     "asyncio>=3.4.3",
     "ollama>=0.4.2",
     "openai>=1.55.3",
+    "prompt-toolkit>=3.0.50",
     "python-dotenv>=1.0.1",
     "requests>=2.32.3",
     "rich>=13.9.4",
