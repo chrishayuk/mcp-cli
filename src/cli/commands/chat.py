@@ -7,7 +7,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 
 # imports
-from mcpcli.chat_handler import handle_chat_mode
+from cli.chat.chat_handler import handle_chat_mode
 
 # app
 app = typer.Typer(help="Chat commands")

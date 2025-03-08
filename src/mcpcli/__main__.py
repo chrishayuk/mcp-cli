@@ -16,7 +16,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
 
-from mcpcli.chat_handler import handle_chat_mode
+from cli.chat.chat_handler import handle_chat_mode
 from mcpcli.config import load_config
 
 # mcp messages imports
