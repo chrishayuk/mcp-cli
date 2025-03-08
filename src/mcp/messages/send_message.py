@@ -7,6 +7,8 @@ from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStre
 
 # imports
 from mcp.messages.json_rpc_message import JSONRPCMessage
+from mcp.messages.error_codes import get_error_message, is_retryable_error
+from mcp.messages.exceptions import RetryableError, NonRetryableError
 
 
 async def send_message(
@@ -37,6 +39,7 @@ async def send_message(
 
     Raises:
         TimeoutError: If no matching response is received within timeout after all retries.
+        NonRetryableError: For errors that shouldn't be retried (method not found, etc.).
         Exception: If the response contains an error field or any unexpected exception occurs.
         
     Note:
@@ -61,6 +64,13 @@ async def send_message(
             with anyio.fail_after(timeout):
                 return await _receive_matching_response(read_stream, req_id)
                 
+        except NonRetryableError as exc:
+            # Don't retry for errors that are known to be permanent
+            logging.error(
+                f"[send_message] Non-retryable error for method '{method}': {exc}"
+            )
+            raise
+                
         except TimeoutError as exc:
             last_exception = exc
             logging.error(
@@ -69,6 +79,15 @@ async def send_message(
             )
             if is_final_attempt:
                 raise
+        
+        except RetryableError as exc:
+            last_exception = exc
+            logging.error(
+                f"[send_message] Retryable error during '{method}' request: {exc} "
+                f"(Attempt {attempt}/{retries})"
+            )
+            if is_final_attempt:
+                raise Exception(str(exc))
                 
         except Exception as exc:
             last_exception = exc
@@ -102,7 +121,8 @@ async def _receive_matching_response(
         The matched response's result or full response.
         
     Raises:
-        Exception: If the response contains an error field.
+        RetryableError: For errors that should be retried.
+        NonRetryableError: For errors that shouldn't be retried.
     """
     while True:
         # Pull one response from the read_stream
@@ -127,11 +147,18 @@ async def _receive_matching_response(
             # Per JSON-RPC 2.0 spec, error codes must be integers
             error_code = error_data.get('code', -32603)  # Internal error if no code
             error_msg = (
-                f"JSON-RPC Error: {error_data.get('message', 'Unknown error')}"
+                f"JSON-RPC Error: {error_data.get('message', get_error_message(error_code))}"
                 f" (code: {error_code})"
             )
             logging.error(f"[send_message] {error_msg}")
-            raise Exception(error_msg)
+            
+            # Determine if this error should be retried
+            if is_retryable_error(error_code):
+                # Use a custom exception that can be caught and retried
+                raise RetryableError(error_msg, error_code)
+            else:
+                # Non-retryable errors should be raised immediately
+                raise NonRetryableError(error_msg, error_code)
 
         # Return result if present, or the entire response
         # Note: Per JSON-RPC 2.0, a response should have a result field if no error
