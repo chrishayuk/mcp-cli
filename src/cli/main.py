@@ -64,7 +64,7 @@ MODEL_OPTION = typer.Option(
 )
 
 DISABLE_FILESYSTEM_OPTION = typer.Option(
-    False,
+    True,
     "--disable-filesystem",
     help="Disable the default filesystem MCP server access."
 )
