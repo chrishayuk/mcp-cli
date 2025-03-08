@@ -1,4 +1,4 @@
-# environment.py
+# src/host/environment.py
 import os
 import sys
 
