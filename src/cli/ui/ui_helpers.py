@@ -1,23 +1,22 @@
-# src/cli/chat/ui_helpers.py
+# src/cli/ui/ui_helpers.py
 """
 UI helper functions for chat display and formatting.
 """
 import os
 import platform
+
+# rich imports
 from rich import print
 from rich.panel import Panel
 from rich.markdown import Markdown
 from rich.console import Console
 
+# Import color constants
+from cli.ui.colors import *
 
 def display_welcome_banner(context, console=None, show_tools_info=True):
     """
     Display the welcome banner with current model info.
-    
-    Args:
-        context: The chat context containing provider and model info
-        console: Optional Rich console instance (creates one if not provided)
-        show_tools_info: Whether to show tools loaded information (default: True)
     """
     if console is None:
         console = Console()
@@ -25,31 +24,37 @@ def display_welcome_banner(context, console=None, show_tools_info=True):
     provider = context.get("provider", "unknown")
     model = context.get("model", "unknown")
     
+    # Create the panel content with explicit styling
+    welcome_text = "Welcome to MCP CLI Chat!\n\n"
+    provider_line = f"[{TEXT_DEEMPHASIS}]Provider: {provider} |  Model: {model}[/{TEXT_DEEMPHASIS}]\n\n"
+    exit_line = f"Type [{TEXT_EMPHASIS}]'exit'[/{TEXT_EMPHASIS}] to quit."
+    
+    # Combine the content with proper styling
+    panel_content = welcome_text + provider_line + exit_line
+    
     # Print welcome banner with current model info
     console.print(Panel(
-        f"Welcome to the Chat!\n\n"
-        f"Provider: [bold]{provider}[/bold]  |  Model: [bold]{model}[/bold]\n\n"
-        f"Type 'exit' to quit.",
-        title="Chat Mode",
+        panel_content,
+        title="Welcome to MCP CLI Chat",
+        title_align="center",
         expand=True,
-        border_style="yellow"
+        border_style=BORDER_PRIMARY
     ))
     
     # If tools were loaded and flag is set, show tool count
     if show_tools_info:
         tools = context.get("tools", [])
         if tools:
-            print(f"[green]Loaded {len(tools)} tools successfully.[/green]")
+            console.print(f"[{TEXT_SUCCESS}]Loaded {len(tools)} tools successfully.[/{TEXT_SUCCESS}]")
 
-
-def display_markdown_panel(content, title=None, style="cyan"):
+def display_markdown_panel(content, title=None, style=TEXT_INFO):
     """
     Display content in a rich panel with markdown formatting.
     
     Args:
-        content: The markdown content to display
-        title: Optional panel title
-        style: Color style for the panel
+        content: The markdown content to display.
+        title: Optional panel title.
+        style: Color style for the panel.
     """
     console = Console()
     console.print(Panel(
