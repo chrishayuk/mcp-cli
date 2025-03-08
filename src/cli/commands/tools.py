@@ -1,126 +1,200 @@
-# src/cli/chat/commands/tools.py
-"""
-Tools command module for listing available tools with their server sources.
-"""
+# src/cli/commands/interactive.py
+import os
+import json
+from rich import print
+from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.prompt import Prompt
 from rich.console import Console
 from rich.table import Table
 
-# imports
-from cli.chat.commands import register_command
+# Command imports
+from cli.commands import ping, prompts, tools, resources, chat
+from cli.chat.ui_helpers import clear_screen, display_markdown_panel
 
+async def interactive_mode(server_streams, provider="openai", model="gpt-4o-mini"):
+    """Run the interactive CLI loop."""
+    welcome_text = """
+# Welcome to the Interactive MCP Command-Line Tool (Multi-Server Mode)
 
-async def tools_command(args, context):
-    """
-    Display all available tools with their server information.
+Type '/help' for available commands or '/exit' to exit.
+"""
+    print(Panel(Markdown(welcome_text), style="bold cyan"))
     
-    Usage:
-      /tools         - Show tools with descriptions
-      /tools --all   - Show all tool details including parameters
-      /tools --raw   - Show raw tool definitions (for debugging)
-    
-    This command shows all tools available across all connected servers,
-    making it clear which server provides each tool.
-    """
+    # Set up context for command handling
     console = Console()
     
-    # Parse arguments
-    show_all = "--all" in args
-    show_raw = "--raw" in args
+    # Create a registry of command functions for interactive mode
+    async def handle_ping():
+        await ping.ping_run(server_streams)
     
-    # Get tools and server mapping
-    tools = context["tools"]
-    tool_to_server_map = context.get("tool_to_server_map", {})
+    async def handle_prompts():
+        # Delegate to the existing prompts function
+        try:
+            await prompts.prompts_list(server_streams)
+        except AttributeError:
+            try:
+                await prompts.list_run(server_streams)
+            except (AttributeError, Exception) as e:
+                print(f"[red]Error listing prompts: {e}[/red]")
+                print("[yellow]The prompts list function may not be implemented correctly.[/yellow]")
     
-    # If no server mapping exists in context, build one
-    if not tool_to_server_map:
-        tool_to_server_map = {}
-        for server_info in context["server_info"]:
-            server_id = server_info["id"]
-            server_name = server_info["name"]
-            
-            # Calculate tool ranges for each server
-            start_idx = 0
-            for prev_server in context["server_info"]:
-                if prev_server["id"] < server_id:
-                    start_idx += prev_server.get("tools", 0)
-            
-            end_idx = start_idx + server_info.get("tools", 0)
-            
-            # Associate tools with this server
-            for i in range(start_idx, end_idx):
-                if i < len(tools):
-                    tool_name = tools[i]["name"]
-                    tool_to_server_map[tool_name] = server_name
-    
-    if show_raw:
-        # Show raw tool definitions (useful for debugging)
-        from rich.syntax import Syntax
-        import json
-        
-        raw_json = json.dumps(tools, indent=2)
-        console.print(Syntax(raw_json, "json", theme="monokai", line_numbers=True))
-        return True
-    
-    # Create a rich table
-    table = Table(title=f"{len(tools)} Available Tools")
-    
-    # Add columns
-    table.add_column("Server", style="cyan")
-    table.add_column("Tool", style="green")
-    table.add_column("Description")
-    
-    if show_all:
-        # Show additional columns for detailed view
-        table.add_column("Parameters", style="yellow")
-    
-    # Add rows for each tool
-    for tool in tools:
-        tool_name = tool["name"]
-        server_name = tool_to_server_map.get(tool_name, "Unknown")
-        
-        # Truncate descriptions based on mode
-        description = tool.get("description", "No description")
-        if not show_all and len(description) > 75:
-            description = description[:72] + "..."
-        
-        if show_all:
-            # Get parameters information - check both "parameters" (OpenAI format) and "inputSchema" (MCP format)
-            parameters = tool.get("parameters", tool.get("inputSchema", {}))
-            
-            # Handle different schema formats
-            # OpenAI format
-            if "properties" in parameters:
-                properties = parameters.get("properties", {})
-                required = parameters.get("required", [])
-            # MCP format with inputSchema  
-            elif parameters and isinstance(parameters, dict):
-                properties = parameters.get("properties", {})
-                required = parameters.get("required", [])
+    async def handle_tools():
+        # Delegate to the existing tools function
+        try:
+            if hasattr(tools, 'tools_list'):
+                await tools.tools_list(server_streams)
+            elif hasattr(tools, 'list_run'):
+                await tools.list_run(server_streams)
             else:
-                properties = {}
-                required = []
-            
-            # Format parameters as a string
-            param_strs = []
-            for param_name, param_info in properties.items():
-                param_type = param_info.get("type", "any")
-                is_required = "*" if param_name in required else ""
-                param_strs.append(f"{param_name}{is_required} ({param_type})")
-            
-            param_text = "\n".join(param_strs) if param_strs else "None"
-            
-            table.add_row(server_name, tool_name, description, param_text)
-        else:
-            table.add_row(server_name, tool_name, description)
+                # Let's try to find the correct method
+                methods = [method for method in dir(tools) if method.startswith('list') or method.endswith('list')]
+                if methods:
+                    print(f"[yellow]Available methods in tools module: {', '.join(methods)}[/yellow]")
+                    print("[yellow]Please update interactive.py to use the correct method.[/yellow]")
+                else:
+                    print("[red]No list-related methods found in tools module.[/red]")
+        except Exception as e:
+            print(f"[red]Error listing tools: {e}[/red]")
+            print("[yellow]The tools list function may not be implemented correctly.[/yellow]")
     
-    console.print(table)
+    async def handle_tools_call():
+        # Delegate to the existing tools call function
+        try:
+            if hasattr(tools, 'tools_call'):
+                await tools.tools_call(server_streams)
+            elif hasattr(tools, 'call_run'):
+                await tools.call_run(server_streams)
+            else:
+                # Let's try to find the correct method
+                methods = [method for method in dir(tools) if method.startswith('call') or method.endswith('call')]
+                if methods:
+                    print(f"[yellow]Available methods in tools module: {', '.join(methods)}[/yellow]")
+                    print("[yellow]Please update interactive.py to use the correct method.[/yellow]")
+                else:
+                    print("[red]No call-related methods found in tools module.[/red]")
+        except Exception as e:
+            print(f"[red]Error calling tools: {e}[/red]")
+            print("[yellow]The tools call function may not be implemented correctly.[/yellow]")
     
-    # Show parameter legend for detailed view
-    if show_all:
-        console.print("[yellow]* Required parameter[/yellow]")
+    async def handle_resources():
+        # Delegate to the existing resources function
+        try:
+            await resources.resources_list(server_streams)
+        except AttributeError:
+            try:
+                await resources.list_run(server_streams)
+            except (AttributeError, Exception) as e:
+                print(f"[red]Error listing resources: {e}[/red]")
+                print("[yellow]The resources list function may not be implemented correctly.[/yellow]")
     
-    return True
+    async def handle_chat():
+        await chat.chat_run(server_streams)
+    
+    def handle_exit():
+        return "exit"
+    
+    def handle_cls():
+        clear_screen_cmd()
+    
+    def handle_clear():
+        clear_screen_cmd(with_welcome=True)
+    
+    def handle_help():
+        show_help()
+    
+    # Map commands to their handler functions    
+    commands = {
+        "/ping": handle_ping,
+        "/prompts": handle_prompts,
+        "/tools": handle_tools,
+        "/tools-call": handle_tools_call,
+        "/resources": handle_resources,
+        "/chat": handle_chat,
+        "/exit": handle_exit,
+        "/quit": handle_exit,
+        "/cls": handle_cls,
+        "/clear": handle_clear,
+        "/help": handle_help,
+    }
+    
+    while True:
+        try:
+            # Use rich prompt for better styling - now with 4 colons to match terminal
+            user_input = Prompt.ask("[bold green]\n::::[/bold green]").strip()
+            if not user_input:
+                continue
+                
+            # Split the command and arguments
+            parts = user_input.split(maxsplit=1)
+            cmd = parts[0].lower()
+            args = parts[1] if len(parts) > 1 else ""
+            
+            # Handle commands
+            if cmd in commands:
+                handler = commands[cmd]
+                
+                # Check if it's a coroutine function that needs to be awaited
+                import inspect
+                if inspect.iscoroutinefunction(handler):
+                    await handler()
+                else:
+                    result = handler()
+                    if result == "exit":
+                        print("\n[bold red]Goodbye![/bold red]")
+                        return True  # Signal clean exit
+            else:
+                print(f"[red]\nUnknown command: {cmd}[/red]")
+                print("[yellow]Type '/help' for available commands[/yellow]")
+                
+        except EOFError:
+            return True  # Signal clean exit for EOF
+        except KeyboardInterrupt:
+            print("\n[yellow]Command interrupted. Type '/exit' to quit.[/yellow]")
+        except Exception as e:
+            print(f"\n[red]Error:[/red] {e}")
+    
+    return False  # This is technically unreachable but good practice
 
 
-# Register the command with completions
-register_command("/tools", tools_command, ["--all", "--raw"])
+def clear_screen_cmd(with_welcome=False):
+    """Clear the screen and optionally show the welcome message."""
+    clear_screen()
+    if with_welcome:
+        welcome_text = """
+# Welcome to the Interactive MCP Command-Line Tool (Multi-Server Mode)
+
+Type '/help' for available commands or '/exit' to exit.
+"""
+        print(Panel(Markdown(welcome_text), style="bold cyan"))
+
+
+def show_help():
+    """Show the help message with all available commands."""
+    help_md = """
+# Available Commands
+
+- **/ping**: Check if server is responsive
+- **/prompts**: List available prompts
+- **/tools**: List available tools
+- **/tools-call**: Call a tool with JSON arguments
+- **/resources**: List available resources
+- **/chat**: Enter chat mode
+- **/cls**: Clear the screen
+- **/clear**: Clear the screen and show welcome message
+- **/help**: Show this help message
+- **/exit** or **/quit**: Exit the program
+"""
+    print(Panel(Markdown(help_md), style="yellow", title="Command Help"))
+
+
+# Create a Typer app for interactive mode if needed
+import typer
+app = typer.Typer(help="Interactive mode")
+
+@app.command("run")
+def run_interactive():
+    """Run the interactive mode."""
+    print("Interactive mode not available directly.")
+    print("Please use the main CLI without a subcommand to enter interactive mode.")
+    return 0
