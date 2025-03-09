@@ -19,8 +19,8 @@ def process_options(server, disable_filesystem, provider, model):
         servers_list.extend(user_specified)
     
     # Always add 'filesystem' unless explicitly disabled.
-    if not disable_filesystem and "filesystem" not in servers_list:
-        servers_list.insert(0, "filesystem")
+    #if not disable_filesystem and "filesystem" not in servers_list:
+    #    servers_list.insert(0, "filesystem")
         
     # Use a default model if none is provided.
     if not model:
