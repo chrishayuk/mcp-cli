@@ -14,7 +14,11 @@ class ConversationProcessor:
         self.tool_processor = ToolProcessor(context, ui_manager)
     
     async def process_conversation(self):
-        """Process the conversation loop, handling tool calls and responses."""
+        """Process the conversation loop, handling tool calls and responses.
+        
+        With the improved UI, we ensure clean transitions between stages
+        and don't display redundant prompts.
+        """
         try:
             while True:
                 try:
@@ -37,6 +41,8 @@ class ConversationProcessor:
                         continue
 
                     # Display assistant response
+                    # The UI manager no longer automatically displays an input prompt after this
+                    # as that will be handled by the next iteration of the main loop
                     self.ui_manager.print_assistant_response(response_content, response_time)
                     self.context.conversation_history.append(
                         {"role": "assistant", "content": response_content}
