@@ -45,7 +45,7 @@ def common_options(
     server: str = None,
     provider: str = "openai",
     model: str = None,
-    disable_filesystem: bool = False,
+    disable_filesystem: bool = True,
 ):
     """
     MCP Command-Line Tool

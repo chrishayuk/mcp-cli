@@ -11,30 +11,6 @@ from mcp.messages.initialize.send_messages import send_initialize
 # cli imports
 from cli.config import load_config
 
-def process_options(server, disable_filesystem, provider, model):
-    """Process common options and return the servers list along with user-specified servers."""
-    servers_list = []
-    user_specified = []
-    
-    if server:
-        # Allow comma-separated servers.
-        user_specified = [s.strip() for s in server.split(",")]
-        servers_list.extend(user_specified)
-    
-    # Always add 'filesystem' unless explicitly disabled.
-    if not disable_filesystem and "filesystem" not in servers_list:
-        servers_list.insert(0, "filesystem")
-        
-    if not model:
-        model = "gpt-4o-mini" if provider.lower() == "openai" else "qwen2.5-coder"
-    
-    os.environ["LLM_PROVIDER"] = provider
-    os.environ["LLM_MODEL"] = model
-    if not disable_filesystem:
-        os.environ["SOURCE_FILESYSTEMS"] = json.dumps([os.getcwd()])
-    
-    return servers_list, user_specified
-
 def run_command(command_func, config_file, server_names, user_specified=None):
     """Run a command with the specified servers by managing server connections."""
     async def _run_clients():
