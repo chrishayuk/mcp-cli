@@ -6,6 +6,7 @@ from rich.table import Table
 from rich.syntax import Syntax
 from rich.panel import Panel
 from rich import box
+from rich.text import Text
 
 # Import the registration function from your commands package
 from cli.chat.commands import register_command
@@ -98,14 +99,10 @@ async def conversation_history_command(args, context):
                 )
         else:
             # Display in table format
-            table = Table(title=f"Conversation History ({len(filtered_history)} messages)")
-            table.add_column("#", style="dim")
-            table.add_column("Role", style="cyan")
-            table.add_column("Content", style="white")
-            
-            for message in filtered_history:
-                # Get original index
-                original_index = conversation_history.index(message) + 1
+            if row_specified:
+                # For a single row, display with full content in a panel
+                message = filtered_history[0]
+                original_index = row_number
                 
                 # Format role
                 role = message.get("role", "unknown")
@@ -113,7 +110,7 @@ async def conversation_history_command(args, context):
                 if name:
                     role = f"{role} ({name})"
                 
-                # Format content
+                # Get full content without truncation
                 content = message.get("content", "")
                 if content is None:
                     if "tool_calls" in message and message["tool_calls"]:
@@ -125,24 +122,90 @@ async def conversation_history_command(args, context):
                         content = f"[Tool call: {', '.join(tool_names)}]"
                     else:
                         content = "[None]"
-                elif isinstance(content, str):
-                    if len(content) > 100:
-                        content = content[:97] + "..."
-                else:
-                    try:
-                        content = json.dumps(content)
-                        if len(content) > 100:
-                            content = content[:97] + "..."
-                    except Exception:
-                        content = str(content)
-                        if len(content) > 100:
-                            content = content[:97] + "..."
                 
-                # Add row to table
-                table.add_row(str(original_index), role, content)
-            
-            # Display table
-            console.print(table)
+                # Format tool call info if present
+                tool_calls_info = ""
+                if "tool_calls" in message and message["tool_calls"]:
+                    tool_calls = message["tool_calls"]
+                    tool_calls_info = "\n\nTool Calls:\n"
+                    for i, tool_call in enumerate(tool_calls):
+                        tool_id = tool_call.get("id", "unknown_id")
+                        tool_type = tool_call.get("type", "unknown_type")
+                        
+                        if "function" in tool_call:
+                            fn_info = tool_call["function"]
+                            tool_name = fn_info.get("name", "unknown")
+                            args_str = fn_info.get("arguments", "{}")
+                            
+                            tool_calls_info += f"  {i+1}. ID: {tool_id}, Type: {tool_type}, Name: {tool_name}\n"
+                            tool_calls_info += f"     Arguments: {args_str}\n"
+                
+                # Add tool call ID for tool messages
+                tool_call_id_info = ""
+                if role == "tool" and "tool_call_id" in message:
+                    tool_call_id_info = f"\n\nTool Call ID: {message.get('tool_call_id')}"
+                
+                # Display panel with message details and full content
+                panel_title = f"Message #{original_index} (Role: {role})"
+                panel_content = Text.from_markup(f"{content}{tool_calls_info}{tool_call_id_info}")
+                
+                console.print(
+                    Panel(
+                        panel_content,
+                        title=panel_title,
+                        border_style="cyan",
+                        box=box.ROUNDED,
+                        expand=True,
+                        padding=(1, 2)
+                    )
+                )
+            else:
+                # For multiple rows, use a regular table with truncated content
+                table = Table(title=f"Conversation History ({len(filtered_history)} messages)")
+                table.add_column("#", style="dim")
+                table.add_column("Role", style="cyan")
+                table.add_column("Content", style="white")
+                
+                for message in filtered_history:
+                    # Get original index
+                    original_index = conversation_history.index(message) + 1
+                    
+                    # Format role
+                    role = message.get("role", "unknown")
+                    name = message.get("name", "")
+                    if name:
+                        role = f"{role} ({name})"
+                    
+                    # Format content with truncation for table view
+                    content = message.get("content", "")
+                    if content is None:
+                        if "tool_calls" in message and message["tool_calls"]:
+                            tool_calls = message["tool_calls"]
+                            tool_names = []
+                            for tc in tool_calls:
+                                if "function" in tc:
+                                    tool_names.append(tc["function"].get("name", "unknown"))
+                            content = f"[Tool call: {', '.join(tool_names)}]"
+                        else:
+                            content = "[None]"
+                    elif isinstance(content, str):
+                        if len(content) > 100:
+                            content = content[:97] + "..."
+                    else:
+                        try:
+                            content = json.dumps(content)
+                            if len(content) > 100:
+                                content = content[:97] + "..."
+                        except Exception:
+                            content = str(content)
+                            if len(content) > 100:
+                                content = content[:97] + "..."
+                    
+                    # Add row to table
+                    table.add_row(str(original_index), role, content)
+                
+                # Display table
+                console.print(table)
         
     except Exception as e:
         # Print exception for debugging
