@@ -1,8 +1,9 @@
 # src/llm/providers/ollama_client.py
 import logging
+import json
 import uuid
 import ollama
-from typing import Any, Dict, List, Callable, Optional
+from typing import Any, Dict, List, Optional
 
 # base
 from llm.providers.base import BaseLLMClient
@@ -19,13 +20,13 @@ class OllamaLLMClient(BaseLLMClient):
     def create_completion(
         self, 
         messages: List[Dict[str, Any]], 
-        tools: Optional[List[Callable]] = None  # tools can be functions or tool objects
+        tools: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         # Format messages for Ollama
         ollama_messages = [{"role": msg["role"], "content": msg["content"]} for msg in messages]
 
         try:
-            # Call the Ollama API with tools (which now can include Python functions)
+            # Call the Ollama API with tools
             response = ollama.chat(
                 model=self.model,
                 messages=ollama_messages,
@@ -43,18 +44,25 @@ class OllamaLLMClient(BaseLLMClient):
             # Process any tool calls returned in the message
             if hasattr(message, "tool_calls") and message.tool_calls:
                 for tool in message.tool_calls:
-                    tool_calls.append(
-                        {
-                            "id": str(uuid.uuid4()),
-                            "type": "function",
-                            "function": {
-                                "name": tool.function.name,
-                                "arguments": tool.function.arguments,
-                            },
-                        }
-                    )
+                    # Ensure arguments are in string format for consistency
+                    arguments = tool.function.arguments
+                    if isinstance(arguments, dict):
+                        arguments = json.dumps(arguments)
+                    elif not isinstance(arguments, str):
+                        arguments = str(arguments)
+                    
+                    # Create tool call with consistent format
+                    tool_call_id = f"call_{tool.function.name}_{str(uuid.uuid4())[:8]}"
+                    tool_calls.append({
+                        "id": tool_call_id,
+                        "type": "function",
+                        "function": {
+                            "name": tool.function.name,
+                            "arguments": arguments,
+                        },
+                    })
 
-            # Return the final response and any tool call details
+            # Return standardized response format
             return {
                 "response": message.content if message else "No response",
                 "tool_calls": tool_calls,
