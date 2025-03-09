@@ -9,8 +9,6 @@ from rich.panel import Panel
 from rich.console import Console
 from rich.live import Live
 from rich.text import Text
-from rich.columns import Columns
-from rich.box import ROUNDED
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
@@ -36,6 +34,7 @@ class ChatUIManager:
         self.tools_running = False  # Flag to track if tools are currently running
         self.interrupt_requested = False  # Flag to track if user requested interrupt
         self.tool_times = []  # List to track time taken by each tool
+        self.last_input = None  # Store the last input
         
         # Set up prompt_toolkit session with history and tab completion
         history_file = os.path.expanduser("~/.mcp_chat_history")
@@ -53,17 +52,22 @@ class ChatUIManager:
             auto_suggest=AutoSuggestFromHistory(),
             completer=ChatCommandCompleter(context.to_dict()),
             complete_while_typing=True,
-            style=self.style
+            style=self.style,
+            message="> "  # Simple plain prompt
         )
     
     async def get_user_input(self):
-        """Get user input with prompt toolkit."""
-        # Print the prompt with Rich to ensure consistent color
-        print("[bold yellow]>[/bold yellow] ", end="", flush=True)
+        """Get user input with a simple prompt."""
+        # Just use the built-in session prompt
+        user_message = await self.session.prompt_async()
         
-        # Use prompt_toolkit for enhanced input
-        user_message = await self.session.prompt_async("")
-        return user_message.strip()
+        # Store the input
+        self.last_input = user_message.strip()
+        
+        # Clear the line to remove the input
+        print("\r" + " " * (len(self.last_input) + 2), end="\r")
+        
+        return self.last_input
     
     def print_user_message(self, message):
         """Print formatted user message."""
@@ -170,9 +174,6 @@ class ChatUIManager:
         # Build the display text - using muted colors overall
         tool_text = " → ".join(current_tools)
         display_text = Text.from_markup(f"[dim]Calling tools (total: {total_elapsed_str}): {spinner_char}[/dim] {tool_text}")
-        
-        # Update the live display - clear ensure clean display
-        self.live_display.update(display_text)
         
         # Update the live display
         self.live_display.update(display_text)
