@@ -178,6 +178,34 @@ If you wish to use OpenAI models, you should:
 
 - Set the `OPENAI_API_KEY` environment variable before running the client, either in .env or as an environment variable.
 
+## Using AWS Bedrock Provider
+If you wish to use AWS Bedrock models, you should:
+
+1. Configure AWS credentials (using AWS SSO or standard AWS credential methods)
+2. Update the `server_config.json` file with Bedrock configuration
+3. Run the CLI with the Bedrock provider:
+
+```bash
+uv run mcp-cli chat --server sqlite --provider bedrock --model claude-3-7-sonnet
+```
+
+### Bedrock Configuration
+The `server_config.json` file should include a section for Bedrock models:
+
+```json
+"llmProviders": {
+  "bedrock": {
+    "region": "eu-central-1",
+    "models": {
+      "claude-3-7-sonnet": {
+        "modelId": "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
+        "arn": "arn:aws:bedrock:eu-central-1:890672996299:inference-profile/eu.anthropic.claude-3-7-sonnet-20250219-v1:0"
+      }
+    }
+  }
+}
+```
+
 ## Project Structure
 
 The project follows a modular architecture:

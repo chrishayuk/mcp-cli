@@ -9,8 +9,19 @@
       "args": [
         "-y",
         "@modelcontextprotocol/server-filesystem",
-        "/Users/christopherhay/chris-source/chuk-test-code/fibonacci"
+        "/Users/perry.manuk/git/github/mcp-cli"
       ]
+    }
+  },
+  "llmProviders": {
+    "bedrock": {
+      "region": "eu-central-1",
+      "models": {
+        "claude-3-7-sonnet": {
+          "modelId": "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
+          "arn": "arn:aws:bedrock:eu-central-1:890672996299:inference-profile/eu.anthropic.claude-3-7-sonnet-20250219-v1:0"
+        }
+      }
     }
   }
 }

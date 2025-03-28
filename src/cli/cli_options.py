@@ -24,7 +24,12 @@ def process_options(server, disable_filesystem, provider, model):
         
     # Use a default model if none is provided.
     if not model:
-        model = "gpt-4o-mini" if provider.lower() == "openai" else "qwen2.5-coder"
+        if provider.lower() == "openai":
+            model = "gpt-4o-mini" 
+        elif provider.lower() == "ollama":
+            model = "qwen2.5-coder"
+        elif provider.lower() == "bedrock":
+            model = "claude-3-7-sonnet"
     
     # Set environment variables used by the MCP code.
     os.environ["LLM_PROVIDER"] = provider
