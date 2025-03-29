@@ -12,7 +12,7 @@ authors = [
     {name = "Chris Hay", email = "chrishayuk@googlemail.com"}
 ]
 keywords = ["llm", "openai", "claude", "mcp", "cli"]
-license = "MIT"
+license = {text = "MIT"}
 dependencies = [
     "anyio>=4.6.2.post1",
     "requests>=2.32.3",
