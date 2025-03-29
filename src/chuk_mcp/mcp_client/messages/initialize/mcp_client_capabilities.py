@@ -1,8 +1,7 @@
 # chuk_mcp/mcp_client/messages/initialize/mcp_client_capabilties.py
-from typing import Optional
-from pydantic import BaseModel, Field
+from chuk_mcp.mcp_client.mcp_pydantic_base import McpPydanticBase, Field
 
-class MCPClientCapabilities(BaseModel):
+class MCPClientCapabilities(McpPydanticBase):
     roots: dict = Field(default_factory=lambda: {"listChanged": True})
     sampling: dict = Field(default_factory=dict)
     experimental: dict = Field(default_factory=dict)

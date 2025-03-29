@@ -1,6 +1,6 @@
 # chuk_mcp/mcp_client/messages/initialize/mcp_client_info.py
-from pydantic import BaseModel
+from chuk_mcp.mcp_client.mcp_pydantic_base import McpPydanticBase
 
-class MCPClientInfo(BaseModel):
+class MCPClientInfo(McpPydanticBase):
     name: str = "MCP-CLI"
     version: str = "0.2"

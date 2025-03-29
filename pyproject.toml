@@ -42,3 +42,8 @@ dev = [
 [tool.setuptools]
 package-dir = {"" = "src"}
 packages = ["mcp_cli"]
+
+[dependency-groups]
+dev = [
+    "pydantic>=2.10.2",
+]

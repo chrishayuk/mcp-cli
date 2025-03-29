@@ -1,8 +1,9 @@
 # chuk_mcp/mcp_client/messages/resources/resource.py
 from typing import Optional
-from pydantic import BaseModel
+from chuk_mcp.mcp_client.mcp_pydantic_base import McpPydanticBase
 
-class Resource(BaseModel):
+
+class Resource(McpPydanticBase):
     """Model representing a resource in the MCP protocol."""
     uri: str
     name: str

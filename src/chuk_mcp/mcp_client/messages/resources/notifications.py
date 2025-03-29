@@ -4,9 +4,6 @@ Module for handling resource-related notifications in the Model Context Protocol
 """
 from typing import Dict, Any, Callable, Awaitable
 
-# chuk_mcp imports
-from chuk_mcp.mcp_client.messages.message_method import MessageMethod
-
 async def handle_resources_list_changed_notification(
     callback: Callable[[], Awaitable[None]],
     notification: Dict[str, Any]

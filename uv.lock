@@ -264,6 +264,11 @@ dev = [
     { name = "pytest-asyncio" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pydantic" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "anyio", specifier = ">=4.6.2.post1" },
@@ -279,6 +284,9 @@ requires-dist = [
     { name = "rich", marker = "extra == 'cli'", specifier = ">=13.9.4" },
     { name = "typer", marker = "extra == 'cli'", specifier = ">=0.15.2" },
 ]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pydantic", specifier = ">=2.10.2" }]
 
 [[package]]
 name = "mdurl"
