@@ -1,4 +1,4 @@
-# src/cli/commands/resources.py
+# mcp_cli/commands/resources.py
 import json
 import typer
 from rich import print

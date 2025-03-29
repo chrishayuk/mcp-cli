@@ -1,4 +1,4 @@
-# src/cli/chat/commands/help.py
+# mcp_cli/chat/commands/help.py
 """
 Help commands for the MCP chat interface.
 Includes help and general utility commands.

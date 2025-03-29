@@ -1,4 +1,4 @@
-# src/cli/chat/commands/conversation.py
+# mcp_cli/chat/commands/conversation.py
 """
 Commands for managing conversation history and context.
 """

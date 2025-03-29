@@ -6,7 +6,7 @@ import ollama
 from typing import Any, Dict, List, Optional
 
 # base
-from llm.providers.base import BaseLLMClient
+from mcp_cli.llm.providers.base import BaseLLMClient
 
 class OllamaLLMClient(BaseLLMClient):
     def __init__(self, model: str = "qwen2.5-coder"):

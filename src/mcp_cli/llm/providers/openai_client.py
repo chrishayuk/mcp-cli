@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 # llm imports
-from llm.providers.base import BaseLLMClient
+from mcp_cli.llm.providers.base import BaseLLMClient
 
 # Load environment variables
 load_dotenv()

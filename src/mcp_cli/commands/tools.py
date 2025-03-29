@@ -1,126 +1,211 @@
-# src/cli/chat/commands/tools.py
+# mcp_cli/commands/tools.py
 """
-Tools command module for listing available tools with their server sources.
+Tools command module for listing and calling tools.
 """
-from rich.console import Console
+import typer
+import json
+import asyncio
+from rich import print
+from rich.markdown import Markdown
+from rich.panel import Panel
 from rich.table import Table
+from rich.syntax import Syntax
 
 # imports
-from mcp_cli.chat.commands import register_command
+from chuk_mcp.mcp_client.messages.tools.send_messages import send_tools_list, send_tools_call
 
+# app
+app = typer.Typer(help="Tools commands")
 
-async def tools_command(args, context):
-    """
-    Display all available tools with their server information.
+@app.command("list")
+async def tools_list(server_streams: list):
+    """List all tools from all servers."""
+    print("[cyan]\nFetching Tools List from all servers...[/cyan]")
     
-    Usage:
-      /tools         - Show tools with descriptions
-      /tools --all   - Show all tool details including parameters
-      /tools --raw   - Show raw tool definitions (for debugging)
+    all_tools = []
+    tasks = []
     
-    This command shows all tools available across all connected servers,
-    making it clear which server provides each tool.
-    """
-    console = Console()
-    
-    # Parse arguments
-    show_all = "--all" in args
-    show_raw = "--raw" in args
-    
-    # Get tools and server mapping
-    tools = context["tools"]
-    tool_to_server_map = context.get("tool_to_server_map", {})
-    
-    # If no server mapping exists in context, build one
-    if not tool_to_server_map:
-        tool_to_server_map = {}
-        for server_info in context["server_info"]:
-            server_id = server_info["id"]
-            server_name = server_info["name"]
-            
-            # Calculate tool ranges for each server
-            start_idx = 0
-            for prev_server in context["server_info"]:
-                if prev_server["id"] < server_id:
-                    start_idx += prev_server.get("tools", 0)
-            
-            end_idx = start_idx + server_info.get("tools", 0)
-            
-            # Associate tools with this server
-            for i in range(start_idx, end_idx):
-                if i < len(tools):
-                    tool_name = tools[i]["name"]
-                    tool_to_server_map[tool_name] = server_name
-    
-    if show_raw:
-        # Show raw tool definitions (useful for debugging)
-        from rich.syntax import Syntax
-        import json
+    try:
+        # Create tasks for fetching tools from all servers concurrently
+        for i, (r_stream, w_stream) in enumerate(server_streams):
+            task = asyncio.create_task(fetch_tools_from_server(i, r_stream, w_stream))
+            tasks.append(task)
         
-        raw_json = json.dumps(tools, indent=2)
-        console.print(Syntax(raw_json, "json", theme="monokai", line_numbers=True))
-        return True
-    
-    # Create a rich table
-    table = Table(title=f"{len(tools)} Available Tools")
-    
-    # Add columns
-    table.add_column("Server", style="cyan")
-    table.add_column("Tool", style="green")
-    table.add_column("Description")
-    
-    if show_all:
-        # Show additional columns for detailed view
-        table.add_column("Parameters", style="yellow")
-    
-    # Add rows for each tool
-    for tool in tools:
-        tool_name = tool["name"]
-        server_name = tool_to_server_map.get(tool_name, "Unknown")
+        # Wait for all tasks to complete
+        results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # Truncate descriptions based on mode
-        description = tool.get("description", "No description")
-        if not show_all and len(description) > 75:
-            description = description[:72] + "..."
-        
-        if show_all:
-            # Get parameters information - check both "parameters" (OpenAI format) and "inputSchema" (MCP format)
-            parameters = tool.get("parameters", tool.get("inputSchema", {}))
-            
-            # Handle different schema formats
-            # OpenAI format
-            if "properties" in parameters:
-                properties = parameters.get("properties", {})
-                required = parameters.get("required", [])
-            # MCP format with inputSchema  
-            elif parameters and isinstance(parameters, dict):
-                properties = parameters.get("properties", {})
-                required = parameters.get("required", [])
+        # Process results and collect tools
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                print(f"[yellow]Error fetching tools from Server {i+1}: {result}[/yellow]")
+                continue
+                
+            server_num, tools, table = result
+            if tools:
+                all_tools.extend(tools)
+                print(table)
             else:
-                properties = {}
-                required = []
-            
-            # Format parameters as a string
-            param_strs = []
-            for param_name, param_info in properties.items():
-                param_type = param_info.get("type", "any")
-                is_required = "*" if param_name in required else ""
-                param_strs.append(f"{param_name}{is_required} ({param_type})")
-            
-            param_text = "\n".join(param_strs) if param_strs else "None"
-            
-            table.add_row(server_name, tool_name, description, param_text)
+                print(f"[yellow]Server {server_num}: No tools available.[/yellow]")
+        
+        # Summary
+        if all_tools:
+            print(f"[green]Total tools available: {len(all_tools)}[/green]")
         else:
-            table.add_row(server_name, tool_name, description)
-    
-    console.print(table)
-    
-    # Show parameter legend for detailed view
-    if show_all:
-        console.print("[yellow]* Required parameter[/yellow]")
-    
-    return True
+            print("[yellow]No tools available from any server.[/yellow]")
+    except Exception as e:
+        print(f"[red]Error listing tools: {e}[/red]")
+    finally:
+        # Clean up tasks that might still be running
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        
+        # Let any cancelled tasks complete their cancellation
+        if tasks:
+            await asyncio.wait(tasks, timeout=0.5)
 
+async def fetch_tools_from_server(server_idx, r_stream, w_stream):
+    """Fetch tools from a single server and format the results."""
+    server_num = server_idx + 1
+    
+    try:
+        response = await send_tools_list(r_stream, w_stream)
+        tools = response.get("tools", [])
+        
+        # Create a table for this server's tools
+        table = Table(title=f"Server {server_num} Tools ({len(tools)} available)")
+        table.add_column("Tool", style="green")
+        table.add_column("Description")
+        
+        for tool in tools:
+            name = tool.get("name", "Unknown")
+            desc = tool.get("description", "No description")
+            if len(desc) > 75:
+                desc = desc[:72] + "..."
+            table.add_row(name, desc)
+        
+        return server_num, tools, table
+    except Exception as e:
+        raise Exception(f"Failed to fetch tools from Server {server_num}: {e}")
 
-# Register the command with completions
-register_command("/tools", tools_command, ["--all", "--raw"])
+@app.command("call")
+async def tools_call(server_streams: list):
+    """Call a tool with arguments."""
+    print("[cyan]\nTool Call Interface[/cyan]")
+    
+    # First, get a list of all available tools
+    all_tools = []
+    try:
+        for i, (r_stream, w_stream) in enumerate(server_streams):
+            try:
+                response = await send_tools_list(r_stream, w_stream)
+                tools = response.get("tools", [])
+                for tool in tools:
+                    tool["server_index"] = i
+                all_tools.extend(tools)
+            except Exception as e:
+                print(f"[yellow]Error fetching tools from Server {i+1}: {e}[/yellow]")
+        
+        if not all_tools:
+            print("[yellow]No tools available from any server.[/yellow]")
+            return
+        
+        # List available tools
+        print("[green]Available tools:[/green]")
+        for i, tool in enumerate(all_tools):
+            print(f"  {i+1}. {tool['name']} - {tool.get('description', 'No description')}")
+        
+        # Get user selection
+        try:
+            selection = int(input("\nEnter tool number to call: ")) - 1
+            if not 0 <= selection < len(all_tools):
+                print("[red]Invalid selection.[/red]")
+                return
+        except ValueError:
+            print("[red]Please enter a number.[/red]")
+            return
+        
+        # Get the selected tool
+        tool = all_tools[selection]
+        server_index = tool["server_index"]
+        r_stream, w_stream = server_streams[server_index]
+        
+        # Show tool details
+        print(f"\n[green]Selected: {tool['name']}[/green]")
+        print(f"[cyan]Description: {tool.get('description', 'No description')}[/cyan]")
+        
+        # Show parameters
+        parameters = tool.get("parameters", tool.get("inputSchema", {}))
+        
+        if "properties" in parameters:
+            properties = parameters["properties"]
+            required = parameters.get("required", [])
+        
+            if properties:
+                print("\n[yellow]Parameters:[/yellow]")
+                for name, details in properties.items():
+                    req = "[Required]" if name in required else "[Optional]"
+                    param_type = details.get("type", "any")
+                    description = details.get("description", "")
+                    print(f"  - {name} ({param_type}) {req}: {description}")
+        
+        # Get arguments from user
+        print("\n[yellow]Enter arguments as JSON (empty for none):[/yellow]")
+        args_input = input("> ")
+        
+        # Parse arguments
+        if args_input.strip():
+            try:
+                args = json.loads(args_input)
+            except json.JSONDecodeError:
+                print("[red]Invalid JSON. Please try again.[/red]")
+                return
+        else:
+            args = {}
+        
+        # Call the tool
+        print(f"\n[cyan]Calling tool '{tool['name']}' with arguments:[/cyan]")
+        print(Syntax(json.dumps(args, indent=2), "json"))
+        
+        try:
+            response = await send_tools_call(
+                read_stream=r_stream,
+                write_stream=w_stream,
+                name=tool["name"],
+                arguments=args
+            )
+            
+            # Check for errors
+            if response.get("isError"):
+                print(f"[red]Error calling tool: {response.get('error', 'Unknown error')}[/red]")
+                return
+            
+            # Format and display results
+            content = response.get("content", "No content returned")
+            
+            if isinstance(content, list) and content and isinstance(content[0], dict):
+                # It's a list of objects, format as JSON
+                print(f"\n[green]Tool response:[/green]")
+                print(Syntax(json.dumps(content, indent=2), "json"))
+            elif isinstance(content, dict):
+                # It's a single object, format as JSON
+                print(f"\n[green]Tool response:[/green]")
+                print(Syntax(json.dumps(content, indent=2), "json"))
+            else:
+                # It's a simple value, just print it
+                print(f"\n[green]Tool response:[/green] {content}")
+            
+        except Exception as e:
+            print(f"[red]Error: {e}[/red]")
+    except Exception as e:
+        print(f"[red]Error in tool call: {e}[/red]")
+    finally:
+        # Ensure any pending tasks are cleaned up
+        tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        
+        # Let any cancelled tasks complete their cancellation
+        if tasks:
+            await asyncio.wait(tasks, timeout=0.5)  

@@ -1,29 +1,53 @@
-# Model Context Provider CLI
-This repository contains a protocol-level CLI designed to interact with a Model Context Provider server. The client allows users to send commands, query data, and interact with various resources provided by the server.
+# MCP CLI - Model Context Provider Command Line Interface
+A powerful, feature-rich command-line interface for interacting with Model Context Provider servers. This client enables seamless communication with LLMs through a protocol-level implementation, supporting tool usage, conversation management, and multiple operational modes.
 
-## Features
-- Protocol-level communication with the Model Context Provider.
-- Dynamic tool and resource exploration.
-- Support for multiple providers and models:
-  - Providers: OpenAI, Ollama.
-  - Default models: `gpt-4o-mini` for OpenAI, `qwen2.5-coder` for Ollama.
-- Enhanced modular chat system with server-aware tools.
-- Rich command system with context-aware completions.
-- **Conversation History**:
-  - Track and review all messages exchanged during a session.
-  - Filter to view specific messages or ranges.
-  - Export or analyze conversation logs for debugging or reference.
-- Two operational modes:
-  - **Chat Mode**: Conversational interface with LLM
-  - **Interactive Mode**: Command-line interface with slash commands
+## 🌟 Features
 
-## Prerequisites
-- Python 3.8 or higher.
-- Required dependencies (see [Installation](#installation))
-- If using ollama you should have ollama installed and running.
-- If using openai you should have an api key set in your environment variables (OPENAI_API_KEY=yourkey)
+- **Multiple Operational Modes**:
+  - **Chat Mode**: Conversational interface with direct LLM interaction and automated tool usage
+  - **Interactive Mode**: Command-driven interface for direct server operations
+  - **Direct Commands**: Run individual commands without entering interactive mode
 
-## Installation
+- **Multi-Provider Support**:
+  - OpenAI integration (`gpt-4o-mini`, `gpt-4o`, `gpt-4-turbo`, etc.)
+  - Ollama integration (`llama3.2`, `qwen2.5-coder`, etc.)
+  - Extensible architecture for additional providers
+
+- **Robust Tool System**:
+  - Automatic discovery of server-provided tools
+  - Server-aware tool execution
+  - Tool call history tracking and analysis
+  - Support for complex, multi-step tool chains
+
+- **Advanced Conversation Management**:
+  - Complete conversation history tracking
+  - Filtering and viewing specific message ranges
+  - JSON export capabilities for debugging or analysis
+  - Conversation compaction for reduced token usage
+
+- **Rich User Experience**:
+  - Command completion with context-aware suggestions
+  - Colorful, formatted console output
+  - Progress indicators for long-running operations
+  - Detailed help and documentation
+
+- **Resilient Resource Management**:
+  - Proper cleanup of asyncio resources
+  - Graceful error handling
+  - Clean terminal restoration
+  - Support for multiple simultaneous server connections
+
+## 📋 Prerequisites
+
+- Python 3.11 or higher
+- For OpenAI: Valid API key in `OPENAI_API_KEY` environment variable
+- For Ollama: Local Ollama installation
+- Server configuration file (default: `server_config.json`)
+
+## 🚀 Installation
+
+### Install from Source
+
 1. Clone the repository:
 
 ```bash
@@ -31,86 +55,64 @@ git clone https://github.com/chrishayuk/mcp-cli
 cd mcp-cli
 ```
 
-2. Install UV:
+2. Install the package with development dependencies:
 
 ```bash
+pip install -e ".[cli,dev]"
+```
+
+3. Run the CLI:
+
+```bash
+mcp-cli --help
+```
+
+### Using UV (Alternative Installation)
+
+If you prefer using UV for dependency management:
+
+```bash
+# Install UV if not already installed
 pip install uv
-```
 
-3. Resynchronize dependencies:
-
-```bash
+# Install dependencies
 uv sync --reinstall
+
+# Run using UV
+uv run mcp-cli --help
 ```
 
-## Command-line Arguments
-- `--server`: Specifies the server configuration to use. Required.
-- `--config-file`: (Optional) Path to the JSON configuration file. Defaults to `server_config.json`.
-- `--provider`: (Optional) Specifies the provider to use (`openai` or `ollama`). Defaults to `openai`.
-- `--model`: (Optional) Specifies the model to use. Defaults depend on the provider:
-  - `gpt-4o-mini` for OpenAI.
-  - `llama3.2` for Ollama.
+## 🧰 Command-line Arguments
 
-## Chat Mode
-Chat mode provides a conversational interface with the LLM and is the primary way to interact with the client:
+Global options available for all commands:
+
+- `--server`: Specify the server(s) to connect to (comma-separated for multiple)
+- `--config-file`: Path to server configuration file (default: `server_config.json`)
+- `--provider`: LLM provider to use (`openai` or `ollama`, default: `openai`)
+- `--model`: Specific model to use (provider-dependent defaults)
+- `--disable-filesystem`: Disable filesystem access (default: true)
+
+## 🤖 Using Chat Mode
+
+Chat mode provides a conversational interface with the LLM, automatically using available tools when needed:
 
 ```bash
-uv run mcp-cli chat --server sqlite
+mcp-cli chat --server sqlite
 ```
 
-You can specify the provider and model to use in chat mode:
+With specific provider and model:
 
 ```bash
-uv run mcp-cli chat --server sqlite --provider openai --model gpt-4o
+mcp-cli chat --server sqlite --provider openai --model gpt-4o
 ```
 
 ```bash
-uv run mcp-cli chat --server sqlite --provider ollama --model llama3.2
+mcp-cli chat --server sqlite --provider ollama --model llama3.2
 ```
-
-### Using Chat Mode
-In chat mode, you can interact with the model in natural language, and it will automatically use the available tools when needed. The LLM can execute queries, access data, and leverage other capabilities provided by the server.
-
-### Conversation History
-The client maintains a complete conversation history, which records every message exchanged during a session. This feature allows you to:
-
-- **Review Previous Interactions**: Retrieve a complete log of the conversation to track context and decisions.
-- **Analyze Dialogue Flow**: Use the conversation history to analyze how queries were resolved or to re-run commands.
-- **Save Sessions**: Export conversation history to JSON files for later reference or analysis.
-- **Filter Messages**: Display specific messages or ranges to focus on particular parts of the conversation.
-
-To work with conversation history, use the following commands:
-
-- `/conversation` or its alias `/ch`: Displays the entire conversation history.
-- `/conversation <N>` or `/ch <N>`: Shows only message #N from the history (e.g., `/ch 4` shows only message #4).
-- `/conversation <N> --json` or `/ch <N> --json`: Outputs a specific message in JSON format.
-- `/conversation --json`: Outputs the entire conversation history in raw JSON format.
-- `/conversation -n 5`: Shows only the last 5 messages.
-- `/save <filename>`: Saves the current conversation history to a JSON file.
-- `/compact`: Condenses conversation history into a summary to maintain context while reducing token usage.
-
-### Tool History
-The client also keeps track of tool calls made during the session, providing insight into how the model interacts with available tools:
-
-- `/toolhistory` or `/th`: Shows all tool calls made during the session.
-- `/toolhistory <N>` or `/th <N>`: Displays details for a specific tool call (e.g., `/th 3` shows only tool call #3).
-- `/toolhistory -n 5` or `/th -n 5`: Shows only the last 5 tool calls.
-- `/toolhistory --json` or `/th --json`: Outputs all tool calls in JSON format.
-
-### Changing Provider and Model in Chat Mode
-You can specify the provider and model when starting chat mode:
-
-```bash
-uv run mcp-cli chat --server sqlite --provider openai --model gpt-4o
-```
-
-You can also change the provider and model during a chat session using the following commands:
-
-- `/provider <name>`: Change the current LLM provider (e.g., `openai`, `ollama`)
-- `/model <name>`: Change the current LLM model (e.g., `gpt-4o`, `llama3.2`)
 
 ### Chat Commands
-In chat mode, you can use the following slash commands:
+
+In chat mode, use these slash commands:
 
 #### General Commands
 - `/help`: Show available commands
@@ -136,28 +138,28 @@ In chat mode, you can use the following slash commands:
 - `/save <filename>`: Save conversation history to a JSON file
 - `/compact`: Condense conversation history into a summary
 
-#### Other Commands
+#### Display Commands
 - `/cls`: Clear the screen while keeping conversation history
 - `/clear`: Clear both the screen and conversation history
+- `/verbose` or `/v`: Toggle between verbose and compact tool display modes
+
+#### Control Commands
 - `/interrupt`, `/stop`, or `/cancel`: Interrupt running tool execution
-- `/provider <name>`: Change the current LLM provider 
-- `/model <name>`: Change the current LLM model
+- `/provider <n>`: Change the current LLM provider 
+- `/model <n>`: Change the current LLM model
+- `/servers`: List connected servers and their status
 
-## Interactive Mode
-Interactive mode provides a command-line interface with slash commands for direct interaction with the server:
+## 🖥️ Using Interactive Mode
 
-```bash
-uv run mcp-cli interactive --server sqlite
-```
-
-You can also specify provider and model in interactive mode:
+Interactive mode provides a command-line interface with slash commands for direct server interaction:
 
 ```bash
-uv run mcp-cli interactive --server sqlite --provider ollama --model llama3.2
+mcp-cli interactive --server sqlite
 ```
 
 ### Interactive Commands
-In interactive mode, you can use the following slash commands:
+
+In interactive mode, use these commands:
 
 - `/ping`: Check if server is responsive
 - `/prompts`: List available prompts
@@ -168,42 +170,188 @@ In interactive mode, you can use the following slash commands:
 - `/chat`: Enter chat mode
 - `/cls`: Clear the screen
 - `/clear`: Clear the screen and show welcome message
-- `/help`: Show this help message
+- `/help`: Show help message
 - `/exit` or `/quit`: Exit the program
 
-You can also exit by typing `exit` or `quit` without the slash prefix.
+## 🔧 Direct Commands
 
-## Using OpenAI Provider
-If you wish to use OpenAI models, you should:
+Run individual commands without entering interactive mode:
 
-- Set the `OPENAI_API_KEY` environment variable before running the client, either in .env or as an environment variable.
+```bash
+# List available tools
+mcp-cli tools list --server sqlite
 
-## Project Structure
+# Call a specific tool
+mcp-cli tools call --server sqlite
 
-The project follows a modular architecture:
+# List available prompts
+mcp-cli prompts list --server sqlite
+
+# Check server connectivity
+mcp-cli ping --server sqlite
+
+# List available resources
+mcp-cli resources list --server sqlite
+```
+
+## 📂 Server Configuration
+
+Create a `server_config.json` file with your server configurations:
+
+```json
+{
+  "mcpServers": {
+    "sqlite": {
+      "command": "python",
+      "args": ["-m", "mcp_server.sqlite_server"],
+      "env": {
+        "DATABASE_PATH": "your_database.db"
+      }
+    },
+    "another-server": {
+      "command": "python",
+      "args": ["-m", "another_server_module"],
+      "env": {}
+    }
+  }
+}
+```
+
+## 🏗️ Project Structure
 
 ```
 src/
-├── cli/
-│   ├── chat/
-│   │   ├── commands/         # Chat slash commands
-│   │   │   ├── conversation_history.py   # Conversation history command
-│   │   │   ├── help.py                   # Help commands
-│   │   │   ├── quickhelp.py              # Quick help command
-│   │   │   └── tool_history.py           # Tool history command
-│   │   ├── chat_context.py   # Chat state management
-│   │   ├── chat_handler.py   # Main chat logic
-│   │   ├── conversation.py   # Conversation processing
-│   │   ├── ui_helpers.py     # UI utilities
-│   │   └── ui_manager.py     # User interface management
-│   ├── commands/             # Main CLI commands (including interactive mode)
-│   └── ...
-├── llm/                      # LLM client and tools
-└── ...
+├── mcp_cli/
+│   ├── chat/                  # Chat mode implementation
+│   │   ├── commands/          # Chat slash commands
+│   │   │   ├── __init__.py    # Command registration system
+│   │   │   ├── conversation.py  # Conversation management
+│   │   │   ├── conversation_history.py   
+│   │   │   ├── exit.py              
+│   │   │   ├── help.py              
+│   │   │   ├── help_text.py         
+│   │   │   ├── models.py            
+│   │   │   ├── servers.py           
+│   │   │   ├── tool_history.py      
+│   │   │   └── tools.py             
+│   │   ├── chat_context.py    # Chat session state management
+│   │   ├── chat_handler.py    # Main chat loop handler
+│   │   ├── command_completer.py  # Command completion
+│   │   ├── conversation.py    # Conversation processor
+│   │   ├── system_prompt.py   # System prompt generator
+│   │   ├── tool_processor.py  # Tool handling
+│   │   └── ui_manager.py      # User interface
+│   ├── commands/              # CLI commands
+│   │   ├── __init__.py
+│   │   ├── chat.py            # Chat command
+│   │   ├── interactive.py     # Interactive mode
+│   │   ├── ping.py            # Ping command
+│   │   ├── prompts.py         # Prompts commands
+│   │   ├── register_commands.py  # Command registration
+│   │   ├── resources.py       # Resources commands
+│   │   └── tools.py           # Tools commands
+│   ├── llm/                   # LLM client implementations
+│   │   ├── providers/         # Provider-specific clients
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py        # Base LLM client
+│   │   │   └── openai_client.py  # OpenAI implementation
+│   │   ├── llm_client.py      # Client factory
+│   │   ├── system_prompt_generator.py  # Prompt generator
+│   │   └── tools_handler.py   # Tools handling
+│   ├── ui/                    # User interface components
+│   │   ├── colors.py          # Color definitions
+│   │   └── ui_helpers.py      # UI utilities
+│   ├── cli_options.py         # CLI options processing
+│   ├── config.py              # Configuration loader
+│   ├── main.py                # Main entry point
+│   └── run_command.py         # Command execution
 ```
 
-## Contributing
-Contributions are welcome! Please open an issue or submit a pull request with your proposed changes.
+## 📈 Advanced Usage
 
-## License
-This project is licensed under the [MIT License](license.md).
+### Tool Execution
+
+The MCP CLI can automatically execute tools provided by the server. In chat mode, simply request information that requires tool usage, and the LLM will automatically select and call the appropriate tools.
+
+Example conversation:
+
+```
+You: What tables are available in the database?
+Assistant: Let me check for you.
+[Tool Call: list_tables]
+I found the following tables in the database:
+- users
+- products
+- orders
+- categories
+
+You: How many users do we have?
+Assistant: I'll query the database for that information.
+[Tool Call: read_query]
+There are 873 users in the database.
+```
+
+### Conversation Management
+
+Track and manage your conversation history:
+
+```
+> /conversation
+Conversation History (12 messages)
+# | Role      | Content
+1 | system    | You are an intelligent assistant capable of using t...
+2 | user      | What tables are available in the database?
+3 | assistant | Let me check for you.
+4 | assistant | [Tool call: list_tables]
+...
+
+> /conversation 4
+Message #4 (Role: assistant)
+[Tool call: list_tables]
+Tool Calls:
+  1. ID: call_list_tables_12345678, Type: function, Name: list_tables
+     Arguments: {}
+
+> /save conversation.json
+Conversation saved to conversation.json
+
+> /compact
+Conversation history compacted with summary.
+Summary:
+The user asked about database tables, and I listed the available tables (users, products, orders, categories). The user then asked about the number of users, and I queried the database to find there are 873 users.
+```
+
+## 📦 Dependencies
+
+The CLI is organized with optional dependency groups:
+
+- **cli**: Rich terminal UI, command completion, and provider integrations
+- **dev**: Development tools and testing utilities
+- **wasm**: (Reserved for future WebAssembly support)
+
+Install with specific extras using:
+```bash
+pip install "mcp-cli[cli]"     # Basic CLI features
+pip install "mcp-cli[cli,dev]" # CLI with development tools
+```
+
+## 🤝 Contributing
+
+Contributions are welcome! Please follow these steps:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📜 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- [Anthropic Claude](https://www.anthropic.com/claude) for assistance with code development
+- [Rich](https://github.com/Textualize/rich) for beautiful terminal formatting
+- [Typer](https://typer.tiangolo.com/) for CLI argument parsing
+- [Prompt Toolkit](https://github.com/prompt-toolkit/python-prompt-toolkit) for interactive input

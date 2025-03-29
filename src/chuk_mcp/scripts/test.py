@@ -1,4 +1,4 @@
-# src/cli/test.py
+# chuk_mcp/scripts/test.py
 import anyio
 import logging
 import sys

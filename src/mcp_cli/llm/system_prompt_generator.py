@@ -1,5 +1,5 @@
+# mcp_cli/llm/system_prompt_generator.py
 import json
-
 
 class SystemPromptGenerator:
     """

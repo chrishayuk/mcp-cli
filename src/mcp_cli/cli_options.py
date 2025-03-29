@@ -1,4 +1,4 @@
-# src/cli/cli_options.py
+# mcp_cli/cli_options.py
 import os
 import json
 

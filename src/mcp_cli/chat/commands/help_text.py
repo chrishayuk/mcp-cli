@@ -1,4 +1,4 @@
-# src/cli/chat/commands/help_text.py
+# mcp_cli/chat/commands/help_text.py
 """
 Help text module for various command groups.
 """

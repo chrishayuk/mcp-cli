@@ -1,4 +1,4 @@
-# src/cli/chat/ui_manager.py
+# mcp_cli/chat/ui_manager.py
 import os
 import json
 import time
@@ -15,6 +15,7 @@ from prompt_toolkit.history import FileHistory
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.styles import Style
 
+# mcp cli imports
 from mcp_cli.chat.command_completer import ChatCommandCompleter
 from mcp_cli.chat.commands import handle_command
 

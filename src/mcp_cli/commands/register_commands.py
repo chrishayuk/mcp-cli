@@ -1,9 +1,9 @@
-# src/cli/commands/register_commands.py
+# mcp_cli/commands/register_commands.py
 import typer
 from mcp_cli.commands import ping, chat, prompts, tools, resources, interactive
 
-# Remove the import for conversation_history_command as it's not needed at this level
-# from cli.chat.commands.conversation_history import conversation_history_command
+# Import our improved run_command implementation
+from mcp_cli.run_command import run_command
 
 def ping_command(
     config_file: str = "server_config.json",
@@ -13,7 +13,7 @@ def ping_command(
     disable_filesystem: bool = False,
 ):
     """Simple ping command."""
-    from mcp_cli.main import process_options, run_command
+    from mcp_cli.cli_options import process_options
     servers, user_specified = process_options(server, disable_filesystem, provider, model)
     run_command(ping.ping_run, config_file, servers, user_specified)
     return 0
@@ -26,7 +26,7 @@ def chat_command(
     disable_filesystem: bool = False,
 ):
     """Start a chat session."""
-    from mcp_cli.main import process_options, run_command
+    from mcp_cli.cli_options import process_options
     servers, user_specified = process_options(server, disable_filesystem, provider, model)
     run_command(chat.chat_run, config_file, servers, user_specified)
     return 0
@@ -39,7 +39,7 @@ def interactive_command(
     disable_filesystem: bool = False,
 ):
     """Enter interactive mode with a command prompt."""
-    from mcp_cli.main import process_options, run_command
+    from mcp_cli.cli_options import process_options
     servers, user_specified = process_options(server, disable_filesystem, provider, model)
     run_command(interactive.interactive_mode, config_file, servers, user_specified)
     return 0
@@ -52,7 +52,7 @@ def prompts_list_command(
     disable_filesystem: bool = False,
 ):
     """List available prompts."""
-    from mcp_cli.main import process_options, run_command
+    from mcp_cli.cli_options import process_options
     servers, user_specified = process_options(server, disable_filesystem, provider, model)
     run_command(prompts.prompts_list, config_file, servers, user_specified)
     return 0
@@ -65,7 +65,7 @@ def tools_list_command(
     disable_filesystem: bool = False,
 ):
     """List available tools."""
-    from mcp_cli.main import process_options, run_command
+    from mcp_cli.cli_options import process_options
     servers, user_specified = process_options(server, disable_filesystem, provider, model)
     run_command(tools.tools_list, config_file, servers, user_specified)
     return 0
@@ -78,7 +78,7 @@ def tools_call_command(
     disable_filesystem: bool = False,
 ):
     """Call a tool with JSON arguments."""
-    from mcp_cli.main import process_options, run_command
+    from mcp_cli.cli_options import process_options
     servers, user_specified = process_options(server, disable_filesystem, provider, model)
     run_command(tools.tools_call, config_file, servers, user_specified)
     return 0
@@ -91,13 +91,15 @@ def resources_list_command(
     disable_filesystem: bool = False,
 ):
     """List available resources."""
-    from mcp_cli.main import process_options, run_command
+    from mcp_cli.cli_options import process_options
     servers, user_specified = process_options(server, disable_filesystem, provider, model)
     run_command(resources.resources_list, config_file, servers, user_specified)
     return 0
 
-def register_commands(app: typer.Typer, process_options, run_command):
+def register_commands(app: typer.Typer, process_options, run_command_func):
     """Register all commands on the provided Typer app."""
+    # Note: We ignore the run_command_func parameter and use our improved version
+    
     app.command("ping")(ping_command)
     app.command("chat")(chat_command)
     app.command("interactive")(interactive_command)

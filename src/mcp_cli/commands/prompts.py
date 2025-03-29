@@ -1,4 +1,4 @@
-# src/cli/commands/prompts.py
+# mcp_cli/commands/prompts.py
 import typer
 from rich import print
 from rich.markdown import Markdown

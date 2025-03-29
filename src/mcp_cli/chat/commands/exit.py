@@ -1,4 +1,4 @@
-# src/cli/chat/commands/exit.py
+# mcp_cli/chat/commands/exit.py
 """
 Exit commands for the MCP chat interface.
 Includes exit and general utility commands.

@@ -1,4 +1,4 @@
-# src/cli/chat/commands/servers.py
+# mcp_cli/chat/commands/servers.py
 """
 Commands for working with MCP servers.
 """
