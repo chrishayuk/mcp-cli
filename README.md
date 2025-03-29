@@ -1,5 +1,12 @@
 # MCP CLI - Model Context Provider Command Line Interface
-A powerful, feature-rich command-line interface for interacting with Model Context Provider servers. This client enables seamless communication with LLMs through a protocol-level implementation, supporting tool usage, conversation management, and multiple operational modes.
+A powerful, feature-rich command-line interface for interacting with Model Context Provider servers. This client enables seamless communication with LLMs through integration with the [CHUK-MCP protocol library](https://github.com/chrishayuk/chuk-mcp) which is a pyodide compatible pure python protocol implementation of MCP, supporting tool usage, conversation management, and multiple operational modes.
+
+## 🔄 Protocol Implementation
+
+The core protocol implementation has been moved to a separate package at:
+**[https://github.com/chrishayuk/chuk-mcp](https://github.com/chrishayuk/chuk-mcp)**
+
+This CLI is built on top of the protocol library, focusing on providing a rich user experience while the protocol library handles the communication layer.
 
 ## 🌟 Features
 
@@ -44,6 +51,7 @@ A powerful, feature-rich command-line interface for interacting with Model Conte
 - For OpenAI: Valid API key in `OPENAI_API_KEY` environment variable
 - For Ollama: Local Ollama installation
 - Server configuration file (default: `server_config.json`)
+- [CHUK-MCP](https://github.com/chrishayuk/chuk-mcp) protocol library
 
 ## 🚀 Installation
 
@@ -409,6 +417,7 @@ The CLI is organized with optional dependency groups:
 - **cli**: Rich terminal UI, command completion, and provider integrations
 - **dev**: Development tools and testing utilities
 - **wasm**: (Reserved for future WebAssembly support)
+- **chuk-mcp**: Protocol implementation library (core dependency)
 
 Install with specific extras using:
 ```bash
@@ -436,3 +445,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [Rich](https://github.com/Textualize/rich) for beautiful terminal formatting
 - [Typer](https://typer.tiangolo.com/) for CLI argument parsing
 - [Prompt Toolkit](https://github.com/prompt-toolkit/python-prompt-toolkit) for interactive input
+- [CHUK-MCP](https://github.com/chrishayuk/chuk-mcp) for the core protocol implementation
