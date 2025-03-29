@@ -5,3 +5,4 @@ __pycache__
 dist/
 .pdm-build
 *.egg-info
+.DS_Store
