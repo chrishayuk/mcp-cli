@@ -1,6 +1,5 @@
 # chuk_mcp/mcp_client/messages/tools/send_messages.py
 from typing import Optional, Dict, List, Any, Union
-from pydantic import BaseModel
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 
 # chuk_mcp imports

@@ -3,7 +3,7 @@ import logging
 import anyio
 from typing import Optional, List
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
-from pydantic import BaseModel, Field
+from chuk_mcp.mcp_client.mcp_pydantic_base import McpPydanticBase, Field
 
 # chuk_mcp imports
 from chuk_mcp.mcp_client.messages.initialize.errors import VersionMismatchError
@@ -13,12 +13,12 @@ from chuk_mcp.mcp_client.messages.initialize.mcp_server_capabilities import MCPS
 from chuk_mcp.mcp_client.messages.initialize.mcp_server_info import MCPServerInfo
 from chuk_mcp.mcp_client.messages.json_rpc_message import JSONRPCMessage
 
-class InitializeParams(BaseModel):
+class InitializeParams(McpPydanticBase):
     protocolVersion: str
     capabilities: MCPClientCapabilities
     clientInfo: MCPClientInfo
 
-class InitializeResult(BaseModel):
+class InitializeResult(McpPydanticBase):
     protocolVersion: str
     capabilities: MCPServerCapabilities
     serverInfo: MCPServerInfo

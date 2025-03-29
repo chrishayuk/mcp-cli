@@ -1,12 +1,12 @@
 # chuk_mcp/mcp_client/messages/json_rpc_message.py
 from typing import Any, Dict, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from chuk_mcp.mcp_client.mcp_pydantic_base import McpPydanticBase, ConfigDict
 
-class JSONRPCMessage(BaseModel):
-    # json rpc version
+class JSONRPCMessage(McpPydanticBase):
+    # JSON-RPC version
     jsonrpc: str = "2.0"
 
-    # message id
+    # message ID
     id: Optional[str] = None
 
     # method name
@@ -21,5 +21,5 @@ class JSONRPCMessage(BaseModel):
     # error
     error: Optional[Dict[str, Any]] = None
 
-    # Use ConfigDict for Pydantic v2
+    # If using Pydantic v2, this sets how the model handles extra fields
     model_config = ConfigDict(extra="allow")
