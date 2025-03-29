@@ -81,7 +81,7 @@ async def get_server_streams(config_file, servers):
         # Force garbage collection
         gc.collect()
 
-async def run_command_async(command_func, config_file, servers, user_specified):
+async def run_command_async(command_func, config_file, servers, user_specified, extra_params=None):
     """
     Run a command with proper setup and cleanup.
     
@@ -90,6 +90,7 @@ async def run_command_async(command_func, config_file, servers, user_specified):
         config_file: Path to the configuration file.
         servers: List of server names to connect to.
         user_specified: List of servers specified by the user.
+        extra_params: Optional dictionary of additional parameters to pass to the command function.
         
     Returns:
         The result of the command function.
@@ -108,10 +109,13 @@ async def run_command_async(command_func, config_file, servers, user_specified):
         if not server_streams:
             logging.warning("No server streams available! Command may not work properly.")
             
-        # Run the command with the server streams
-        return await command_func(server_streams)
+        # Run the command with the server streams, passing extra params if provided
+        if extra_params is not None:
+            return await command_func(server_streams, **extra_params)
+        else:
+            return await command_func(server_streams)
 
-def run_command(command_func, config_file, servers, user_specified):
+def run_command(command_func, config_file, servers, user_specified, extra_params=None):
     """
     Synchronous wrapper for run_command_async.
     
@@ -120,6 +124,7 @@ def run_command(command_func, config_file, servers, user_specified):
         config_file: Path to the configuration file.
         servers: List of server names to connect to.
         user_specified: List of servers specified by the user.
+        extra_params: Optional dictionary of additional parameters to pass to the command function.
         
     Returns:
         The result of the command function.
@@ -133,7 +138,7 @@ def run_command(command_func, config_file, servers, user_specified):
         
         # Run the command
         return loop.run_until_complete(
-            run_command_async(command_func, config_file, servers, user_specified)
+            run_command_async(command_func, config_file, servers, user_specified, extra_params)
         )
     except KeyboardInterrupt:
         logging.debug("KeyboardInterrupt received")

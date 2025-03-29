@@ -1,6 +1,5 @@
-# mcp_cli/commands/register_commands.py
 import typer
-from mcp_cli.commands import ping, chat, prompts, tools, resources, interactive
+from mcp_cli.commands import ping, chat, prompts, tools, resources, interactive, cmd
 
 # Import our improved run_command implementation
 from mcp_cli.run_command import run_command
@@ -96,6 +95,36 @@ def resources_list_command(
     run_command(resources.resources_list, config_file, servers, user_specified)
     return 0
 
+def cmd_command(
+    config_file: str = "server_config.json",
+    server: str = None,
+    provider: str = "openai",
+    model: str = None,
+    disable_filesystem: bool = False,
+    input: str = None,
+    prompt: str = None, 
+    output: str = None,
+    raw: bool = False,
+    tool: str = None,
+    tool_args: str = None,
+    system_prompt: str = None,
+):
+    """Command mode for scriptable usage."""
+    from mcp_cli.cli_options import process_options
+    servers, user_specified = process_options(server, disable_filesystem, provider, model)
+    # Pass the additional command-specific parameters
+    extra_params = {
+        "input": input,
+        "prompt": prompt,
+        "output": output,
+        "raw": raw,
+        "tool": tool,
+        "tool_args": tool_args,
+        "system_prompt": system_prompt
+    }
+    run_command(cmd.cmd_run, config_file, servers, user_specified, extra_params)
+    return 0
+
 def register_commands(app: typer.Typer, process_options, run_command_func):
     """Register all commands on the provided Typer app."""
     # Note: We ignore the run_command_func parameter and use our improved version
@@ -103,6 +132,7 @@ def register_commands(app: typer.Typer, process_options, run_command_func):
     app.command("ping")(ping_command)
     app.command("chat")(chat_command)
     app.command("interactive")(interactive_command)
+    app.command("cmd")(cmd_command)
     
     # Create sub-typer apps for prompts, tools, and resources.
     prompts_app = typer.Typer(help="Prompts commands")
