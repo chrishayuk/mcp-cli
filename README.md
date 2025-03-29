@@ -6,6 +6,7 @@ A powerful, feature-rich command-line interface for interacting with Model Conte
 - **Multiple Operational Modes**:
   - **Chat Mode**: Conversational interface with direct LLM interaction and automated tool usage
   - **Interactive Mode**: Command-driven interface for direct server operations
+  - **Command Mode**: Unix-friendly mode for scriptable automation and pipelines
   - **Direct Commands**: Run individual commands without entering interactive mode
 
 - **Multi-Provider Support**:
@@ -173,6 +174,55 @@ In interactive mode, use these commands:
 - `/help`: Show help message
 - `/exit` or `/quit`: Exit the program
 
+## 📄 Using Command Mode
+
+Command mode provides a Unix-friendly interface for automation and pipeline integration:
+
+```bash
+mcp-cli cmd --server sqlite [options]
+```
+
+This mode is designed for scripting, batch processing, and direct integration with other Unix tools.
+
+### Command Mode Options
+
+- `--input`: Input file path (use `-` for stdin)
+- `--output`: Output file path (use `-` for stdout, default)
+- `--prompt`: Prompt template (use `{{input}}` as placeholder for input)
+- `--raw`: Output raw text without formatting
+- `--tool`: Directly call a specific tool
+- `--tool-args`: JSON arguments for tool call
+- `--system-prompt`: Custom system prompt
+
+### Command Mode Examples
+
+Process content with LLM:
+
+```bash
+# Summarize a document
+mcp-cli cmd --server sqlite --input document.md --prompt "Summarize this: {{input}}" --output summary.md
+
+# Process stdin and output to stdout
+cat document.md | mcp-cli cmd --server sqlite --input - --prompt "Extract key points: {{input}}"
+```
+
+Call tools directly:
+
+```bash
+# List database tables
+mcp-cli cmd --server sqlite --tool list_tables --raw
+
+# Run a SQL query
+mcp-cli cmd --server sqlite --tool read_query --tool-args '{"query": "SELECT COUNT(*) FROM users"}'
+```
+
+Batch processing:
+
+```bash
+# Process multiple files with GNU Parallel
+ls *.md | parallel mcp-cli cmd --server sqlite --input {} --output {}.summary.md --prompt "Summarize: {{input}}"
+```
+
 ## 🔧 Direct Commands
 
 Run individual commands without entering interactive mode:
@@ -244,6 +294,7 @@ src/
 │   ├── commands/              # CLI commands
 │   │   ├── __init__.py
 │   │   ├── chat.py            # Chat command
+│   │   ├── cmd.py             # Command mode
 │   │   ├── interactive.py     # Interactive mode
 │   │   ├── ping.py            # Ping command
 │   │   ├── prompts.py         # Prompts commands
@@ -289,6 +340,36 @@ You: How many users do we have?
 Assistant: I'll query the database for that information.
 [Tool Call: read_query]
 There are 873 users in the database.
+```
+
+### Scripting with Command Mode
+
+Command mode enables powerful automation through shell scripts:
+
+```bash
+#!/bin/bash
+# Example script to analyze multiple documents
+
+# Process all markdown files in the current directory
+for file in *.md; do
+  echo "Processing $file..."
+  
+  # Generate summary
+  mcp-cli cmd --server sqlite --input "$file" \
+    --prompt "Summarize this document: {{input}}" \
+    --output "${file%.md}.summary.md"
+  
+  # Extract entities
+  mcp-cli cmd --server sqlite --input "$file" \
+    --prompt "Extract all company names, people, and locations from this text: {{input}}" \
+    --output "${file%.md}.entities.txt" --raw
+done
+
+# Create a combined report
+echo "Creating final report..."
+cat *.entities.txt | mcp-cli cmd --server sqlite --input - \
+  --prompt "Analyze these entities and identify the most frequently mentioned:" \
+  --output report.md
 ```
 
 ### Conversation Management
