@@ -13,8 +13,14 @@ from mcp_cli.chat.chat_handler import handle_chat_mode
 app = typer.Typer(help="Chat commands")
 
 @app.command("run")
-async def chat_run(server_streams: list):
-    """Enter chat mode."""
+async def chat_run(server_streams: list, server_names=None):
+    """
+    Enter chat mode.
+    
+    Args:
+        server_streams: List of (read_stream, write_stream) tuples
+        server_names: Optional dictionary mapping server indices to their names
+    """
     provider = os.getenv("LLM_PROVIDER", "openai")
     model = os.getenv("LLM_MODEL", "gpt-4o-mini")
     os.system("cls" if os.name == "nt" else "clear")
@@ -26,8 +32,13 @@ async def chat_run(server_streams: list):
     print(Panel(Markdown(chat_info_text), style="bold cyan", title="Chat Mode", title_align="center"))
     
     try:
-        # Create a task for the chat handler
-        chat_task = asyncio.create_task(handle_chat_mode(server_streams, provider, model))
+        # Create a task for the chat handler with server names
+        chat_task = asyncio.create_task(handle_chat_mode(
+            server_streams, 
+            provider, 
+            model,
+            server_names  # Pass server names to handle_chat_mode
+        ))
         
         # Await the task with proper exception handling
         await chat_task

@@ -12,8 +12,16 @@ from mcp_cli.chat.ui_manager import ChatUIManager
 from mcp_cli.chat.conversation import ConversationProcessor
 from mcp_cli.ui.ui_helpers import display_welcome_banner, clear_screen
 
-async def handle_chat_mode(server_streams, provider="openai", model="gpt-4o-mini"):
-    """Enter chat mode with multi-call support for autonomous tool chaining."""
+async def handle_chat_mode(server_streams, provider="openai", model="gpt-4o-mini", server_names=None):
+    """
+    Enter chat mode with multi-call support for autonomous tool chaining.
+    
+    Args:
+        server_streams: List of (read_stream, write_stream) tuples
+        provider: LLM provider name (default: "openai")
+        model: LLM model name (default: "gpt-4o-mini")
+        server_names: Optional dictionary mapping server indices to their names
+    """
     ui_manager = None
     exit_code = 0
     active_subprocesses = []  # Track subprocess instances
@@ -22,8 +30,8 @@ async def handle_chat_mode(server_streams, provider="openai", model="gpt-4o-mini
         # Clear the screen to start fresh
         clear_screen()
         
-        # Initialize chat context
-        chat_context = ChatContext(server_streams, provider, model)
+        # Initialize chat context with server names
+        chat_context = ChatContext(server_streams, provider, model, server_names)
         if not await chat_context.initialize():
             return False
             
@@ -113,7 +121,7 @@ async def handle_chat_mode(server_streams, provider="openai", model="gpt-4o-mini
     
     return exit_code == 0  # Return success status
 
-# Helper functions for safer resource cleanup
+# Helper functions for safer resource cleanup (unchanged)
 async def _safe_cleanup(ui_manager):
     """Safely cleanup UI manager resources."""
     try:

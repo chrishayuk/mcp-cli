@@ -1,3 +1,4 @@
+# mcp_cli/chat/chat_context.py
 from rich import print
 from rich.console import Console
 
@@ -11,7 +12,7 @@ from mcp_cli.chat.system_prompt import generate_system_prompt
 class ChatContext:
     """Class to manage the chat context and state."""
     
-    def __init__(self, server_streams, provider="openai", model="gpt-4o-mini"):
+    def __init__(self, server_streams, provider="openai", model="gpt-4o-mini", server_names=None):
         self.server_streams = server_streams
         self.provider = provider
         self.model = model
@@ -21,6 +22,9 @@ class ChatContext:
         self.conversation_history = []
         self.exit_requested = False
         self.tool_to_server_map = {}  # Maps tool names to server names
+        
+        # Store server names mapping
+        self.server_names = server_names or {}
         
         # Initialize the client right away to ensure it's never None
         self.client = get_llm_client(provider=self.provider, model=self.model)
@@ -33,12 +37,19 @@ class ChatContext:
             tool_index = 0
             for i, (read_stream, write_stream) in enumerate(self.server_streams):
                 try:
-                    server_name = f"Server {i+1}"
+                    # Get server name from mapping or use default
+                    if isinstance(self.server_names, dict) and i in self.server_names:
+                        server_name = self.server_names[i]
+                    elif isinstance(self.server_names, list) and i < len(self.server_names):
+                        server_name = self.server_names[i]
+                    else:
+                        server_name = f"Server {i+1}"
+                    
                     fetched_tools = await fetch_tools(read_stream, write_stream)
                     
                     # Skip if None or empty
                     if not fetched_tools:
-                        print(f"[yellow]Warning: No tools returned from Server {i+1}[/yellow]")
+                        print(f"[yellow]Warning: No tools returned from {server_name}[/yellow]")
                         continue
                         
                     # Map each tool to its server
@@ -55,14 +66,17 @@ class ChatContext:
                     })
                     tool_index += len(fetched_tools)
                 except Exception as e:
+                    # Use the proper server name in error message if available
+                    server_name = server_name if 'server_name' in locals() else f"Server {i+1}"
+                    
                     self.server_info.append({
                         "id": i+1,
-                        "name": f"Server {i+1}",
+                        "name": server_name,
                         "tools": 0,
                         "status": f"Error: {str(e)}",
                         "tool_start_index": tool_index
                     })
-                    print(f"[yellow]Warning: Failed to fetch tools from Server {i+1}: {e}[/yellow]")
+                    print(f"[yellow]Warning: Failed to fetch tools from {server_name}: {e}[/yellow]")
                     continue
 
         if not self.tools:

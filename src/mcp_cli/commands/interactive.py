@@ -21,8 +21,16 @@ try:
 except ImportError:
     HAS_CHAT_CONTEXT = False
 
-async def interactive_mode(server_streams, provider="openai", model="gpt-4o-mini"):
-    """Run the interactive CLI loop."""
+async def interactive_mode(server_streams, provider="openai", model="gpt-4o-mini", server_names=None):
+    """
+    Run the interactive CLI loop.
+    
+    Args:
+        server_streams: List of (read_stream, write_stream) tuples
+        provider: LLM provider name (default: "openai")
+        model: LLM model name (default: "gpt-4o-mini")
+        server_names: Optional dictionary mapping server indices to their names
+    """
     # Set up context for command handling
     console = Console()
     
@@ -37,6 +45,7 @@ async def interactive_mode(server_streams, provider="openai", model="gpt-4o-mini
         "server_info": [],
         "tool_to_server_map": {},
         "server_streams": server_streams,
+        "server_names": server_names or {},  # Add server names to context
     }
     
     # Show welcome banner in interactive mode style
@@ -44,7 +53,7 @@ async def interactive_mode(server_streams, provider="openai", model="gpt-4o-mini
     
     # If ChatContext is available, use it for initialization
     if HAS_CHAT_CONTEXT:
-        chat_context = ChatContext(server_streams, provider, model)
+        chat_context = ChatContext(server_streams, provider, model, server_names)
         if await chat_context.initialize():
             # Update our context with the data from chat_context
             context["tools"] = chat_context.tools
@@ -87,7 +96,10 @@ async def interactive_mode(server_streams, provider="openai", model="gpt-4o-mini
                 print(f"[red]Error listing resources: {e}[/red]")
     
     async def handle_chat():
-        await chat.chat_run(server_streams)
+        await chat.chat_run(server_streams, server_names=server_names)
+    
+    async def handle_servers():
+        display_servers_info(context)
     
     def handle_exit():
         return "exit"
@@ -110,6 +122,8 @@ async def interactive_mode(server_streams, provider="openai", model="gpt-4o-mini
         "/tools-raw": handle_tools_raw,
         "/resources": handle_resources,
         "/chat": handle_chat,
+        "/servers": handle_servers,
+        "/s": handle_servers,  # Alias
         "/exit": handle_exit,
         "/quit": handle_exit,
         "/cls": handle_cls,
@@ -190,6 +204,43 @@ def display_interactive_banner(context, console=None, show_tools_info=True):
         tools = context.get("tools", [])
         if tools:
             print(f"[green]Loaded {len(tools)} tools successfully.[/green]")
+            
+            # Show server information if available
+            server_info = context.get("server_info", [])
+            if server_info:
+                print("[yellow]Type '/servers' to see connected servers[/yellow]")
+
+
+def display_servers_info(context):
+    """Display information about connected servers."""
+    server_info = context.get("server_info", [])
+    
+    if not server_info:
+        print("[yellow]No servers connected.[/yellow]")
+        return
+    
+    # Create a table for server information
+    table = Table(title="Connected Servers", show_header=True)
+    table.add_column("ID", style="cyan")
+    table.add_column("Server Name", style="green")
+    table.add_column("Tools", style="cyan")
+    table.add_column("Status", style="green")
+    
+    for server in server_info:
+        table.add_row(
+            str(server.get("id", "?")),
+            server.get("name", "Unknown"),
+            str(server.get("tools", 0)),
+            server.get("status", "Unknown")
+        )
+    
+    console = Console()
+    console.print(table)
+    
+    # If there are tools, show a hint about the tools command
+    tools = context.get("tools", [])
+    if tools:
+        print("[dim]Use the /tools command to see available tools[/dim]")
 
 
 def clear_screen_cmd(with_welcome=False):
@@ -215,6 +266,7 @@ def show_help():
 - **/tools-all**: Show detailed tool information with parameters
 - **/tools-raw**: Show raw tool definitions in JSON
 - **/resources**: List available resources
+- **/servers** or **/s**: Show connected servers
 - **/chat**: Enter chat mode
 - **/cls**: Clear the screen
 - **/clear**: Clear the screen and show welcome message

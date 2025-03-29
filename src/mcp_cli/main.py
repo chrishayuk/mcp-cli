@@ -132,13 +132,14 @@ def common_options(
     If no subcommand is provided, chat mode is launched by default.
     """
     # Process the options, getting the servers, etc.
-    servers, user_specified = process_options(server, disable_filesystem, provider, model)
+    servers, user_specified, server_names = process_options(server, disable_filesystem, provider, model, config_file)
     
     # Set the context.
     ctx.obj = {
         "config_file": config_file,
         "servers": servers,
         "user_specified": user_specified,
+        "server_names": server_names,  # Add server names to context
     }
     
     # Check if a subcommand was invoked.
