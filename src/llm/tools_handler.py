@@ -6,7 +6,7 @@ import uuid
 from typing import Any, Dict, Optional, List, Tuple, Union
 
 # Imports from your application for sending tool messages
-from mcp.messages.tools.send_messages import send_tools_call, send_tools_list
+from chuk_mcp.mcp_client.messages.tools.send_messages import send_tools_call, send_tools_list
 
 
 def parse_tool_response(response: str) -> Optional[Dict[str, Any]]:
