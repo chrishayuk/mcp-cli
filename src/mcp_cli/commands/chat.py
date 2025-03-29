@@ -1,4 +1,4 @@
-# src/cli/commands/chat.py
+# src/mcp_cli/commands/chat.py
 import os
 import typer
 import asyncio

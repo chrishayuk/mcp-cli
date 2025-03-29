@@ -1,4 +1,4 @@
-# src/cli/main.py
+# src/mcp_cli/main.py
 import logging
 import sys
 import typer

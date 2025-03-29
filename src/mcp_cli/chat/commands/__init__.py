@@ -219,7 +219,7 @@ def load_all_command_modules():
         if filename.endswith('.py') and filename != '__init__.py':
             module_name = filename[:-3]  # Remove .py extension
             try:
-                importlib.import_module(f'cli.chat.commands.{module_name}')
+                importlib.import_module(f'mcp_cli.chat.commands.{module_name}')
             except ImportError as e:
                 print(f"[yellow]Warning: Failed to import command module {module_name}: {e}[/yellow]")
 

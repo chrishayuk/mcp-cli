@@ -1,4 +1,4 @@
-# src/cli/commands/ping.py
+# src/mcp_cli/commands/ping.py
 import typer
 from rich import print
 from rich.markdown import Markdown
