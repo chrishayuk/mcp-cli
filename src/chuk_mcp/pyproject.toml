@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chuk-mcp"
+version = "0.1.0"
+description = "Model Context Provider Client"
+requires-python = ">=3.12"
+readme = "README.md"
+authors = [
+    {name = "Chris Hay", email = "chrishayuk@googlemail.com"}
+]
+keywords = ["llm", "openai", "claude", "mcp", "client"]
+license = "MIT"
+dependencies = [
+    "anyio>=4.6.2.post1",
+    "pydantic>=2.11.1",
+    "requests>=2.32.3",
+]
+
+[tool.setuptools]
+packages = ["mcp_client"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+    "pytest-asyncio>=0.26.0",
+]
