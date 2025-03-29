@@ -9,41 +9,40 @@ description = "A cli for the Model Context Provider"
 requires-python = ">=3.11"
 readme = "README.md"
 authors = [
-    {name = "Chris Hay", email = "chrishayuk@googlemail.com"}
+  { name = "Chris Hay", email = "chrishayuk@googlemail.com" }
 ]
 keywords = ["llm", "openai", "claude", "mcp", "cli"]
 license = {text = "MIT"}
 dependencies = [
-    "anyio>=4.6.2.post1",
-    "requests>=2.32.3",
-    # "chuk-mcp>=0.1.0",  # Temporarily commented out for local development
+  "anyio>=4.6.2.post1",
+  "asyncio>=3.4.3",
+  "chuk-mcp>=0.1.7",
+  "ollama>=0.4.2",
+  "openai>=1.55.3",
+  "pandas>=2.2.3",
+  "prompt-toolkit>=3.0.50",
+  "python-dotenv>=1.0.1",
+  "requests>=2.32.3", # Re-enable if you actually want to install from PyPI
+  "rich>=13.9.4",
+  "typer>=0.15.2",
 ]
 
 [project.scripts]
 mcp-cli = "mcp_cli.main:app"
 
 [project.optional-dependencies]
-cli = [
-    "ollama>=0.4.2",
-    "prompt-toolkit>=3.0.50",
-    "python-dotenv>=1.0.1",
-    "rich>=13.9.4",
-    "typer>=0.15.2",
-    "openai>=1.55.3",
-    "asyncio>=3.4.3",
-]
 wasm = []
 dev = [
-    "numpy>=2.2.3",
-    "pytest-asyncio>=0.25.3",
-    "asyncio>=3.4.3",
+  "numpy>=2.2.3",
+  "pytest-asyncio>=0.25.3",
+  "asyncio>=3.4.3"
 ]
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = { "" = "src" }
 packages = ["mcp_cli"]
 
 [dependency-groups]
 dev = [
-    "pydantic>=2.10.2",
+  "pydantic>=2.10.2"
 ]
