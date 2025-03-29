@@ -2,7 +2,7 @@
 import pytest
 from pydantic import ValidationError
 
-from chuk_mcp.mcp_client.transport.stdio.stdio_server_parameters import StdioServerParameters
+from mcp_client.transport.stdio.stdio_server_parameters import StdioServerParameters
 
 def test_stdio_server_parameters_creation():
     """Test creating StdioServerParameters with valid data."""

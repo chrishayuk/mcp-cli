@@ -3,9 +3,9 @@ import pytest
 import anyio
 
 # chuk_mcp imports
-from chuk_mcp.mcp_client.messages.json_rpc_message import JSONRPCMessage
-from chuk_mcp.mcp_client.messages.message_method import MessageMethod
-from chuk_mcp.mcp_client.messages.prompts.send_messages import send_prompts_list, send_prompts_get
+from mcp_client.messages.json_rpc_message import JSONRPCMessage
+from mcp_client.messages.message_method import MessageMethod
+from mcp_client.messages.prompts.send_messages import send_prompts_list, send_prompts_get
 
 # Force asyncio only for all tests in this file
 pytestmark = [pytest.mark.asyncio]

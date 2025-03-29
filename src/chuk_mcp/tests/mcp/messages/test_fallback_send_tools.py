@@ -20,15 +20,15 @@ async def test_send_tools_list_fallback(monkeypatch):
     #    so that on reload, they see pydantic is missing.
     #    (Remove whichever submodules are relevant – e.g. mcp_client, mcp_client.messages, etc.)
     for mod_name in list(sys.modules):
-        if mod_name.startswith("chuk_mcp.mcp_client"):
+        if mod_name.startswith("mcp_client"):
             del sys.modules[mod_name]
 
     # 3) Re-import the modules under test
-    import chuk_mcp.mcp_client.messages.json_rpc_message  # triggers fallback
-    import chuk_mcp.mcp_client.messages.tools.send_messages as tools_messages
+    import mcp_client.messages.json_rpc_message  # triggers fallback
+    import mcp_client.messages.tools.send_messages as tools_messages
     from anyio.streams.memory import MemoryObjectSendStream, MemoryObjectReceiveStream
-    from chuk_mcp.mcp_client.messages.json_rpc_message import JSONRPCMessage
-    from chuk_mcp.mcp_client.messages.message_method import MessageMethod
+    from mcp_client.messages.json_rpc_message import JSONRPCMessage
+    from mcp_client.messages.message_method import MessageMethod
 
     # 4) Now replicate the server+client test from test_send_tools.py
     read_send, read_receive = anyio.create_memory_object_stream(max_buffer_size=10)

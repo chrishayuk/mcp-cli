@@ -13,11 +13,11 @@ def test_mcp_pydantic_base_fallback(monkeypatch):
     monkeypatch.delitem(sys.modules, "pydantic", raising=False)
 
     # 2) Reload our module so it re-checks for pydantic availability
-    import chuk_mcp.mcp_client.mcp_pydantic_base
-    importlib.reload(chuk_mcp.mcp_client.mcp_pydantic_base)
+    import mcp_client.mcp_pydantic_base
+    importlib.reload(mcp_client.mcp_pydantic_base)
 
     # 3) Now import the fallback classes/functions
-    from chuk_mcp.mcp_client.mcp_pydantic_base import McpPydanticBase, Field, ConfigDict
+    from mcp_client.mcp_pydantic_base import McpPydanticBase, Field, ConfigDict
 
     # 4) Define a quick test model using the fallback
     class FallbackModel(McpPydanticBase):

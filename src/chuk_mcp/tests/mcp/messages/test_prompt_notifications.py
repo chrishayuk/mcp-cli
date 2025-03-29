@@ -3,8 +3,8 @@ import pytest
 import anyio
 from unittest.mock import AsyncMock
 
-from chuk_mcp.mcp_client.messages.message_method import MessageMethod
-from chuk_mcp.mcp_client.messages.prompts.notifications import handle_prompts_list_changed_notification
+from mcp_client.messages.message_method import MessageMethod
+from mcp_client.messages.prompts.notifications import handle_prompts_list_changed_notification
 
 # Force asyncio only for all tests in this file
 pytestmark = [pytest.mark.asyncio]

@@ -3,8 +3,8 @@ import pytest
 import anyio
 
 # imports
-from chuk_mcp.mcp_client.messages.json_rpc_message import JSONRPCMessage
-from chuk_mcp.mcp_client.messages.send_message import send_message
+from mcp_client.messages.json_rpc_message import JSONRPCMessage
+from mcp_client.messages.send_message import send_message
 
 # Force asyncio only for all tests in this file
 pytestmark = [pytest.mark.asyncio]

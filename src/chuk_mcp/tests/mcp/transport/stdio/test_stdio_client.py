@@ -7,9 +7,9 @@ import sys
 import logging
 from unittest.mock import AsyncMock, patch, MagicMock
 
-from chuk_mcp.mcp_client.messages.json_rpc_message import JSONRPCMessage
-from chuk_mcp.mcp_client.transport.stdio.stdio_client import stdio_client
-from chuk_mcp.mcp_client.transport.stdio.stdio_server_parameters import StdioServerParameters
+from mcp_client.messages.json_rpc_message import JSONRPCMessage
+from mcp_client.transport.stdio.stdio_client import stdio_client
+from mcp_client.transport.stdio.stdio_server_parameters import StdioServerParameters
 
 # Force asyncio only for all tests in this file
 pytestmark = [pytest.mark.asyncio]

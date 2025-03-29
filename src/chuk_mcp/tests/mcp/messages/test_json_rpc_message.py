@@ -1,6 +1,6 @@
 # tests/mcp/test_json_rpc_message.py
 from pydantic import ValidationError
-from chuk_mcp.mcp_client.messages.json_rpc_message import JSONRPCMessage
+from mcp_client.messages.json_rpc_message import JSONRPCMessage
 
 # Check for Pydantic version to handle compatibility
 try:

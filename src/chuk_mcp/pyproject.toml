@@ -4,27 +4,33 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chuk-mcp"
-version = "0.1.4"
+version = "0.1.6"
 description = "Model Context Provider Client"
 requires-python = ">=3.11"
 readme = "README.md"
 authors = [
-    {name = "Chris Hay", email = "chrishayuk@googlemail.com"}
+  { name = "Chris Hay", email = "chrishayuk@googlemail.com" }
 ]
 keywords = ["llm", "openai", "claude", "mcp", "client"]
 license = "MIT"
 dependencies = [
-    "anyio>=4.9.0",
-    "requests>=2.32.3",
-    "typing-extensions>=4.7.1,<5.0.0",
+  "anyio>=4.9.0",
+  "requests>=2.32.3",
+  "typing-extensions>=4.7.1,<5.0.0",
 ]
 
 [tool.setuptools]
+# Tells setuptools that the root of your Python packages is "src/"
+# so it will look inside "src/" for packages.
+package-dir = { "" = "src" }
+
+# The top-level package you want to install is named "mcp_client",
+# which resides in src/mcp_client.
 packages = ["mcp_client"]
 
 [dependency-groups]
 dev = [
-    "pydantic>=2.11.1",
-    "pytest>=8.3.5",
-    "pytest-asyncio>=0.26.0",
+  "pydantic>=2.11.1",
+  "pytest>=8.3.5",
+  "pytest-asyncio>=0.26.0",
 ]

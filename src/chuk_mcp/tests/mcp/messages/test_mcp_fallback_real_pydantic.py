@@ -7,7 +7,7 @@ def test_mcp_pydantic_base_real_pydantic():
 
     assert "pydantic" in sys.modules, "Pydantic should be installed for this test."
 
-    from chuk_mcp.mcp_client.mcp_pydantic_base import McpPydanticBase, Field, ConfigDict
+    from mcp_client.mcp_pydantic_base import McpPydanticBase, Field, ConfigDict
     import pydantic
 
     # Define a test model

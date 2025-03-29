@@ -5,7 +5,7 @@ import logging
 from unittest.mock import AsyncMock, patch, MagicMock
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 
-from chuk_mcp.mcp_client.transport.stdio.stdio_server_shutdown import shutdown_stdio_server
+from mcp_client.transport.stdio.stdio_server_shutdown import shutdown_stdio_server
 
 # Force asyncio only for all tests in this file
 pytestmark = [pytest.mark.asyncio]

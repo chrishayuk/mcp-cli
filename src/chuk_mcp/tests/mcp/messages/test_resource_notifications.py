@@ -3,7 +3,7 @@ import pytest
 import anyio
 from unittest.mock import AsyncMock
 
-from chuk_mcp.mcp_client.messages.resources.notifications import (
+from mcp_client.messages.resources.notifications import (
     handle_resources_list_changed_notification,
     handle_resources_updated_notification
 )
