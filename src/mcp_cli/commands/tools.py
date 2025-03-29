@@ -18,8 +18,14 @@ from chuk_mcp.mcp_client.messages.tools.send_messages import send_tools_list, se
 app = typer.Typer(help="Tools commands")
 
 @app.command("list")
-async def tools_list(server_streams: list):
-    """List all tools from all servers."""
+async def tools_list(server_streams: list, server_names=None):
+    """
+    List all tools from all servers.
+    
+    Args:
+        server_streams: List of (read_stream, write_stream) tuples
+        server_names: Optional dictionary mapping server indices to their names
+    """
     print("[cyan]\nFetching Tools List from all servers...[/cyan]")
     
     all_tools = []
@@ -28,7 +34,14 @@ async def tools_list(server_streams: list):
     try:
         # Create tasks for fetching tools from all servers concurrently
         for i, (r_stream, w_stream) in enumerate(server_streams):
-            task = asyncio.create_task(fetch_tools_from_server(i, r_stream, w_stream))
+            # Get server name if available
+            server_display_name = f"Server {i+1}"
+            if server_names and i in server_names:
+                server_display_name = server_names[i]
+            
+            task = asyncio.create_task(fetch_tools_from_server(
+                i, r_stream, w_stream, server_display_name
+            ))
             tasks.append(task)
         
         # Wait for all tasks to complete
@@ -37,15 +50,15 @@ async def tools_list(server_streams: list):
         # Process results and collect tools
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                print(f"[yellow]Error fetching tools from Server {i+1}: {result}[/yellow]")
+                print(f"[yellow]Error fetching tools: {result}[/yellow]")
                 continue
                 
-            server_num, tools, table = result
+            server_name, tools, table = result
             if tools:
                 all_tools.extend(tools)
                 print(table)
             else:
-                print(f"[yellow]Server {server_num}: No tools available.[/yellow]")
+                print(f"[yellow]{server_name}: No tools available.[/yellow]")
         
         # Summary
         if all_tools:
@@ -64,16 +77,14 @@ async def tools_list(server_streams: list):
         if tasks:
             await asyncio.wait(tasks, timeout=0.5)
 
-async def fetch_tools_from_server(server_idx, r_stream, w_stream):
+async def fetch_tools_from_server(server_idx, r_stream, w_stream, server_display_name):
     """Fetch tools from a single server and format the results."""
-    server_num = server_idx + 1
-    
     try:
         response = await send_tools_list(r_stream, w_stream)
         tools = response.get("tools", [])
         
         # Create a table for this server's tools
-        table = Table(title=f"Server {server_num} Tools ({len(tools)} available)")
+        table = Table(title=f"{server_display_name} Tools ({len(tools)} available)")
         table.add_column("Tool", style="green")
         table.add_column("Description")
         
@@ -84,27 +95,39 @@ async def fetch_tools_from_server(server_idx, r_stream, w_stream):
                 desc = desc[:72] + "..."
             table.add_row(name, desc)
         
-        return server_num, tools, table
+        return server_display_name, tools, table
     except Exception as e:
-        raise Exception(f"Failed to fetch tools from Server {server_num}: {e}")
+        raise Exception(f"Failed to fetch tools from {server_display_name}: {e}")
 
 @app.command("call")
-async def tools_call(server_streams: list):
-    """Call a tool with arguments."""
+async def tools_call(server_streams: list, server_names=None):
+    """
+    Call a tool with arguments.
+    
+    Args:
+        server_streams: List of (read_stream, write_stream) tuples
+        server_names: Optional dictionary mapping server indices to their names
+    """
     print("[cyan]\nTool Call Interface[/cyan]")
     
     # First, get a list of all available tools
     all_tools = []
     try:
         for i, (r_stream, w_stream) in enumerate(server_streams):
+            # Get server name if available
+            server_display_name = f"Server {i+1}"
+            if server_names and i in server_names:
+                server_display_name = server_names[i]
+            
             try:
                 response = await send_tools_list(r_stream, w_stream)
                 tools = response.get("tools", [])
                 for tool in tools:
                     tool["server_index"] = i
+                    tool["server_name"] = server_display_name
                 all_tools.extend(tools)
             except Exception as e:
-                print(f"[yellow]Error fetching tools from Server {i+1}: {e}[/yellow]")
+                print(f"[yellow]Error fetching tools from {server_display_name}: {e}[/yellow]")
         
         if not all_tools:
             print("[yellow]No tools available from any server.[/yellow]")
@@ -113,7 +136,7 @@ async def tools_call(server_streams: list):
         # List available tools
         print("[green]Available tools:[/green]")
         for i, tool in enumerate(all_tools):
-            print(f"  {i+1}. {tool['name']} - {tool.get('description', 'No description')}")
+            print(f"  {i+1}. {tool['name']} (from {tool['server_name']}) - {tool.get('description', 'No description')}")
         
         # Get user selection
         try:
@@ -131,7 +154,7 @@ async def tools_call(server_streams: list):
         r_stream, w_stream = server_streams[server_index]
         
         # Show tool details
-        print(f"\n[green]Selected: {tool['name']}[/green]")
+        print(f"\n[green]Selected: {tool['name']} from {tool['server_name']}[/green]")
         print(f"[cyan]Description: {tool.get('description', 'No description')}[/cyan]")
         
         # Show parameters
@@ -164,7 +187,7 @@ async def tools_call(server_streams: list):
             args = {}
         
         # Call the tool
-        print(f"\n[cyan]Calling tool '{tool['name']}' with arguments:[/cyan]")
+        print(f"\n[cyan]Calling tool '{tool['name']}' from {tool['server_name']} with arguments:[/cyan]")
         print(Syntax(json.dumps(args, indent=2), "json"))
         
         try:
@@ -208,4 +231,4 @@ async def tools_call(server_streams: list):
         
         # Let any cancelled tasks complete their cancellation
         if tasks:
-            await asyncio.wait(tasks, timeout=0.5)  
+            await asyncio.wait(tasks, timeout=0.5)

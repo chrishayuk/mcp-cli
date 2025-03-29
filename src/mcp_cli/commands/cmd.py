@@ -1,3 +1,4 @@
+# mcp_cli/commands/cmd.py
 """
 Command mode module for non-interactive, scriptable usage of MCP CLI.
 """
@@ -7,7 +8,7 @@ import sys
 import json
 import logging
 import asyncio
-from typing import Optional
+from typing import Optional, Dict
 from rich import print
 
 # llm imports
@@ -35,6 +36,7 @@ async def cmd_run(
     provider: Optional[str] = None,
     model: Optional[str] = None,
     verbose: bool = False,
+    server_names: Optional[Dict[int, str]] = None,
 ):
     """Run a command in non-interactive mode for automation and scripting."""
     
@@ -72,7 +74,7 @@ async def cmd_run(
         
         # If tool is specified, execute tool directly
         if tool:
-            result = await run_single_tool(server_streams, tool, tool_args)
+            result = await run_single_tool(server_streams, tool, tool_args, server_names)
             write_output(result, output, raw)
             return
             
@@ -83,7 +85,8 @@ async def cmd_run(
             model_name, 
             input_text,
             prompt, 
-            system_prompt
+            system_prompt,
+            server_names
         )
         
         # Output result
@@ -93,7 +96,7 @@ async def cmd_run(
         logger.error(f"Error in command mode: {e}")
         sys.exit(1)
 
-async def run_single_tool(server_streams, tool_name, tool_args_json):
+async def run_single_tool(server_streams, tool_name, tool_args_json, server_names=None):
     """Run a single tool directly."""
     from mcp_cli.llm.tools_handler import send_tools_call
     
@@ -107,8 +110,15 @@ async def run_single_tool(server_streams, tool_name, tool_args_json):
             sys.exit(1)
     
     # Try each server until we find one that has the tool
-    for read_stream, write_stream in server_streams:
+    for i, (read_stream, write_stream) in enumerate(server_streams):
         try:
+            # Get server name for logging
+            server_display_name = "Unknown Server"
+            if server_names and i in server_names:
+                server_display_name = server_names[i]
+            else:
+                server_display_name = f"Server {i+1}"
+                
             # First check if the server has the requested tool
             tools_response = await fetch_tools(read_stream, write_stream)
             tools_list = []
@@ -122,7 +132,7 @@ async def run_single_tool(server_streams, tool_name, tool_args_json):
             tool_names = [tool["name"] for tool in tools_list if isinstance(tool, dict) and "name" in tool]
             
             if tool_name in tool_names:
-                logger.debug(f"Found tool '{tool_name}' on server")
+                logger.debug(f"Found tool '{tool_name}' on server '{server_display_name}'")
                 # Call the tool
                 result = await send_tools_call(
                     read_stream=read_stream, 
@@ -134,35 +144,64 @@ async def run_single_tool(server_streams, tool_name, tool_args_json):
                 # Check for errors
                 if result.get("isError"):
                     error_msg = result.get("error", "Unknown error")
-                    logger.error(f"Error calling tool {tool_name}: {error_msg}")
+                    logger.error(f"Error calling tool {tool_name} on {server_display_name}: {error_msg}")
                     sys.exit(1)
                     
                 # Return the tool result
                 return json.dumps(result.get("content", "No content"), indent=2)
         except Exception as e:
-            logger.debug(f"Error with server: {e}")
+            logger.debug(f"Error with server '{server_display_name}': {e}")
             continue  # Try next server
     
     # If we get here, no server had the requested tool
     logger.error(f"Tool '{tool_name}' not found on any server")
     sys.exit(1)
 
-async def run_llm_with_tools(server_streams, provider, model, input_text, prompt_template, custom_system_prompt):
+async def run_llm_with_tools(
+    server_streams, 
+    provider, 
+    model, 
+    input_text, 
+    prompt_template, 
+    custom_system_prompt, 
+    server_names=None
+):
     """Run LLM inference with tool support."""
     # Collect tools from all servers
     all_tools = []
-    for read_stream, write_stream in server_streams:
+    tool_to_server_map = {}  # Maps tool names to their server names
+    
+    for i, (read_stream, write_stream) in enumerate(server_streams):
         try:
+            # Get server name for this index
+            server_display_name = "Unknown Server"
+            if server_names and i in server_names:
+                server_display_name = server_names[i]
+            else:
+                server_display_name = f"Server {i+1}"
+                
             # Get tools from this server
             tools_response = await fetch_tools(read_stream, write_stream)
+            server_tools = []
+            
             if tools_response and isinstance(tools_response, dict):
-                all_tools.extend(tools_response.get("tools", []))
+                server_tools = tools_response.get("tools", [])
             elif tools_response and isinstance(tools_response, list):
                 # Some implementations might return a list directly
-                all_tools.extend(tools_response)
+                server_tools = tools_response
+                
+            # Map each tool to this server
+            for tool in server_tools:
+                if isinstance(tool, dict) and "name" in tool:
+                    tool_to_server_map[tool["name"]] = server_display_name
+            
+            # Add tools to the combined list
+            all_tools.extend(server_tools)
+            
+            logger.debug(f"Fetched {len(server_tools)} tools from '{server_display_name}'")
         except Exception as e:
             # Just log the error and continue
-            logger.warning(f"Failed to fetch tools from a server: {e}")
+            logger.warning(f"Failed to fetch tools from server {i}: {e}")
     
     # Convert tools to OpenAI format
     openai_tools = convert_to_openai_tools(all_tools)
@@ -206,7 +245,7 @@ async def run_llm_with_tools(server_streams, provider, model, input_text, prompt
         if completion.get("tool_calls"):
             logger.debug(f"LLM requested tool calls - processing...")
             # Process tool calls
-            await process_tool_calls(completion.get("tool_calls"), conversation, server_streams)
+            await process_tool_calls(completion.get("tool_calls"), conversation, server_streams, tool_to_server_map)
             
             # Get final response after tool calls
             logger.debug(f"Getting final response after tool calls...")
@@ -224,7 +263,7 @@ async def run_llm_with_tools(server_streams, provider, model, input_text, prompt
                 # If there are more tool calls, process them too
                 while "tool_calls" in final_completion and final_completion["tool_calls"] and iterations < max_iterations:
                     logger.debug(f"LLM requested more tool calls (iteration {iterations+1}/{max_iterations})")
-                    await process_tool_calls(final_completion.get("tool_calls"), conversation, server_streams)
+                    await process_tool_calls(final_completion.get("tool_calls"), conversation, server_streams, tool_to_server_map)
                     
                     # Try one more time with another completion
                     logger.debug(f"Getting final response after additional tool calls...")
@@ -280,12 +319,25 @@ async def run_llm_with_tools(server_streams, provider, model, input_text, prompt
         logger.error(f"Error during LLM completion: {e}")
         return f"Error: An exception occurred while processing your request: {str(e)}"
     
-async def process_tool_calls(tool_calls, conversation, server_streams):
+async def process_tool_calls(tool_calls, conversation, server_streams, tool_to_server_map=None):
     """Process tool calls and update conversation."""
     from mcp_cli.llm.tools_handler import handle_tool_call
     
     for i, tool_call in enumerate(tool_calls):
-        logger.debug(f"Processing tool call {i+1}/{len(tool_calls)}")
+        # Get tool name for logging
+        tool_name = None
+        if hasattr(tool_call, "function") and hasattr(tool_call.function, "name"):
+            tool_name = tool_call.function.name
+        elif isinstance(tool_call, dict) and "function" in tool_call:
+            fn_info = tool_call["function"]
+            tool_name = fn_info.get("name")
+            
+        # Get server name for this tool if available
+        server_info = ""
+        if tool_name and tool_to_server_map and tool_name in tool_to_server_map:
+            server_info = f" on '{tool_to_server_map[tool_name]}'"
+            
+        logger.debug(f"Processing tool call {i+1}/{len(tool_calls)}: {tool_name}{server_info}")
         await handle_tool_call(tool_call, conversation, server_streams)
 
 def write_output(content, output_path, raw=False):
