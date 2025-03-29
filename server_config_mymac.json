@@ -1,0 +1,31 @@
+{
+    "mcpServers": {
+      "filesystem": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-filesystem",
+          "/Users/ywchen/project",
+          "/Users/ywchen/Downloads"
+        ]
+      },
+
+      "weather": {
+        "command": "/Users/ywchen/project/weather/.venv/bin/python",
+        "args": [
+          "/Users/ywchen/project/weather/weather.py"
+        ]
+      },
+      "postgres": {
+      "command": "docker",
+      "args": [
+        "run", 
+        "-i", 
+        "--rm", 
+        "mcp/postgres", 
+        "postgresql://postgres:chen0622@host.docker.internal:5432/familytrip"
+      ] 
+     }
+      
+    }
+}

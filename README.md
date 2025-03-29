@@ -65,7 +65,7 @@ uv run mcp-cli chat --server sqlite --provider openai --model gpt-4o
 ```
 
 ```bash
-uv run mcp-cli chat --server sqlite --provider ollama --model llama3.2
+uv run mcp-cli chat --server sqlite --provider ollama --model llama3
 ```
 
 ### Using Chat Mode
