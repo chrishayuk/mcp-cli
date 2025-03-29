@@ -1,4 +1,4 @@
-# src/cli/chat/commands/conversation_history.py
+# mcp_cli/chat/commands/conversation_history.py
 import json
 import traceback
 from rich.console import Console

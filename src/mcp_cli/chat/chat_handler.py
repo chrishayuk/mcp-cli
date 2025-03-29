@@ -1,4 +1,4 @@
-# src/cli/chat/chat_handler.py
+# mcp_cli/chat/chat_handler.py
 import asyncio
 import sys
 import gc
@@ -6,6 +6,7 @@ from subprocess import Popen
 from rich import print
 from rich.panel import Panel
 
+# mcp cli imports
 from mcp_cli.chat.chat_context import ChatContext
 from mcp_cli.chat.ui_manager import ChatUIManager
 from mcp_cli.chat.conversation import ConversationProcessor

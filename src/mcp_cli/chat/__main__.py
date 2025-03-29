@@ -1,4 +1,3 @@
-# mcp_cli/main.py
 import logging
 import sys
 import typer
@@ -17,8 +16,8 @@ from chuk_mcp.mcp_client.messages.initialize.send_messages import send_initializ
 from mcp_cli.commands.register_commands import register_commands, chat_command
 from mcp_cli.cli_options import process_options
 
-# host imports - use our improved run_command
-from mcp_cli.run_command import run_command
+# host imports
+from chuk_mcp.mcp_client.host.server_manager import run_command
 
 # Configure logging
 logging.basicConfig(

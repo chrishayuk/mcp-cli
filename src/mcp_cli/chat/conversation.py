@@ -1,8 +1,9 @@
-# src/cli/chat/conversation.py
+# mcp_cli/chat/conversation.py
 import time
 import asyncio
 from rich import print
 
+# mcp cli imports
 from mcp_cli.chat.tool_processor import ToolProcessor
 
 class ConversationProcessor:

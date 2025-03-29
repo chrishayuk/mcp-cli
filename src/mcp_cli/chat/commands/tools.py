@@ -1,15 +1,15 @@
-# src/cli/chat/commands/tools_command.py
 """
 Tools command module for listing available tools with their server sources.
 """
-
 from rich.console import Console
 from rich.table import Table
+from rich.syntax import Syntax
+import json
 
+# Import the registration function from the command handler
 from mcp_cli.chat.commands import register_command
 
-
-async def tools_command(args, context):
+async def tools_command(cmd_parts, context):
     """
     Display all available tools with their server information.
     
@@ -23,73 +23,60 @@ async def tools_command(args, context):
     """
     console = Console()
     
-    # Parse arguments
+    # Parse arguments - skip the command name itself
+    args = cmd_parts[1:] if len(cmd_parts) > 1 else []
+    
+    # Parse options
     show_all = "--all" in args
     show_raw = "--raw" in args
     
     # Get tools and server mapping
-    tools = context["tools"]
+    tools = context.get("tools", [])
     tool_to_server_map = context.get("tool_to_server_map", {})
     
-    # If no server mapping exists in context, build one
-    if not tool_to_server_map:
-        tool_to_server_map = {}
-        for server_info in context["server_info"]:
-            server_id = server_info["id"]
-            server_name = server_info["name"]
-            
-            # Calculate tool ranges for each server
-            start_idx = 0
-            for prev_server in context["server_info"]:
-                if prev_server["id"] < server_id:
-                    start_idx += prev_server.get("tools", 0)
-            
-            end_idx = start_idx + server_info.get("tools", 0)
-            
-            # Associate tools with this server
-            for i in range(start_idx, end_idx):
-                if i < len(tools):
-                    tool_name = tools[i]["name"]
-                    tool_to_server_map[tool_name] = server_name
+    if not tools:
+        console.print("[yellow]No tools available.[/yellow]")
+        return True
     
+    # Show raw JSON if --raw was given
     if show_raw:
-        # Show raw tool definitions (useful for debugging)
-        from rich.syntax import Syntax
-        import json
-        
         raw_json = json.dumps(tools, indent=2)
         console.print(Syntax(raw_json, "json", theme="monokai", line_numbers=True))
         return True
     
-    # Create a rich table
+    # Create and populate a rich table
     table = Table(title=f"{len(tools)} Available Tools")
-    
-    # Add columns
     table.add_column("Server", style="cyan")
     table.add_column("Tool", style="green")
     table.add_column("Description")
     
     if show_all:
-        # Show additional columns for detailed view
         table.add_column("Parameters", style="yellow")
     
-    # Add rows for each tool
     for tool in tools:
-        tool_name = tool["name"]
+        tool_name = tool.get("name", "unknown")
         server_name = tool_to_server_map.get(tool_name, "Unknown")
         
-        # Truncate descriptions based on mode
+        # Possibly truncate the description if --all not used
         description = tool.get("description", "No description")
         if not show_all and len(description) > 75:
             description = description[:72] + "..."
         
         if show_all:
-            # Get parameters information
-            parameters = tool.get("parameters", {})
-            properties = parameters.get("properties", {})
-            required = parameters.get("required", [])
+            # Handle multiple schema formats (OpenAI / MCP)
+            parameters = tool.get("parameters", tool.get("inputSchema", {}))
             
-            # Format parameters as a string
+            if "properties" in parameters:
+                properties = parameters["properties"]
+                required = parameters.get("required", [])
+            elif isinstance(parameters, dict):
+                properties = parameters.get("properties", {})
+                required = parameters.get("required", [])
+            else:
+                properties = {}
+                required = []
+            
+            # Generate parameter info
             param_strs = []
             for param_name, param_info in properties.items():
                 param_type = param_info.get("type", "any")
@@ -97,19 +84,16 @@ async def tools_command(args, context):
                 param_strs.append(f"{param_name}{is_required} ({param_type})")
             
             param_text = "\n".join(param_strs) if param_strs else "None"
-            
             table.add_row(server_name, tool_name, description, param_text)
         else:
             table.add_row(server_name, tool_name, description)
     
     console.print(table)
     
-    # Show parameter legend for detailed view
     if show_all:
         console.print("[yellow]* Required parameter[/yellow]")
     
     return True
 
-
-# Register the command with completions
+# Register the command with its options
 register_command("/tools", tools_command, ["--all", "--raw"])

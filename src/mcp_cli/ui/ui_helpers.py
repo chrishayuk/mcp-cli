@@ -1,4 +1,4 @@
-# src/cli/ui/ui_helpers.py
+# mcp_cli/ui/ui_helpers.py
 """
 UI helper functions for chat display and formatting.
 """

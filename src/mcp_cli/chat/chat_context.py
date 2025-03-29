@@ -1,10 +1,9 @@
-# src/cli/chat/chat_context.py
 from rich import print
 from rich.console import Console
 
 # llm imports
-from llm.llm_client import get_llm_client
-from llm.tools_handler import convert_to_openai_tools, fetch_tools
+from mcp_cli.llm.llm_client import get_llm_client
+from mcp_cli.llm.tools_handler import convert_to_openai_tools, fetch_tools
 
 # cli imports
 from mcp_cli.chat.system_prompt import generate_system_prompt
@@ -19,10 +18,12 @@ class ChatContext:
         self.server_info = []
         self.tools = []
         self.openai_tools = []
-        self.client = None
         self.conversation_history = []
         self.exit_requested = False
         self.tool_to_server_map = {}  # Maps tool names to server names
+        
+        # Initialize the client right away to ensure it's never None
+        self.client = get_llm_client(provider=self.provider, model=self.model)
         
     async def initialize(self):
         """Initialize the chat context by fetching tools and setting up the client."""
@@ -35,6 +36,11 @@ class ChatContext:
                     server_name = f"Server {i+1}"
                     fetched_tools = await fetch_tools(read_stream, write_stream)
                     
+                    # Skip if None or empty
+                    if not fetched_tools:
+                        print(f"[yellow]Warning: No tools returned from Server {i+1}[/yellow]")
+                        continue
+                        
                     # Map each tool to its server
                     for tool in fetched_tools:
                         self.tool_to_server_map[tool["name"]] = server_name
@@ -60,18 +66,14 @@ class ChatContext:
                     continue
 
         if not self.tools:
-            print("[red]No tools available. Exiting chat mode.[/red]")
-            return False
-        
-        # Note: We no longer print "Loaded X tools successfully" here
-        # This will be handled by the UI helpers
-        
+            print("[yellow]No tools available. Chat functionality may be limited.[/yellow]")
+            # Don't exit - we can still chat without tools
+            
         # Generate system prompt and convert tools to OpenAI format
         system_prompt = generate_system_prompt(self.tools)
         self.openai_tools = convert_to_openai_tools(self.tools)
         
-        # Initialize the LLM client
-        self.client = get_llm_client(provider=self.provider, model=self.model)
+        # Initialize the conversation history with the system prompt
         self.conversation_history = [{"role": "system", "content": system_prompt}]
         
         return True
@@ -98,3 +100,7 @@ class ChatContext:
     def update_from_dict(self, context_dict):
         """Update context from dictionary (after command handling)."""
         self.exit_requested = context_dict.get('exit_requested', self.exit_requested)
+        
+        # Also update the client if it was changed
+        if 'client' in context_dict and context_dict['client'] is not None:
+            self.client = context_dict['client']

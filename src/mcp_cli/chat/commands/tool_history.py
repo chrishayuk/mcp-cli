@@ -1,4 +1,4 @@
-# src/cli/chat/commands/tool_history.py
+# mcp_cli/chat/commands/tool_history.py
 """
 Tool history command module for displaying executed tool calls in the current session.
 """

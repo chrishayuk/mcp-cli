@@ -1,5 +1,7 @@
-# src/cli/chat/command_completer.py
+# mcp_cli/chat/command_completer.py
 from prompt_toolkit.completion import Completer, Completion
+
+# mcp_cli imports
 from mcp_cli.chat.commands import get_command_completions
 
 class ChatCommandCompleter(Completer):

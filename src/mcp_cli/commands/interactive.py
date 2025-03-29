@@ -1,4 +1,4 @@
-# src/mcp_cli/commands/interactive.py
+# mcp_cli/commands/interactive.py
 import inspect
 from rich import print
 from rich.markdown import Markdown

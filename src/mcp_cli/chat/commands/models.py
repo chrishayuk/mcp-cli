@@ -1,4 +1,4 @@
-# src/cli/chat/commands/models.py
+# mcp_cli/chat/commands/models.py
 """
 System-related commands for changing settings and configurations.
 """
