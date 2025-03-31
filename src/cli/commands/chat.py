@@ -15,8 +15,8 @@ app = typer.Typer(help="Chat commands")
 @app.command("run")
 async def chat_run(server_streams: list):
     """Enter chat mode."""
-    provider = os.getenv("LLM_PROVIDER", "openai")
-    model = os.getenv("LLM_MODEL", "gpt-4o-mini")
+    provider = os.getenv("LLM_PROVIDER", "ollama")
+    model = os.getenv("LLM_MODEL", "llama3.2")
     os.system("cls" if os.name == "nt" else "clear")
     chat_info_text = (
         "Welcome to the Chat!\n\n"

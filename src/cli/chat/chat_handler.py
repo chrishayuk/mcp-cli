@@ -11,7 +11,7 @@ from cli.chat.ui_manager import ChatUIManager
 from cli.chat.conversation import ConversationProcessor
 from cli.ui.ui_helpers import display_welcome_banner, clear_screen
 
-async def handle_chat_mode(server_streams, provider="openai", model="gpt-4o-mini"):
+async def handle_chat_mode(server_streams, provider="ollama", model="llama3.2"):
     """Enter chat mode with multi-call support for autonomous tool chaining."""
     ui_manager = None
     exit_code = 0

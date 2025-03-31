@@ -19,6 +19,59 @@ def run_command(command_func, config_file, server_names, user_specified=None):
         context_managers = []
         clean_exit = False
         
+        # Handle the "all" option
+        expanded_server_names = []
+        all_specified = False
+
+        for sname in server_names:
+            if sname.lower() == "all":
+                all_specified = True
+                # We'll expand this later
+            else:
+                expanded_server_names.append(sname)
+                # If "all" was specified, get all server names from config
+        if all_specified:
+            try:
+                from cli.config import get_all_server_names
+                all_names = await get_all_server_names(config_file)
+                expanded_server_names = all_names
+                
+                # If "all" was user specified, consider all servers as user specified
+                if user_specified and "all" in user_specified:
+                    user_specified = all_names
+            except Exception as e:
+                print(f"Error getting all server names: {e}")
+        
+        for sname in expanded_server_names:
+            try:
+                server_params = await load_config(config_file, sname)
+                cm = stdio_client(server_params)
+                streams = await cm.__aenter__()
+                context_managers.append((cm, streams))
+                
+                r_stream, w_stream = streams
+                
+                # Initialize this server.
+                init_result = await send_initialize(r_stream, w_stream)
+                if not init_result:
+                    print(f"Server initialization failed for {sname}")
+                    try:
+                        await cm.__aexit__(None, None, None)
+                    except Exception as e:
+                        print(f"Error closing connection to {sname}: {e}")
+                    context_managers.pop()
+                    continue
+                
+                server_streams.append(streams)
+                server_info.append({
+                    "name": sname,
+                    "streams": streams,
+                    "user_specified": sname in (user_specified or []),
+                })
+            except Exception as e:
+                print(f"Error connecting to server {sname}: {e}")
+                continue
+        
         # Create all server connections.
         for sname in server_names:
             try:

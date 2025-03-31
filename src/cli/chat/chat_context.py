@@ -12,7 +12,7 @@ from cli.chat.system_prompt import generate_system_prompt
 class ChatContext:
     """Class to manage the chat context and state."""
     
-    def __init__(self, server_streams, provider="openai", model="gpt-4o-mini"):
+    def __init__(self, server_streams, provider="ollama", model="llama3.2"):
         self.server_streams = server_streams
         self.provider = provider
         self.model = model

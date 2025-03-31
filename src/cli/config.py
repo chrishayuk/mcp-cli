@@ -1,4 +1,3 @@
-# src/cli/config.py
 import json
 import logging
 
@@ -51,3 +50,51 @@ async def load_config(config_path: str, server_name: str) -> StdioServerParamete
         # error
         logging.error(str(e))
         raise
+
+async def get_all_server_names(config_path: str) -> list[str]:
+    """Get a list of all server names from the configuration file."""
+    try:
+        # Read the configuration file
+        with open(config_path, "r") as config_file:
+            config = json.load(config_file)
+
+        # Retrieve all server names
+        servers = config.get("mcpServers", {})
+        if not servers:
+            error_msg = "No servers found in configuration file."
+            logging.error(error_msg)
+            raise ValueError(error_msg)
+            
+        return list(servers.keys())
+
+    except FileNotFoundError:
+        error_msg = f"Configuration file not found: {config_path}"
+        logging.error(error_msg)
+        raise FileNotFoundError(error_msg)
+    except json.JSONDecodeError as e:
+        error_msg = f"Invalid JSON in configuration file: {e.msg}"
+        logging.error(error_msg)
+        raise json.JSONDecodeError(error_msg, e.doc, e.pos)
+
+async def get_server_names(config_path: str) -> list[str]:
+    """Get a list of all server names from the configuration file."""
+    try:
+        with open(config_path, "r") as config_file:
+            config = json.load(config_file)
+        
+        servers = config.get("mcpServers", {})
+        if not servers:
+            error_msg = "No servers found in configuration file."
+            logging.error(error_msg)
+            raise ValueError(error_msg)
+            
+        return list(servers.keys())
+        
+    except FileNotFoundError:
+        error_msg = f"Configuration file not found: {config_path}"
+        logging.error(error_msg)
+        raise FileNotFoundError(error_msg)
+    except json.JSONDecodeError as e:
+        error_msg = f"Invalid JSON in configuration file: {e.msg}"
+        logging.error(error_msg)
+        raise json.JSONDecodeError(error_msg, e.doc, e.pos)

@@ -24,7 +24,7 @@ def process_options(server, disable_filesystem, provider, model):
         
     # Use a default model if none is provided.
     if not model:
-        model = "gpt-4o-mini" if provider.lower() == "openai" else "qwen2.5-coder"
+        model = "gpt-4o-mini" if provider.lower() == "openai" else "llama3.2"
     
     # Set environment variables used by the MCP code.
     os.environ["LLM_PROVIDER"] = provider

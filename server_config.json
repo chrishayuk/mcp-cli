@@ -9,7 +9,39 @@
       "args": [
         "-y",
         "@modelcontextprotocol/server-filesystem",
-        "/Users/christopherhay/chris-source/chuk-test-code/fibonacci"
+        "/Users/alex/Desktop",
+        "/Users/alex/Desktop/DEV"
+      ]
+    },
+    "git": {
+      "command": "uvx",
+      "args": ["mcp-server-git", "-r", "/Users/alex/Desktop/DEV/mcp-cli"]
+    },
+    "calculator": {
+      "command": "uvx",
+      "args": ["mcp-server-calculator"]
+    },
+    "basic-memory": {
+      "command": "uvx",
+      "args": [
+        "basic-memory",
+        "mcp"
+      ]
+    },
+    "airbnb": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@openbnb/mcp-server-airbnb"
+      ]
+    },
+    "mcp-local-rag":{
+      "command": "uvx",
+      "args": [
+      "--python=3.10",
+      "--from",
+      "git+https://github.com/nkapila6/mcp-local-rag",
+      "mcp-local-rag"
       ]
     }
   }

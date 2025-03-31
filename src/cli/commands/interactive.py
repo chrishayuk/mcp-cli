@@ -21,7 +21,7 @@ try:
 except ImportError:
     HAS_CHAT_CONTEXT = False
 
-async def interactive_mode(server_streams, provider="openai", model="gpt-4o-mini"):
+async def interactive_mode(server_streams, provider="ollama", model="llama3.2"):
     """Run the interactive CLI loop."""
     # Set up context for command handling
     console = Console()
@@ -198,8 +198,8 @@ def clear_screen_cmd(with_welcome=False):
     if with_welcome:
         # Create a context dict for the welcome banner
         context = {
-            "provider": "openai",
-            "model": "gpt-4o-mini",
+            "provider": "ollama",
+            "model": "llama3.2",
         }
         display_interactive_banner(context)
 
