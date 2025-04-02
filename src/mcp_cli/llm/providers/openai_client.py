@@ -14,19 +14,23 @@ from mcp_cli.llm.providers.base import BaseLLMClient
 load_dotenv()
 
 class OpenAILLMClient(BaseLLMClient):
-    def __init__(self, model="gpt-4o-mini", api_key=None):
+    def __init__(self, model="gpt-4o-mini", api_key=None, api_base=None):
         # set the model
         self.model = model
 
         # set the api key
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.api_base = api_base or os.getenv("OPENAI_API_BASE")
 
         # check for an api key
         if not self.api_key:
             raise ValueError("The OPENAI_API_KEY environment variable is not set.")
         
         # set the client as open ai
-        self.client = OpenAI(api_key=self.api_key)
+        if self.api_key and self.api_base:
+            self.client = OpenAI(api_key=self.api_key, base_url=self.api_base)
+        else:
+            self.client = OpenAI(api_key=self.api_key)
 
     def create_completion(self, messages: List[Dict], tools: List = None) -> Dict[str, Any]:
         try:
