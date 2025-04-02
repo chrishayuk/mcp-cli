@@ -18,7 +18,7 @@ from mcp_cli.llm.tools_handler import convert_to_openai_tools
 
 
 async def test_llm_client(provider: str = "openai",
-                        model: str = "gpt-4o-mini",
+                        model: str = "gpt-4o",
                         prompt: str = "Hello, how are you?",
                         tools: List[Dict[str, Any]] = None,
                         verbose: bool = False):
@@ -156,7 +156,7 @@ async def main():
     """Run the main test function."""
     parser = argparse.ArgumentParser(description='Test the LLM client')
     parser.add_argument('--provider', type=str, default="openai", help='LLM provider (openai, ollama)')
-    parser.add_argument('--model', type=str, default="gpt-4o-mini", help='Model name')
+    parser.add_argument('--model', type=str, default="gpt-4o", help='Model name')
     parser.add_argument('--prompt', type=str, default="Tell me about the weather in New York.", 
                       help='Prompt to send to the model')
     parser.add_argument('--tools', action='store_true', help='Include mock tools')
