@@ -45,5 +45,6 @@ packages = ["mcp_cli"]
 
 [dependency-groups]
 dev = [
-  "pydantic>=2.10.2"
+  "pydantic>=2.10.2",
+  "pytest-asyncio>=0.25.3",
 ]
