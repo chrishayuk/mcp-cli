@@ -1,78 +1,82 @@
 # src/llm/providers/openai_client.py
+import os
 import logging
 import json
 import uuid
-import ollama
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
+from dotenv import load_dotenv
 
-# base
+from openai import OpenAI
 from mcp_cli.llm.providers.base import BaseLLMClient
 
-class OllamaLLMClient(BaseLLMClient):
-    def __init__(self, model: str = "qwen2.5-coder"):
-        # set the model
+load_dotenv()
+
+class OpenAILLMClient(BaseLLMClient):
+    def __init__(self, model="gpt-4o-mini", api_key=None, api_base=None):
         self.model = model
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.api_base = api_base or os.getenv("OPENAI_API_BASE")
 
-        # check we have chat in the Ollama library
-        if not hasattr(ollama, "chat"):
-            raise ValueError("Ollama is not properly configured in this environment.")
+        if not self.api_key:
+            raise ValueError("The OPENAI_API_KEY environment variable is not set.")
 
-    def create_completion(
-        self, 
-        messages: List[Dict[str, Any]], 
-        tools: Optional[List[Dict[str, Any]]] = None
-    ) -> Dict[str, Any]:
-        # Format messages for Ollama
-        ollama_messages = [{"role": msg["role"], "content": msg["content"]} for msg in messages]
+        if self.api_key and self.api_base:
+            self.client = OpenAI(api_key=self.api_key, base_url=self.api_base)
+        else:
+            self.client = OpenAI(api_key=self.api_key)
 
+    def create_completion(self, messages: List[Dict], tools: List = None) -> Dict[str, Any]:
         try:
-            # Call the Ollama API with tools
-            response = ollama.chat(
+            response = self.client.chat.completions.create(
                 model=self.model,
-                messages=ollama_messages,
-                stream=False,
+                messages=messages,
                 tools=tools or [],
             )
 
-            # Log the raw response for debugging
-            logging.info(f"Ollama raw response: {response}")
+            main_response = response.choices[0].message.content
 
-            # Extract the response message and any tool calls
-            message = response.message
-            tool_calls = []
-
-            # Process any tool calls returned in the message
-            if hasattr(message, "tool_calls") and message.tool_calls:
-                for i, tool in enumerate(message.tool_calls):
-                    # Ensure arguments are in string format for consistency
-                    arguments = tool.function.arguments
-                    if isinstance(arguments, dict):
-                        arguments = json.dumps(arguments)
-                    elif not isinstance(arguments, str):
-                        arguments = str(arguments)
+            # The raw tool calls from the OpenAI library:
+            raw_tool_calls = getattr(response.choices[0].message, "tool_calls", None)
+            if not raw_tool_calls:
+                final_tool_calls = []
+            else:
+                final_tool_calls = []
+                for call in raw_tool_calls:
+                    # Ensure we have some ID
+                    call_id = call.id or f"call_{uuid.uuid4().hex[:8]}"
                     
-                    # Use the ID if provided by Ollama, otherwise generate one
-                    # This maintains OpenAI compatibility where possible
-                    tool_call_id = None
-                    if hasattr(tool, "id") and tool.id:
-                        tool_call_id = tool.id
-                    else:
-                        tool_call_id = f"call_{tool.function.name}_{str(uuid.uuid4())[:8]}"
+                    # Parse arguments to JSON string
+                    # This is the key fix to preserve the "location" argument
+                    try:
+                        # If arguments is a string, try to parse it
+                        if isinstance(call.function.arguments, str):
+                            arguments = json.loads(call.function.arguments)
+                        # If it's already a dict, use it as-is
+                        elif isinstance(call.function.arguments, dict):
+                            arguments = call.function.arguments
+                        # If it's None or can't be parsed, use an empty dict
+                        else:
+                            arguments = {}
+                        
+                        # Convert back to JSON string to match test expectations
+                        arguments_str = json.dumps(arguments)
+                    except (json.JSONDecodeError, TypeError):
+                        # Fallback to empty JSON string if parsing fails
+                        arguments_str = "{}"
                     
-                    tool_calls.append({
-                        "id": tool_call_id,
-                        "type": "function",
+                    # Build the final structure your tests expect
+                    final_tool_calls.append({
+                        "id": call_id,
                         "function": {
-                            "name": tool.function.name,
-                            "arguments": arguments,
+                            "name": call.function.name,
+                            "arguments": arguments_str,
                         },
                     })
 
-            # Return standardized response format
             return {
-                "response": message.content if message else "No response",
-                "tool_calls": tool_calls,
+                "response": main_response,
+                "tool_calls": final_tool_calls
             }
         except Exception as e:
-            logging.error(f"Ollama API Error: {str(e)}")
-            raise ValueError(f"Ollama API Error: {str(e)}")
+            logging.error(f"OpenAI API Error: {str(e)}")
+            raise ValueError(f"OpenAI API Error: {str(e)}")
