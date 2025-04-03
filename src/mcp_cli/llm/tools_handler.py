@@ -79,7 +79,7 @@ async def handle_tool_call(
     """
     tool_name: str = "unknown_tool"
     raw_arguments: Any = {}
-    tool_call_id: str = None
+    tool_call_id: Optional[str] = None
 
     try:
         # Support for object-style tool calls from both OpenAI and the new Ollama function tools.
@@ -87,12 +87,12 @@ async def handle_tool_call(
             if hasattr(tool_call, "function"):
                 tool_name = tool_call.function.name
                 raw_arguments = tool_call.function.arguments
-                # Extract ID if available (OpenAI format)
+                # Get ID if available
                 tool_call_id = getattr(tool_call, "id", None)
             else:
                 tool_name = tool_call["function"]["name"]
                 raw_arguments = tool_call["function"]["arguments"]
-                # Extract ID if available (OpenAI format)
+                # Get ID if available
                 tool_call_id = tool_call.get("id")
         else:
             # Fallback: attempt to parse Llama's XML format from the last message in history.
@@ -111,7 +111,7 @@ async def handle_tool_call(
             else raw_arguments
         )
 
-        # Generate a unique tool call ID if one wasn't provided
+        # Generate a unique tool call ID only if one wasn't provided
         if not tool_call_id:
             tool_call_id = f"call_{tool_name}_{str(uuid.uuid4())[:8]}"
 
@@ -169,7 +169,7 @@ async def handle_tool_call(
         logging.debug(f"Error decoding arguments for tool '{tool_name}': {raw_arguments}")
     except Exception as e:
         logging.debug(f"Error handling tool call '{tool_name}': {str(e)}")
-        
+
 async def fetch_tools(read_stream: Any, write_stream: Any) -> Optional[List[Dict[str, Any]]]:
     """Fetch tools from the server."""
     logging.debug("\nFetching tools for chat mode...")
