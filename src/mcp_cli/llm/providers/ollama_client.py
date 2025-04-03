@@ -51,8 +51,12 @@ class OllamaLLMClient(BaseLLMClient):
                     elif not isinstance(arguments, str):
                         arguments = str(arguments)
                     
-                    # Create tool call with consistent format
-                    tool_call_id = f"call_{tool.function.name}_{str(uuid.uuid4())[:8]}"
+                    # Check if an ID is provided; if so, preserve it; otherwise, generate one.
+                    if hasattr(tool, "id") and tool.id:
+                        tool_call_id = tool.id
+                    else:
+                        tool_call_id = f"call_{tool.function.name}_{str(uuid.uuid4())[:8]}"
+                    
                     tool_calls.append({
                         "id": tool_call_id,
                         "type": "function",
@@ -61,6 +65,7 @@ class OllamaLLMClient(BaseLLMClient):
                             "arguments": arguments,
                         },
                     })
+
 
             # Return standardized response format
             return {

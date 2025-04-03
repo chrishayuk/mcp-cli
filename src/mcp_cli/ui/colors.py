@@ -1,3 +1,4 @@
+# mcp_cli/ui/colors.py
 """
 Color definitions for the MCP CLI UI elements.
 """
