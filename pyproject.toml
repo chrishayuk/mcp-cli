@@ -11,13 +11,14 @@ readme = "README.md"
 authors = [
   { name = "Chris Hay", email = "chrishayuk@younknowwhere.com" }
 ]
-keywords = ["llm", "openai", "claude", "mcp", "cli"]
+keywords = ["llm", "openai", "watsonx", "claude", "mcp", "cli"]
 license = {text = "MIT"}
 dependencies = [
   "anyio>=4.6.2.post1",
   "asyncio>=3.4.3",
   "chuk-mcp>=0.1.7",
   "ollama>=0.4.2",
+  "ibm-watsonx-ai>=1.3.3",
   "openai>=1.55.3",
   "pandas>=2.2.3",
   "prompt-toolkit>=3.0.50",
