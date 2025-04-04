@@ -4,6 +4,32 @@
         "command": "uvx",
         "args": ["mcp-server-sqlite", "--db-path", "test.db"]
       },
+      "sqlalchemy": {
+        "command": "uv",
+        "args": [
+          "--directory",
+          "/path/to/mcp-sqlalchemy-server",
+          "run",
+          "mcp-sqlalchemy-server"
+        ]
+      },
+      "odbc": {
+        "command": "~/.nvm/versions/node/v21.1.0/bin/node",
+        "args": [
+          "/path/to/mcp-odbc-server/src/node_modules/.bin/tsx",
+          "/path/to/mcp-odbc-server/src/main.ts"
+        ],
+        "env": {
+          "ODBCINI": "/path/to/odbc.ini",
+          "ODBC_DSN": "Virtuoso",
+          "ODBC_USER": "dba",
+          "ODBC_PASSWORD": "dba",
+          "NODE_VERSION": "v21.1.0",
+          "PATH": "~/.nvm/versions/node/v21.1.0/bin:${PATH}"
+        },
+        "disabled": false,
+        "autoApprove": []
+      },
       "code-sandbox": {
         "command": "uv",
         "args": ["--directory", "/Users/christopherhay/chris-source/mcp-servers/mcp-code-sandbox/", "run", "src/main.py"]
