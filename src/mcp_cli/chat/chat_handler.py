@@ -28,7 +28,7 @@ async def handle_chat_mode(stream_manager, provider="openai", model="gpt-4o-mini
     
     try:
         # Clear the screen to start fresh
-        clear_screen()
+        #clear_screen()
         
         # Initialize chat context with StreamManager
         chat_context = ChatContext(stream_manager, provider, model)

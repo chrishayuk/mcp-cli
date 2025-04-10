@@ -24,7 +24,7 @@ async def cmd_cls(cmd_parts: List[str], context: Dict[str, Any]) -> bool:
     It's useful for decluttering your terminal without losing context.
     """
     # Clear the screen
-    clear_screen()
+    #clear_screen()
     
     # Redisplay welcome banner
     display_welcome_banner(context)
@@ -43,7 +43,7 @@ async def cmd_clear(cmd_parts: List[str], context: Dict[str, Any]) -> bool:
     Only the system prompt is preserved.
     """
     # Clear the screen
-    clear_screen()
+    #clear_screen()
     
     # Reset conversation history
     history = context['conversation_history']

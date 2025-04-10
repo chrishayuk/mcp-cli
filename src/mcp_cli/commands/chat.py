@@ -23,7 +23,7 @@ async def chat_run(stream_manager, server_names=None):
     """
     provider = os.getenv("LLM_PROVIDER", "openai")
     model = os.getenv("LLM_MODEL", "gpt-4o-mini")
-    os.system("cls" if os.name == "nt" else "clear")
+    #os.system("cls" if os.name == "nt" else "clear")
     chat_info_text = (
         "Welcome to the Chat!\n\n"
         f"**Provider:** {provider}  |  **Model:** {model}\n\n"

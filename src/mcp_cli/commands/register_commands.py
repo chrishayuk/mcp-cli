@@ -42,7 +42,8 @@ def interactive_command(
     """Enter interactive mode with a command prompt."""
     from mcp_cli.cli_options import process_options
     servers, user_specified, server_names = process_options(server, disable_filesystem, provider, model, config_file)
-    run_command(interactive.interactive_mode, config_file, servers, user_specified, {"server_names": server_names})
+    # Remove extra parameter "server_names" since interactive_mode does not expect it.
+    run_command(interactive.interactive_mode, config_file, servers, user_specified)
     return 0
 
 def prompts_list_command(

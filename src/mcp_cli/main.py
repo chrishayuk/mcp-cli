@@ -22,7 +22,7 @@ from mcp_cli.stream_manager import StreamManager
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     stream=sys.stderr,
 )

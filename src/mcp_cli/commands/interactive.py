@@ -34,7 +34,7 @@ async def interactive_mode(stream_manager, provider="openai", model="gpt-4o-mini
     console = Console()
     
     # Clear screen and show welcome banner
-    clear_screen()
+    #clear_screen()
     
     # Create a context dict similar to what chat_handler uses
     context = {
@@ -237,7 +237,7 @@ def display_servers_info(context):
 
 def clear_screen_cmd(with_welcome=False):
     """Clear the screen and optionally show the welcome message."""
-    clear_screen()
+    #clear_screen()
     if with_welcome:
         # Create a context dict for the welcome banner
         context = {
