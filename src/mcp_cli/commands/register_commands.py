@@ -4,6 +4,7 @@ from mcp_cli.commands import ping, chat, prompts, tools, resources, interactive,
 
 # Import our improved run_command implementation
 from mcp_cli.run_command import run_command
+from mcp_cli.stream_manager import StreamManager
 
 def ping_command(
     config_file: str = "server_config.json",

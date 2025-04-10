@@ -13,12 +13,12 @@ from mcp_cli.chat.chat_handler import handle_chat_mode
 app = typer.Typer(help="Chat commands")
 
 @app.command("run")
-async def chat_run(server_streams: list, server_names=None):
+async def chat_run(stream_manager, server_names=None):
     """
     Enter chat mode.
     
     Args:
-        server_streams: List of (read_stream, write_stream) tuples
+        stream_manager: StreamManager instance (required)
         server_names: Optional dictionary mapping server indices to their names
     """
     provider = os.getenv("LLM_PROVIDER", "openai")
@@ -32,12 +32,11 @@ async def chat_run(server_streams: list, server_names=None):
     print(Panel(Markdown(chat_info_text), style="bold cyan", title="Chat Mode", title_align="center"))
     
     try:
-        # Create a task for the chat handler with server names
+        # Create a task for the chat handler
         chat_task = asyncio.create_task(handle_chat_mode(
-            server_streams, 
+            stream_manager, 
             provider, 
-            model,
-            server_names  # Pass server names to handle_chat_mode
+            model
         ))
         
         # Await the task with proper exception handling
@@ -46,8 +45,6 @@ async def chat_run(server_streams: list, server_names=None):
         print("\nChat interrupted by user.")
     except Exception as e:
         print(f"\nError in chat mode: {e}")
-    
-    # Don't print exit message here, since it's already printed in the handler
     
     # Make sure any pending tasks are properly cancelled
     if 'chat_task' in locals() and not chat_task.done():

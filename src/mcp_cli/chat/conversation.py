@@ -25,6 +25,13 @@ class ConversationProcessor:
                 try:
                     start_time = time.time()
                     
+                    # Use stream_manager through context if available (for better tools management)
+                    if self.context.stream_manager:
+                        # Access the tools data through the stream_manager
+                        if not hasattr(self.context, 'openai_tools') or not self.context.openai_tools:
+                            self.context.openai_tools = []
+                    
+                    # Send the completion request
                     completion = self.context.client.create_completion(
                         messages=self.context.conversation_history,
                         tools=self.context.openai_tools,

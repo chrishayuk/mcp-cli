@@ -21,15 +21,14 @@ try:
 except ImportError:
     HAS_CHAT_CONTEXT = False
 
-async def interactive_mode(server_streams, provider="openai", model="gpt-4o-mini", server_names=None):
+async def interactive_mode(stream_manager, provider="openai", model="gpt-4o-mini"):
     """
     Run the interactive CLI loop.
     
     Args:
-        server_streams: List of (read_stream, write_stream) tuples
+        stream_manager: StreamManager instance (required)
         provider: LLM provider name (default: "openai")
         model: LLM model name (default: "gpt-4o-mini")
-        server_names: Optional dictionary mapping server indices to their names
     """
     # Set up context for command handling
     console = Console()
@@ -41,39 +40,26 @@ async def interactive_mode(server_streams, provider="openai", model="gpt-4o-mini
     context = {
         "provider": provider,
         "model": model,
-        "tools": [],
-        "server_info": [],
-        "tool_to_server_map": {},
-        "server_streams": server_streams,
-        "server_names": server_names or {},  # Add server names to context
+        "tools": stream_manager.get_all_tools(),
+        "server_info": stream_manager.get_server_info(),
+        "tool_to_server_map": stream_manager.tool_to_server_map,
+        "stream_manager": stream_manager,
+        "server_names": stream_manager.server_names
     }
     
     # Show welcome banner in interactive mode style
     display_interactive_banner(context)
     
-    # If ChatContext is available, use it for initialization
-    if HAS_CHAT_CONTEXT:
-        chat_context = ChatContext(server_streams, provider, model, server_names)
-        if await chat_context.initialize():
-            # Update our context with the data from chat_context
-            context["tools"] = chat_context.tools
-            context["server_info"] = chat_context.server_info
-            context["tool_to_server_map"] = chat_context.tool_to_server_map
-    else:
-        # Fall back to a simple version that doesn't try to write to streams
-        print("[yellow]Note: Using simplified tool initialization.[/yellow]")
-        print("[yellow]Some functionality may be limited.[/yellow]")
-    
     # Create a registry of command functions for interactive mode
     async def handle_ping():
-        await ping.ping_run(server_streams)
+        await ping.ping_run(stream_manager=stream_manager)
     
     async def handle_prompts():
         try:
-            await prompts.prompts_list(server_streams)
+            await prompts.prompts_list(stream_manager=stream_manager)
         except AttributeError:
             try:
-                await prompts.list_run(server_streams)
+                await prompts.list_run(stream_manager=stream_manager)
             except (AttributeError, Exception) as e:
                 print(f"[red]Error listing prompts: {e}[/red]")
     
@@ -88,15 +74,15 @@ async def interactive_mode(server_streams, provider="openai", model="gpt-4o-mini
     
     async def handle_resources():
         try:
-            await resources.resources_list(server_streams)
+            await resources.resources_list(stream_manager=stream_manager)
         except AttributeError:
             try:
-                await resources.list_run(server_streams)
+                await resources.list_run(stream_manager=stream_manager)
             except (AttributeError, Exception) as e:
                 print(f"[red]Error listing resources: {e}[/red]")
     
     async def handle_chat():
-        await chat.chat_run(server_streams, server_names=server_names)
+        await chat.chat_run(stream_manager=stream_manager)
     
     async def handle_servers():
         display_servers_info(context)
@@ -131,45 +117,51 @@ async def interactive_mode(server_streams, provider="openai", model="gpt-4o-mini
         "/help": handle_help,
     }
     
-    while True:
-        try:
-            # Use rich prompt for better styling with the same format as chat
-            user_input = Prompt.ask("[bold yellow]>[/bold yellow]").strip()
-            if not user_input:
-                continue
-            
-            # Special case for exit/quit without slash prefix
-            if user_input.lower() in ["exit", "quit"]:
-                print("\n[bold red]Goodbye![/bold red]")
-                return True
+    # Create session for input handling
+    session = Prompt.ask
+    
+    try:
+        while True:
+            try:
+                # Use rich prompt for better styling with the same format as chat
+                user_input = session("[bold yellow]>[/bold yellow]").strip()
+                if not user_input:
+                    continue
                 
-            # Split the command and arguments
-            parts = user_input.split(maxsplit=1)
-            cmd = parts[0].lower()
-            args = parts[1] if len(parts) > 1 else ""
-            
-            # Handle commands
-            if cmd in commands:
-                handler = commands[cmd]
+                # Special case for exit/quit without slash prefix
+                if user_input.lower() in ["exit", "quit"]:
+                    print("\n[bold red]Goodbye![/bold red]")
+                    return True
+                    
+                # Split the command and arguments
+                parts = user_input.split(maxsplit=1)
+                cmd = parts[0].lower()
+                args = parts[1] if len(parts) > 1 else ""
                 
-                # Check if it's a coroutine function that needs to be awaited
-                if inspect.iscoroutinefunction(handler):
-                    await handler()
+                # Handle commands
+                if cmd in commands:
+                    handler = commands[cmd]
+                    
+                    # Check if it's a coroutine function that needs to be awaited
+                    if inspect.iscoroutinefunction(handler):
+                        await handler()
+                    else:
+                        result = handler()
+                        if result == "exit":
+                            print("\n[bold red]Goodbye![/bold red]")
+                            return True  # Signal clean exit
                 else:
-                    result = handler()
-                    if result == "exit":
-                        print("\n[bold red]Goodbye![/bold red]")
-                        return True  # Signal clean exit
-            else:
-                print(f"[red]\nUnknown command: {cmd}[/red]")
-                print("[yellow]Type '/help' for available commands[/yellow]")
-                
-        except EOFError:
-            return True  # Signal clean exit for EOF
-        except KeyboardInterrupt:
-            print("\n[yellow]Command interrupted. Type '/exit' to quit.[/yellow]")
-        except Exception as e:
-            print(f"\n[red]Error:[/red] {e}")
+                    print(f"[red]\nUnknown command: {cmd}[/red]")
+                    print("[yellow]Type '/help' for available commands[/yellow]")
+                    
+            except EOFError:
+                return True  # Signal clean exit for EOF
+            except KeyboardInterrupt:
+                print("\n[yellow]Command interrupted. Type '/exit' to quit.[/yellow]")
+            except Exception as e:
+                print(f"\n[red]Error:[/red] {e}")
+    finally:
+        pass  # StreamManager cleanup is handled by run_command
     
     return False  # This is technically unreachable but good practice
 

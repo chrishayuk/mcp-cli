@@ -7,7 +7,6 @@ import os
 import asyncio
 import signal
 import gc
-import weakref
 
 # mcp imports
 from chuk_mcp.mcp_client.transport.stdio.stdio_client import stdio_client
@@ -17,43 +16,22 @@ from chuk_mcp.mcp_client.messages.initialize.send_messages import send_initializ
 from mcp_cli.commands.register_commands import register_commands, chat_command
 from mcp_cli.cli_options import process_options
 
-# host imports - use our improved run_command
+# Import our improved run_command and StreamManager
 from mcp_cli.run_command import run_command
+from mcp_cli.stream_manager import StreamManager
 
 # Configure logging
 logging.basicConfig(
-    level=logging.CRITICAL,
+    level=logging.DEBUG,
     format="%(asctime)s - %(levelname)s - %(message)s",
     stream=sys.stderr,
 )
 
 # Ensure terminal is reset on exit.
 def restore_terminal():
-    """Restore terminal settings and clean up asyncio resources with special
-    attention to subprocess transports."""
+    """Restore terminal settings and clean up asyncio resources."""
     # Restore the terminal settings to normal.
     os.system("stty sane")
-    
-    # First, try to explicitly clean up subprocess transports
-    try:
-        # Find and close all subprocess transports before the event loop is closed
-        for obj in gc.get_objects():
-            if hasattr(obj, '__class__') and 'SubprocessTransport' in obj.__class__.__name__:
-                if hasattr(obj, '_proc') and obj._proc is not None:
-                    try:
-                        # Close the subprocess if it's still running
-                        if obj._proc.poll() is None:
-                            obj._proc.kill()
-                            obj._proc.wait(timeout=0.5)  # Short timeout
-                    except Exception as e:
-                        logging.debug(f"Error killing subprocess: {e}")
-                
-                # Mark internal pipe as closed to prevent EOF writing
-                if hasattr(obj, '_protocol') and obj._protocol is not None:
-                    if hasattr(obj._protocol, 'pipe'):
-                        obj._protocol.pipe = None
-    except Exception as e:
-        logging.debug(f"Error during subprocess cleanup: {e}")
     
     # Then clean up asyncio tasks and the event loop
     try:
