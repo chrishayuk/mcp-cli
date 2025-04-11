@@ -1,111 +1,168 @@
 """
-Tests for fetch_tools and convert_to_openai_tools functions.
+Tests for convert_to_openai_tools and other tool handler functions.
 """
 import pytest
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Enable asyncio tests
 pytest_plugins = ['pytest_asyncio']
 
-from mcp_cli.llm.tools_handler import fetch_tools, convert_to_openai_tools
+from mcp_cli.llm.tools_handler import handle_tool_call, convert_to_openai_tools
 
-class TestFetchTools:
-    """Tests for the fetch_tools function."""
+class TestHandleToolCall:
+    """Tests for the handle_tool_call function."""
     
     @pytest.mark.asyncio
-    @patch("mcp_cli.llm.tools_handler.send_tools_list")
-    async def test_fetch_tools_success(self, mock_send_tools_list):
-        """Test successful fetching of tools."""
-        # Mock tools list response
-        tools_response = {
-            "tools": [
-                {"name": "tool1", "description": "First tool"},
-                {"name": "tool2", "description": "Second tool"}
-            ]
+    async def test_handle_tool_call_with_stream_manager(self):
+        """Test handling a tool call using StreamManager."""
+        # Create mock StreamManager and conversation history
+        stream_manager = MagicMock()
+        stream_manager.call_tool = AsyncMock()
+        stream_manager.call_tool.return_value = {
+            "isError": False,
+            "content": "Tool execution successful"
         }
-        mock_send_tools_list.return_value = tools_response
+        stream_manager.get_server_for_tool.return_value = "test_server"
         
-        # Create mock streams
-        read_stream = AsyncMock()
-        write_stream = AsyncMock()
+        conversation_history = []
         
-        # Call the function
-        result = await fetch_tools(read_stream, write_stream)
+        # Create a tool call object (OpenAI format)
+        tool_call = {
+            "id": "call_test123",
+            "function": {
+                "name": "test_tool",
+                "arguments": json.dumps({"param": "value"})
+            }
+        }
         
-        # Verify results
-        assert result == tools_response["tools"]
-        mock_send_tools_list.assert_called_once_with(
-            read_stream=read_stream, write_stream=write_stream
+        # Call handle_tool_call with StreamManager
+        await handle_tool_call(
+            tool_call=tool_call,
+            conversation_history=conversation_history,
+            stream_manager=stream_manager
         )
+        
+        # Verify StreamManager was used correctly
+        stream_manager.call_tool.assert_called_once_with(
+            tool_name="test_tool",
+            arguments={"param": "value"}
+        )
+        
+        # Verify conversation history was updated correctly
+        assert len(conversation_history) == 2
+        assert conversation_history[0]["role"] == "assistant"
+        assert conversation_history[0]["tool_calls"][0]["function"]["name"] == "test_tool"
+        assert conversation_history[1]["role"] == "tool"
+        assert conversation_history[1]["content"] == "Tool execution successful"
     
     @pytest.mark.asyncio
-    @patch("mcp_cli.llm.tools_handler.send_tools_list")
-    async def test_fetch_tools_empty(self, mock_send_tools_list):
-        """Test fetching tools when none are returned."""
-        # Mock empty tools response
-        mock_send_tools_list.return_value = {"tools": []}
+    async def test_handle_tool_call_error_handling(self):
+        """Test handling errors in tool calls."""
+        # Create mock StreamManager that returns an error
+        stream_manager = MagicMock()
+        stream_manager.call_tool = AsyncMock()
+        stream_manager.call_tool.return_value = {
+            "isError": True,
+            "error": "Test error",
+            "content": "Error: Test error"
+        }
+        stream_manager.get_server_for_tool.return_value = "test_server"
         
-        # Create mock streams
-        read_stream = AsyncMock()
-        write_stream = AsyncMock()
+        conversation_history = []
         
-        # Call the function
-        result = await fetch_tools(read_stream, write_stream)
+        # Create a tool call object
+        tool_call = {
+            "id": "call_test123",
+            "function": {
+                "name": "test_tool",
+                "arguments": json.dumps({"param": "value"})
+            }
+        }
         
-        # Verify results
-        assert result == []
+        # Call handle_tool_call
+        await handle_tool_call(
+            tool_call=tool_call,
+            conversation_history=conversation_history,
+            stream_manager=stream_manager
+        )
+        
+        # Verify error was handled correctly
+        assert len(conversation_history) == 2
+        assert conversation_history[0]["role"] == "assistant"
+        assert conversation_history[1]["role"] == "tool"
+        assert "Error: Test error" in conversation_history[1]["content"]
     
     @pytest.mark.asyncio
-    @patch("mcp_cli.llm.tools_handler.send_tools_list")
-    async def test_fetch_tools_invalid_format(self, mock_send_tools_list):
-        """Test fetching tools with invalid format."""
-        # Mock invalid tools response
-        mock_send_tools_list.return_value = {"tools": "not a list"}
+    async def test_handle_tool_call_missing_stream_manager(self):
+        """Test handling a tool call without providing a StreamManager."""
+        conversation_history = []
         
-        # Create mock streams
-        read_stream = AsyncMock()
-        write_stream = AsyncMock()
+        # Create a tool call object
+        tool_call = {
+            "id": "call_test123",
+            "function": {
+                "name": "test_tool",
+                "arguments": json.dumps({"param": "value"})
+            }
+        }
         
-        # Call the function
-        result = await fetch_tools(read_stream, write_stream)
+        # Call handle_tool_call without StreamManager
+        await handle_tool_call(
+            tool_call=tool_call,
+            conversation_history=conversation_history,
+            stream_manager=None
+        )
         
-        # Verify results
-        assert result is None
+        # Verify nothing was added to conversation history
+        assert len(conversation_history) == 0
     
     @pytest.mark.asyncio
-    @patch("mcp_cli.llm.tools_handler.send_tools_list")
-    async def test_fetch_tools_with_unexpected_response(self, mock_send_tools_list):
-        """Test fetching tools with unexpected response structure."""
-        # Mock response without tools key
-        mock_send_tools_list.return_value = {"something_else": []}
+    async def test_handle_tool_call_with_object_attributes(self):
+        """Test handling a tool call with object attributes instead of dict keys."""
+        # Create mock StreamManager
+        stream_manager = MagicMock()
+        stream_manager.call_tool = AsyncMock()
+        stream_manager.call_tool.return_value = {
+            "isError": False,
+            "content": "Tool execution successful"
+        }
+        stream_manager.get_server_for_tool.return_value = "test_server"
         
-        # Create mock streams
-        read_stream = AsyncMock()
-        write_stream = AsyncMock()
+        conversation_history = []
         
-        # Call the function
-        result = await fetch_tools(read_stream, write_stream)
+        # Create a tool call object with attributes instead of dict keys
+        class FunctionInfo:
+            def __init__(self):
+                self.name = "test_tool"
+                self.arguments = json.dumps({"param": "value"})
+                
+        class ToolCall:
+            def __init__(self):
+                self.id = "call_test123"
+                self.function = FunctionInfo()
         
-        # Empty list is a reasonable default
-        assert result == []
-    
-    @pytest.mark.asyncio
-    @patch("mcp_cli.llm.tools_handler.send_tools_list")
-    async def test_fetch_tools_with_exception(self, mock_send_tools_list):
-        """Test fetching tools when an exception occurs."""
-        # Mock to raise exception
-        mock_send_tools_list.side_effect = Exception("Connection error")
+        tool_call = ToolCall()
         
-        # Create mock streams
-        read_stream = AsyncMock()
-        write_stream = AsyncMock()
+        # Call handle_tool_call
+        await handle_tool_call(
+            tool_call=tool_call,
+            conversation_history=conversation_history,
+            stream_manager=stream_manager
+        )
         
-        # Call should raise exception
-        with pytest.raises(Exception) as excinfo:
-            await fetch_tools(read_stream, write_stream)
+        # Verify StreamManager was used correctly
+        stream_manager.call_tool.assert_called_once_with(
+            tool_name="test_tool",
+            arguments={"param": "value"}
+        )
         
-        assert "Connection error" in str(excinfo.value)
+        # Verify conversation history was updated correctly
+        assert len(conversation_history) == 2
+        assert conversation_history[0]["role"] == "assistant"
+        assert conversation_history[0]["tool_calls"][0]["function"]["name"] == "test_tool"
+        assert conversation_history[1]["role"] == "tool"
+        assert conversation_history[1]["content"] == "Tool execution successful"
 
 
 class TestConvertToOpenAITools:
@@ -201,3 +258,33 @@ class TestConvertToOpenAITools:
         assert result[0]["function"]["name"] == "complexTool"
         # The complex schema should be preserved exactly as is
         assert result[0]["function"]["parameters"] == mcp_tools[0]["inputSchema"]
+        
+    def test_convert_namespaced_tools(self):
+        """Test conversion of namespaced tools to OpenAI format."""
+        # Sample MCP tools with namespaced names
+        namespaced_tools = [
+            {
+                "name": "Server1_tool1",
+                "description": "First tool from Server1",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"param1": {"type": "string"}}
+                }
+            },
+            {
+                "name": "Server2_tool2",
+                "description": "Second tool from Server2",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"param2": {"type": "number"}}
+                }
+            }
+        ]
+        
+        # Convert to OpenAI format
+        result = convert_to_openai_tools(namespaced_tools)
+        
+        # Verify results - namespaced names should be preserved
+        assert len(result) == 2
+        assert result[0]["function"]["name"] == "Server1_tool1"
+        assert result[1]["function"]["name"] == "Server2_tool2"

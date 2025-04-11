@@ -18,6 +18,10 @@ class DummyStreamManager:
     def get_all_tools(self):
         return self._tools
 
+    # NEW: Add get_internal_tools() to satisfy the ChatContext initialization.
+    def get_internal_tools(self):
+        return self._tools
+
     def get_server_info(self):
         return self._server_info
 
