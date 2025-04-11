@@ -3,10 +3,7 @@ import json
 import logging
 import re
 import uuid
-from typing import Any, Dict, Optional, List, Tuple, Union
-
-# Imports from your application for sending tool messages
-from chuk_mcp.mcp_client.messages.tools.send_messages import send_tools_call, send_tools_list
+from typing import Any, Dict, Optional, List, Union
 
 def parse_tool_response(response: str) -> Optional[Dict[str, Any]]:
     """Parse tool call from Llama's XML-style format.
@@ -64,19 +61,30 @@ def format_tool_response(response_content: Union[List[Dict[str, Any]], Any]) -> 
 
 
 """
-Updated handle_tool_call function to preserve the original tool call IDs.
+Updated handle_tool_call function to work exclusively with StreamManager.
 """
 
 async def handle_tool_call(
     tool_call: Union[Dict[str, Any], Any],
     conversation_history: List[Dict[str, Any]],
-    server_streams: List[Tuple[Any, Any]]
+    server_streams = None,  # Kept for backward compatibility but not used
+    stream_manager = None
 ) -> None:
     """
     Handle a single tool call for both OpenAI and Llama formats.
 
     This function updates the conversation history with both the tool call and its response.
+    
+    Args:
+        tool_call: The tool call object
+        conversation_history: The conversation history to update
+        server_streams: Legacy parameter (ignored)
+        stream_manager: StreamManager instance (required)
     """
+    if stream_manager is None:
+        logging.error("StreamManager is required for handle_tool_call")
+        return
+        
     tool_name: str = "unknown_tool"
     raw_arguments: Any = {}
     tool_call_id: Optional[str] = None
@@ -115,31 +123,56 @@ async def handle_tool_call(
         if not tool_call_id:
             tool_call_id = f"call_{tool_name}_{str(uuid.uuid4())[:8]}"
 
-        # Execute the tool via server streams.
-        tool_response: Dict[str, Any] = {}
-        for read_stream, write_stream in server_streams:
-            # Correct parameter order: streams first, then tool name and arguments.
-            tool_response = await send_tools_call(
-                read_stream=read_stream,
-                write_stream=write_stream,
-                name=tool_name,
-                arguments=tool_args
-            )
-            if not tool_response.get("isError"):
-                break
+        # Log which tool we're calling
+        server_name = stream_manager.get_server_for_tool(tool_name)
+        logging.debug(f"Calling tool '{tool_name}' on server '{server_name}'")
+        
+        # Call the tool using StreamManager
+        tool_response = await stream_manager.call_tool(
+            tool_name=tool_name,
+            arguments=tool_args
+        )
 
+        # Handle errors in tool response
         if tool_response.get("isError"):
-            logging.debug(f"Error calling tool '{tool_name}': {tool_response.get('error')}")
+            error_msg = tool_response.get("error", "Unknown error")
+            logging.debug(f"Error calling tool '{tool_name}': {error_msg}")
+            
+            # Add a failed tool call to conversation history
+            conversation_history.append({
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": tool_call_id,
+                        "type": "function",
+                        "function": {
+                            "name": tool_name,
+                            "arguments": json.dumps(tool_args)
+                            if isinstance(tool_args, dict)
+                            else tool_args,
+                        },
+                    }
+                ],
+            })
+            
+            # Add error response
+            conversation_history.append({
+                "role": "tool",
+                "name": tool_name,
+                "content": f"Error: {error_msg}",
+                "tool_call_id": tool_call_id,
+            })
             return
 
         # Get the raw content from the response
         raw_content = tool_response.get("content", [])
         
-        # Format the tool response.
+        # Format the tool response
         formatted_response: str = format_tool_response(raw_content)
         logging.debug(f"Tool '{tool_name}' Response: {formatted_response}")
 
-        # Append the tool call (for tracking purposes).
+        # Append the tool call (for tracking purposes)
         conversation_history.append({
             "role": "assistant",
             "content": None,
@@ -157,7 +190,7 @@ async def handle_tool_call(
             ],
         })
 
-        # Append the tool's response to the conversation history.
+        # Append the tool's response to the conversation history
         conversation_history.append({
             "role": "tool",
             "name": tool_name,
@@ -169,21 +202,6 @@ async def handle_tool_call(
         logging.debug(f"Error decoding arguments for tool '{tool_name}': {raw_arguments}")
     except Exception as e:
         logging.debug(f"Error handling tool call '{tool_name}': {str(e)}")
-
-async def fetch_tools(read_stream: Any, write_stream: Any) -> Optional[List[Dict[str, Any]]]:
-    """Fetch tools from the server."""
-    logging.debug("\nFetching tools for chat mode...")
-
-    # Get the tools list by passing read_stream and write_stream as named parameters.
-    tools_response = await send_tools_list(read_stream=read_stream, write_stream=write_stream)
-    tools = tools_response.get("tools", [])
-
-    # Validate that the tools are in the expected format.
-    if not isinstance(tools, list) or not all(isinstance(tool, dict) for tool in tools):
-        logging.debug("Invalid tools format received.")
-        return None
-
-    return tools
 
 
 def convert_to_openai_tools(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

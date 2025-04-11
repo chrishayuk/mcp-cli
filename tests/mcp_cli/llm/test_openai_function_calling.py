@@ -12,7 +12,6 @@ pytest_plugins = ['pytest_asyncio']
 from mcp_cli.llm.tools_handler import (
     handle_tool_call,
     format_tool_response,
-    fetch_tools,
     convert_to_openai_tools
 )
 
@@ -20,11 +19,12 @@ class TestOpenAIFunctionCalling:
     """Tests specifically for OpenAI function calling compatibility."""
     
     @pytest.fixture
-    def mock_server_streams(self):
-        """Create a fixture for mock server streams."""
-        read_stream = AsyncMock()
-        write_stream = AsyncMock()
-        return [(read_stream, write_stream)]
+    def mock_stream_manager(self):
+        """Create a fixture for mock StreamManager."""
+        stream_manager = MagicMock()
+        stream_manager.call_tool = AsyncMock()
+        stream_manager.get_server_for_tool = MagicMock(return_value="test_server")
+        return stream_manager
     
     @pytest.fixture
     def mock_conversation_history(self):
@@ -43,14 +43,13 @@ class TestOpenAIFunctionCalling:
         }
     
     @pytest.mark.asyncio
-    @patch("mcp_cli.llm.tools_handler.send_tools_call")
-    async def test_openai_style_tool_call(self, mock_send_tools_call, 
-                                         mock_server_streams, 
+    async def test_openai_style_tool_call(self, 
+                                         mock_stream_manager, 
                                          mock_conversation_history,
                                          mock_weather_tool_response):
-        """Test handling a tool call in OpenAI format."""
+        """Test handling a tool call in OpenAI format using StreamManager."""
         # Setup mock
-        mock_send_tools_call.return_value = mock_weather_tool_response
+        mock_stream_manager.call_tool.return_value = mock_weather_tool_response
         
         # Create tool call exactly as it would come from OpenAI API
         tool_call = {
@@ -63,12 +62,12 @@ class TestOpenAIFunctionCalling:
         }
         
         # Call the function
-        await handle_tool_call(tool_call, mock_conversation_history, mock_server_streams)
+        await handle_tool_call(tool_call, mock_conversation_history, stream_manager=mock_stream_manager)
         
         # Verify tool call was sent with correct arguments
-        mock_send_tools_call.assert_called_once()
-        args = mock_send_tools_call.call_args.kwargs
-        assert args["name"] == "get_weather"
+        mock_stream_manager.call_tool.assert_called_once()
+        args = mock_stream_manager.call_tool.call_args.kwargs
+        assert args["tool_name"] == "get_weather"
         assert args["arguments"] == {"location": "Paris, France"}
         
         # Verify conversation history was updated with correct format
@@ -80,26 +79,24 @@ class TestOpenAIFunctionCalling:
         assert tool_call_entry["content"] is None
         assert "tool_calls" in tool_call_entry
         
-        # Instead of checking exact ID (which is generated), check the format
+        # Tool call ID should match what was provided in the input
         tool_call_id = tool_call_entry["tool_calls"][0]["id"]
-        assert tool_call_id.startswith("call_")
+        assert tool_call_id == "call_12345xyz"
         
         # Check the tool response entry 
         tool_response_entry = mock_conversation_history[3]
         assert tool_response_entry["role"] == "tool"
         assert tool_response_entry["name"] == "get_weather"
-        # The tool_call_id should match what was generated in the tool call entry
         assert tool_response_entry["tool_call_id"] == tool_call_id
         assert isinstance(tool_response_entry["content"], str)
     
     @pytest.mark.asyncio
-    @patch("mcp_cli.llm.tools_handler.send_tools_call")
-    async def test_multiple_tool_calls(self, mock_send_tools_call, 
-                                      mock_server_streams, 
+    async def test_multiple_tool_calls(self, 
+                                      mock_stream_manager, 
                                       mock_conversation_history):
         """Test handling multiple tool calls in a single response."""
         # Setup mocks to return different responses for different tools
-        mock_send_tools_call.side_effect = [
+        mock_stream_manager.call_tool.side_effect = [
             {"isError": False, "content": {"temperature": 14, "unit": "celsius"}},
             {"isError": False, "content": {"temperature": 18, "unit": "celsius"}},
             {"isError": False, "content": "Email sent successfully"}
@@ -135,16 +132,15 @@ class TestOpenAIFunctionCalling:
         
         # Process each tool call sequentially
         for tool_call in tool_calls:
-            await handle_tool_call(tool_call, mock_conversation_history, mock_server_streams)
+            await handle_tool_call(tool_call, mock_conversation_history, stream_manager=mock_stream_manager)
         
         # Verify all tool calls were executed
-        assert mock_send_tools_call.call_count == 3
+        assert mock_stream_manager.call_tool.call_count == 3
         
         # Verify conversation history contains all tool calls and responses
         assert len(mock_conversation_history) == 8  # Original 2 + (3 tool calls + 3 responses)
         
         # Check each tool call and response pair
-        tool_call_ids = []
         for i in range(3):
             # Tool call entry
             tool_call_index = 2 + i*2
@@ -152,10 +148,9 @@ class TestOpenAIFunctionCalling:
             assert tool_call_entry["role"] == "assistant"
             assert tool_call_entry["content"] is None
             
-            # Store the tool call ID generated by the implementation
+            # Tool call ID should match the input
             tool_call_id = tool_call_entry["tool_calls"][0]["id"]
-            tool_call_ids.append(tool_call_id)
-            assert tool_call_id.startswith("call_")
+            assert tool_call_id == tool_calls[i]["id"]
             
             # Verify function name matches input
             assert tool_call_entry["tool_calls"][0]["function"]["name"] == tool_calls[i]["function"]["name"]
@@ -209,13 +204,12 @@ class TestOpenAIFunctionCalling:
         assert parameters["properties"]["units"]["enum"] == ["celsius", "fahrenheit"]
     
     @pytest.mark.asyncio
-    @patch("mcp_cli.llm.tools_handler.send_tools_call")
-    async def test_handling_complex_arguments(self, mock_send_tools_call, 
-                                            mock_server_streams, 
+    async def test_handling_complex_arguments(self, 
+                                            mock_stream_manager, 
                                             mock_conversation_history):
         """Test handling complex nested arguments in function calls."""
         # Setup mock
-        mock_send_tools_call.return_value = {
+        mock_stream_manager.call_tool.return_value = {
             "isError": False,
             "content": "Action completed successfully"
         }
@@ -248,12 +242,12 @@ class TestOpenAIFunctionCalling:
         }
         
         # Call the function
-        await handle_tool_call(tool_call, mock_conversation_history, mock_server_streams)
+        await handle_tool_call(tool_call, mock_conversation_history, stream_manager=mock_stream_manager)
         
         # Verify tool call was sent with correctly parsed complex arguments
-        mock_send_tools_call.assert_called_once()
-        args = mock_send_tools_call.call_args.kwargs
-        assert args["name"] == "complex_action"
+        mock_stream_manager.call_tool.assert_called_once()
+        args = mock_stream_manager.call_tool.call_args.kwargs
+        assert args["tool_name"] == "complex_action"
         
         # Check nested structures were preserved
         complex_args = args["arguments"]
@@ -264,56 +258,128 @@ class TestOpenAIFunctionCalling:
         assert complex_args["options"]["shipping"] == "express"
     
     @pytest.mark.asyncio
-    @patch("mcp_cli.llm.tools_handler.send_tools_list")
-    async def test_fetch_tools_with_strict_parameters(self, mock_send_tools_list,
-                                                    mock_server_streams):
-        """Test fetching tools with strict mode schema."""
-        # Create a tool schema that matches OpenAI's strict mode requirements
-        strict_tool_schema = {
-            "tools": [
-                {
-                    "name": "get_weather",
-                    "description": "Retrieves current weather for the given location.",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "location": {
-                                "type": "string",
-                                "description": "City and country e.g. Bogotá, Colombia"
-                            },
-                            "units": {
-                                "type": ["string", "null"],
-                                "enum": ["celsius", "fahrenheit"],
-                                "description": "Units the temperature will be returned in."
-                            }
-                        },
-                        "required": ["location", "units"],
-                        "additionalProperties": False
-                    }
+    async def test_namespaced_tools_compatibility(self):
+        """Test that namespaced tools work with OpenAI's function calling pattern."""
+        # Create tools with namespaced names
+        namespaced_tools = [
+            {
+                "name": "Server1_get_weather",
+                "description": "Retrieves current weather for the given location.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "location": {
+                            "type": "string",
+                            "description": "City name"
+                        }
+                    },
+                    "required": ["location"]
                 }
-            ]
-        }
-        
-        # Setup mock
-        mock_send_tools_list.return_value = strict_tool_schema
-        
-        # Fetch tools
-        read_stream, write_stream = mock_server_streams[0]
-        tools = await fetch_tools(read_stream, write_stream)
-        
-        # Verify tools were fetched correctly
-        assert len(tools) == 1
-        assert tools[0]["name"] == "get_weather"
+            },
+            {
+                "name": "Server2_get_weather",
+                "description": "Retrieves weather from second server.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "location": {
+                            "type": "string",
+                            "description": "City name"
+                        }
+                    },
+                    "required": ["location"]
+                }
+            }
+        ]
         
         # Convert to OpenAI format
-        openai_tools = convert_to_openai_tools(tools)
+        openai_tools = convert_to_openai_tools(namespaced_tools)
         
-        # Verify the conversion preserves strict mode properties
-        assert "additionalProperties" in openai_tools[0]["function"]["parameters"]
-        assert openai_tools[0]["function"]["parameters"]["additionalProperties"] is False
-        assert "required" in openai_tools[0]["function"]["parameters"]
+        # Verify namespaced names are preserved
+        assert len(openai_tools) == 2
+        assert openai_tools[0]["function"]["name"] == "Server1_get_weather"
+        assert openai_tools[1]["function"]["name"] == "Server2_get_weather"
         
-        # Verify the type array for optional nullable fields is preserved
-        units_type = openai_tools[0]["function"]["parameters"]["properties"]["units"]["type"]
-        assert isinstance(units_type, list)
-        assert "null" in units_type
+        # Create a mock stream manager
+        stream_manager = MagicMock()
+        stream_manager.call_tool = AsyncMock(return_value={
+            "isError": False,
+            "content": {"temperature": 14, "unit": "celsius"}
+        })
+        stream_manager.get_server_for_tool = MagicMock(return_value="Server1")
+        
+        # Create conversation history
+        conversation_history = [
+            {"role": "system", "content": "System message"},
+            {"role": "user", "content": "What's the weather like in Paris?"}
+        ]
+        
+        # Create tool call with namespaced tool name
+        tool_call = {
+            "id": "call_12345xyz",
+            "type": "function",
+            "function": {
+                "name": "Server1_get_weather",
+                "arguments": "{\"location\":\"Paris, France\"}"
+            }
+        }
+        
+        # Call the function
+        await handle_tool_call(tool_call, conversation_history, stream_manager=stream_manager)
+        
+        # Verify tool call was sent with correct tool name
+        stream_manager.call_tool.assert_called_once()
+        args = stream_manager.call_tool.call_args.kwargs
+        assert args["tool_name"] == "Server1_get_weather"
+        assert args["arguments"] == {"location": "Paris, France"}
+        
+        # Verify conversation history was updated correctly
+        assert len(conversation_history) == 4
+        
+        # Check tool name is preserved in conversation history
+        tool_call_entry = conversation_history[2]
+        assert tool_call_entry["tool_calls"][0]["function"]["name"] == "Server1_get_weather"
+        
+        tool_response_entry = conversation_history[3]
+        assert tool_response_entry["name"] == "Server1_get_weather"
+    
+    @pytest.mark.asyncio
+    async def test_openai_error_handling(self, 
+                                        mock_stream_manager, 
+                                        mock_conversation_history):
+        """Test error handling with OpenAI's function calling pattern."""
+        # Setup mock to return an error
+        mock_stream_manager.call_tool.return_value = {
+            "isError": True,
+            "error": "Tool execution failed",
+            "content": "Error: Tool execution failed"
+        }
+        
+        # Create tool call in OpenAI format
+        tool_call = {
+            "id": "call_12345xyz",
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "arguments": "{\"location\":\"Invalid Location\"}"
+            }
+        }
+        
+        # Call the function
+        await handle_tool_call(tool_call, mock_conversation_history, stream_manager=mock_stream_manager)
+        
+        # Verify tool call was sent
+        mock_stream_manager.call_tool.assert_called_once()
+        
+        # Verify conversation history includes error response
+        assert len(mock_conversation_history) == 4
+        
+        # Check tool call entry
+        tool_call_entry = mock_conversation_history[2]
+        assert tool_call_entry["role"] == "assistant"
+        
+        # Check error response
+        tool_response_entry = mock_conversation_history[3]
+        assert tool_response_entry["role"] == "tool"
+        assert tool_response_entry["name"] == "get_weather"
+        assert "Error" in tool_response_entry["content"]

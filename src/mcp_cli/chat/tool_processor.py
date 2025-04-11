@@ -2,6 +2,7 @@
 from rich.console import Console
 from rich import print
 import json
+import logging
 
 class ToolProcessor:
     """Class to handle tool processing."""
@@ -42,11 +43,17 @@ class ToolProcessor:
                     tool_name = "unknown tool"
                     raw_arguments = {}
                     tool_call_id = f"call_{tool_name}"
+                
+                # Get the display name for UI (non-namespaced)
+                display_name = tool_name
+                if hasattr(self.context, 'namespaced_tool_map') and tool_name in self.context.namespaced_tool_map:
+                    display_name = self.context.namespaced_tool_map[tool_name]
+                    logging.debug(f"Using display name '{display_name}' for namespaced tool '{tool_name}'")
 
-                # Display the tool call
-                self.ui_manager.print_tool_call(tool_name, raw_arguments)
+                # Display the tool call with the user-friendly name
+                self.ui_manager.print_tool_call(display_name, raw_arguments)
 
-                # Process tool call using StreamManager
+                # Process tool call using StreamManager - stream_manager handles namespacing internally
                 with Console().status("[cyan]Executing tool...[/cyan]", spinner="dots"):
                     try:
                         # Parse arguments if they're a string
@@ -58,13 +65,13 @@ class ToolProcessor:
                         else:
                             arguments = raw_arguments
                             
-                        # Call the tool using StreamManager
+                        # Call the tool using StreamManager - keep the namespaced name from the LLM
                         result = await self.context.stream_manager.call_tool(
-                            tool_name=tool_name,
+                            tool_name=tool_name,  # Use the original tool name from LLM (which should be namespaced)
                             arguments=arguments
                         )
                         
-                        # Add the tool call to conversation history
+                        # Add the tool call to conversation history - keep the same namespaced name for consistency
                         self.context.conversation_history.append({
                             "role": "assistant",
                             "content": None,
@@ -73,7 +80,7 @@ class ToolProcessor:
                                     "id": tool_call_id,
                                     "type": "function",
                                     "function": {
-                                        "name": tool_name,
+                                        "name": tool_name,  # Keep the namespaced name in history
                                         "arguments": json.dumps(arguments) if isinstance(arguments, dict) else str(arguments)
                                     }
                                 }
@@ -92,16 +99,16 @@ class ToolProcessor:
                         else:
                             content = str(result)
                             
-                        # Add the tool response to conversation history
+                        # Add the tool response to conversation history - keep namespaced name here too
                         self.context.conversation_history.append({
                             "role": "tool",
-                            "name": tool_name,
+                            "name": tool_name,  # Keep the namespaced name in history
                             "content": content,
                             "tool_call_id": tool_call_id
                         })
                         
                     except Exception as e:
-                        print(f"[red]Error executing tool {tool_name}: {e}[/red]")
+                        print(f"[red]Error executing tool {display_name}: {e}[/red]")
                         
                         # Add a failed tool response to maintain conversation flow
                         # Add a placeholder tool call to history
@@ -113,7 +120,7 @@ class ToolProcessor:
                                     "id": tool_call_id,
                                     "type": "function",
                                     "function": {
-                                        "name": tool_name,
+                                        "name": tool_name,  # Keep the namespaced name
                                         "arguments": json.dumps(raw_arguments) if isinstance(raw_arguments, dict) else str(raw_arguments)
                                     }
                                 }
@@ -123,7 +130,7 @@ class ToolProcessor:
                         # Add error response
                         self.context.conversation_history.append({
                             "role": "tool",
-                            "name": tool_name,
+                            "name": tool_name,  # Keep the namespaced name
                             "content": f"Error: Could not execute tool. {str(e)}",
                             "tool_call_id": tool_call_id
                         })

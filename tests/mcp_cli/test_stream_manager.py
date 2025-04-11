@@ -51,9 +51,15 @@ async def dummy_send_tools_list(read_stream, write_stream):
     # Return a dummy list of tools; include a tool "toolA" for server 1 and "toolB" for server 2
     # We can use an attribute on the stream name to decide which tools to return.
     if "read-1" in read_stream.name:  # our dummy for server 1
-        return {"tools": [{"name": "toolA"}, {"name": "sharedTool"}]}
+        return {"tools": [
+            {"name": "toolA", "description": "Tool A from server 1"},
+            {"name": "sharedTool", "description": "Shared tool"}
+        ]}
     elif "read-2" in read_stream.name:  # dummy for server 2
-        return {"tools": [{"name": "toolB"}, {"name": "sharedTool"}]}
+        return {"tools": [
+            {"name": "toolB", "description": "Tool B from server 2"},
+            {"name": "sharedTool", "description": "Shared tool but from server 2"}
+        ]}
     else:
         return {"tools": []}
 
@@ -65,7 +71,7 @@ async def dummy_send_tools_call(read_stream, write_stream, name, arguments):
     # Otherwise, include an identifier from the stream to show it was routed correctly.
     return {
         "isError": False,
-        "result": f"Called {name} on {read_stream.name} with args: {arguments}"
+        "content": f"Called {name} on {read_stream.name} with args: {arguments}"
     }
 
 # Fixtures to help override functions in the module under test.
@@ -101,66 +107,119 @@ async def test_initialize_servers_success():
     
     # Check that the streams were created for both servers
     assert len(manager.streams) == 2
+    
     # Check the server_info contains both entries
     assert len(manager.get_server_info()) == 2
-    # Check that the tools list combined tools from both dummy responses
-    # From our dummy tools, server 1 returns 2 tools and server 2 returns 2 tools.
+    
+    # Check that the display tools list contains the combined tools from both servers
     assert len(manager.get_all_tools()) == 4
+    
+    # Check that the namespaced internal tools were created correctly
+    internal_tools = manager.get_internal_tools()
+    assert len(internal_tools) == 4
+    
+    # Check that tools were properly namespaced
+    namespaced_tools = [tool["name"] for tool in internal_tools]
+    assert "ServerOne_toolA" in namespaced_tools
+    assert "ServerTwo_toolB" in namespaced_tools
+    assert "ServerOne_sharedTool" in namespaced_tools
+    assert "ServerTwo_sharedTool" in namespaced_tools
+    
+    # Check namespacing maps
+    assert manager.namespaced_tool_map["ServerOne_toolA"] == "toolA"
+    assert manager.namespaced_tool_map["ServerTwo_toolB"] == "toolB"
+    
+    # Check that the original tool name maps to namespaced versions
+    assert "toolA" in manager.original_to_namespaced
+    assert "toolB" in manager.original_to_namespaced
+    
+    # For shared tools, both versions should be in the list
+    assert len(manager.original_to_namespaced["sharedTool"]) == 2
+    assert "ServerOne_sharedTool" in manager.original_to_namespaced["sharedTool"]
+    assert "ServerTwo_sharedTool" in manager.original_to_namespaced["sharedTool"]
+    
+    # Check default mappings for shared tools
+    assert manager.original_to_default["sharedTool"] == "ServerOne_sharedTool"  # First one is default
 
 @pytest.mark.asyncio
-async def test_call_tool_correct_routing():
+async def test_call_tool_with_namespaced_name():
     # Initialize a manager with two servers.
     servers = ["1", "2"]
     server_names = {0: "ServerOne", 1: "ServerTwo"}
     manager = await StreamManager.create("dummy_config.json", servers, server_names)
     
-    # Our dummy_send_tools_list maps:
-    # - ServerOne (stream index 0) gives tool "toolA" and "sharedTool"
-    # - ServerTwo (stream index 1) gives tool "toolB" and "sharedTool"
-    #
-    # Let's call toolA: It should be routed to ServerOne.
-    response = await manager.call_tool("toolA", {"param": "value"})
+    # Call a tool using its fully namespaced name
+    response = await manager.call_tool("ServerOne_toolA", {"param": "value"})
     assert not response.get("isError")
-    assert "read-1" in response["result"]
-
-    # Now call toolB: It should be routed to ServerTwo.
-    response = await manager.call_tool("toolB", {"param": "value"})
+    assert "read-1" in response["content"]  # Should go to server 1
+    
+    # Call another tool with its namespaced name
+    response = await manager.call_tool("ServerTwo_toolB", {"param": "value"})
     assert not response.get("isError")
-    assert "read-2" in response["result"]
-
-    # For the sharedTool, the mapping is overwritten by the second occurrence.
-    response = await manager.call_tool("sharedTool", {"param": "value"})
-    assert not response.get("isError")
-    # Since our current implementation overwrites, sharedTool is expected to be routed to ServerTwo.
-    assert "read-2" in response["result"]
-
+    assert "read-2" in response["content"]  # Should go to server 2
 
 @pytest.mark.asyncio
-async def test_call_tool_fallback_all_servers(monkeypatch):
-    # Modify the dummy_send_tools_call to simulate a failure on one server for a specific tool.
-    async def dummy_send_tools_call_failure(read_stream, write_stream, name, arguments):
-        if "read-1" in read_stream.name:
-            # Simulate an error on server one
-            return {"isError": True, "error": "ServerOne failed", "content": "Error: ServerOne failed"}
-        else:
-            # For server two, simulate success.
-            return {
-                "isError": False,
-                "result": f"Called {name} on {read_stream.name} with args: {arguments}"
-            }
-    monkeypatch.setattr("mcp_cli.stream_manager.send_tools_call", dummy_send_tools_call_failure)
-
+async def test_call_tool_with_original_name():
+    # Initialize a manager with two servers.
     servers = ["1", "2"]
     server_names = {0: "ServerOne", 1: "ServerTwo"}
     manager = await StreamManager.create("dummy_config.json", servers, server_names)
     
-    # Assume that the tool is not mapped to a specific server (or mapping is lost).
-    # We set the mapping to an unknown value to force fallback.
-    manager.tool_to_server_map.pop("toolA", None)
-    response = await manager.call_tool("toolA", {"param": "value"}, server_name="Unknown")
-    # The fallback should try server one first (fail) and then server two (succeed)
+    # Call a tool using its original name (should use the default mapping)
+    response = await manager.call_tool("toolA", {"param": "value"})
     assert not response.get("isError")
-    assert "read-2" in response["result"]
+    assert "read-1" in response["content"]  # Should go to server 1
+    
+    # Call another tool with its original name
+    response = await manager.call_tool("toolB", {"param": "value"})
+    assert not response.get("isError")
+    assert "read-2" in response["content"]  # Should go to server 2
+    
+    # For shared tools, the original name should route to the default (first server)
+    response = await manager.call_tool("sharedTool", {"param": "value"})
+    assert not response.get("isError")
+    assert "read-1" in response["content"]  # Should use the default (first server)
+
+@pytest.mark.asyncio
+async def test_call_shared_tool_with_specific_server():
+    # Initialize a manager with two servers.
+    servers = ["1", "2"]
+    server_names = {0: "ServerOne", 1: "ServerTwo"}
+    manager = await StreamManager.create("dummy_config.json", servers, server_names)
+    
+    # Call the shared tool but specify which server to use
+    response = await manager.call_tool("sharedTool", {"param": "value"}, server_name="ServerTwo")
+    assert not response.get("isError")
+    assert "read-2" in response["content"]  # Should go to server 2 as specified
+
+@pytest.mark.asyncio
+async def test_tool_name_resolution():
+    # Initialize a manager with two servers.
+    servers = ["1", "2"]
+    server_names = {0: "ServerOne", 1: "ServerTwo"}
+    manager = await StreamManager.create("dummy_config.json", servers, server_names)
+    
+    # Test _resolve_tool_name with different inputs
+    
+    # Case 1: Already namespaced
+    resolved_name, server = manager._resolve_tool_name("ServerOne_toolA")
+    assert resolved_name == "ServerOne_toolA"
+    assert server == "ServerOne"
+    
+    # Case 2: Original name with unique server
+    resolved_name, server = manager._resolve_tool_name("toolA")
+    assert resolved_name == "ServerOne_toolA"
+    assert server == "ServerOne"
+    
+    # Case 3: Shared tool name (should use default)
+    resolved_name, server = manager._resolve_tool_name("sharedTool")
+    assert resolved_name == "ServerOne_sharedTool"  # First server is default
+    assert server == "ServerOne"
+    
+    # Case 4: Unknown tool
+    resolved_name, server = manager._resolve_tool_name("nonExistentTool")
+    assert resolved_name == "nonExistentTool"  # Unchanged
+    assert server == "Unknown"
 
 @pytest.mark.asyncio
 async def test_close_cleans_resources():
