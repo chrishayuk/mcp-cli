@@ -18,6 +18,9 @@ from mcp_cli.llm.tools_handler import fetch_tools, convert_to_openai_tools
 # Chat context for system prompt generation
 from mcp_cli.chat.system_prompt import generate_system_prompt
 
+# Import StreamManager
+from mcp_cli.stream_manager import StreamManager
+
 # Configure logging
 logger = logging.getLogger("mcp_cli.cmd")
 
@@ -37,6 +40,7 @@ async def cmd_run(
     model: Optional[str] = None,
     verbose: bool = False,
     server_names: Optional[Dict[int, str]] = None,
+    stream_manager: Optional[StreamManager] = None,
 ):
     """Run a command in non-interactive mode for automation and scripting."""
     
@@ -74,7 +78,7 @@ async def cmd_run(
         
         # If tool is specified, execute tool directly
         if tool:
-            result = await run_single_tool(server_streams, tool, tool_args, server_names)
+            result = await run_single_tool(server_streams, tool, tool_args, server_names, stream_manager)
             write_output(result, output, raw)
             return
             
@@ -86,7 +90,8 @@ async def cmd_run(
             input_text,
             prompt, 
             system_prompt,
-            server_names
+            server_names,
+            stream_manager
         )
         
         # Output result
@@ -96,7 +101,7 @@ async def cmd_run(
         logger.error(f"Error in command mode: {e}")
         sys.exit(1)
 
-async def run_single_tool(server_streams, tool_name, tool_args_json, server_names=None):
+async def run_single_tool(server_streams, tool_name, tool_args_json, server_names=None, stream_manager=None):
     """Run a single tool directly."""
     from mcp_cli.llm.tools_handler import send_tools_call
     
@@ -109,7 +114,39 @@ async def run_single_tool(server_streams, tool_name, tool_args_json, server_name
             logger.error(f"Invalid JSON in tool arguments")
             sys.exit(1)
     
-    # Try each server until we find one that has the tool
+    # If we have a stream_manager, use it to lookup the tool
+    if stream_manager:
+        server_display_name = stream_manager.get_server_for_tool(tool_name)
+        if server_display_name != "Unknown":
+            logger.debug(f"Using stream_manager to find tool '{tool_name}' on server '{server_display_name}'")
+            
+            # Try each server directly
+            for i, (read_stream, write_stream) in enumerate(server_streams):
+                # Check if this is the right server based on name
+                if isinstance(server_names, dict) and i in server_names:
+                    current_server_name = server_names[i]
+                else:
+                    current_server_name = f"Server {i+1}"
+                
+                if current_server_name == server_display_name:
+                    logger.debug(f"Found matching server for '{tool_name}': {server_display_name}")
+                    result = await send_tools_call(
+                        read_stream=read_stream, 
+                        write_stream=write_stream,
+                        name=tool_name,
+                        arguments=tool_args
+                    )
+                    
+                    # Check for errors
+                    if result.get("isError"):
+                        error_msg = result.get("error", "Unknown error")
+                        logger.error(f"Error calling tool {tool_name} on {server_display_name}: {error_msg}")
+                        sys.exit(1)
+                        
+                    # Return the tool result
+                    return json.dumps(result.get("content", "No content"), indent=2)
+    
+    # If no stream_manager or it didn't find the tool, try each server
     for i, (read_stream, write_stream) in enumerate(server_streams):
         try:
             # Get server name for logging
@@ -164,44 +201,50 @@ async def run_llm_with_tools(
     input_text, 
     prompt_template, 
     custom_system_prompt, 
-    server_names=None
+    server_names=None,
+    stream_manager=None
 ):
     """Run LLM inference with tool support."""
-    # Collect tools from all servers
-    all_tools = []
-    tool_to_server_map = {}  # Maps tool names to their server names
-    
-    for i, (read_stream, write_stream) in enumerate(server_streams):
-        try:
-            # Get server name for this index
-            server_display_name = "Unknown Server"
-            if server_names and i in server_names:
-                server_display_name = server_names[i]
-            else:
-                server_display_name = f"Server {i+1}"
+    # If we have a stream_manager, use its tools data
+    if stream_manager:
+        all_tools = stream_manager.get_all_tools()
+        tool_to_server_map = stream_manager.tool_to_server_map
+    else:
+        # Collect tools from all servers
+        all_tools = []
+        tool_to_server_map = {}  # Maps tool names to their server names
+        
+        for i, (read_stream, write_stream) in enumerate(server_streams):
+            try:
+                # Get server name for this index
+                server_display_name = "Unknown Server"
+                if server_names and i in server_names:
+                    server_display_name = server_names[i]
+                else:
+                    server_display_name = f"Server {i+1}"
+                    
+                # Get tools from this server
+                tools_response = await fetch_tools(read_stream, write_stream)
+                server_tools = []
                 
-            # Get tools from this server
-            tools_response = await fetch_tools(read_stream, write_stream)
-            server_tools = []
-            
-            if tools_response and isinstance(tools_response, dict):
-                server_tools = tools_response.get("tools", [])
-            elif tools_response and isinstance(tools_response, list):
-                # Some implementations might return a list directly
-                server_tools = tools_response
+                if tools_response and isinstance(tools_response, dict):
+                    server_tools = tools_response.get("tools", [])
+                elif tools_response and isinstance(tools_response, list):
+                    # Some implementations might return a list directly
+                    server_tools = tools_response
+                    
+                # Map each tool to this server
+                for tool in server_tools:
+                    if isinstance(tool, dict) and "name" in tool:
+                        tool_to_server_map[tool["name"]] = server_display_name
                 
-            # Map each tool to this server
-            for tool in server_tools:
-                if isinstance(tool, dict) and "name" in tool:
-                    tool_to_server_map[tool["name"]] = server_display_name
-            
-            # Add tools to the combined list
-            all_tools.extend(server_tools)
-            
-            logger.debug(f"Fetched {len(server_tools)} tools from '{server_display_name}'")
-        except Exception as e:
-            # Just log the error and continue
-            logger.warning(f"Failed to fetch tools from server {i}: {e}")
+                # Add tools to the combined list
+                all_tools.extend(server_tools)
+                
+                logger.debug(f"Fetched {len(server_tools)} tools from '{server_display_name}'")
+            except Exception as e:
+                # Just log the error and continue
+                logger.warning(f"Failed to fetch tools from server {i}: {e}")
     
     # Convert tools to OpenAI format
     openai_tools = convert_to_openai_tools(all_tools)

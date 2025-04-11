@@ -55,24 +55,22 @@ def extract_server_names(config, specified_servers=None):
 def process_options(server, disable_filesystem, provider, model, config_file="server_config.json"):
     """
     Process CLI options to produce a list of server names and set environment variables.
-    
-    Returns a tuple of:
-      - servers_list: The final list of server names.
-      - user_specified: The list of servers specified by the user.
-      - server_names: Dictionary mapping server indices to their friendly names.
     """
     servers_list = []
     user_specified = []
     server_names = {}
     
+    # Add debug logging
+    logging.debug(f"Processing options: server={server}, disable_filesystem={disable_filesystem}")
+    
     if server:
         # Allow comma-separated servers.
         user_specified = [s.strip() for s in server.split(",")]
+        logging.debug(f"Parsed server parameter into: {user_specified}")
         servers_list.extend(user_specified)
     
-    # Always add 'filesystem' unless explicitly disabled.
-    #if not disable_filesystem and "filesystem" not in servers_list:
-    #    servers_list.insert(0, "filesystem")
+    # Add more logging
+    logging.debug(f"Final servers list: {servers_list}")
         
     # Use a default model if none is provided.
     if not model:

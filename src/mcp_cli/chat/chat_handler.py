@@ -2,7 +2,6 @@
 import asyncio
 import sys
 import gc
-from subprocess import Popen
 from rich import print
 from rich.panel import Panel
 
@@ -12,34 +11,33 @@ from mcp_cli.chat.ui_manager import ChatUIManager
 from mcp_cli.chat.conversation import ConversationProcessor
 from mcp_cli.ui.ui_helpers import display_welcome_banner, clear_screen
 
-async def handle_chat_mode(server_streams, provider="openai", model="gpt-4o-mini", server_names=None):
+# Import StreamManager (now mandatory)
+from mcp_cli.stream_manager import StreamManager
+
+async def handle_chat_mode(stream_manager, provider="openai", model="gpt-4o-mini"):
     """
     Enter chat mode with multi-call support for autonomous tool chaining.
     
     Args:
-        server_streams: List of (read_stream, write_stream) tuples
+        stream_manager: StreamManager instance (required)
         provider: LLM provider name (default: "openai")
         model: LLM model name (default: "gpt-4o-mini")
-        server_names: Optional dictionary mapping server indices to their names
     """
     ui_manager = None
     exit_code = 0
-    active_subprocesses = []  # Track subprocess instances
     
     try:
         # Clear the screen to start fresh
-        clear_screen()
+        #clear_screen()
         
-        # Initialize chat context with server names
-        chat_context = ChatContext(server_streams, provider, model, server_names)
+        # Initialize chat context with StreamManager
+        chat_context = ChatContext(stream_manager, provider, model)
+        
         if not await chat_context.initialize():
             return False
             
-        # Track subprocesses created during initialization
-        _collect_subprocesses(active_subprocesses)
-        
         # Display the welcome banner (and show tools info here only)
-        display_welcome_banner(chat_context.to_dict())
+        # display_welcome_banner(chat_context.to_dict())
         
         # Initialize UI manager
         ui_manager = ChatUIManager(chat_context)
@@ -80,9 +78,6 @@ async def handle_chat_mode(server_streams, provider="openai", model="gpt-4o-mini
                 
                 # Process conversation
                 await conv_processor.process_conversation()
-                
-                # Track any new subprocesses created during processing
-                _collect_subprocesses(active_subprocesses)
 
             except KeyboardInterrupt:
                 print("\n[yellow]Chat interrupted. Type 'exit' to quit.[/yellow]")
@@ -106,22 +101,12 @@ async def handle_chat_mode(server_streams, provider="openai", model="gpt-4o-mini
         if ui_manager:
             await _safe_cleanup(ui_manager)
         
-        # 2. Clean up explicit subprocess instances
-        _cleanup_subprocesses(active_subprocesses)
-        
-        # 3. Clean up server streams
-        for stream in server_streams:
-            await _safe_close(stream)
-            
-        # 4. Clean up transports in event loop
-        _cleanup_transports()
-        
-        # 5. Force garbage collection to run before exit
+        # 2. Force garbage collection to run before exit
         gc.collect()
     
     return exit_code == 0  # Return success status
 
-# Helper functions for safer resource cleanup (unchanged)
+# Helper functions for safer resource cleanup
 async def _safe_cleanup(ui_manager):
     """Safely cleanup UI manager resources."""
     try:
@@ -133,67 +118,3 @@ async def _safe_cleanup(ui_manager):
                 ui_manager.cleanup()
     except Exception as e:
         print(f"[red]Error during UI cleanup:[/red] {e}")
-
-async def _safe_close(stream):
-    """Safely close a stream resource."""
-    try:
-        if hasattr(stream, 'close'):
-            if asyncio.iscoroutinefunction(stream.close):
-                await stream.close()
-            else:
-                stream.close()
-                
-        # If it has a process attribute, terminate it
-        if hasattr(stream, 'process') and stream.process is not None:
-            if hasattr(stream.process, 'terminate'):
-                stream.process.terminate()
-                try:
-                    stream.process.wait(timeout=0.5)
-                except:
-                    if hasattr(stream.process, 'kill'):
-                        stream.process.kill()
-    except Exception as e:
-        print(f"[red]Error closing stream:[/red] {e}")
-
-def _collect_subprocesses(active_subprocesses):
-    """Collect all active subprocess.Popen instances."""
-    for obj in gc.get_objects():
-        if isinstance(obj, Popen) and obj.poll() is None:  # Still running
-            if obj not in active_subprocesses:
-                active_subprocesses.append(obj)
-
-def _cleanup_subprocesses(active_subprocesses):
-    """Terminate all tracked subprocess instances."""
-    for proc in active_subprocesses:
-        try:
-            if proc.poll() is None:  # Process still running
-                proc.terminate()
-                try:
-                    proc.wait(timeout=0.5)  # Short timeout
-                except:
-                    proc.kill()  # Force kill if terminate doesn't work
-        except Exception as e:
-            print(f"[red]Error cleaning up subprocess:[/red] {e}")
-
-def _cleanup_transports():
-    """Clean up transports in the event loop."""
-    try:
-        loop = asyncio.get_event_loop()
-        if not loop.is_closed():
-            # Clean up transports
-            for transport in getattr(loop, '_transports', set()):
-                if hasattr(transport, 'close'):
-                    try:
-                        transport.close()
-                    except Exception:
-                        pass
-                    
-            # Find and clean up subprocess transports specifically
-            for obj in gc.get_objects():
-                if hasattr(obj, '__class__') and 'SubprocessTransport' in obj.__class__.__name__:
-                    # Disable the pipe to prevent EOF writing
-                    if hasattr(obj, '_protocol') and obj._protocol is not None:
-                        if hasattr(obj._protocol, 'pipe'):
-                            obj._protocol.pipe = None
-    except Exception as e:
-        print(f"[red]Error cleaning up transports:[/red] {e}")

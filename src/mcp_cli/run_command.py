@@ -5,81 +5,10 @@ Utilities for running commands with proper setup and cleanup.
 import asyncio
 import logging
 import time
-from contextlib import asynccontextmanager
-import gc
+from typing import Callable, List, Dict, Any, Optional
 
-# mcp imports
-from chuk_mcp.mcp_client.transport.stdio.stdio_client import stdio_client
-from chuk_mcp.mcp_client.messages.initialize.send_messages import send_initialize
-
-# Use mcp_cli.config instead of chuk_mcp.mcp_client.config
-from mcp_cli.config import load_config
-
-@asynccontextmanager
-async def get_server_streams(config_file, servers):
-    """
-    Context manager for setting up and cleaning up server streams.
-    
-    Args:
-        config_file: Path to the configuration file.
-        servers: List of server names to connect to.
-        
-    Yields:
-        List of (read_stream, write_stream) tuples for each server.
-    """
-    streams = []
-    client_contexts = []
-    
-    try:
-        # Initialize each server
-        for server_name in servers:
-            try:
-                logging.info(f"Initializing server: {server_name}")
-                # Load the server configuration
-                server_params = await load_config(config_file, server_name)
-                
-                # Create the stdio client context manager and add it to our tracking list
-                client_ctx = stdio_client(server_params)
-                client_contexts.append(client_ctx)
-                
-                # Enter the context to get read_stream and write_stream
-                read_stream, write_stream = await client_ctx.__aenter__()
-                
-                # Send the initialize message
-                init_success = await send_initialize(read_stream, write_stream)
-                if not init_success:
-                    logging.error(f"Failed to initialize server {server_name}")
-                    # Close this context since we failed
-                    await client_ctx.__aexit__(None, None, None)
-                    continue
-                
-                # Store the streams
-                streams.append((read_stream, write_stream))
-                logging.info(f"Successfully initialized server: {server_name}")
-            except Exception as e:
-                logging.error(f"Error initializing server {server_name}: {e}")
-        
-        if not streams:
-            logging.warning("No server streams were successfully initialized!")
-            
-        logging.info(f"Yielding {len(streams)} server streams")
-        # Yield the streams for command use
-        yield streams
-        
-    finally:
-        # Exit all client contexts
-        for ctx in client_contexts:
-            try:
-                await ctx.__aexit__(None, None, None)
-            except Exception as e:
-                logging.debug(f"Error closing client context: {e}")
-        
-        # Clear references
-        streams.clear()
-        client_contexts.clear()
-        
-        # Force garbage collection
-        gc.collect()
+# Import our StreamManager
+from mcp_cli.stream_manager import StreamManager
 
 async def run_command_async(command_func, config_file, servers, user_specified, extra_params=None):
     """
@@ -104,16 +33,26 @@ async def run_command_async(command_func, config_file, servers, user_specified, 
         
     logging.info(f"Initializing servers: {servers}")
     
-    # Use the context manager to handle server streams
-    async with get_server_streams(config_file, servers) as server_streams:
-        if not server_streams:
-            logging.warning("No server streams available! Command may not work properly.")
+    # Create a stream manager to handle server connections
+    stream_manager = await StreamManager.create(
+        config_file=config_file,
+        servers=servers,
+        server_names={i: name for i, name in enumerate(servers)} if servers else None
+    )
+    
+    try:
+        # Initialize extra_params if None
+        if extra_params is None:
+            extra_params = {}
             
-        # Run the command with the server streams, passing extra params if provided
-        if extra_params is not None:
-            return await command_func(server_streams, **extra_params)
-        else:
-            return await command_func(server_streams)
+        # Add stream_manager to extra_params
+        extra_params["stream_manager"] = stream_manager
+        
+        # Run the command with the stream manager
+        return await command_func(**extra_params)
+    finally:
+        # Ensure streams are properly closed
+        await stream_manager.close()
 
 def run_command(command_func, config_file, servers, user_specified, extra_params=None):
     """
