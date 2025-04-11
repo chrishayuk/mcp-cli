@@ -37,7 +37,7 @@ async def handle_chat_mode(stream_manager, provider="openai", model="gpt-4o-mini
             return False
             
         # Display the welcome banner (and show tools info here only)
-        display_welcome_banner(chat_context.to_dict())
+        # display_welcome_banner(chat_context.to_dict())
         
         # Initialize UI manager
         ui_manager = ChatUIManager(chat_context)
