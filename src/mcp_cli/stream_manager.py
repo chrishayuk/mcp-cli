@@ -258,7 +258,6 @@ class StreamManager:
                     try:
                         arguments = json.loads(arguments)
                     except json.JSONDecodeError:
-                        # Keep as string if it's not valid JSON
                         pass
                 
                 # Call the tool
@@ -296,6 +295,8 @@ class StreamManager:
         for ctx in self.client_contexts:
             try:
                 await ctx.__aexit__(None, None, None)
+            except asyncio.CancelledError:
+                logging.debug("Cancellation encountered while closing client context; continuing cleanup.")
             except Exception as e:
                 logging.debug(f"Error closing client context: {e}")
         
@@ -306,7 +307,7 @@ class StreamManager:
                     proc.terminate()
                     try:
                         proc.wait(timeout=0.5)  # Short timeout
-                    except:
+                    except Exception:
                         proc.kill()  # Force kill if terminate doesn't work
             except Exception as e:
                 logging.debug(f"Error cleaning up subprocess: {e}")
@@ -326,7 +327,6 @@ class StreamManager:
                 # Find and clean up subprocess transports specifically
                 for obj in gc.get_objects():
                     if hasattr(obj, '__class__') and 'SubprocessTransport' in obj.__class__.__name__:
-                        # Disable the pipe to prevent EOF writing
                         if hasattr(obj, '_protocol') and obj._protocol is not None:
                             if hasattr(obj._protocol, 'pipe'):
                                 obj._protocol.pipe = None

@@ -20,9 +20,8 @@ from mcp_cli.cli_options import process_options
 from mcp_cli.run_command import run_command
 from mcp_cli.stream_manager import StreamManager
 
-# Configure logging
+# Configure logging without setting a fixed level here.
 logging.basicConfig(
-    level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     stream=sys.stderr,
 )
@@ -35,37 +34,26 @@ def restore_terminal():
     
     # Then clean up asyncio tasks and the event loop
     try:
-        # Only attempt to clean up asyncio resources if we're in the main thread
         if hasattr(asyncio, "all_tasks"):
             loop = asyncio.get_event_loop_policy().get_event_loop()
             if not loop.is_closed():
-                # Get and cancel all tasks
                 tasks = asyncio.all_tasks(loop=loop)
                 if tasks:
                     for task in tasks:
                         task.cancel()
-                    
-                    # Wait for tasks to be cancelled (with timeout)
                     try:
                         if sys.version_info >= (3, 7):
-                            loop.run_until_complete(
-                                asyncio.wait(tasks, timeout=0.5)
-                            )
+                            loop.run_until_complete(asyncio.wait(tasks, timeout=0.5))
                     except (asyncio.CancelledError, asyncio.TimeoutError):
-                        pass  # Expected during cancellation
-                
-                # Run the loop one last time to complete any pending callbacks
+                        pass
                 try:
                     loop.run_until_complete(asyncio.sleep(0))
                 except (RuntimeError, asyncio.CancelledError):
                     pass
-                
-                # Close the loop
                 loop.close()
     except Exception as e:
         logging.debug(f"Error during asyncio cleanup: {e}")
     
-    # Force garbage collection to ensure __del__ methods run while we can still handle them
     gc.collect()
 
 # Register terminal restore on exit.
@@ -85,15 +73,12 @@ def setup_signal_handlers():
         restore_terminal()
         sys.exit(0)
     
-    # Register the signal handler for common termination signals
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    
-    # On non-Windows platforms, also handle SIGQUIT
     if hasattr(signal, 'SIGQUIT'):
         signal.signal(signal.SIGQUIT, signal_handler)
 
-# Global Options Callback
+# Global Options Callback with logging_level CLI option
 @app.callback(invoke_without_command=True)
 def common_options(
     ctx: typer.Context,
@@ -102,6 +87,10 @@ def common_options(
     provider: str = "openai",
     model: str = None,
     disable_filesystem: bool = True,
+    logging_level: str = typer.Option(
+        "WARNING",
+        help="Set the logging level. Options: DEBUG, INFO, WARNING, ERROR, CRITICAL"
+    ),
 ):
     """
     MCP Command-Line Tool
@@ -109,7 +98,14 @@ def common_options(
     Global options are specified here.
     If no subcommand is provided, chat mode is launched by default.
     """
-    # Process the options, getting the servers, etc.
+    # Convert the logging level string to a numeric value.
+    numeric_level = getattr(logging, logging_level.upper(), None)
+    if not isinstance(numeric_level, int):
+        raise ValueError(f"Invalid logging level: {logging_level}")
+    logging.getLogger().setLevel(numeric_level)
+    logging.debug(f"Logging level set to {logging_level.upper()}")
+
+    # Process options to get servers and related configuration.
     servers, user_specified, server_names = process_options(server, disable_filesystem, provider, model, config_file)
     
     # Set the context.
@@ -117,15 +113,12 @@ def common_options(
         "config_file": config_file,
         "servers": servers,
         "user_specified": user_specified,
-        "server_names": server_names,  # Add server names to context
+        "server_names": server_names,
     }
     
-    # Check if a subcommand was invoked.
+    # If no subcommand was invoked, launch chat mode.
     if ctx.invoked_subcommand is None:
-        # Set up signal handlers before entering chat mode
         setup_signal_handlers()
-        
-        # Call the chat command (imported from the commands module)
         chat_command(
             config_file=config_file,
             server=server,
@@ -133,28 +126,19 @@ def common_options(
             model=model,
             disable_filesystem=disable_filesystem,
         )
-        
-        # Make sure any asyncio cleanup is done
         restore_terminal()
-        
-        # Exit chat mode.
         raise typer.Exit()
 
 if __name__ == "__main__":
-    # Set up platform-specific event loop policy
     if sys.platform == 'win32':
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     
     try:
-        # Set up signal handlers
         setup_signal_handlers()
-        
-        # Start the Typer app.
         app()
     except KeyboardInterrupt:
         logging.debug("KeyboardInterrupt received")
     except Exception as e:
         logging.error(f"Unhandled exception: {e}")
     finally:
-        # Restore the terminal upon exit.
         restore_terminal()
