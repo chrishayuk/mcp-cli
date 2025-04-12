@@ -28,7 +28,7 @@ app = typer.Typer(help="Command mode for non-interactive usage")
 
 @app.command("run")
 async def cmd_run(
-    server_streams,
+    server_streams: Optional[str] = None,
     input: Optional[str] = None,
     prompt: Optional[str] = None, 
     output: Optional[str] = None,
