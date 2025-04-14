@@ -42,7 +42,9 @@ dev = [
 
 [tool.setuptools]
 package-dir = { "" = "src" }
-packages = ["mcp_cli"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [dependency-groups]
 dev = [
