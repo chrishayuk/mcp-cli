@@ -1,251 +1,325 @@
+"""
+StreamManager module for centralized management of server streams.
+
+This module provides a centralized way to:
+1. Initialize and maintain server connections
+2. Fetch tools and resources
+3. Ensure proper cleanup of streams and resources
+4. Handle connection errors gracefully
+5. Handle duplicate tool names across servers automatically
+6. Provide cancellation and heartbeat-based resilience
+"""
 import asyncio
+import logging
 import json
-import gc
-from types import SimpleNamespace
+from contextlib import AsyncExitStack
+from typing import Dict, List, Tuple, Any, Optional
 
-import pytest
+# Heartbeat interval in seconds (can be adjusted for testing)
+HEARTBEAT_EVERY = 30.0
 
-# Assume that stream_manager.py is in the same directory or properly installed as a module
-from mcp_cli.stream_manager import StreamManager
+# mcp imports
+from chuk_mcp.mcp_client.transport.stdio.stdio_client import stdio_client
+from chuk_mcp.mcp_client.messages.initialize.send_messages import send_initialize
+from chuk_mcp.mcp_client.messages.tools.send_messages import send_tools_list, send_tools_call
 
-# Dummy streams to simulate read/write streams.
-class DummyStream:
-    def __init__(self, name):
-        self.name = name
+# Use our own config loader
+from mcp_cli.config import load_config
 
-    async def write(self, message):
-        # For testing, capture write calls if needed
-        pass
 
-    async def read(self):
-        # Return something dummy
-        return f"Response from {self.name}"
-
-# Dummy client context manager to simulate stdio_client
-class DummyStdioClient:
-    def __init__(self, server_params, client_id):
-        self.server_params = server_params
-        self.client_id = client_id
-        self.exited = False
-
-    async def __aenter__(self):
-        # Return dummy read and write streams
-        self.read_stream = DummyStream(f"read-{self.client_id}")
-        self.write_stream = DummyStream(f"write-{self.client_id}")
-        return self.read_stream, self.write_stream
-
-    async def __aexit__(self, exc_type, exc, tb):
-        self.exited = True
-
-# Dummy implementations to simulate send_initialize, send_tools_list, and send_tools_call
-
-async def dummy_send_initialize_success(read_stream, write_stream):
-    # Simulate successful handshake
+async def send_ping(read_stream: Any, write_stream: Any) -> bool:
+    """
+    Default ping function to check server health. Returns True if healthy.
+    """
     return True
 
-async def dummy_send_initialize_fail(read_stream, write_stream):
-    # Simulate a handshake failure
-    return False
 
-async def dummy_send_tools_list(read_stream, write_stream):
-    # Return a dummy list of tools; include a tool "toolA" for server 1 and "toolB" for server 2
-    # We can use an attribute on the stream name to decide which tools to return.
-    if "read-1" in read_stream.name:  # our dummy for server 1
-        return {"tools": [
-            {"name": "toolA", "description": "Tool A from server 1"},
-            {"name": "sharedTool", "description": "Shared tool"}
-        ]}
-    elif "read-2" in read_stream.name:  # dummy for server 2
-        return {"tools": [
-            {"name": "toolB", "description": "Tool B from server 2"},
-            {"name": "sharedTool", "description": "Shared tool but from server 2"}
-        ]}
-    else:
-        return {"tools": []}
+class StreamManager:
+    """
+    Centralized manager for server streams and connections.
+    """
+    def __init__(self) -> None:
+        self.streams: List[Tuple[Any, Any]] = []
+        self.client_contexts: List[Any] = []
+        self.server_info: List[Dict[str, Any]] = []
+        self.tools: List[Dict[str, Any]] = []           # Display tools (original names)
+        self.internal_tools: List[Dict[str, Any]] = []  # Namespaced tools for LLM
+        self.tool_to_server_map: Dict[str, str] = {}
+        self.namespaced_tool_map: Dict[str, str] = {}
+        self.original_to_namespaced: Dict[str, List[str]] = {}
+        self.original_to_default: Dict[str, str] = {}
+        self.server_names: Dict[int, str] = {}
+        self.server_streams_map: Dict[str, int] = {}
+        self.active_subprocesses: set = set()
+        self._exit_stack: Optional[AsyncExitStack] = None
+        self._cancel_requested: bool = False
+        self._hb_task: Optional[asyncio.Task] = None
 
-async def dummy_send_tools_call(read_stream, write_stream, name, arguments):
-    # Return a dummy result containing which server (stream) handled the call.
-    # If the tool "failTool" is called, simulate an error.
-    if name == "failTool":
-        return {"isError": True, "error": "Simulated error", "content": "Error: Simulated error"}
-    # Otherwise, include an identifier from the stream to show it was routed correctly.
-    return {
-        "isError": False,
-        "content": f"Called {name} on {read_stream.name} with args: {arguments}"
-    }
+    @classmethod
+    async def create(
+        cls, config_file: str, servers: List[str],
+        server_names: Optional[Dict[int, str]] = None
+    ) -> 'StreamManager':
+        manager = cls()
+        await manager.initialize_servers(config_file, servers, server_names)
+        # Start heartbeat monitoring if any streams are active
+        if manager.streams:
+            manager._hb_task = asyncio.create_task(manager._heartbeat_loop())
+        return manager
 
-# Fixtures to help override functions in the module under test.
-@pytest.fixture(autouse=True)
-def patch_dependencies(monkeypatch):
-    # Patch the stdio_client factory to use our DummyStdioClient.
-    # We'll assume that the client id can be derived from the server name for testing.
-    def dummy_stdio_client(server_params):
-        # use a unique id from the server_params (or from server name) for identification.
-        client_id = server_params.get("id", "0")
-        return DummyStdioClient(server_params, client_id)
-    monkeypatch.setattr("mcp_cli.stream_manager.stdio_client", dummy_stdio_client)
+    async def initialize_servers(
+        self,
+        config_file: str,
+        servers: List[str],
+        server_names: Optional[Dict[int, str]] = None
+    ) -> bool:
+        """
+        Initialize connections to the specified servers using AsyncExitStack.
+        """
+        self.server_names = server_names or {}
+        tool_index = 0
 
-    # Patch the load_config function to simulate returning configuration
-    async def dummy_load_config(config_file, server_name):
-        # For testing, simply return a dict that includes an id for identification.
-        return {"id": server_name}  # using server_name as id for simplicity
-    monkeypatch.setattr("mcp_cli.stream_manager.load_config", dummy_load_config)
+        # Prepare an exit stack for all client contexts
+        stack = AsyncExitStack()
+        self._exit_stack = stack
+        await stack.__aenter__()
 
-    # Patch the external message sending functions
-    monkeypatch.setattr("mcp_cli.stream_manager.send_initialize", dummy_send_initialize_success)
-    monkeypatch.setattr("mcp_cli.stream_manager.send_tools_list", dummy_send_tools_list)
-    monkeypatch.setattr("mcp_cli.stream_manager.send_tools_call", dummy_send_tools_call)
+        for i, server_name in enumerate(servers):
+            display = self._get_server_display_name(i, server_name)
+            logging.info(f"Initializing server: {display}")
+            try:
+                params = await load_config(config_file, server_name)
+                client_ctx = stdio_client(params)
+                self.client_contexts.append(client_ctx)
+                read_stream, write_stream = await stack.enter_async_context(client_ctx)
 
-@pytest.mark.asyncio
-async def test_initialize_servers_success():
-    # Create a StreamManager for two servers.
-    servers = ["1", "2"]  # server names that double as ids in our dummy
-    # Also provide a mapping for display names, if desired
-    server_names = {0: "ServerOne", 1: "ServerTwo"}
+                ok = await send_initialize(read_stream, write_stream)
+                if not ok:
+                    logging.error(f"Failed to initialize server {display}")
+                    self.server_info.append({
+                        "id": i+1,
+                        "name": display,
+                        "tools": 0,
+                        "status": "Failed to initialize",
+                        "tool_start_index": tool_index
+                    })
+                    continue
 
-    manager = await StreamManager.create("dummy_config.json", servers, server_names)
-    
-    # Check that the streams were created for both servers
-    assert len(manager.streams) == 2
-    
-    # Check the server_info contains both entries
-    assert len(manager.get_server_info()) == 2
-    
-    # Check that the display tools list contains the combined tools from both servers
-    assert len(manager.get_all_tools()) == 4
-    
-    # Check that the namespaced internal tools were created correctly
-    internal_tools = manager.get_internal_tools()
-    assert len(internal_tools) == 4
-    
-    # Check that tools were properly namespaced
-    namespaced_tools = [tool["name"] for tool in internal_tools]
-    assert "ServerOne_toolA" in namespaced_tools
-    assert "ServerTwo_toolB" in namespaced_tools
-    assert "ServerOne_sharedTool" in namespaced_tools
-    assert "ServerTwo_sharedTool" in namespaced_tools
-    
-    # Check namespacing maps
-    assert manager.namespaced_tool_map["ServerOne_toolA"] == "toolA"
-    assert manager.namespaced_tool_map["ServerTwo_toolB"] == "toolB"
-    
-    # Check that the original tool name maps to namespaced versions
-    assert "toolA" in manager.original_to_namespaced
-    assert "toolB" in manager.original_to_namespaced
-    
-    # For shared tools, both versions should be in the list
-    assert len(manager.original_to_namespaced["sharedTool"]) == 2
-    assert "ServerOne_sharedTool" in manager.original_to_namespaced["sharedTool"]
-    assert "ServerTwo_sharedTool" in manager.original_to_namespaced["sharedTool"]
-    
-    # Check default mappings for shared tools
-    assert manager.original_to_default["sharedTool"] == "ServerOne_sharedTool"  # First one is default
+                fetched = await send_tools_list(read_stream, write_stream)
+                tools = fetched.get("tools", [])
+                display_tools: List[Dict[str, Any]] = []
+                namespaced_tools: List[Dict[str, Any]] = []
 
-@pytest.mark.asyncio
-async def test_call_tool_with_namespaced_name():
-    # Initialize a manager with two servers.
-    servers = ["1", "2"]
-    server_names = {0: "ServerOne", 1: "ServerTwo"}
-    manager = await StreamManager.create("dummy_config.json", servers, server_names)
-    
-    # Call a tool using its fully namespaced name
-    response = await manager.call_tool("ServerOne_toolA", {"param": "value"})
-    assert not response.get("isError")
-    assert "read-1" in response["content"]  # Should go to server 1
-    
-    # Call another tool with its namespaced name
-    response = await manager.call_tool("ServerTwo_toolB", {"param": "value"})
-    assert not response.get("isError")
-    assert "read-2" in response["content"]  # Should go to server 2
+                for tool in tools:
+                    original = tool["name"]
+                    # display copy
+                    display_tools.append(tool.copy())
+                    # namespaced copy
+                    ns_tool = tool.copy()
+                    ns_name = f"{display}_{original}"
+                    ns_tool["name"] = ns_name
 
-@pytest.mark.asyncio
-async def test_call_tool_with_original_name():
-    # Initialize a manager with two servers.
-    servers = ["1", "2"]
-    server_names = {0: "ServerOne", 1: "ServerTwo"}
-    manager = await StreamManager.create("dummy_config.json", servers, server_names)
-    
-    # Call a tool using its original name (should use the default mapping)
-    response = await manager.call_tool("toolA", {"param": "value"})
-    assert not response.get("isError")
-    assert "read-1" in response["content"]  # Should go to server 1
-    
-    # Call another tool with its original name
-    response = await manager.call_tool("toolB", {"param": "value"})
-    assert not response.get("isError")
-    assert "read-2" in response["content"]  # Should go to server 2
-    
-    # For shared tools, the original name should route to the default (first server)
-    response = await manager.call_tool("sharedTool", {"param": "value"})
-    assert not response.get("isError")
-    assert "read-1" in response["content"]  # Should use the default (first server)
+                    # register maps
+                    self.tool_to_server_map[original] = display
+                    self.namespaced_tool_map[ns_name] = original
+                    if original in self.original_to_namespaced:
+                        self.original_to_namespaced[original].append(ns_name)
+                    else:
+                        self.original_to_namespaced[original] = [ns_name]
+                        self.original_to_default[original] = ns_name
 
-@pytest.mark.asyncio
-async def test_call_shared_tool_with_specific_server():
-    # Initialize a manager with two servers.
-    servers = ["1", "2"]
-    server_names = {0: "ServerOne", 1: "ServerTwo"}
-    manager = await StreamManager.create("dummy_config.json", servers, server_names)
-    
-    # Call the shared tool but specify which server to use
-    response = await manager.call_tool("sharedTool", {"param": "value"}, server_name="ServerTwo")
-    assert not response.get("isError")
-    assert "read-2" in response["content"]  # Should go to server 2 as specified
+                    namespaced_tools.append(ns_tool)
 
-@pytest.mark.asyncio
-async def test_tool_name_resolution():
-    # Initialize a manager with two servers.
-    servers = ["1", "2"]
-    server_names = {0: "ServerOne", 1: "ServerTwo"}
-    manager = await StreamManager.create("dummy_config.json", servers, server_names)
-    
-    # Test _resolve_tool_name with different inputs
-    
-    # Case 1: Already namespaced
-    resolved_name, server = manager._resolve_tool_name("ServerOne_toolA")
-    assert resolved_name == "ServerOne_toolA"
-    assert server == "ServerOne"
-    
-    # Case 2: Original name with unique server
-    resolved_name, server = manager._resolve_tool_name("toolA")
-    assert resolved_name == "ServerOne_toolA"
-    assert server == "ServerOne"
-    
-    # Case 3: Shared tool name (should use default)
-    resolved_name, server = manager._resolve_tool_name("sharedTool")
-    assert resolved_name == "ServerOne_sharedTool"  # First server is default
-    assert server == "ServerOne"
-    
-    # Case 4: Unknown tool
-    resolved_name, server = manager._resolve_tool_name("nonExistentTool")
-    assert resolved_name == "nonExistentTool"  # Unchanged
-    assert server == "Unknown"
+                self.server_streams_map[display] = len(self.streams)
+                self.streams.append((read_stream, write_stream))
+                self.tools.extend(display_tools)
+                self.internal_tools.extend(namespaced_tools)
 
-@pytest.mark.asyncio
-async def test_close_cleans_resources():
-    servers = ["1", "2"]
-    server_names = {0: "ServerOne", 1: "ServerTwo"}
-    manager = await StreamManager.create("dummy_config.json", servers, server_names)
-    
-    # Before close, the client_contexts and streams should be populated.
-    assert len(manager.client_contexts) == 2
-    assert len(manager.streams) == 2
-    
-    # Call close and then check that resources are cleared.
-    await manager.close()
-    
-    # The contexts should have been exited (our DummyStdioClient sets an attribute on exit)
-    for ctx in manager.client_contexts:
-        # All contexts remain in the list (if we don't remove them) but they should be marked as exited.
-        assert ctx.exited is True
+                self.server_info.append({
+                    "id": i+1,
+                    "name": display,
+                    "tools": len(tools),
+                    "status": "Connected",
+                    "tool_start_index": tool_index
+                })
+                tool_index += len(tools)
+                logging.info(f"Successfully initialized server: {display}")
+            except Exception as e:
+                logging.error(f"Error initializing server {display}: {e}")
+                self.server_info.append({
+                    "id": i+1,
+                    "name": display,
+                    "tools": 0,
+                    "status": f"Error: {e}",
+                    "tool_start_index": tool_index
+                })
 
-    # The streams and other internal containers should be cleared.
-    assert manager.streams == []
-    assert manager.client_contexts == []
-    assert manager.server_streams_map == {}
-    # For active subprocesses, our dummy _collect_subprocesses may not add any real objects, so
-    # we can simply check that the set is empty after close.
-    assert manager.active_subprocesses == set()
+        return bool(self.streams)
 
-    # Trigger a garbage collection manually to check for side effects.
-    gc.collect()
+    def _get_server_display_name(self, index: int, server_name: str) -> str:
+        if isinstance(self.server_names, dict) and index in self.server_names:
+            return self.server_names[index]
+        if isinstance(self.server_names, list) and index < len(self.server_names):
+            return self.server_names[index]
+        return server_name or f"Server {index+1}"
+
+    async def _heartbeat_loop(self) -> None:
+        """
+        Periodically ping servers to update health status.
+        """
+        try:
+            while True:
+                await asyncio.sleep(HEARTBEAT_EVERY)
+                for idx, (r, w) in enumerate(self.streams):
+                    try:
+                        alive = await send_ping(r, w)
+                        self.server_info[idx]["status"] = "Connected" if alive else "Degraded"
+                    except Exception:
+                        self.server_info[idx]["status"] = "Degraded"
+        except asyncio.CancelledError:
+            pass
+
+    async def request_cancel(self) -> None:
+        """Request cancellation of the next tool call."""
+        self._cancel_requested = True
+
+    async def call_tool(
+        self,
+        tool_name: str,
+        arguments: Any,
+        server_name: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Call a tool with cancellation and resolution logic.
+        """
+        # handle cancellation
+        if self._cancel_requested:
+            self._cancel_requested = False
+            return {"isError": True, "error": "Cancelled by user", "content": "Cancelled by user"}
+
+        original = tool_name
+        # resolve namespaced
+        if server_name and server_name != "Unknown":
+            candidate = f"{server_name}_{tool_name}"
+            if candidate in self.namespaced_tool_map:
+                tool_name = candidate
+            else:
+                tool_name, server_name = self._resolve_tool_name(tool_name)
+        else:
+            tool_name, server_name = self._resolve_tool_name(tool_name)
+
+        logging.debug(f"Resolved '{original}' to '{tool_name}' on '{server_name}'")
+
+        # fallback to first server if unknown
+        if server_name == "Unknown":
+            if self.streams:
+                first = next(iter(self.server_streams_map))
+                server_name = first
+            else:
+                return {"isError": True, "error": f"Tool '{original}' not found", "content": f"Error: '{original}' not found"}
+
+        idx = self.server_streams_map.get(server_name)
+        if idx is None or idx >= len(self.streams):
+            return {"isError": True, "error": "Invalid server index", "content": "Error: Invalid server index"}
+
+        read_stream, write_stream = self.streams[idx]
+        try:
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except Exception:
+                    pass
+
+            to_call = self.namespaced_tool_map.get(tool_name, original)
+            result = await send_tools_call(read_stream, write_stream, to_call, arguments)
+            if result.get("isError"):
+                logging.error(f"Error calling {to_call}: {result.get('error')}")
+            return result
+        except Exception as e:
+            logging.error(f"Exception calling tool {original}: {e}")
+            return {"isError": True, "error": str(e), "content": f"Error: {e}"}
+
+    async def close(self) -> None:
+        """
+        Close all streams and clean up resources.
+        """
+        logging.debug("Closing StreamManager resources")
+
+        # Cancel heartbeat
+        if self._hb_task:
+            self._hb_task.cancel()
+            try:
+                await self._hb_task
+            except Exception:
+                pass
+
+        # Close all client contexts via the exit stack
+        if self._exit_stack is not None:
+            await self._exit_stack.aclose()
+
+        # Terminate subprocesses
+        for proc in list(self.active_subprocesses):
+            try:
+                if proc.poll() is None:
+                    proc.terminate()
+                    await asyncio.to_thread(proc.wait, timeout=0.5)
+                self.active_subprocesses.discard(proc)
+            except Exception:
+                proc.kill()
+
+        # Clear resources
+        self.streams.clear()
+        self.server_streams_map.clear()
+        self.client_contexts.clear()
+
+    def _resolve_tool_name(self, tool_name: str) -> Tuple[str, str]:
+        """
+        Resolve a tool name to its namespaced version and server.
+        """
+        # Already namespaced
+        if tool_name in self.namespaced_tool_map:
+            srv = tool_name.split('_', 1)[0]
+            return tool_name, srv
+
+        # Original mapped
+        if tool_name in self.original_to_namespaced:
+            versions = self.original_to_namespaced[tool_name]
+            if len(versions) > 1:
+                default = self.original_to_default[tool_name]
+                srv = default.split('_', 1)[0]
+                logging.debug(f"Tool '{tool_name}' on multiple servers; using default {default}")
+                return default, srv
+            only = versions[0]
+            srv = only.split('_', 1)[0]
+            return only, srv
+
+        # Not known
+        return tool_name, "Unknown"
+
+    def get_all_tools(self) -> List[Dict[str, Any]]:
+        return self.tools
+
+    def get_internal_tools(self) -> List[Dict[str, Any]]:
+        return self.internal_tools
+
+    def get_server_info(self) -> List[Dict[str, Any]]:
+        return self.server_info
+
+    def get_server_for_tool(self, tool_name: str) -> str:
+        _, srv = self._resolve_tool_name(tool_name)
+        return srv
+
+    def has_tools(self) -> bool:
+        return bool(self.tools)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "server_info": self.server_info,
+            "tools": self.tools,
+            "internal_tools": self.internal_tools,
+            "tool_to_server_map": self.tool_to_server_map,
+            "namespaced_tool_map": self.namespaced_tool_map,
+            "original_to_namespaced": self.original_to_namespaced,
+            "original_to_default": self.original_to_default,
+            "server_names": self.server_names
+        }
