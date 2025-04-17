@@ -18,6 +18,7 @@ dependencies = [
   "asyncio>=3.4.3",
   "chuk-mcp>=0.1.7",
   "chuk-virtual-fs>=0.1.6",
+  "google-genai==1.11.0",
   "ollama>=0.4.2",
   "openai>=1.55.3",
   "pandas>=2.2.3",
