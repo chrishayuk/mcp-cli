@@ -39,9 +39,6 @@ class GeminiLLMClient(BaseLLMClient):
                     if role == "tool" and isinstance(msg.get("content"), str):
                          tool_call_id_for_response = msg.get("tool_call_id") 
                          tool_function_name = msg.get("name") 
-                        #  logging.warning(f"tool_call_id_for_response {tool_call_id_for_response}")
-                        #  logging.warning(msg.keys())
-                        #  logging.warning(msg)
                          if not tool_call_id_for_response and len(gemini_messages) > 0:
                               last_msg_content = gemini_messages[-1]
                               if last_msg_content.role == 'model' and last_msg_content.parts:
@@ -57,11 +54,11 @@ class GeminiLLMClient(BaseLLMClient):
                                 
                                 # a function that returns an image
                                 for item in function_response_data:                                    
-                                    if(item["type"] == "image_url"):
-                                        image_data = item["image_url"]["url"].split("base64,")[1]
-                                        image_bytes = b64decode(image_data)
-                                        function_response_part = types.Part.from_bytes(data=image_bytes,mime_type=item["mime_type"])
-                                        # function_response_part = types.Part.from_uri(file_uri='gs://generativeai-downloads/images/scones.jpg',mime_type='image/jpeg')
+                                    if(item["type"] == "image"):
+                                        function_response_part = types.Part.from_bytes(
+                                            data=b64decode(item["data"]),
+                                            mime_type=item["mimeType"]
+                                        )
                                         gemini_messages.append(types.Content(role='user', parts=[function_response_part]))
                                     else:
                                         function_response_part = types.Part.from_function_response(
