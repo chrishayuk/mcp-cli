@@ -1,0 +1,8 @@
+{
+    "mcpServers": {
+        "databutton": {
+            "command": "npx",
+            "args": ["-y", "@dylibso/mcpx@latest", "--config", "{\"MCPX_SESSION_ID\":\"mcpx/diegofornalha/default\"}"]
+        }
+    }
+} 
