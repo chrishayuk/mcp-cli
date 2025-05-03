@@ -1,64 +1,62 @@
 # mcp_cli/commands/chat.py
-import os
-import typer
+"""
+Enter interactive chat mode that can call server-side tools through the
+*ToolManager* abstraction.
+"""
+from __future__ import annotations
+
 import asyncio
+import os
+from typing import Any, Dict
+
+import typer
 from rich import print
 from rich.markdown import Markdown
 from rich.panel import Panel
 
-# imports
 from mcp_cli.chat.chat_handler import handle_chat_mode
 
-# app
 app = typer.Typer(help="Chat commands")
 
+
 @app.command("run")
-async def chat_run(stream_manager, server_names=None):
+async def chat_run(
+    tool_manager: Any,
+    server_names: Dict[int, str] | None = None,  # noqa: ARG001 – kept for parity
+) -> bool:
     """
-    Enter chat mode.
-    
-    Args:
-        stream_manager: StreamManager instance (required)
-        server_names: Optional dictionary mapping server indices to their names
+    Launch the REPL-style **chat** interface.
+
+    Parameters
+    ----------
+    tool_manager
+        Object that implements the public API expected by
+        :pyfunc:`mcp_cli.chat.chat_handler.handle_chat_mode`
+        (usually the `ToolManager` returned by *setup_mcp_stdio*).
+    server_names
+        Currently unused – kept only so CLI signature matches siblings.
     """
+    # ── sanity guard – makes debugging easier if wrong thing passed in ──
+    if tool_manager is None:
+        raise TypeError("chat_run expects a *ToolManager* instance, got None")
+
     provider = os.getenv("LLM_PROVIDER", "openai")
     model = os.getenv("LLM_MODEL", "gpt-4o-mini")
-    #os.system("cls" if os.name == "nt" else "clear")
-    chat_info_text = (
+
+    intro = (
         "Welcome to the Chat!\n\n"
         f"**Provider:** {provider}  |  **Model:** {model}\n\n"
         "Type 'exit' to quit."
     )
-    print(Panel(Markdown(chat_info_text), style="bold cyan", title="Chat Mode", title_align="center"))
-    
+    print(Panel(Markdown(intro), title="Chat Mode", style="bold cyan"))
+
     try:
-        # Create a task for the chat handler
-        chat_task = asyncio.create_task(handle_chat_mode(
-            stream_manager, 
-            provider, 
-            model
-        ))
-        
-        # Await the task with proper exception handling
-        await chat_task
+        # delegate to unified handler
+        await handle_chat_mode(tool_manager, provider, model)
     except KeyboardInterrupt:
         print("\nChat interrupted by user.")
-    except Exception as e:
-        print(f"\nError in chat mode: {e}")
-    
-    # Make sure any pending tasks are properly cancelled
-    if 'chat_task' in locals() and not chat_task.done():
-        chat_task.cancel()
-        try:
-            # Give it a short time to cancel gracefully
-            await asyncio.wait_for(asyncio.shield(chat_task), timeout=1.0)
-        except (asyncio.CancelledError, asyncio.TimeoutError):
-            # Expected when cancelling or timing out
-            pass
-        except Exception as e:
-            # Only print this if it's not a typical cancellation error
-            if not isinstance(e, (asyncio.CancelledError, RuntimeError)):
-                print(f"Error during chat cleanup: {e}")
-    
-    # Signal a clean exit to the main process
+    except Exception as exc:  # noqa: BLE001 – show friendly panel
+        print(f"\nError in chat mode: {exc!s}")
+
+    # graceful shutdown / caller can rely on return-value for exit-code
     return True

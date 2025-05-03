@@ -1,93 +1,57 @@
+# mcp_cli/chat/commands/tools.py
 """
 Tools command module for listing available tools with their server sources.
 """
 from rich.console import Console
-from rich.table import Table
 from rich.syntax import Syntax
 import json
 
 # Import the registration function from the command handler
 from mcp_cli.chat.commands import register_command
 
+# Import our formatting helpers
+from mcp_cli.tools.formatting import create_tools_table
+
 async def tools_command(cmd_parts, context):
-    """
-    Display all available tools with their server information.
-    
-    Usage:
-      /tools         - Show tools with descriptions
-      /tools --all   - Show all tool details including parameters
-      /tools --raw   - Show raw tool definitions (for debugging)
-    
-    This command shows all tools available across all connected servers,
-    making it clear which server provides each tool.
-    """
+    """Display all available tools with their server information."""
     console = Console()
     
-    # Parse arguments - skip the command name itself
+    # Parse arguments
     args = cmd_parts[1:] if len(cmd_parts) > 1 else []
-    
-    # Parse options
     show_all = "--all" in args
     show_raw = "--raw" in args
     
-    # Get tools and server mapping
-    tools = context.get("tools", [])
-    tool_to_server_map = context.get("tool_to_server_map", {})
+    # Get the tool manager from context
+    tool_manager = context.get("tool_manager")
+    if not tool_manager:
+        console.print("[red]Error: Tool manager not available.[/red]")
+        return True
     
-    if not tools:
+    # Get unique tools from the tool manager
+    tool_infos = tool_manager.get_unique_tools()
+    
+    if not tool_infos:
         console.print("[yellow]No tools available.[/yellow]")
         return True
     
-    # Show raw JSON if --raw was given
+    # Show raw JSON if requested
     if show_raw:
-        raw_json = json.dumps(tools, indent=2)
+        tools_raw = []
+        for tool in tool_infos:
+            tools_raw.append({
+                'name': tool.name,
+                'namespace': tool.namespace,
+                'description': tool.description,
+                'parameters': tool.parameters,
+                'is_async': tool.is_async,
+                'tags': tool.tags
+            })
+        raw_json = json.dumps(tools_raw, indent=2)
         console.print(Syntax(raw_json, "json", theme="monokai", line_numbers=True))
         return True
     
-    # Create and populate a rich table
-    table = Table(title=f"{len(tools)} Available Tools")
-    table.add_column("Server", style="cyan")
-    table.add_column("Tool", style="green")
-    table.add_column("Description")
-    
-    if show_all:
-        table.add_column("Parameters", style="yellow")
-    
-    for tool in tools:
-        tool_name = tool.get("name", "unknown")
-        server_name = tool_to_server_map.get(tool_name, "Unknown")
-        
-        # Possibly truncate the description if --all not used
-        description = tool.get("description", "No description")
-        if not show_all and len(description) > 75:
-            description = description[:72] + "..."
-        
-        if show_all:
-            # Handle multiple schema formats (OpenAI / MCP)
-            parameters = tool.get("parameters", tool.get("inputSchema", {}))
-            
-            if "properties" in parameters:
-                properties = parameters["properties"]
-                required = parameters.get("required", [])
-            elif isinstance(parameters, dict):
-                properties = parameters.get("properties", {})
-                required = parameters.get("required", [])
-            else:
-                properties = {}
-                required = []
-            
-            # Generate parameter info
-            param_strs = []
-            for param_name, param_info in properties.items():
-                param_type = param_info.get("type", "any")
-                is_required = "*" if param_name in required else ""
-                param_strs.append(f"{param_name}{is_required} ({param_type})")
-            
-            param_text = "\n".join(param_strs) if param_strs else "None"
-            table.add_row(server_name, tool_name, description, param_text)
-        else:
-            table.add_row(server_name, tool_name, description)
-    
+    # Use the centralized formatting helper to create the table
+    table = create_tools_table(tool_infos, show_details=show_all)
     console.print(table)
     
     if show_all:

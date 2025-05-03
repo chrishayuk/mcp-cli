@@ -1,282 +1,317 @@
 # mcp_cli/commands/interactive.py
+"""
+Interactive CLI loop for MCP.
+
+It glues together the individual sub-commands (/ping, /tools, …) and
+presents a small REPL so the user can work comfortably from a single
+prompt.
+
+Only the *current* command APIs are supported – all legacy shims were
+removed.
+"""
+from __future__ import annotations
+
+import asyncio
 import inspect
-from rich import print
+import os
+from typing import Any, Callable, Dict
+
+import typer
+from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.prompt import Prompt
-from rich.console import Console
 from rich.table import Table
 
-# Command imports
-from mcp_cli.commands import ping, prompts, resources, chat
+# prompt-toolkit (for slash-command completions)
+from prompt_toolkit import PromptSession
+from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+from prompt_toolkit.history import FileHistory
+from prompt_toolkit.styles import Style
 
-# Direct import from chat mode
+# --------------------------------------------------------------------------- #
+# Sub-commands
+# --------------------------------------------------------------------------- #
+from mcp_cli.commands import chat, ping, prompts, resources
 from mcp_cli.chat.commands.tools import tools_command
+from mcp_cli.chat.command_completer import ChatCommandCompleter
 from mcp_cli.ui.ui_helpers import clear_screen
 
-# Import any tool handling that chat mode uses
-try:
-    from mcp_cli.chat.chat_context import ChatContext
-    HAS_CHAT_CONTEXT = True
-except ImportError:
-    HAS_CHAT_CONTEXT = False
+# --------------------------------------------------------------------------- #
+# Typer application (only used if the file is “cli-invoked”)
+# --------------------------------------------------------------------------- #
+app = typer.Typer(help="Interactive mode")
 
-async def interactive_mode(stream_manager, provider="openai", model="gpt-4o-mini"):
+
+# --------------------------------------------------------------------------- #
+# Public entry-point
+# --------------------------------------------------------------------------- #
+async def interactive_mode(
+    stream_manager: Any,
+    tool_manager: Any | None = None,
+    *,
+    provider: str = "openai",
+    model: str = "gpt-4o-mini",
+) -> bool:
     """
-    Run the interactive CLI loop.
-    
-    Args:
-        stream_manager: StreamManager instance (required)
-        provider: LLM provider name (default: "openai")
-        model: LLM model name (default: "gpt-4o-mini")
+    Run the interactive prompt.
+
+    Parameters
+    ----------
+    stream_manager
+        Object exposing at least:
+
+        * `get_all_tools()` – list of tool specs
+        * `get_server_info()` – list with metadata per server
+        * `tool_to_server_map` – mapping *tool → server*
+
+    tool_manager
+        Passed straight through to `chat.chat_run`.  If *None* we re-use
+        *stream_manager*.
+
+    provider / model
+        Display-only metadata for the banner.
     """
-    # Set up context for command handling
+    if tool_manager is None:
+        tool_manager = stream_manager
+
     console = Console()
-    
-    # Clear screen and show welcome banner
-    #clear_screen()
-    
-    # Create a context dict similar to what chat_handler uses
-    context = {
+
+    # Build context object that other helpers expect
+    context: Dict[str, Any] = {
         "provider": provider,
         "model": model,
         "tools": stream_manager.get_all_tools(),
         "server_info": stream_manager.get_server_info(),
         "tool_to_server_map": stream_manager.tool_to_server_map,
         "stream_manager": stream_manager,
-        "server_names": stream_manager.server_names
+        "tool_manager": tool_manager,
+        "server_names": getattr(stream_manager, "server_names", {}),
     }
-    
-    # Show welcome banner in interactive mode style
-    display_interactive_banner(context)
-    
-    # Create a registry of command functions for interactive mode
-    async def handle_ping():
+
+    _banner(console, context)
+
+    # --------------------------------------------------------------------- #
+    # Command handlers (functions or coroutines)
+    # --------------------------------------------------------------------- #
+    async def cmd_ping(_arg: str = ""):
         await ping.ping_run(stream_manager=stream_manager)
-    
-    async def handle_prompts():
-        try:
-            await prompts.prompts_list(stream_manager=stream_manager)
-        except AttributeError:
-            try:
-                await prompts.list_run(stream_manager=stream_manager)
-            except (AttributeError, Exception) as e:
-                print(f"[red]Error listing prompts: {e}[/red]")
-    
-    async def handle_tools():
+
+    async def cmd_prompts(_arg: str = ""):
+        await prompts.prompts_list(
+            stream_manager=getattr(tool_manager, "stream_manager", stream_manager)
+        )
+
+    async def cmd_resources(_arg: str = ""):
+        await resources.resources_list(
+            stream_manager=getattr(tool_manager, "stream_manager", stream_manager)
+        )
+
+    async def cmd_tools(_arg: str = ""):
         await tools_command([], context)
-    
-    async def handle_tools_all():
+
+    async def cmd_tools_all(_arg: str = ""):
         await tools_command(["--all"], context)
-    
-    async def handle_tools_raw():
+
+    async def cmd_tools_raw(_arg: str = ""):
         await tools_command(["--raw"], context)
-    
-    async def handle_resources():
-        try:
-            await resources.resources_list(stream_manager=stream_manager)
-        except AttributeError:
-            try:
-                await resources.list_run(stream_manager=stream_manager)
-            except (AttributeError, Exception) as e:
-                print(f"[red]Error listing resources: {e}[/red]")
-    
-    async def handle_chat():
-        await chat.chat_run(stream_manager=stream_manager)
-    
-    async def handle_servers():
-        display_servers_info(context)
-    
-    def handle_exit():
+
+    async def cmd_chat(_arg: str = ""):
+        await chat.chat_run(tool_manager=tool_manager)
+
+    def cmd_servers(_arg: str = ""):
+        _servers(console, context)
+
+    def cmd_cls(_arg: str = ""):
+        clear_screen()
+
+    def cmd_clear(_arg: str = ""):
+        clear_screen()
+        _banner(console, context)
+
+    def cmd_exit(_arg: str = ""):
         return "exit"
-    
-    def handle_cls():
-        clear_screen_cmd()
-    
-    def handle_clear():
-        clear_screen_cmd(with_welcome=True)
-    
-    def handle_help():
-        show_help()
-    
-    # Map commands to their handler functions    
-    commands = {
-        "/ping": handle_ping,
-        "/prompts": handle_prompts,
-        "/tools": handle_tools,
-        "/tools-all": handle_tools_all,
-        "/tools-raw": handle_tools_raw,
-        "/resources": handle_resources,
-        "/chat": handle_chat,
-        "/servers": handle_servers,
-        "/s": handle_servers,  # Alias
-        "/exit": handle_exit,
-        "/quit": handle_exit,
-        "/cls": handle_cls,
-        "/clear": handle_clear,
-        "/help": handle_help,
+
+    def cmd_help(_arg: str = ""):
+        _help(console)
+
+    # Map prompt → handler  (signature handler(argstr:str)->Any)
+    commands: Dict[str, Callable[[str], Any]] = {
+        "/ping": cmd_ping,
+        "/prompts": cmd_prompts,
+        "/resources": cmd_resources,
+        "/tools": cmd_tools,
+        "/tools-all": cmd_tools_all,
+        "/tools-raw": cmd_tools_raw,
+        "/chat": cmd_chat,
+        "/servers": cmd_servers,
+        "/s": cmd_servers,
+        "/cls": cmd_cls,
+        "/clear": cmd_clear,
+        "/help": cmd_help,
+        "/exit": cmd_exit,
+        "/quit": cmd_exit,
     }
-    
-    # Create session for input handling
-    session = Prompt.ask
-    
+
+    # --------------------------------------------------------------------- #
+    # Prompt-toolkit session (with slash completions)
+    # --------------------------------------------------------------------- #
+    style = Style.from_dict(
+        {
+            "completion-menu": "bg:default",
+            "completion-menu.completion": "bg:default fg:goldenrod",
+            "completion-menu.completion.current": "bg:default fg:goldenrod bold",
+            "auto-suggestion": "fg:ansibrightblack",
+        }
+    )
+
+    history_file = os.path.expanduser("~/.mcp_interactive_history")
+    pt_session = PromptSession(
+        history=FileHistory(history_file),
+        auto_suggest=AutoSuggestFromHistory(),
+        completer=ChatCommandCompleter(context),
+        complete_while_typing=True,
+        style=style,
+        message="> ",
+    )
+
+    # --------------------------------------------------------------------- #
+    # Main REPL loop
+    # --------------------------------------------------------------------- #
     try:
         while True:
             try:
-                # Use rich prompt for better styling with the same format as chat
-                user_input = session("[bold yellow]>[/bold yellow]").strip()
-                if not user_input:
+                user_in = await pt_session.prompt_async()
+                user_in = user_in.strip()
+                if not user_in:
                     continue
-                
-                # Special case for exit/quit without slash prefix
-                if user_input.lower() in ["exit", "quit"]:
-                    print("\n[bold red]Goodbye![/bold red]")
+
+                # Plain 'exit' / 'quit' without slash
+                if user_in.lower() in ("exit", "quit"):
+                    console.print("\n[bold red]Goodbye![/bold red]")
                     return True
-                    
-                # Split the command and arguments
-                parts = user_input.split(maxsplit=1)
-                cmd = parts[0].lower()
-                args = parts[1] if len(parts) > 1 else ""
-                
-                # Handle commands
+
+                cmd, *rest = user_in.split(maxsplit=1)
+                arg_str = rest[0] if rest else ""
+
+                # ------------------------------------------------------------------
+                # Built-in /model and /provider (simple local switches)
+                # ------------------------------------------------------------------
+                if cmd == "/model":
+                    if arg_str:
+                        context["model"] = arg_str
+                        console.print(f"[green]Switched model → {arg_str}[/green]")
+                    else:
+                        console.print(f"[yellow]Current model:[/yellow] {context['model']}")
+                    continue
+
+                if cmd == "/provider":
+                    if arg_str:
+                        context["provider"] = arg_str
+                        console.print(
+                            f"[green]Switched provider → {arg_str}[/green]"
+                        )
+                    else:
+                        console.print(
+                            f"[yellow]Current provider:[/yellow] {context['provider']}"
+                        )
+                    continue
+
+                # ------------------------------------------------------------------
+                # Normal command dispatch
+                # ------------------------------------------------------------------
                 if cmd in commands:
                     handler = commands[cmd]
-                    
-                    # Check if it's a coroutine function that needs to be awaited
                     if inspect.iscoroutinefunction(handler):
-                        await handler()
+                        await handler(arg_str)  # type: ignore[arg-type]
                     else:
-                        result = handler()
-                        if result == "exit":
-                            print("\n[bold red]Goodbye![/bold red]")
-                            return True  # Signal clean exit
+                        if handler(arg_str) == "exit":
+                            console.print("\n[bold red]Goodbye![/bold red]")
+                            return True
                 else:
-                    print(f"[red]\nUnknown command: {cmd}[/red]")
-                    print("[yellow]Type '/help' for available commands[/yellow]")
-                    
+                    console.print(
+                        f"[red]Unknown command:[/red] {cmd}\n"
+                        "[yellow]Type '/help' for a list of commands.[/yellow]"
+                    )
             except EOFError:
-                return True  # Signal clean exit for EOF
+                return True
             except KeyboardInterrupt:
-                print("\n[yellow]Command interrupted. Type '/exit' to quit.[/yellow]")
-            except Exception as e:
-                print(f"\n[red]Error:[/red] {e}")
+                console.print("\n[yellow]Interrupted – Ctrl-D to quit.[/yellow]")
+            except Exception as exc:  # noqa: BLE001
+                console.print(f"\n[red]Error:[/red] {exc}")
     finally:
-        pass  # StreamManager cleanup is handled by run_command
-    
-    return False  # This is technically unreachable but good practice
+        # Any cleanup for stream_manager is handled by the caller
+        pass
 
 
-def display_interactive_banner(context, console=None, show_tools_info=True):
-    """
-    Display the welcome banner with current model info, but for Interactive Mode.
-    
-    Args:
-        context: The context containing provider and model info
-        console: Optional Rich console instance (creates one if not provided)
-        show_tools_info: Whether to show tools loaded information (default: True)
-    """
-    if console is None:
-        console = Console()
-        
-    provider = context.get("provider", "unknown")
-    model = context.get("model", "unknown")
-    
-    # Print welcome banner with current model info, but with Interactive Mode title
-    console.print(Panel(
-        f"Welcome to the Interactive Mode!\n\n"
-        f"Provider: [bold]{provider}[/bold]  |  Model: [bold]{model}[/bold]\n\n"
-        f"Type '/help' for available commands or 'exit' to quit.",
-        title="Interactive Mode",
-        expand=True,
-        border_style="yellow"
-    ))
-    
-    # If tools were loaded and flag is set, show tool count
-    if show_tools_info:
-        tools = context.get("tools", [])
-        if tools:
-            print(f"[green]Loaded {len(tools)} tools successfully.[/green]")
-            
-            # Show server information if available
-            server_info = context.get("server_info", [])
-            if server_info:
-                print("[yellow]Type '/servers' to see connected servers[/yellow]")
+# --------------------------------------------------------------------------- #
+# UI helper functions
+# --------------------------------------------------------------------------- #
+def _banner(console: Console, ctx: Dict[str, Any]) -> None:
+    """Nice welcome panel + tool count."""
+    console.print(
+        Panel(
+            f"Welcome to the Interactive Mode!\n\n"
+            f"Provider: [bold]{ctx['provider']}[/bold]  |  "
+            f"Model: [bold]{ctx['model']}[/bold]\n\n"
+            "Type '/help' for available commands or 'exit' to quit.",
+            title="Interactive Mode",
+            border_style="yellow",
+            expand=True,
+        )
+    )
+
+    if ctx["tools"]:
+        console.print(f"[green]Loaded {len(ctx['tools'])} tools.[/green]")
+        if ctx["server_info"]:
+            console.print("[yellow]Type '/servers' to list servers.[/yellow]")
 
 
-def display_servers_info(context):
-    """Display information about connected servers."""
-    server_info = context.get("server_info", [])
-    
-    if not server_info:
-        print("[yellow]No servers connected.[/yellow]")
+def _servers(console: Console, ctx: Dict[str, Any]) -> None:
+    info = ctx["server_info"]
+    if not info:
+        console.print("[yellow]No servers connected.[/yellow]")
         return
-    
-    # Create a table for server information
+
     table = Table(title="Connected Servers", show_header=True)
     table.add_column("ID", style="cyan")
-    table.add_column("Server Name", style="green")
+    table.add_column("Name", style="green")
     table.add_column("Tools", style="cyan")
     table.add_column("Status", style="green")
-    
-    for server in server_info:
+
+    for s in info:
         table.add_row(
-            str(server.get("id", "?")),
-            server.get("name", "Unknown"),
-            str(server.get("tools", 0)),
-            server.get("status", "Unknown")
+            str(s.get("id", "?")),
+            s.get("name", "Unknown"),
+            str(s.get("tools", 0)),
+            s.get("status", "Unknown"),
         )
-    
-    console = Console()
+
     console.print(table)
-    
-    # If there are tools, show a hint about the tools command
-    tools = context.get("tools", [])
-    if tools:
-        print("[dim]Use the /tools command to see available tools[/dim]")
 
 
-def clear_screen_cmd(with_welcome=False):
-    """Clear the screen and optionally show the welcome message."""
-    #clear_screen()
-    if with_welcome:
-        # Create a context dict for the welcome banner
-        context = {
-            "provider": "openai",
-            "model": "gpt-4o-mini",
-        }
-        display_interactive_banner(context)
+def _help(console: Console) -> None:
+    help_md = """# Commands
+- **/ping**         check server reachability  
+- **/prompts**      list prompts  
+- **/resources**    list resources  
+- **/tools**        list tools  
+- **/tools-all**    detailed tool info  
+- **/tools-raw**    raw JSON definitions  
+- **/chat**         enter chat mode  
+- **/servers**      show connected servers (/s)  
+- **/model**        show or switch model  
+- **/provider**     show or switch provider  
+- **/cls**          clear screen  
+- **/clear**        clear + banner  
+- **/help**         this help  
+- **/exit**         exit the program (/quit, *exit*, *quit*)"""
+    console.print(Panel(Markdown(help_md), title="Help", style="yellow"))
 
 
-def show_help():
-    """Show the help message with all available commands."""
-    help_md = """
-# Available Commands
-
-- **/ping**: Check if server is responsive
-- **/prompts**: List available prompts
-- **/tools**: List available tools
-- **/tools-all**: Show detailed tool information with parameters
-- **/tools-raw**: Show raw tool definitions in JSON
-- **/resources**: List available resources
-- **/servers** or **/s**: Show connected servers
-- **/chat**: Enter chat mode
-- **/cls**: Clear the screen
-- **/clear**: Clear the screen and show welcome message
-- **/help**: Show this help message
-- **/exit** or **/quit**: Exit the program
-
-You can also exit by typing 'exit' or 'quit' without the slash prefix.
-"""
-    print(Panel(Markdown(help_md), style="yellow", title="Command Help"))
-
-
-# Create a Typer app for interactive mode if needed
-import typer
-app = typer.Typer(help="Interactive mode")
-
+# --------------------------------------------------------------------------- #
+# Typer wrapper – so “python -m … interactive run” still works
+# --------------------------------------------------------------------------- #
 @app.command("run")
-def run_interactive():
-    """Run the interactive mode."""
-    print("Interactive mode not available directly.")
-    print("Please use the main CLI without a subcommand to enter interactive mode.")
-    return 0
+def _run_via_cli() -> None:  # pragma: no cover
+    Console().print("[red]Interactive mode must be started from the main MCP CLI.[/red]")
+    raise typer.Exit(1)

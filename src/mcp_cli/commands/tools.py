@@ -11,21 +11,24 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.syntax import Syntax
 
+# Import formatting helpers
+from mcp_cli.tools.formatting import create_tools_table, display_tool_call_result
+
 # app
 app = typer.Typer(help="Tools commands")
 
 @app.command("list")
-async def tools_list(stream_manager, server_names=None):
+async def tools_list(tool_manager, server_names=None):
     """
     List all tools from all servers.
 
     Args:
-        stream_manager: StreamManager instance
+        tool_manager: ToolManager instance
         server_names: Optional dictionary mapping server indices to their names
     """
     print("[cyan]\nFetching Tools List from all servers...[/cyan]")
     
-    all_tools = stream_manager.get_all_tools()
+    all_tools = tool_manager.get_all_tools()
     if not all_tools:
         print("[yellow]No tools available from any server.[/yellow]")
         return
@@ -33,36 +36,35 @@ async def tools_list(stream_manager, server_names=None):
     # Group tools by server
     tools_by_server = {}
     for tool in all_tools:
-        name = tool.get("name", "Unknown")
-        srv = stream_manager.get_server_for_tool(name)
-        tools_by_server.setdefault(srv, []).append(tool)
+        server_name = tool.namespace  # Use namespace as server name
+        tools_by_server.setdefault(server_name, []).append(tool)
     
-    # Display tools
+    # Display tools by server
     for srv, tools in tools_by_server.items():
         table = Table(title=f"{srv} Tools ({len(tools)} available)")
         table.add_column("Tool", style="green")
         table.add_column("Description")
         for tool in tools:
-            desc = tool.get("description", "No description")
+            desc = tool.description or "No description"
             if len(desc) > 75:
                 desc = desc[:72] + "..."
-            table.add_row(tool.get("name", "Unknown"), desc)
+            table.add_row(tool.name, desc)
         print(table)
     
     print(f"[green]Total tools available: {len(all_tools)}[/green]")
 
 @app.command("call")
-async def tools_call(stream_manager, server_names=None):
+async def tools_call(tool_manager, server_names=None):
     """
     Call a tool with arguments.
 
     Args:
-        stream_manager: StreamManager instance
+        tool_manager: ToolManager instance
         server_names: Optional dictionary mapping server indices to their names
     """
     print("[cyan]\nTool Call Interface[/cyan]")
     
-    all_tools = stream_manager.get_all_tools()
+    all_tools = tool_manager.get_all_tools()
     if not all_tools:
         print("[yellow]No tools available from any server.[/yellow]")
         return
@@ -70,8 +72,7 @@ async def tools_call(stream_manager, server_names=None):
     # List available tools
     print("[green]Available tools:[/green]")
     for idx, tool in enumerate(all_tools, start=1):
-        srv = stream_manager.get_server_for_tool(tool['name'])
-        print(f"  {idx}. {tool['name']} (from {srv}) - {tool.get('description','No description')}")
+        print(f"  {idx}. {tool.name} (from {tool.namespace}) - {tool.description or 'No description'}")
     
     # Get user selection asynchronously
     sel_raw = await asyncio.to_thread(input, "\nEnter tool number to call: ")
@@ -85,13 +86,12 @@ async def tools_call(stream_manager, server_names=None):
         return
 
     tool = all_tools[selection]
-    srv = stream_manager.get_server_for_tool(tool['name'])
 
-    print(f"\n[green]Selected: {tool['name']} from {srv}[/green]")
-    print(f"[cyan]Description: {tool.get('description','No description')}[/cyan]")
+    print(f"\n[green]Selected: {tool.name} from {tool.namespace}[/green]")
+    print(f"[cyan]Description: {tool.description or 'No description'}[/cyan]")
 
     # Show parameters
-    params = tool.get('parameters', tool.get('inputSchema', {}))
+    params = tool.parameters or {}
     if isinstance(params, dict) and 'properties' in params:
         props = params['properties']
         required = params.get('required', [])
@@ -115,27 +115,15 @@ async def tools_call(stream_manager, server_names=None):
     else:
         args = {}
 
-    print(f"\n[cyan]Calling tool '{tool['name']}' from {srv} with arguments:[/cyan]")
+    print(f"\n[cyan]Calling tool '{tool.name}' from {tool.namespace} with arguments:[/cyan]")
     print(Syntax(json.dumps(args, indent=2), 'json'))
 
     try:
-        response = await stream_manager.call_tool(
-            tool_name=tool['name'],
-            arguments=args,
-            server_name=srv
-        )
-        if response.get('isError'):
-            print(f"[red]Error calling tool: {response.get('error','Unknown error')}[/red]")
-            return
-
-        content = response.get('content', 'No content returned')
-        if isinstance(content, list) and content and isinstance(content[0], dict):
-            print("\n[green]Tool response:[/green]")
-            print(Syntax(json.dumps(content, indent=2), 'json'))
-        elif isinstance(content, dict):
-            print("\n[green]Tool response:[/green]")
-            print(Syntax(json.dumps(content, indent=2), 'json'))
-        else:
-            print(f"\n[green]Tool response:[/green] {content}")
+        # Use ToolManager to execute the tool
+        result = await tool_manager.execute_tool(tool.name, args)
+        
+        # Use the formatting helper to display the result nicely
+        display_tool_call_result(result)
+        
     except Exception as e:
         print(f"[red]Error: {e}[/red]")
