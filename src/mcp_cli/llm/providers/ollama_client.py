@@ -1,77 +1,124 @@
-# src/llm/providers/ollama_client.py
-import logging
+# mcp_cli/llm/providers/ollama_client.py
+"""
+Async Ollama LLM adapter for MCP-CLI.
+
+* `ollama.chat()` is still a synchronous helper in the upstream
+  library, so we run it in a background thread via
+  ``asyncio.to_thread`` to avoid blocking the event-loop.
+* Public contract matches the OpenAI adapter:
+    await client.create_completion(messages, tools)
+      →  {"response": str | None, "tool_calls": List[dict]}
+"""
+
+from __future__ import annotations
+
+import asyncio
+import functools
 import json
+import logging
 import uuid
-import ollama
 from typing import Any, Dict, List, Optional
 
-# base
+import ollama  # pip install ollama-python
+
 from mcp_cli.llm.providers.base import BaseLLMClient
 
+log = logging.getLogger(__name__)
+
+
 class OllamaLLMClient(BaseLLMClient):
-    def __init__(self, model: str = "qwen2.5-coder"):
-        # set the model
+    """Non-blocking wrapper around ``ollama.chat``."""
+
+    def __init__(self, model: str = "qwen2.5-coder") -> None:
         self.model = model
 
-        # check we have chat in the Ollama library
+        # Fail fast if the runtime lacks the required function
         if not hasattr(ollama, "chat"):
-            raise ValueError("Ollama is not properly configured in this environment.")
-
-    def create_completion(
-        self, 
-        messages: List[Dict[str, Any]], 
-        tools: Optional[List[Dict[str, Any]]] = None
-    ) -> Dict[str, Any]:
-        # Format messages for Ollama
-        ollama_messages = [{"role": msg["role"], "content": msg["content"]} for msg in messages]
-
-        try:
-            # Call the Ollama API with tools
-            response = ollama.chat(
-                model=self.model,
-                messages=ollama_messages,
-                stream=False,
-                tools=tools or [],
+            raise ValueError(
+                "The installed ollama package does not expose 'chat'; "
+                "check your ollama-python version."
             )
 
-            # Log the raw response for debugging
-            logging.info(f"Ollama raw response: {response}")
+    # ------------------------------------------------------------------ #
+    # public API                                                         #
+    # ------------------------------------------------------------------ #
+    async def create_completion(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Fire a chat request at Ollama **without** blocking the event-loop.
 
-            # Extract the response message and any tool calls
-            message = response.message
-            tool_calls = []
+        Parameters
+        ----------
+        messages
+            Standard ChatML message list.
+        tools
+            Optional OpenAI-style tool schema list.
 
-            # Process any tool calls returned in the message
-            if hasattr(message, "tool_calls") and message.tool_calls:
-                for tool in message.tool_calls:
-                    # Ensure arguments are in string format for consistency
-                    arguments = tool.function.arguments
-                    if isinstance(arguments, dict):
-                        arguments = json.dumps(arguments)
-                    elif not isinstance(arguments, str):
-                        arguments = str(arguments)
-                    
-                    # Check if an ID is provided; if so, preserve it; otherwise, generate one.
-                    if hasattr(tool, "id") and tool.id:
-                        tool_call_id = tool.id
+        Returns
+        -------
+        Same dict structure as the OpenAI adapter.
+        """
+        # Convert to Ollama’s simple schema
+        ollama_messages = [
+            {"role": m["role"], "content": m["content"]} for m in messages
+        ]
+
+        try:
+            # ------------------------------------------------------------------
+            # Run the *synchronous* API in a background thread
+            # ------------------------------------------------------------------
+            response = await asyncio.to_thread(
+                functools.partial(
+                    ollama.chat,
+                    model=self.model,
+                    messages=ollama_messages,
+                    stream=False,
+                    tools=tools or [],
+                )
+            )
+            log.debug("Ollama raw response: %s", response)
+
+            # ------------------------------------------------------------------
+            # Normalise the payload
+            # ------------------------------------------------------------------
+            main_msg = response.message
+            main_content: Optional[str] = (
+                main_msg.content if main_msg is not None else None
+            )
+
+            tool_calls: List[Dict[str, Any]] = []
+            if hasattr(main_msg, "tool_calls") and main_msg.tool_calls:
+                for tc in main_msg.tool_calls:
+                    args_raw = tc.function.arguments
+
+                    if isinstance(args_raw, dict):
+                        args_str = json.dumps(args_raw)
+                    elif isinstance(args_raw, str):
+                        args_str = args_raw
                     else:
-                        tool_call_id = f"call_{tool.function.name}_{str(uuid.uuid4())[:8]}"
-                    
-                    tool_calls.append({
-                        "id": tool_call_id,
-                        "type": "function",
-                        "function": {
-                            "name": tool.function.name,
-                            "arguments": arguments,
-                        },
-                    })
+                        args_str = str(args_raw)
 
+                    tc_id = getattr(tc, "id", None) or f"call_{uuid.uuid4().hex[:8]}"
 
-            # Return standardized response format
+                    tool_calls.append(
+                        {
+                            "id": tc_id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": args_str,
+                            },
+                        }
+                    )
+
             return {
-                "response": message.content if message else "No response",
+                "response": main_content or "No response",
                 "tool_calls": tool_calls,
             }
-        except Exception as e:
-            logging.error(f"Ollama API Error: {str(e)}")
-            raise ValueError(f"Ollama API Error: {str(e)}")
+
+        except Exception as exc:  # noqa: BLE001
+            log.error("Ollama API Error: %s", exc, exc_info=True)
+            raise ValueError(f"Ollama API Error: {exc}") from exc

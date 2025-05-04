@@ -325,6 +325,7 @@ dev = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "colorama" },
     { name = "pydantic" },
     { name = "pytest-asyncio" },
 ]
@@ -351,6 +352,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "colorama", specifier = ">=0.4.6" },
     { name = "pydantic", specifier = ">=2.10.2" },
     { name = "pytest-asyncio", specifier = ">=0.25.3" },
 ]
