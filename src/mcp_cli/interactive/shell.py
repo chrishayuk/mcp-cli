@@ -1,5 +1,5 @@
 # src/mcp_cli/interactive/shell.py
-"""Interactive shell implementation for MCP CLI."""
+"""Interactive shell implementation for MCP CLI with slash-menu autocompletion."""
 from __future__ import annotations
 import asyncio
 import logging
@@ -11,16 +11,36 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
+# Use prompt_toolkit for advanced prompt and autocompletion
+from prompt_toolkit import PromptSession
+from prompt_toolkit.completion import Completer, Completion
+
 # mcp cli
 from mcp_cli.tools.manager import ToolManager
-from mcp_cli.ui.ui_helpers import display_welcome_banner
-
+# Removed duplicate welcome banner; upstream already displays one
 # commands
 from mcp_cli.interactive.commands import register_all_commands
 from mcp_cli.interactive.registry import InteractiveCommandRegistry
 
 # logger
 logger = logging.getLogger(__name__)
+
+
+class SlashCompleter(Completer):
+    """Provides completions for slash commands based on registered commands."""
+    def __init__(self, command_names: List[str]):
+        self.command_names = command_names
+
+    def get_completions(self, document, complete_event):
+        text = document.text_before_cursor.lstrip()
+        if not text.startswith("/"):
+            return
+        token = text[1:]
+        for name in self.command_names:
+            if name.startswith(token):
+                yield Completion(
+                    f"/{name}", start_position=-len(text)
+                )
 
 
 async def interactive_mode(
@@ -32,28 +52,13 @@ async def interactive_mode(
     **kwargs
 ) -> bool:
     """
-    Launch the interactive mode CLI.
-
-    Parameters
-    ----------
-    stream_manager
-        StreamManager instance with connections to all servers.
-    tool_manager
-        Optional ToolManager instance.
-    provider / model
-        LLM configuration for system display.
-    server_names
-        Optional mapping of server indices to names.
-    **kwargs
-        Additional parameters passed from run_command.
+    Launch the interactive mode CLI with slash-menu autocompletion.
     """
     console = Console()
 
-    # Register all commands
+    # Register commands
     register_all_commands()
-
-    # Display welcome banner
-    display_welcome_banner({"provider": provider, "model": model})
+    cmd_names = list(InteractiveCommandRegistry.get_all_commands().keys())
 
     # Intro panel
     print(Panel(
@@ -61,44 +66,58 @@ async def interactive_mode(
             "# Interactive Mode\n\n"
             "Type commands to interact with the system.\n"
             "Type 'help' to see available commands.\n"
-            "Type 'exit' or 'quit' to exit."
+            "Type 'exit' or 'quit' to exit.\n"
+            "Type '/' to bring up the slash-menu."
         ),
         title="MCP Interactive Mode",
         style="bold cyan"
     ))
 
-    # Initial help
+    # Initial help listing
     help_cmd = InteractiveCommandRegistry.get_command("help")
     if help_cmd:
         await help_cmd.execute([], tool_manager, server_names=server_names)
 
+    # Create a PromptSession with our completer
+    session = PromptSession(
+        completer=SlashCompleter(cmd_names),
+        complete_while_typing=True,
+    )
+
     # Main loop
     while True:
         try:
-            # Read a line
-            raw = await asyncio.to_thread(input, "> ")
+            raw = await asyncio.to_thread(session.prompt, "> ")
             line = raw.strip()
 
             # Skip empty
             if not line:
                 continue
 
-            # If user just types "/", re-show the commands list
-            if line == "/":
+            # If user types a slash command exactly
+            if line.startswith("/"):
+                # strip leading slash and dispatch
+                cmd_line = line[1:]
+            else:
+                # normal entry
+                cmd_line = line
+
+            # If line was just '/', show help
+            if cmd_line == "":
                 if help_cmd:
                     await help_cmd.execute([], tool_manager, server_names=server_names)
                 continue
 
             # Parse
             try:
-                parts = shlex.split(line)
+                parts = shlex.split(cmd_line)
             except ValueError:
-                parts = line.split()
+                parts = cmd_line.split()
 
-            cmd_name = parts[0].lstrip("/").lower()
+            cmd_name = parts[0].lower()
             args = parts[1:]
 
-            # Lookup
+            # Lookup and execute
             cmd = InteractiveCommandRegistry.get_command(cmd_name)
             if cmd:
                 result = await cmd.execute(args, tool_manager, server_names=server_names, **kwargs)

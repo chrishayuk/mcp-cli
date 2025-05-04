@@ -3,10 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, Dict
+from typing import Any
 from rich.console import Console
 
-# mcp cli
+# mcp cli
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.tools.models import ToolCallResult
 
@@ -16,15 +16,18 @@ logger = logging.getLogger(__name__)
 
 async def tools_call_action(tm: ToolManager) -> None:
     """
-    Prompts the user to select a tool, gather JSON args, 
+    Prompts the user to select a tool, gather JSON args,
     execute the tool via ToolManager, and render the result.
+
+    Uses only unique tools to avoid duplicates across namespaces.
     """
     console = Console()
     print = console.print
 
     print("[cyan]\nTool Call Interface[/cyan]")
 
-    all_tools = tm.get_all_tools()
+    # Use unique tools to prevent duplicate listings
+    all_tools = tm.get_unique_tools()
     if not all_tools:
         print("[yellow]No tools available from any server.[/yellow]")
         return
@@ -84,3 +87,4 @@ async def tools_call_action(tm: ToolManager) -> None:
     except Exception as e:
         logger.exception("Error executing tool")
         print(f"[red]Error: {e}[/red]")
+

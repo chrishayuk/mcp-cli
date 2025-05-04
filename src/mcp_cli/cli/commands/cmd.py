@@ -1,4 +1,4 @@
-# mcp_cli/cli/commands/cmd.py
+# src/mcp_cli/cli/commands/cmd.py
 """Command mode implementation."""
 from __future__ import annotations
 import asyncio
@@ -19,6 +19,7 @@ from mcp_cli.tools.manager import ToolManager
 
 # logger
 logger = logging.getLogger(__name__)
+
 
 class CmdCommand(BaseCommand):
     """Command for non-interactive command execution."""
@@ -93,24 +94,38 @@ class CmdCommand(BaseCommand):
         tool_args_json: Optional[str],
         stream_manager: Any,
     ) -> str:
-        """Execute a single tool through the stream_manager."""
+        """Execute a single tool through the ToolManager or legacy stream_manager."""
+        # Parse JSON args
         try:
-            tool_args = json.loads(tool_args_json) if tool_args_json else {}
+            args = json.loads(tool_args_json) if tool_args_json else {}
         except json.JSONDecodeError as exc:
             logger.error(f"Invalid JSON for --tool-args: {exc}")
             raise typer.Exit(code=1) from exc
         
-        logger.debug(f"Calling tool {tool_name} with {tool_args}")
-        result = await stream_manager.call_tool(
-            tool_name=tool_name,
-            arguments=tool_args,
-        )
+        logger.debug(f"Calling tool {tool_name} with {args}")
         
-        if result.get("isError"):
-            logger.error(f"Tool reported error: {result.get('error')}")
-            raise typer.Exit(code=1)
-        
-        return json.dumps(result.get("content", ""), indent=2)
+        # Prefer new ToolManager.execute_tool API
+        if hasattr(stream_manager, "execute_tool"):
+            tcr = await stream_manager.execute_tool(tool_name, args)
+            if not tcr.success:
+                logger.error(f"Tool reported error: {tcr.error}")
+                raise typer.Exit(code=1)
+            return json.dumps(tcr.result, indent=2)
+        else:
+            # Fallback to legacy call_tool if available
+            try:
+                result = await stream_manager.call_tool(
+                    tool_name=tool_name,
+                    arguments=args,
+                )
+            except AttributeError:
+                logger.error("ToolManager does not support legacy call_tool")
+                raise typer.Exit(code=1)
+            
+            if result.get("isError"):
+                logger.error(f"Tool reported error: {result.get('error')}")
+                raise typer.Exit(code=1)
+            return json.dumps(result.get("content", ""), indent=2)
     
     async def _process_tool_calls(
         self,
@@ -138,11 +153,11 @@ class CmdCommand(BaseCommand):
         from mcp_cli.chat.system_prompt import generate_system_prompt
         from mcp_cli.llm.llm_client import get_llm_client
         from mcp_cli.llm.tools_handler import convert_to_openai_tools
-        
+
         # Get tools and convert to OpenAI format
         tools = stream_manager.get_internal_tools()
         openai_tools = convert_to_openai_tools(tools)
-        
+
         # Create conversation with system prompt
         system_prompt = custom_system_prompt or generate_system_prompt(tools)
         conversation = [
@@ -153,14 +168,14 @@ class CmdCommand(BaseCommand):
                         if prompt_template else user_input,
             },
         ]
-        
+
         # Initialize LLM client
         llm = get_llm_client(provider=provider, model=model)
         logger.debug(f"LLM client ready ({provider} / {model})")
-        
+
         # First pass LLM call
         completion = await llm.create_completion(messages=conversation, tools=openai_tools)
-        
+
         # Execute tool calls if requested
         if completion.get("tool_calls"):
             await self._process_tool_calls(
@@ -170,7 +185,7 @@ class CmdCommand(BaseCommand):
             )
             # Second pass LLM call after tool execution
             completion = await llm.create_completion(messages=conversation)
-        
+
         # Extract final answer
         if isinstance(completion, dict):
             return (
@@ -181,7 +196,7 @@ class CmdCommand(BaseCommand):
         if isinstance(completion, str):
             return completion
         return json.dumps(completion)
-    
+
     def _write_output(self, data: str, path: Optional[str], raw: bool) -> None:
         """Write output to file or stdout."""
         if path and path != "-":
@@ -193,7 +208,7 @@ class CmdCommand(BaseCommand):
                 raise typer.Exit(code=1) from exc
         else:
             print(data if raw else data.strip())
-    
+
     def register(self, app: typer.Typer, run_command_func: Callable) -> None:
         """Register CMD command with extended parameters."""
         @app.command(self.name)
@@ -203,7 +218,7 @@ class CmdCommand(BaseCommand):
             provider: str = "openai",
             model: Optional[str] = None,
             disable_filesystem: bool = False,
-            input: Optional[str] = None,  # noqa: A002
+            input: Optional[str] = None,
             prompt: Optional[str] = None,
             output: Optional[str] = None,
             raw: bool = False,
