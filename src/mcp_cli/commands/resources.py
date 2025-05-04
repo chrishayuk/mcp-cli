@@ -1,21 +1,11 @@
 # mcp_cli/commands/resources.py
 """
-Show every resource exposed by the connected MCP servers.
-
-The function mirrors *prompts_list()* – see that module’s doc-string for
-details.
+Shared resources‐listing logic for both interactive and CLI interfaces.
 """
-from __future__ import annotations
-
-import asyncio
-import inspect
-from typing import Any, Dict, List, Optional
-
+from typing import Any, Dict, List
 from rich.console import Console
 from rich.table import Table
-
-from mcp_cli.tools.manager import ToolManager, get_tool_manager
-
+from mcp_cli.tools.manager import ToolManager
 
 def _human_size(size: int | None) -> str:
     if not size or size < 0:
@@ -26,11 +16,28 @@ def _human_size(size: int | None) -> str:
         size /= 1024
     return f"{size:.1f} TB"
 
+async def resources_action(tm: ToolManager) -> List[Dict[str, Any]]:
+    """
+    (async) Retrieve resources from the tool manager and render them.
+    Returns the raw list of resource dicts.
+    """
+    console = Console()
+    try:
+        maybe = tm.list_resources()
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        return []
 
-def _render(res: List[Dict[str, Any]], console: Console) -> None:
-    if not res:
+    # If it’s a coroutine, await it
+    if hasattr(maybe, "__await__"):
+        resources = await maybe  # type: ignore
+    else:
+        resources = maybe  # type: ignore
+
+    resources = resources or []
+    if not resources:
         console.print("[dim]No resources recorded.[/dim]")
-        return
+        return resources
 
     table = Table(title="Resources", header_style="bold magenta")
     table.add_column("Server", style="cyan")
@@ -38,7 +45,7 @@ def _render(res: List[Dict[str, Any]], console: Console) -> None:
     table.add_column("Size", justify="right")
     table.add_column("MIME-type")
 
-    for item in res:
+    for item in resources:
         table.add_row(
             item.get("server", "-"),
             item.get("uri", "-"),
@@ -47,33 +54,4 @@ def _render(res: List[Dict[str, Any]], console: Console) -> None:
         )
 
     console.print(table)
-
-
-def resources_list(
-    *,
-    stream_manager: Optional[ToolManager] = None,
-    console: Optional[Console] = None,
-) -> List[Dict[str, Any]] | asyncio.Future:
-    """
-    List every resource from every server.
-
-    Works in both synchronous and asynchronous contexts – see
-    *prompts_list()* for the reasoning.
-    """
-    console = console or Console()
-    tm = stream_manager or get_tool_manager()
-    if tm is None:
-        console.print("[red]Error:[/red] no ToolManager available")
-        return []
-
-    result = tm.list_resources()
-    if inspect.isawaitable(result):
-        async def _runner() -> List[Dict[str, Any]]:
-            data = await result  # type: ignore[func-returns-value]
-            _render(data, console)
-            return data
-
-        return _runner()
-
-    _render(result, console)  # type: ignore[arg-type]
-    return result  # type: ignore[return-value]
+    return resources

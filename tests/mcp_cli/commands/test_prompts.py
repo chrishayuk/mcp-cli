@@ -1,123 +1,65 @@
-"""
-Tests for the *current* ToolManager-level ``prompts_list`` command.
-"""
-from __future__ import annotations
-
-from typing import Any, List
+# commands/test_prompts.py
 
 import pytest
+from rich.console import Console
+from rich.table import Table
 
-from mcp_cli.commands import prompts as prm_cmd
+from mcp_cli.commands.prompts import prompts_action
 
+class DummyTMNoPrompts:
+    def list_prompts(self):
+        return []
 
-# ──────────────────────────────────────────────────────────────────────
-#  Stub  StreamManager
-# ──────────────────────────────────────────────────────────────────────
-class FakeStreamManager:
-    """
-    Provides just enough API for *prompts_list*:
+class DummyTMWithPromptsSync:
+    def __init__(self, data):
+        self._data = data
+    def list_prompts(self):
+        return self._data
 
-        • get_streams()   – low-level tuples (unused by the new path)
-        • list_prompts()  – high-level helper returning a list[dict]
-    """
-
-    def __init__(self, n: int = 2) -> None:
-        self._streams = [(f"r{i}", f"w{i}") for i in range(n)]
-
-    # low-level (only needed by our manual monkey-patch)
-    def get_streams(self) -> List[tuple[Any, Any]]:
-        return list(self._streams)
-
-    # high-level convenience mirroring ToolManager
-    async def list_prompts(self) -> List[dict]:
-        out: List[dict] = []
-        for idx, (r, w) in enumerate(self._streams):
-            try:
-                reply = await prm_cmd.send_prompts_list(r, w)
-                for name in reply.get("prompts", []):
-                    out.append(
-                        {
-                            "server": f"server-{idx}",
-                            "name": name,
-                            "description": "",
-                        }
-                    )
-            except Exception:
-                # ignore unreachable server – real code does the same
-                pass
-        return out
-
-
-# ──────────────────────────────────────────────────────────────────────
-#  Helper to patch send_prompts_list
-# ──────────────────────────────────────────────────────────────────────
-def _patch_sender(monkeypatch, seq):
-    """
-    Monkey-patch ``send_prompts_list`` so every await pops the next item
-    from *seq*.  Items may be dicts or awaitable callables.
-    """
-
-    async def _dispatch(*_):
-        nxt = seq.pop(0)
-        return await nxt() if callable(nxt) else nxt
-
-    monkeypatch.setattr(prm_cmd, "send_prompts_list", _dispatch, raising=False)
-
-
-@pytest.fixture()
-def fsm() -> FakeStreamManager:
-    return FakeStreamManager(2)
-
-
-# ──────────────────────────────────────────────────────────────────────
-#  Tests
-# ──────────────────────────────────────────────────────────────────────
-@pytest.mark.asyncio
-async def test_empty(monkeypatch, capsys, fsm):
-    """Both servers report zero prompts → single notice."""
-    _patch_sender(monkeypatch, [{"prompts": []}, {"prompts": []}])
-
-    await prm_cmd.prompts_list(stream_manager=fsm)
-    out, _ = capsys.readouterr()
-
-    assert "No prompts recorded." in out
-    # notice appears exactly once
-    assert out.count("No prompts recorded.") == 1
-
+class DummyTMWithPromptsAsync:
+    async def list_prompts(self):
+        return [
+            {"server": "s1", "name": "n1", "description": "d1"}
+        ]
 
 @pytest.mark.asyncio
-async def test_mixed(monkeypatch, capsys, fsm):
-    """Combined output contains every prompt exactly once."""
-    _patch_sender(
-        monkeypatch,
-        [
-            {"prompts": ["greeting", "farewell"]},
-            {"prompts": ["status-update"]},
-        ],
-    )
+async def test_prompts_action_no_prompts(monkeypatch):
+    tm = DummyTMNoPrompts()
+    printed = []
+    monkeypatch.setattr(Console, "print", lambda self, msg, **kw: printed.append(str(msg)))
 
-    await prm_cmd.prompts_list(stream_manager=fsm)
-    out, _ = capsys.readouterr()
+    result = prompts_action(tm)
+    assert result == []
+    assert any("No prompts recorded" in p for p in printed)
 
-    for txt in ("greeting", "farewell", "status-update"):
-        assert out.count(txt) == 1
-    assert "No prompts recorded." not in out
+def test_prompts_action_with_prompts_sync(monkeypatch):
+    data = [
+        {"server": "srv", "name": "nm", "description": "desc"}
+    ]
+    tm = DummyTMWithPromptsSync(data)
 
+    output = []
+    monkeypatch.setattr(Console, "print", lambda self, obj, **kw: output.append(obj))
 
-@pytest.mark.asyncio
-async def test_partial_failure(monkeypatch, capsys, fsm):
-    """One server ok, the other raises – table still printed."""
-    async def ok():
-        return {"prompts": ["hello"]}
+    result = prompts_action(tm)
+    assert result == data
 
-    async def boom():
-        raise RuntimeError("down")
+    tables = [o for o in output if isinstance(o, Table)]
+    assert tables, f"No Table printed, got {output}"
+    table = tables[0]
+    assert table.row_count == 1
+    headers = [col.header for col in table.columns]
+    assert headers == ["Server", "Name", "Description"]
 
-    _patch_sender(monkeypatch, [ok, boom])
+def test_prompts_action_with_prompts_async(monkeypatch):
+    tm = DummyTMWithPromptsAsync()
 
-    await prm_cmd.prompts_list(stream_manager=fsm)
-    out, _ = capsys.readouterr()
+    output = []
+    monkeypatch.setattr(Console, "print", lambda self, obj, **kw: output.append(obj))
 
-    assert "hello" in out
-    # we *did* receive at least one prompt → no yellow notice
-    assert "No prompts recorded." not in out
+    result = prompts_action(tm)
+    assert isinstance(result, list) and len(result) == 1
+
+    tables = [o for o in output if isinstance(o, Table)]
+    assert tables, f"No Table printed, got {output}"
+    assert tables[0].row_count == 1

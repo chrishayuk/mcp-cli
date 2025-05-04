@@ -1,133 +1,81 @@
-"""
-pytest suite for mcp_cli.commands.tools (updated May 2025)
-
-The CLI sub-module exposes two public coroutines:
-
-* tools_list(tool_manager)
-* tools_call(tool_manager)
-
-This suite injects a tiny **FakeToolManager** that fulfils only the methods the
-code actually touches:
-
-    • get_all_tools()
-    • execute_tool()
-    • get_server_for_tool()          (only so the code can print its name)
-
-No real servers or interactive input are needed – we monkey-patch
-`asyncio.to_thread` so that the prompts receive canned answers.
-"""
-from __future__ import annotations
-
-import asyncio
-import builtins
-from itertools import cycle
-from typing import Any, Dict, List
+# commands/test_tools.py
 
 import pytest
+import json
+
 from rich.console import Console
+from rich.table import Table
+from rich.syntax import Syntax
 
-from mcp_cli.commands import tools as tools_cmd
-from mcp_cli.tools.models import ToolInfo, ToolCallResult
+import mcp_cli.commands.tools as tools_mod
+from mcp_cli.commands.tools import tools_action
+from mcp_cli.tools.models import ToolInfo
 
 
-# --------------------------------------------------------------------------- #
-# Helpers                                                                     #
-# --------------------------------------------------------------------------- #
+class DummyTMNoTools:
+    def get_unique_tools(self):
+        return []
 
-class FakeToolManager:
-    """Minimal stub compatible with mcp_cli.commands.tools"""
-
-    def __init__(self, tools: List[ToolInfo]):
+class DummyTMWithTools:
+    def __init__(self, tools):
         self._tools = tools
-        self._namespace_map = {t.name: t.namespace for t in tools}
-
-    # --- API expected by commands.tools ----------------------------------- #
-    def get_all_tools(self) -> List[ToolInfo]:
+    def get_unique_tools(self):
         return self._tools
 
-    def get_server_for_tool(self, tool_name: str) -> str:
-        return self._namespace_map.get(tool_name, "UnknownSrv")
-
-    async def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> ToolCallResult:  # noqa: D401
-        return ToolCallResult(
-            tool_name=tool_name,
-            success=True,
-            result=f"Echo {tool_name} with {arguments}",
-        )
-
-
-# Monkey-patch helper – replaces asyncio.to_thread so keyboard input is mocked
-def _patch_to_thread(monkeypatch, replies: List[str]) -> None:
-    answers = cycle(replies)
-
-    async def fake_to_thread(func, *args, **kwargs):  # noqa: D401
-        if func is builtins.input:
-            return next(answers)
-        return func(*args, **kwargs)
-
-    monkeypatch.setattr(asyncio, "to_thread", fake_to_thread)
-
-
-# --------------------------------------------------------------------------- #
-# Fixtures                                                                    #
-# --------------------------------------------------------------------------- #
-
-@pytest.fixture()
-def single_tool() -> List[ToolInfo]:
-    return [
-        ToolInfo(
-            name="hello_world",
-            namespace="UnitSrv",
-            description="Simple test tool",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "greeting": {
-                        "type": "string",
-                        "description": "Text to greet with",
-                    }
-                },
-                "required": ["greeting"],
-            },
-            is_async=False,
-            tags=[],
-        )
-    ]
-
-
-# --------------------------------------------------------------------------- #
-# Tests                                                                       #
-# --------------------------------------------------------------------------- #
-
 @pytest.mark.asyncio
-async def test_tools_list_single_tool(capsys, single_tool):
-    tm = FakeToolManager(single_tool)
+async def test_tools_action_no_tools(monkeypatch):
+    tm = DummyTMNoTools()
+    printed = []
+    monkeypatch.setattr(Console, "print", lambda self, msg, **kw: printed.append(msg))
 
-    # tools_list prints to stdout using Rich, capture it.
-    await tools_cmd.tools_list(tm)
+    out = tools_action(tm)
+    assert out == []
+    assert any("No tools available" in str(m) for m in printed)
 
-    out, _ = capsys.readouterr()
-    assert "hello_world" in out
-    assert "Simple test tool" in out
-    assert "UnitSrv" in out
+def make_tool(name, namespace):
+    return ToolInfo(name=name, namespace=namespace, description="d", parameters={}, is_async=False, tags=[])
 
+def test_tools_action_table(monkeypatch):
+    fake_tools = [make_tool("t1", "ns1"), make_tool("t2", "ns2")]
+    tm = DummyTMWithTools(fake_tools)
 
-@pytest.mark.asyncio
-async def test_tools_call_success(monkeypatch, capsys, single_tool):
-    """
-    Simulate a user selecting the first tool and entering empty JSON `{}` for
-    arguments.  The FakeToolManager echoes the call; we assert that echo is
-    shown.
-    """
-    tm = FakeToolManager(single_tool)
+    printed = []
+    monkeypatch.setattr(Console, "print", lambda self, obj, **kw: printed.append(obj))
 
-    # Provide canned answers:  "1" (select first tool)   "{}" (args)
-    _patch_to_thread(monkeypatch, ["1", "{}"])
+    # Monkeypatch create_tools_table to return a dummy Table
+    dummy_table = Table(title="Dummy")
+    monkeypatch.setattr(tools_mod, "create_tools_table", lambda tools, show_details=False: dummy_table)
 
-    await tools_cmd.tools_call(tm)
-    out, _ = capsys.readouterr()
+    out = tools_action(tm, show_details=True, show_raw=False)
+    # Should return the original tool list
+    assert out == fake_tools
 
-    # Confirmation lines
-    assert "Selected: hello_world from UnitSrv" in out
-    # Echo from FakeToolManager.execute_tool
-    assert "Echo hello_world" in out
+    # printed[0] is the fetching message string
+    assert isinstance(printed[0], str)
+
+    # Next, the dummy Table
+    assert any(o is dummy_table for o in printed), printed
+
+    # And finally the summary string
+    assert any("Total tools available: 2" in str(m) for m in printed)
+
+def test_tools_action_raw(monkeypatch):
+    fake_tools = [make_tool("x", "ns")]
+    tm = DummyTMWithTools(fake_tools)
+
+    printed = []
+    monkeypatch.setattr(Console, "print", lambda self, obj, **kw: printed.append(obj))
+
+    # Call action in raw mode
+    out = tools_action(tm, show_raw=True)
+    # Should return raw JSON list
+    assert isinstance(out, list) and isinstance(out[0], dict)
+    # And printed a Syntax
+    assert any(isinstance(o, Syntax) for o in printed)
+
+    # Verify that the JSON inside Syntax matches our tool list
+    syntax_obj = next(o for o in printed if isinstance(o, Syntax))
+    text = syntax_obj.code  # the raw JSON text
+    data = json.loads(text)
+    assert data[0]["name"] == "x"
+    assert data[0]["namespace"] == "ns"

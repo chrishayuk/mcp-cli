@@ -1,8 +1,17 @@
-# mcp_cli/cli_options.py
+# mcp_cli/cli/cli_options.py
+"""CLI options processing module for MCP CLI.
+
+This module handles processing of command-line options for the MCP CLI application.
+"""
+
 import os
 import json
 import logging
 from pathlib import Path
+from typing import Dict, List, Tuple, Optional
+
+logger = logging.getLogger(__name__)
+
 
 def load_config(config_file):
     """Load the configuration file."""
@@ -19,6 +28,7 @@ def load_config(config_file):
         logging.error(f"Error loading config file: {e}")
     
     return config
+
 
 def extract_server_names(config, specified_servers=None):
     """
@@ -52,9 +62,13 @@ def extract_server_names(config, specified_servers=None):
     
     return server_names
 
+
 def process_options(server, disable_filesystem, provider, model, config_file="server_config.json"):
     """
     Process CLI options to produce a list of server names and set environment variables.
+    
+    Returns:
+        Tuple of (servers_list, user_specified, server_names)
     """
     servers_list = []
     user_specified = []

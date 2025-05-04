@@ -1,127 +1,64 @@
-"""
-mcp_cli.commands.resources  – “resources list” command
-
-Fetch the *resources* reported by every connected MCP server and show them in a
-nice Rich-formatted panel for each server.
-
-The command now works exclusively with a *StreamManager-style* object that
-exposes `get_streams() -> Iterable[(read_stream, write_stream)]`.
-"""
-
-from __future__ import annotations
-
-import json
-from typing import Any, Dict, List, Tuple
-
-import typer
-from rich import print
+# commands/test_resources.py
+import pytest
 from rich.console import Console
-from rich.markdown import Markdown
-from rich.panel import Panel
-from rich.progress import Progress
+from rich.table import Table
 
-# ––– protocol message –––––––––––––––––––––––––––––––––––––––––––––––––––––––
-from chuk_mcp.mcp_client.messages.resources.send_messages import (
-    send_resources_list,
-)
+from mcp_cli.commands.resources import resources_action
 
-# ---------------------------------------------------------------------------
+class DummyTMNoResources:
+    def list_resources(self):
+        return []
 
-app = typer.Typer(help="Resources commands")
+class DummyTMWithResources:
+    def __init__(self, data):
+        self._data = data
+    def list_resources(self):
+        return self._data
 
+class DummyTMError:
+    def list_resources(self):
+        raise RuntimeError("fail!")
 
-@app.command("list")
-async def resources_list(
-    stream_manager: Any,
-    server_names: Dict[int, str] | None = None,
-) -> None:
-    """
-    Fetch **resources** from every connected server and display them.
+@pytest.mark.asyncio
+async def test_resources_action_error(monkeypatch):
+    tm = DummyTMError()
+    printed = []
+    monkeypatch.setattr(Console, "print", lambda self, msg, **kw: printed.append(str(msg)))
 
-    Parameters
-    ----------
-    stream_manager
-        An object (for example the `StreamManager` returned by
-        `setup_mcp_stdio`) exposing a ``get_streams()`` method that yields
-        ``(read_stream, write_stream)`` tuples – one per server.
-    server_names
-        Optional mapping ``index -> display_name`` that will be used for the
-        panels’ headings.
-    """
-    # --- sanity-check -------------------------------------------------------
-    if not hasattr(stream_manager, "get_streams"):
-        raise TypeError(
-            "resources_list expects a StreamManager object "
-            "with a 'get_streams()' method."
-        )
+    result = resources_action(tm)
+    assert result == []
+    assert any("Error:" in p and "fail!" in p for p in printed)
 
-    streams: List[Tuple[Any, Any]] = list(stream_manager.get_streams())
+@pytest.mark.asyncio
+async def test_resources_action_no_resources(monkeypatch):
+    tm = DummyTMNoResources()
+    printed = []
+    monkeypatch.setattr(Console, "print", lambda self, msg, **kw: printed.append(str(msg)))
 
-    console = Console()
-    console.print("[cyan]\nFetching Resources List from all servers...[/cyan]")
+    result = resources_action(tm)
+    assert result == []
+    assert any("No resources recorded" in p for p in printed)
 
-    # ----------------------------------------------------------------------
-    # • Progress is a *synchronous* context-manager, so **don’t** prefix with
-    #   “async with …”.
-    # • It works perfectly fine inside an async function.
-    # ----------------------------------------------------------------------
-    with Progress(transient=True, console=console) as progress:
-        task_id = progress.add_task(
-            "[cyan]Collecting resources…", total=len(streams)
-        )
+def test_resources_action_with_resources(monkeypatch):
+    data = [
+        {"server": "s1", "uri": "/path/1", "size": 500, "mimeType": "text/plain"},
+        {"server": "s2", "uri": "/path/2", "size": 2048, "mimeType": "application/json"},
+    ]
+    tm = DummyTMWithResources(data)
 
-        # ------------------------------------------------------------------
-        # iterate over every server connection
-        # ------------------------------------------------------------------
-        for idx, (r_stream, w_stream) in enumerate(streams):
-            display_name = (
-                server_names.get(idx)
-                if server_names and idx in server_names
-                else f"Server {idx + 1}"
-            )
+    output = []
+    monkeypatch.setattr(Console, "print", lambda self, obj, **kw: output.append(obj))
 
-            # --------------------------------------------------------------
-            # call the MCP “resources.list” message
-            # --------------------------------------------------------------
-            try:
-                response = await send_resources_list(r_stream, w_stream)
-                resources = response.get("resources", [])
-            except Exception as exc:
-                # show a red panel if this server fails
-                console.print(
-                    Panel(
-                        f"[red]Failed to fetch resources: {exc}[/red]",
-                        title=f"{display_name} Error",
-                        style="bold red",
-                    )
-                )
-                progress.advance(task_id)
-                continue
+    result = resources_action(tm)
+    assert result == data
 
-            # --------------------------------------------------------------
-            # build a Markdown body
-            # --------------------------------------------------------------
-            md_body = f"## {display_name} Resources\n"
+    tables = [o for o in output if isinstance(o, Table)]
+    assert tables, f"No Table printed, got {output}"
+    table = tables[0]
 
-            if not resources:
-                md_body += "\nNo resources available."
-                panel_style = "bold yellow"
-            else:
-                panel_style = "bold cyan"
-                for res in resources:
-                    if isinstance(res, dict):
-                        md_body += (
-                            f"\n```json\n{json.dumps(res, indent=2)}\n```"
-                        )
-                    else:
-                        md_body += f"\n- {res}"
+    # Two data rows
+    assert table.row_count == 2
 
-            # render panel
-            console.print(
-                Panel(
-                    Markdown(md_body),
-                    title=f"{display_name} Resources",
-                    style=panel_style,
-                )
-            )
-            progress.advance(task_id)
+    # Headers
+    headers = [col.header for col in table.columns]
+    assert headers == ["Server", "URI", "Size", "MIME-type"]

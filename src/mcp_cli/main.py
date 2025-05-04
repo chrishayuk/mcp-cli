@@ -1,85 +1,117 @@
-# mcp_cli/main.py
-"""Entry-point for the MCP CLI.
+# src/mcp_cli/main.py
+"""Entry‐point for the MCP CLI."""
 
-Only minor changes were required after refactoring *run_command* to be
-async-first:
-
-* We now import **run_command_sync** (blocking helper) and pass it to
-  `register_commands()`.  Down‑stream command handlers keep operating in a
-  synchronous context without seeing any difference.
-* Removed stale imports that were no longer referenced in this module.
-"""
 from __future__ import annotations
-
 import asyncio
 import atexit
 import gc
 import logging
-import os
 import signal
 import sys
+from typing import Optional
 
 import typer
 
 # ---------------------------------------------------------------------------
 # Local imports
 # ---------------------------------------------------------------------------
+# 1) Bring in the CLI‐side register_all_commands, which populates CommandRegistry
+from mcp_cli.cli.commands import register_all_commands
+from mcp_cli.cli.registry import CommandRegistry
+from mcp_cli.run_command import run_command_sync
+from mcp_cli.ui.ui_helpers import restore_terminal
 from mcp_cli.cli_options import process_options
-from mcp_cli.commands.register_commands import register_commands, chat_command
-from mcp_cli.run_command import run_command_sync  # blocking helper
 
 # ---------------------------------------------------------------------------
-# Logging
+# Logging setup
 # ---------------------------------------------------------------------------
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     stream=sys.stderr,
 )
 
-
-# ---------------------------------------------------------------------------
-# Utilities
-# ---------------------------------------------------------------------------
-
-def restore_terminal() -> None:
-    """Best‑effort attempt to reset the TTY and close the asyncio loop."""
-    os.system("stty sane")
-
-    try:
-        loop = asyncio.get_event_loop_policy().get_event_loop()
-        if loop.is_closed():
-            return
-
-        # Cancel outstanding tasks
-        tasks = [t for t in asyncio.all_tasks(loop) if not t.done()]
-        for task in tasks:
-            task.cancel()
-        if tasks:
-            loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
-
-        loop.run_until_complete(loop.shutdown_asyncgens())
-        loop.close()
-    except Exception as exc:  # pragma: no cover – best‑effort cleanup only
-        logging.debug("Asyncio cleanup error: %s", exc)
-    finally:
-        gc.collect()
-
-
+# Ensure terminal restoration on exit
 atexit.register(restore_terminal)
 
 # ---------------------------------------------------------------------------
-# Typer CLI
+# Typer application
 # ---------------------------------------------------------------------------
 app = typer.Typer()
-register_commands(app, process_options, run_command_sync)
 
 
 # ---------------------------------------------------------------------------
-# Signal handling
+# Interactive Mode (special top‐level command)
 # ---------------------------------------------------------------------------
+@app.command("interactive")
+def _interactive_command(
+    config_file: str = "server_config.json",
+    server: Optional[str] = None,
+    provider: str = "openai",
+    model: Optional[str] = None,
+    disable_filesystem: bool = False,
+):
+    """Start interactive command mode."""
+    servers, _, server_names = process_options(
+        server, disable_filesystem, provider, model, config_file
+    )
 
+    # Import the new interactive shell entrypoint
+    from mcp_cli.interactive.shell import interactive_mode
+
+    run_command_sync(
+        interactive_mode,
+        config_file,
+        servers,
+        extra_params={
+            "provider": provider,
+            "model": model,
+            "server_names": server_names,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Register all CLI commands into the registry
+# ---------------------------------------------------------------------------
+register_all_commands()
+
+
+# ---------------------------------------------------------------------------
+# Wire up sub‐command groups
+# ---------------------------------------------------------------------------
+CommandRegistry.create_subcommand_group(
+    app, "tools",     ["list", "call"], run_command_sync
+)
+CommandRegistry.create_subcommand_group(
+    app, "resources", ["list"],         run_command_sync
+)
+CommandRegistry.create_subcommand_group(
+    app, "prompts",   ["list"],         run_command_sync
+)
+
+
+# ---------------------------------------------------------------------------
+# Register standalone top‐level commands
+# ---------------------------------------------------------------------------
+for name in ("ping", "chat", "cmd"):
+    cmd = CommandRegistry.get_command(name)
+    if cmd:
+        cmd.register(app, run_command_sync)
+
+
+# ---------------------------------------------------------------------------
+# Make "chat" the default if no subcommand is supplied
+# ---------------------------------------------------------------------------
+chat_cmd = CommandRegistry.get_command("chat")
+if chat_cmd:
+    chat_cmd.register_as_default(app, run_command_sync)
+
+
+# ---------------------------------------------------------------------------
+# Signal‐handler for clean shutdown
+# ---------------------------------------------------------------------------
 def _signal_handler(sig, _frame):
-    logging.debug("Received signal %s", sig)
+    logging.debug("Received signal %s, restoring terminal", sig)
     restore_terminal()
     sys.exit(0)
 
@@ -92,70 +124,16 @@ def _setup_signal_handlers() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Global options
-# ---------------------------------------------------------------------------
-
-@app.callback(invoke_without_command=True)
-def common_options(
-    ctx: typer.Context,
-    config_file: str = "server_config.json",
-    server: str | None = None,
-    provider: str = "openai",
-    model: str | None = None,
-    disable_filesystem: bool = True,
-    logging_level: str = typer.Option(
-        "WARNING",
-        help="Set the logging level. Options: DEBUG, INFO, WARNING, ERROR, CRITICAL",
-    ),
-):
-    """Global CLI options.
-
-    If the user does not specify a sub-command, we drop straight into chat
-    mode (interactive REPL).
-    """
-    numeric_level = getattr(logging, logging_level.upper(), None)
-    if not isinstance(numeric_level, int):
-        raise typer.BadParameter(f"Invalid logging level: {logging_level}")
-    logging.getLogger().setLevel(numeric_level)
-    logging.debug("Logging level set to %s", logging_level.upper())
-
-    servers, user_specified, server_names = process_options(
-        server, disable_filesystem, provider, model, config_file
-    )
-
-    ctx.obj = {
-        "config_file": config_file,
-        "servers": servers,
-        "user_specified": user_specified,
-        "server_names": server_names,
-    }
-
-    if ctx.invoked_subcommand is None:
-        _setup_signal_handlers()
-        chat_command(
-            config_file=config_file,
-            server=server,
-            provider=provider,
-            model=model,
-            disable_filesystem=disable_filesystem,
-        )
-        restore_terminal()
-        raise typer.Exit()
-
-
-# ---------------------------------------------------------------------------
-# Script entry‑point
+# Main entry‐point
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     if sys.platform == "win32":
+        # Use the selector event loop on Windows
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
+    _setup_signal_handlers()
     try:
-        _setup_signal_handlers()
         app()
-    except KeyboardInterrupt:
-        logging.debug("KeyboardInterrupt received")
-    except Exception as exc:  # pragma: no cover – top‑level catch‑all
-        logging.error("Unhandled exception: %s", exc)
     finally:
         restore_terminal()
+        gc.collect()

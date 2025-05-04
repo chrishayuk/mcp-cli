@@ -1,21 +1,12 @@
-"""mcp_cli.chat.tool_processor – concurrent implementation
-========================================================
+# mcp_cli/chat/tool_processor.py
+"""
+mcp_cli.chat.tool_processor – concurrent implementation with a
+centralised ToolManager
+================================================================
 
-Run multiple tool calls **concurrently** while preserving the original order
-of messages added to *conversation_history*.
-
-Key points
-----------
-1. A configurable *max_concurrency* (default = 4) guards against flooding the
-   back‑end when an LLM emits a huge batch of calls.
-2. Each tool call is wrapped in `_run_single_call()` which is fully self‑contained:
-   * UI updates (print_tool_call) executed on the main thread for coherence.
-   * StreamManager invocation inside the semaphore.
-   * Proper error capture so one failing call does **not** cancel the others.
-3. Results are collated in the **same order** they were requested so the final
-   chat history is deterministic.
-4. Early exit if the UI manager flags `interrupt_requested` – calls already in
-   flight can still complete but no new ones are started.
+Executes multiple tool calls **concurrently** while keeping the original
+order of messages in *conversation_history*.  Uses the central
+ToolManager abstraction so no direct StreamManager plumbing is needed.
 """
 from __future__ import annotations
 
@@ -27,91 +18,109 @@ from typing import Any, Dict, List
 from rich import print as rprint
 from rich.console import Console
 
+from mcp_cli.tools.formatting import display_tool_call_result
+
+
+log = logging.getLogger(__name__)
+
 
 class ToolProcessor:
     """Handle execution of tool calls returned by the LLM."""
 
-    def __init__(self, context, ui_manager, *, max_concurrency: int = 4):
+    def __init__(self, context, ui_manager, *, max_concurrency: int = 4) -> None:
         self.context = context
         self.ui_manager = ui_manager
+        self.tool_manager = context.tool_manager                # central entry-point
         self._sem = asyncio.Semaphore(max_concurrency)
+        self._pending: list[asyncio.Task] = []                  # ← keep refs for cancel
 
-    # ---------------------------------------------------------------------
-    # Public API
-    # ---------------------------------------------------------------------
+        # Hand the UI a back-pointer so it can call cancel_running_tasks()
+        setattr(self.context, "tool_processor", self)
 
+    # ------------------------------------------------------------------ #
+    # public API                                                         #
+    # ------------------------------------------------------------------ #
     async def process_tool_calls(self, tool_calls: List[Any]) -> None:
-        """Execute the given *tool_calls* concurrently.
+        """
+        Execute *tool_calls* concurrently, then ask the UI manager to stop
+        its spinner/progress-bar.
 
-        Results are merged back into *conversation_history* in the original
-        order supplied by the model.
+        The conversation history is updated in the **original** order
+        produced by the LLM.
         """
         if not tool_calls:
             rprint("[yellow]Warning: Empty tool_calls list received.[/yellow]")
             return
 
-        sm = getattr(self.context, "stream_manager", None)
-        if sm is None:
-            rprint("[red]Error: No StreamManager available for tool calls.[/red]")
-            self.context.conversation_history.append(
-                {
-                    "role": "tool",
-                    "name": "system",
-                    "content": "Error: No StreamManager available to process tool calls.",
-                }
-            )
-            return
-
-        # Kick off tasks with ordering preserved
         tasks: List[asyncio.Task] = []
         for idx, call in enumerate(tool_calls):
-            if self.ui_manager.interrupt_requested:
-                break  # user requested stop – don't enqueue further calls
-            tasks.append(asyncio.create_task(self._run_single_call(idx, call)))
+            if getattr(self.ui_manager, "interrupt_requested", False):
+                break  # user hit Ctrl-C → don’t queue further calls
+            t = asyncio.create_task(self._run_single_call(idx, call))
+            tasks.append(t)
+            self._pending.append(t)
 
-        # Await completion (gather preserves order of *tasks* list)
-        await asyncio.gather(*tasks)
+        try:
+            await asyncio.gather(*tasks)
+        except asyncio.CancelledError:
+            # cancelled by UI (Ctrl-C) – ignore and continue gracefully
+            pass
+        finally:
+            self._pending.clear()
 
-    # ------------------------------------------------------------------
-    # Internals
-    # ------------------------------------------------------------------
-
-    async def _run_single_call(self, idx: int, tool_call: Any) -> None:
-        """Execute one tool call and record messages.
-
-        The *idx* parameter is used only for debug logs.
-        """
-        async with self._sem:  # limit concurrency
+        # tell the UI to hide spinner / progress bar
+        fin = getattr(self.ui_manager, "finish_tool_calls", None)
+        if callable(fin):
             try:
-                # ------------------------------------------------------
-                # Extract name / args / id regardless of schema variant
-                # ------------------------------------------------------
+                if asyncio.iscoroutinefunction(fin):
+                    await fin()
+                else:
+                    fin()
+            except Exception:                                     # pragma: no cover
+                log.debug("finish_tool_calls() raised", exc_info=True)
+
+    # ------------------------------------------------------------------ #
+    # cancellation hook – called by ChatUIManager on Ctrl-C              #
+    # ------------------------------------------------------------------ #
+    def cancel_running_tasks(self) -> None:
+        """Mark every outstanding tool-task for cancellation."""
+        for t in list(self._pending):
+            if not t.done():
+                t.cancel()
+
+    # ------------------------------------------------------------------ #
+    # internals                                                          #
+    # ------------------------------------------------------------------ #
+    async def _run_single_call(self, idx: int, tool_call: Any) -> None:
+        """Execute one tool call and record messages."""
+        async with self._sem:  # limit concurrency
+            tool_name = "unknown_tool"
+            raw_arguments: Any = {}
+            call_id = f"call_{idx}"
+
+            try:
+                # ------ schema-agnostic extraction --------------------
                 if hasattr(tool_call, "function"):
                     fn = tool_call.function
-                    tool_name: str = getattr(fn, "name", "unknown_tool")
-                    raw_arguments: Any = getattr(fn, "arguments", {})
-                    call_id: str = getattr(tool_call, "id", f"call_{tool_name}")
+                    tool_name = getattr(fn, "name", tool_name)
+                    raw_arguments = getattr(fn, "arguments", {})
+                    call_id = getattr(tool_call, "id", call_id)
                 elif isinstance(tool_call, dict) and "function" in tool_call:
                     fn = tool_call["function"]
-                    tool_name = fn.get("name", "unknown_tool")
+                    tool_name = fn.get("name", tool_name)
                     raw_arguments = fn.get("arguments", {})
-                    call_id = tool_call.get("id", f"call_{tool_name}")
-                else:
-                    tool_name = "unknown_tool"
-                    raw_arguments, call_id = {}, f"call_{tool_name}"
+                    call_id = tool_call.get("id", call_id)
 
-                # Display nice name to user (non‑namespaced)
+                # display alias
                 display_name = (
-                    self.context.namespaced_tool_map.get(tool_name, tool_name)
-                    if hasattr(self.context, "namespaced_tool_map")
+                    self.context.get_display_name_for_tool(tool_name)
+                    if hasattr(self.context, "get_display_name_for_tool")
                     else tool_name
                 )
-                logging.debug("[%d] Executing tool %s", idx, display_name)
+                log.debug("[%d] Executing tool %s", idx, display_name)
                 self.ui_manager.print_tool_call(display_name, raw_arguments)
 
-                # --------------------------------------------------
-                # Normalise arguments
-                # --------------------------------------------------
+                # ------ parse args ------------------------------------
                 if isinstance(raw_arguments, str):
                     try:
                         arguments = json.loads(raw_arguments)
@@ -120,18 +129,11 @@ class ToolProcessor:
                 else:
                     arguments = raw_arguments
 
-                # --------------------------------------------------
-                # Call the tool
-                # --------------------------------------------------
-                with Console().status("[cyan]Executing tool...[/cyan]", spinner="dots"):
-                    result = await self.context.stream_manager.call_tool(
-                        tool_name=tool_name,
-                        arguments=arguments,
-                    )
+                # ------ real execution via ToolManager ---------------
+                with Console().status("[cyan]Executing tool…[/cyan]", spinner="dots"):
+                    result = await self.tool_manager.execute_tool(tool_name, arguments)
 
-                # --------------------------------------------------
-                # Append assistant stub *before* tool response (ChatML spec)
-                # --------------------------------------------------
+                # ------ ChatML bookkeeping ---------------------------
                 self.context.conversation_history.append(
                     {
                         "role": "assistant",
@@ -142,41 +144,41 @@ class ToolProcessor:
                                 "type": "function",
                                 "function": {
                                     "name": tool_name,
-                                    "arguments": json.dumps(arguments)
-                                    if isinstance(arguments, dict)
-                                    else str(arguments),
+                                    "arguments": (
+                                        json.dumps(arguments)
+                                        if isinstance(arguments, dict)
+                                        else str(arguments)
+                                    ),
                                 },
                             }
                         ],
                     }
                 )
 
-                # --------------------------------------------------
-                # Format tool result for history
-                # --------------------------------------------------
-                if isinstance(result, dict):
-                    if result.get("isError"):
-                        content = f"Error: {result.get('error', 'Unknown error')}"
-                    else:
-                        content = result.get("content", "No content returned")
-                        if isinstance(content, (dict, list)):
-                            content = json.dumps(content, indent=2)
+                # prepare content
+                if result.success:
+                    content: str | Dict[str, Any] = result.result
+                    if isinstance(content, (dict, list)):
+                        content = json.dumps(content, indent=2)
                 else:
-                    content = str(result)
+                    content = f"Error: {result.error}"
 
                 self.context.conversation_history.append(
                     {
                         "role": "tool",
                         "name": tool_name,
-                        "content": content,
+                        "content": str(content),
                         "tool_call_id": call_id,
                     }
                 )
-            except Exception as exc:
-                logging.exception("Error executing tool call #%d (%s)", idx, exc)
+
+                display_tool_call_result(result)
+
+            except Exception as exc:                                # noqa: BLE001
+                log.exception("Error executing tool call #%d", idx)
                 rprint(f"[red]Error executing tool {tool_name}: {exc}[/red]")
 
-                # Maintain conversation flow with error messages
+                # still push placeholder messages so the chat continues
                 self.context.conversation_history.append(
                     {
                         "role": "assistant",

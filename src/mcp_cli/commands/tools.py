@@ -1,129 +1,54 @@
-# mcp_cli/commands/tools.py
+# src/mcp_cli/commands/tools.py
 """
-Tools command module for listing and calling tools.
+Shared tools-listing logic for both interactive and CLI interfaces.
 """
-import typer
 import json
-import asyncio
-from rich import print
-from rich.markdown import Markdown
-from rich.panel import Panel
+from typing import Any, List, Dict
+from rich.console import Console
 from rich.table import Table
 from rich.syntax import Syntax
 
-# Import formatting helpers
-from mcp_cli.tools.formatting import create_tools_table, display_tool_call_result
+from mcp_cli.tools.manager import ToolManager
+from mcp_cli.tools.formatting import create_tools_table
 
-# app
-app = typer.Typer(help="Tools commands")
 
-@app.command("list")
-async def tools_list(tool_manager, server_names=None):
+def tools_action(
+    tm: ToolManager,
+    *,
+    show_details: bool = False,
+    show_raw: bool = False
+) -> List[Any]:
     """
-    List all tools from all servers.
+    Fetch unique tools from the ToolManager and render them.
 
-    Args:
-        tool_manager: ToolManager instance
-        server_names: Optional dictionary mapping server indices to their names
+    If show_raw is True, prints raw JSON; otherwise prints a table.
+    Returns the underlying list of ToolInfo or raw dicts.
     """
-    print("[cyan]\nFetching Tools List from all servers...[/cyan]")
-    
-    all_tools = tool_manager.get_all_tools()
+    console = Console()
+    console.print("[cyan]\nFetching Tools List from all servers...[/cyan]")
+
+    all_tools = tm.get_unique_tools()
     if not all_tools:
-        print("[yellow]No tools available from any server.[/yellow]")
-        return
-    
-    # Group tools by server
-    tools_by_server = {}
-    for tool in all_tools:
-        server_name = tool.namespace  # Use namespace as server name
-        tools_by_server.setdefault(server_name, []).append(tool)
-    
-    # Display tools by server
-    for srv, tools in tools_by_server.items():
-        table = Table(title=f"{srv} Tools ({len(tools)} available)")
-        table.add_column("Tool", style="green")
-        table.add_column("Description")
-        for tool in tools:
-            desc = tool.description or "No description"
-            if len(desc) > 75:
-                desc = desc[:72] + "..."
-            table.add_row(tool.name, desc)
-        print(table)
-    
-    print(f"[green]Total tools available: {len(all_tools)}[/green]")
+        console.print("[yellow]No tools available from any server.[/yellow]")
+        return []
 
-@app.command("call")
-async def tools_call(tool_manager, server_names=None):
-    """
-    Call a tool with arguments.
+    if show_raw:
+        raw_defs: List[Dict[str, Any]] = []
+        for t in all_tools:
+            raw_defs.append({
+                "name": t.name,
+                "namespace": t.namespace,
+                "description": t.description,
+                "parameters": t.parameters,
+                "is_async": t.is_async,
+                "tags": t.tags,
+            })
+        text = json.dumps(raw_defs, indent=2)
+        console.print(Syntax(text, "json", theme="monokai", line_numbers=True))
+        return raw_defs
 
-    Args:
-        tool_manager: ToolManager instance
-        server_names: Optional dictionary mapping server indices to their names
-    """
-    print("[cyan]\nTool Call Interface[/cyan]")
-    
-    all_tools = tool_manager.get_all_tools()
-    if not all_tools:
-        print("[yellow]No tools available from any server.[/yellow]")
-        return
-
-    # List available tools
-    print("[green]Available tools:[/green]")
-    for idx, tool in enumerate(all_tools, start=1):
-        print(f"  {idx}. {tool.name} (from {tool.namespace}) - {tool.description or 'No description'}")
-    
-    # Get user selection asynchronously
-    sel_raw = await asyncio.to_thread(input, "\nEnter tool number to call: ")
-    try:
-        selection = int(sel_raw) - 1
-        if not (0 <= selection < len(all_tools)):
-            print("[red]Invalid selection.[/red]")
-            return
-    except ValueError:
-        print("[red]Please enter a valid number.[/red]")
-        return
-
-    tool = all_tools[selection]
-
-    print(f"\n[green]Selected: {tool.name} from {tool.namespace}[/green]")
-    print(f"[cyan]Description: {tool.description or 'No description'}[/cyan]")
-
-    # Show parameters
-    params = tool.parameters or {}
-    if isinstance(params, dict) and 'properties' in params:
-        props = params['properties']
-        required = params.get('required', [])
-        if props:
-            print("\n[yellow]Parameters:[/yellow]")
-            for name, details in props.items():
-                req = '[Required]' if name in required else '[Optional]'
-                ptype = details.get('type', 'any')
-                desc = details.get('description', '')
-                print(f"  - {name} ({ptype}) {req}: {desc}")
-
-    # Get arguments asynchronously
-    print("\n[yellow]Enter arguments as JSON (empty for none):[/yellow]")
-    args_input = await asyncio.to_thread(input, "> ")
-    if args_input.strip():
-        try:
-            args = json.loads(args_input)
-        except json.JSONDecodeError:
-            print("[red]Invalid JSON. Please try again.[/red]")
-            return
-    else:
-        args = {}
-
-    print(f"\n[cyan]Calling tool '{tool.name}' from {tool.namespace} with arguments:[/cyan]")
-    print(Syntax(json.dumps(args, indent=2), 'json'))
-
-    try:
-        # Use ToolManager to execute the tool
-        result = await tool_manager.execute_tool(tool.name, args)
-        
-        # Use the formatting helper to display the result nicely
-        display_tool_call_result(result)
-        
-    except Exception as e:
-        print(f"[red]Error: {e}[/red]")
+    # Otherwise show table
+    table = create_tools_table(all_tools, show_details=show_details)
+    console.print(table)
+    console.print(f"[green]Total tools available: {len(all_tools)}[/green]")
+    return all_tools

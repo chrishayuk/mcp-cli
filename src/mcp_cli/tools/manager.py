@@ -458,16 +458,34 @@ class ToolManager:
         return function_tools, name_mapping
 
     # ------------------------------------------------------------------ #
-    # Compatibility shim for stream_manager functions
+    # Compatibility shims
     # ------------------------------------------------------------------ #
     def get_streams(self):
         """
         Legacy helper so commands like **/resources** and **/prompts** that
-        expect the low-level *StreamManager* continue to work when they
-        receive a *ToolManager* instance.
+        expect a low-level StreamManager continue to work when they
+        receive a ToolManager instance.
         """
         if self.stream_manager and hasattr(self.stream_manager, "get_streams"):
             return self.stream_manager.get_streams()
+        return []
+
+    def list_prompts(self) -> List[Dict[str, Any]]:
+        """
+        Return all prompts recorded on each server.
+        Delegates to the underlying StreamManager if available.
+        """
+        if self.stream_manager and hasattr(self.stream_manager, "list_prompts"):
+            return self.stream_manager.list_prompts()
+        return []
+
+    def list_resources(self) -> List[Dict[str, Any]]:
+        """
+        Return all resources (URI, size, MIME-type) on each server.
+        Delegates to the underlying StreamManager if available.
+        """
+        if self.stream_manager and hasattr(self.stream_manager, "list_resources"):
+            return self.stream_manager.list_resources()
         return []
 
 

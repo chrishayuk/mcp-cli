@@ -1,186 +1,175 @@
 #!/usr/bin/env python
 """
-Test module for LLM client functionality.
-This file can be run directly to test the LLM client with:
-python -m mcp_cli.llm
+Standalone test-driver for the LLM client.
+
+Run with
+
+    uv run src/mcp_cli/llm/__main__.py
+or
+    python -m mcp_cli.llm
+
+Add  --tools   to include a pair of mock tool definitions and verify
+that the model emits a function-call.
 """
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
 import os
 import sys
-import json
-import asyncio
-import argparse
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
-# Import LLM-related functionality
+from dotenv import load_dotenv
+
 from mcp_cli.llm.llm_client import get_llm_client
 from mcp_cli.llm.system_prompt_generator import SystemPromptGenerator
-from mcp_cli.llm.tools_handler import convert_to_openai_tools
+
+load_dotenv()  # pick up OPENAI_API_KEY from a local .env if present
 
 
-async def test_llm_client(provider: str = "openai",
-                        model: str = "gpt-4o",
-                        prompt: str = "Hello, how are you?",
-                        tools: List[Dict[str, Any]] = None,
-                        verbose: bool = False):
-    """Test the LLM client with a simple prompt."""
-    print(f"\n=== Testing LLM Client ===")
-    print(f"Provider: {provider}")
-    print(f"Model: {model}")
-    print(f"Prompt: '{prompt}'")
-    
-    # Create the client
-    try:
-        client = get_llm_client(provider=provider, model=model)
-        print(f"Client created successfully: {type(client).__name__}")
-    except Exception as e:
-        print(f"Error creating client: {e}")
-        return False
+# ──────────────────────────────────────────────────────────────────
+# helpers
+# ──────────────────────────────────────────────────────────────────
+async def run_one_test(
+    *,
+    provider: str,
+    model: str,
+    prompt: str,
+    tools: List[Dict[str, Any]] | None,
+    verbose: bool,
+) -> bool:
+    """Single end-to-end completion round-trip."""
+    print("\n=== Testing LLM Client ===")
+    print(f"Provider : {provider}")
+    print(f"Model    : {model}")
+    print(f"Prompt   : {prompt!r}")
 
-    # Generate a system prompt
-    prompt_generator = SystemPromptGenerator()
-    if tools:
-        tools_dict = {"tools": tools}
-        system_prompt = prompt_generator.generate_prompt(tools_dict)
-        openai_tools = convert_to_openai_tools(tools)
-        print(f"Generated system prompt with {len(tools)} tools")
-        if verbose:
-            print(f"System prompt: {system_prompt[:300]}...\n")
-            print(f"Tools: {json.dumps(tools, indent=2)}")
-    else:
-        system_prompt = prompt_generator.generate_prompt({})
-        openai_tools = None
-        print("Generated default system prompt without tools")
-    
-    # Create messages
+    # ---- client ------------------------------------------------------
+    client = get_llm_client(provider=provider, model=model)
+    print(f"Client   : {type(client).__name__}")
+
+    # ---- system prompt ----------------------------------------------
+    sys_prompt = SystemPromptGenerator().generate_prompt({"tools": tools} if tools else {})
     messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": prompt}
+        {"role": "system", "content": sys_prompt},
+        {"role": "user", "content": prompt},
     ]
-    
-    # Send the completion request
-    try:
-        print("\nSending request to LLM...")
-        start_time = asyncio.get_event_loop().time()
-        
-        if tools:
-            completion = client.create_completion(messages=messages, tools=openai_tools)
-        else:
-            completion = client.create_completion(messages=messages)
-            
-        end_time = asyncio.get_event_loop().time()
-        elapsed = end_time - start_time
-        
-        print(f"Request completed in {elapsed:.2f} seconds")
-        
-        # Check completion structure
-        print("\n== Completion Structure ==")
-        if completion is None:
-            print("Error: Completion is None")
-            return False
-            
-        print(f"Completion type: {type(completion).__name__}")
-        print(f"Completion keys: {list(completion.keys())}")
-        
-        # Check for tool calls
-        if "tool_calls" in completion and completion["tool_calls"]:
-            print(f"\nTool calls requested: {len(completion['tool_calls'])}")
-            for i, tool_call in enumerate(completion["tool_calls"]):
-                if isinstance(tool_call, dict) and "function" in tool_call:
-                    fn = tool_call["function"]
-                    print(f"  Tool {i+1}: {fn.get('name', 'unknown')}")
-                    print(f"    Arguments: {fn.get('arguments', 'none')}")
-                else:
-                    print(f"  Tool {i+1}: {tool_call}")
-            
-            # Response should be None with tool calls
-            if "response" in completion:
-                print(f"\nResponse with tool calls: {completion.get('response')}")
-        
-        # Check for direct response
-        if "response" in completion and completion["response"]:
-            print(f"\nDirect response: {completion['response'][:150]}...")
-        elif "response" in completion and completion["response"] is None:
-            print("\nResponse key exists but is None")
-        else:
-            print("\nNo 'response' key in completion")
-            
-        # Print the full completion in verbose mode
-        if verbose:
-            print("\n== Full Completion ==")
-            print(json.dumps(completion, indent=2, default=str))
-            
-        return True
-        
-    except Exception as e:
-        print(f"Error during completion: {e}")
-        import traceback
-        print(traceback.format_exc())
+
+    # ---- OpenAI tool schema (inline conversion for mock tools) -------
+    if tools:
+        def _to_schema(t: Dict[str, Any]) -> Dict[str, Any]:
+            return {
+                "type": "function",
+                "function": {
+                    "name": t["name"],
+                    "description": t.get("description", ""),
+                    "parameters": t.get("parameters", {}),
+                },
+            }
+
+        openai_tools = [_to_schema(t) for t in tools]
+    else:
+        openai_tools = None
+
+    # ---- request -----------------------------------------------------
+    print("\nSending request to LLM …")
+    t0 = asyncio.get_event_loop().time()
+    maybe_coro = (
+        client.create_completion(messages=messages, tools=openai_tools)
+        if openai_tools
+        else client.create_completion(messages=messages)
+    )
+    completion = await maybe_coro if asyncio.iscoroutine(maybe_coro) else maybe_coro
+    dt = asyncio.get_event_loop().time() - t0
+    print(f"Completed in {dt:.2f}s")
+
+    # ---- inspect response -------------------------------------------
+    if completion is None:
+        print("[ERROR] Completion is None")
         return False
 
+    print("\n== Completion Structure ==")
+    print("type :", type(completion).__name__)
+    if isinstance(completion, dict):
+        print("keys :", list(completion.keys()))
 
-def setup_mock_tools() -> List[Dict[str, Any]]:
-    """Create mock tools for testing."""
+    if isinstance(completion, dict) and completion.get("tool_calls"):
+        print(f"\nTool calls requested: {len(completion['tool_calls'])}")
+        for i, tc in enumerate(completion["tool_calls"], 1):
+            fn = tc.get("function", {})
+            print(f"  {i}. {fn.get('name')}  args={fn.get('arguments')}")
+
+    if isinstance(completion, dict) and completion.get("response"):
+        print("\nDirect response:", completion["response"][:150], "…")
+
+    if verbose:
+        print("\n== Full Completion ==")
+        print(json.dumps(completion, indent=2, default=str))
+
+    return True
+
+
+def mock_tools() -> List[Dict[str, Any]]:
+    """Return two dummy tool definitions for the test."""
     return [
         {
             "name": "get_weather",
-            "description": "Get the current weather for a location",
-            "inputSchema": {
+            "description": "Get current weather for a city",
+            "parameters": {
                 "type": "object",
                 "properties": {
                     "location": {
                         "type": "string",
-                        "description": "The city and state, e.g. San Francisco, CA"
+                        "description": "City and state, e.g. 'New York, NY'",
                     }
                 },
-                "required": ["location"]
-            }
+                "required": ["location"],
+            },
         },
         {
             "name": "search_web",
             "description": "Search the web for information",
-            "inputSchema": {
+            "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "The search query"
+                        "description": "Search query",
                     }
                 },
-                "required": ["query"]
-            }
-        }
+                "required": ["query"],
+            },
+        },
     ]
 
 
-async def main():
-    """Run the main test function."""
-    parser = argparse.ArgumentParser(description='Test the LLM client')
-    parser.add_argument('--provider', type=str, default="openai", help='LLM provider (openai, ollama)')
-    parser.add_argument('--model', type=str, default="gpt-4o", help='Model name')
-    parser.add_argument('--prompt', type=str, default="Tell me about the weather in New York.", 
-                      help='Prompt to send to the model')
-    parser.add_argument('--tools', action='store_true', help='Include mock tools')
-    parser.add_argument('--verbose', action='store_true', help='Show verbose output')
-    
-    args = parser.parse_args()
-    
-    # Check for OpenAI API key if using OpenAI
-    if args.provider.lower() == "openai" and not os.environ.get("OPENAI_API_KEY"):
-        print("Warning: OPENAI_API_KEY environment variable not set. OpenAI client will run in mock mode.")
-        
-    # Set up mock tools if requested
-    tools = setup_mock_tools() if args.tools else None
-    
-    # Run the test
-    success = await test_llm_client(
+# ──────────────────────────────────────────────────────────────────
+# CLI entry-point
+# ──────────────────────────────────────────────────────────────────
+async def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--provider", default="openai")
+    ap.add_argument("--model", default="gpt-4o")
+    ap.add_argument(
+        "--prompt",
+        default="Tell me about the weather in New York.",
+        help="Prompt sent to the model",
+    )
+    ap.add_argument("--tools", action="store_true", help="Include mock tools")
+    ap.add_argument("--verbose", action="store_true")
+    args = ap.parse_args()
+
+    if args.provider.lower() == "openai" and not os.getenv("OPENAI_API_KEY"):
+        sys.exit("[ERROR] OPENAI_API_KEY not set")
+
+    success = await run_one_test(
         provider=args.provider,
         model=args.model,
         prompt=args.prompt,
-        tools=tools,
-        verbose=args.verbose
+        tools=mock_tools() if args.tools else None,
+        verbose=args.verbose,
     )
-    
-    # Exit with appropriate code
     sys.exit(0 if success else 1)
 
 
