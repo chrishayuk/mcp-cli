@@ -1,4 +1,4 @@
-# mcp_cli/cli/registry.py
+# mcp_cli/cli/registry.py (updated)
 """Command registry for MCP CLI.
 
 This module provides a centralized registry for all available CLI commands
@@ -12,7 +12,7 @@ import typer
 # mcp cli commands
 from mcp_cli.cli.commands.base import BaseCommand, CommandFunc, FunctionCommand
 
-# loggeer
+# logger
 logger = logging.getLogger(__name__)
 
 class CommandRegistry:
@@ -80,13 +80,14 @@ class CommandRegistry:
                 original_execute = command.wrapped_execute
                 
                 # Define the actual wrapper that will become the Typer command
+                # FIX: Remove KWARGS parameter from here
                 def command_wrapper(
                     config_file: str = "server_config.json",
                     server: Optional[str] = None,
                     provider: str = "openai",
                     model: Optional[str] = None,
                     disable_filesystem: bool = False,
-                    **kwargs
+                    **kwargs  # Use **kwargs to capture any additional parameters
                 ):
                     """Dynamically generated wrapper for subcommand."""
                     from mcp_cli.cli_options import process_options

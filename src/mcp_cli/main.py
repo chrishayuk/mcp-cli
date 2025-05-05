@@ -44,6 +44,7 @@ app = typer.Typer()
 # ---------------------------------------------------------------------------
 @app.command("interactive")
 def _interactive_command(
+    # Remove KWARGS parameter if it exists
     config_file: str = "server_config.json",
     server: Optional[str] = None,
     provider: str = "openai",
