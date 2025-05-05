@@ -1,72 +1,88 @@
 # mcp_cli/ui/ui_helpers.py
 """
-UI helper functions for chat display and formatting.
+Shared Rich helpers for MCP-CLI UIs.
 """
+from __future__ import annotations
+
+import asyncio
+import gc
+import logging
 import os
-import platform
+import sys
 
-# rich imports
-from rich import print
-from rich.panel import Panel
-from rich.markdown import Markdown
 from rich.console import Console
+from rich.markdown import Markdown
+from rich.panel import Panel
+from typing import Dict, Any
 
-# Import color constants
-from mcp_cli.ui.colors import *
 
-def display_welcome_banner(context, console=None, show_tools_info=True):
+# --------------------------------------------------------------------------- #
+# generic helpers                                                             #
+# --------------------------------------------------------------------------- #
+_console = Console()
+
+
+def clear_screen() -> None:
+    """Clear the terminal (cross-platform)."""
+    _console.clear()
+
+
+def restore_terminal() -> None:
+    """Restore terminal settings and clean up asyncio resources."""
+    # Restore the terminal settings to normal
+    os.system("stty sane")
+    
+    try:
+        # Find and close the event loop if one exists
+        try:
+            loop = asyncio.get_event_loop_policy().get_event_loop()
+            if loop.is_closed():
+                return
+            
+            # Cancel outstanding tasks
+            tasks = [t for t in asyncio.all_tasks(loop) if not t.done()]
+            for task in tasks:
+                task.cancel()
+            
+            if tasks:
+                loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
+            
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            loop.close()
+        except Exception as exc:
+            logging.debug(f"Asyncio cleanup error: {exc}")
+    finally:
+        # Force garbage collection
+        gc.collect()
+
+
+# --------------------------------------------------------------------------- #
+# Chat / Interactive welcome banners                                          #
+# --------------------------------------------------------------------------- #
+def display_welcome_banner(ctx: Dict[str, Any]) -> None:
     """
-    Display the welcome banner with current model info.
-    """
-    if console is None:
-        console = Console()
-        
-    provider = context.get("provider", "unknown")
-    model = context.get("model", "unknown")
-    
-    # Create the panel content with explicit styling
-    welcome_text = "Welcome to MCP CLI Chat!\n\n"
-    provider_line = f"[{TEXT_DEEMPHASIS}]Provider: {provider} |  Model: {model}[/{TEXT_DEEMPHASIS}]\n\n"
-    exit_line = f"Type [{TEXT_EMPHASIS}]'exit'[/{TEXT_EMPHASIS}] to quit."
-    
-    # Combine the content with proper styling
-    panel_content = welcome_text + provider_line + exit_line
-    
-    # Print welcome banner with current model info
-    console.print(Panel(
-        panel_content,
-        title="Welcome to MCP CLI Chat",
-        title_align="center",
-        expand=True,
-        border_style=BORDER_PRIMARY
-    ))
-    
-    # If tools were loaded and flag is set, show tool count
-    if show_tools_info:
-        tools = context.get("tools", [])
-        if tools:
-            console.print(f"[{TEXT_SUCCESS}]Loaded {len(tools)} tools successfully.[/{TEXT_SUCCESS}]")
+    Print **one** nice banner when entering chat-mode.
 
-def display_markdown_panel(content, title=None, style=TEXT_INFO):
+    Parameters
+    ----------
+    ctx
+        A dict that *at least* contains the keys::
+            provider   – e.g. "openai"
+            model      – e.g. "gpt-4o-mini"
     """
-    Display content in a rich panel with markdown formatting.
-    
-    Args:
-        content: The markdown content to display.
-        title: Optional panel title.
-        style: Color style for the panel.
-    """
-    console = Console()
-    console.print(Panel(
-        Markdown(content),
-        title=title,
-        style=style
-    ))
+    provider = ctx.get("provider") or "-"
+    model    = ctx.get("model")    or "gpt-4o-mini"
 
-
-def clear_screen():
-    """Clear the terminal screen in a cross-platform way."""
-    if platform.system() == "Windows":
-        os.system("cls")
-    else:
-        os.system("clear")
+    _console.print(
+        Panel(
+            Markdown(
+                f"# Welcome to MCP CLI Chat!\n\n"
+                f"**Provider:** {provider}"
+                f"  |  **Model:** {model}\n\n"
+                "Type **`exit`** to quit."
+            ),
+            title="Welcome to MCP CLI Chat",
+            border_style="yellow",
+            expand=True,
+        )
+    )

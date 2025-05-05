@@ -1,161 +1,180 @@
+"""
+Tests for the refactored mcp_cli.run_command helpers
+====================================================
+
+The new implementation:
+
+* constructs a ToolManager internally (imported from
+  ``mcp_cli.tools.manager``),
+* injects it into the command when the parameter is present,
+* always calls ``ToolManager.close()`` – even on exceptions,
+* has the signatures::
+
+    await run_command(target, *, config_file, servers, extra_params)
+    run_command_sync(target,  config_file, servers, *, extra_params)
+
+These tests monkey-patch **ToolManager** at the *import location*
+(``mcp_cli.tools.manager.ToolManager``) so the real class is never touched.
+"""
+from __future__ import annotations
+
 import asyncio
+from types import SimpleNamespace
+from typing import Any, Dict, List
+
 import pytest
-import logging
 
-# Import the functions under test.
-from mcp_cli.run_command import run_command_async, run_command
+# unit under test
+from mcp_cli.run_command import run_command, run_command_sync
 
-# Dummy stream manager to simulate the StreamManager.
-class DummyStreamManager:
-    def __init__(self):
-        self.close_called = False
+
+# --------------------------------------------------------------------------- #
+# Dummy ToolManager implementations
+# --------------------------------------------------------------------------- #
+_ALL_TM: List["DummyToolManagerBase"] = []  # collect created instances
+
+
+class DummyToolManagerBase:
+    """Base with common helpers to prove close() is always called."""
+
+    def __init__(self, *args, **kwargs):  # noqa: D401 – signature irrelevant
+        self.args = args
+        self.kwargs = kwargs
+        self.initialized = False
+        self.closed = False
+        _ALL_TM.append(self)
+
+    async def initialize(self, namespace: str = "stdio"):
+        self.initialized = True
+        return True
 
     async def close(self):
-        self.close_called = True
+        self.closed = True
 
-# Dummy create function to simulate StreamManager.create.
-async def dummy_create(config_file, servers, server_names):
-    # We ignore parameters in this dummy
-    return DummyStreamManager()
 
-# Dummy command function that returns a known value.
-async def dummy_command_success(stream_manager, extra_arg=None):
-    # Check that we got a stream_manager and any extra arguments.
-    if extra_arg is None:
-        return "success"
-    return f"success-{extra_arg}"
+class DummyToolManager(DummyToolManagerBase):
+    """Successful ToolManager (default)."""
 
-# Dummy command function that raises an exception.
-async def dummy_command_fail(stream_manager, **kwargs):
+
+class DummyInitFailToolManager(DummyToolManagerBase):
+    async def initialize(self, namespace: str = "stdio"):  # noqa: D401
+        self.initialized = True
+        return False  # trigger RuntimeError in run_command
+
+
+# --------------------------------------------------------------------------- #
+# Simple async / sync command callables to run
+# --------------------------------------------------------------------------- #
+async def dummy_async_command(tool_manager, *, extra_arg: str | None = None):
+    """Return a string proving param injection worked."""
+    suffix = "" if extra_arg is None else f"-{extra_arg}"
+    return f"ok{suffix}"
+
+
+def dummy_sync_command(tool_manager, *, extra_arg: str | None = None):
+    suffix = "" if extra_arg is None else f"-{extra_arg}"
+    return f"ok{suffix}"
+
+
+async def failing_async_command(tool_manager):
     raise RuntimeError("Command failure")
 
+
+# --------------------------------------------------------------------------- #
+# Monkey-patch **ToolManager** in the correct module for every test
+# --------------------------------------------------------------------------- #
 @pytest.fixture(autouse=True)
-def patch_stream_manager(monkeypatch):
-    # Patch the StreamManager.create with our dummy_create.
+def patch_tool_manager(monkeypatch):
+    # default -> success manager; individual tests override if needed
     monkeypatch.setattr(
-        "mcp_cli.run_command.StreamManager.create", dummy_create
+        "mcp_cli.tools.manager.ToolManager", DummyToolManager, raising=True
     )
+    # clean collected list between tests
+    _ALL_TM.clear()
+    yield
+    _ALL_TM.clear()
+
+
+# --------------------------------------------------------------------------- #
+# run_command (async) tests
+# --------------------------------------------------------------------------- #
+@pytest.mark.asyncio
+async def test_run_command_success():
+    result = await run_command(
+        dummy_async_command,
+        config_file="dummy.json",
+        servers=["S1"],
+        extra_params={"extra_arg": "foo"},
+    )
+    assert result == "ok-foo"
+    # ToolManager initialised & closed
+    tm = _ALL_TM[0]
+    assert tm.initialized and tm.closed
+
 
 @pytest.mark.asyncio
-async def test_run_command_async_success():
-    # Use dummy parameters.
-    config_file = "dummy_config.json"
-    servers = ["ServerA", "ServerB"]
-    user_specified = servers  # Not used directly by run_command_async
-    extra_params = {"extra_arg": "foo"}
-
-    # Run the async command.
-    result = await run_command_async(
-        dummy_command_success,
-        config_file,
-        servers,
-        user_specified,
-        extra_params=extra_params
+async def test_run_command_sync_callable():
+    """run_command must also execute *sync* callables inside an executor."""
+    result = await run_command(
+        dummy_sync_command,
+        config_file="dummy.json",
+        servers=["S1"],
+        extra_params={"extra_arg": None},
     )
+    assert result == "ok"
+    assert _ALL_TM[0].closed
 
-    # Verify that the dummy command function returns the correct value.
-    assert result == "success-foo"
-
-    # Since we patched StreamManager.create with dummy_create,
-    # ensure that the DummyStreamManager was closed.
-    # The dummy create returns a new DummyStreamManager instance,
-    # but we have no direct reference. Therefore, to test cleanup,
-    # we wrap dummy_create to capture the instance.
-
-    # For this, we redefine dummy_create here and use a mutable container.
-    closed_marker = {}
-
-    async def capturing_dummy_create(config_file, servers, server_names):
-        sm = DummyStreamManager()
-        closed_marker["instance"] = sm
-        return sm
-
-    # Patch with the capturing version.
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr("mcp_cli.run_command.StreamManager.create", capturing_dummy_create)
-
-    # Run the command, then check that close() was called.
-    result = await run_command_async(
-        dummy_command_success,
-        config_file,
-        servers,
-        user_specified,
-        extra_params={}
-    )
-    # Retrieve the dummy stream manager from our closed_marker.
-    dummy_sm = closed_marker.get("instance")
-    assert dummy_sm is not None
-    assert dummy_sm.close_called is True
-
-    monkeypatch.undo()
 
 @pytest.mark.asyncio
-async def test_run_command_async_no_servers():
-    # When no servers are passed, run_command_async should log a warning and return False.
-    config_file = "dummy_config.json"
-    servers = []  # No servers provided
-    user_specified = []
-    
-    result = await run_command_async(
-        dummy_command_success,
-        config_file,
-        servers,
-        user_specified,
-        extra_params={}
+async def test_run_command_cleanup_on_exception(monkeypatch):
+    monkeypatch.setattr(
+        "mcp_cli.tools.manager.ToolManager", DummyToolManager, raising=True
     )
-    assert result is False
-
-@pytest.mark.asyncio
-async def test_run_command_async_with_exception():
-    # In this test, the dummy command function raises an exception.
-    # run_command_async does not catch exceptions itself (the sync wrapper does).
-    config_file = "dummy_config.json"
-    servers = ["ServerA"]
-    user_specified = ["ServerA"]
-
-    # We also capture a dummy stream manager instance to verify that close() is still called.
-    closed_marker = {}
-
-    async def capturing_dummy_create(config_file, servers, server_names):
-        sm = DummyStreamManager()
-        closed_marker["instance"] = sm
-        return sm
-
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr("mcp_cli.run_command.StreamManager.create", capturing_dummy_create)
-
     with pytest.raises(RuntimeError, match="Command failure"):
-        await run_command_async(
-            dummy_command_fail,
-            config_file,
-            servers,
-            user_specified,
-            extra_params={}
+        await run_command(
+            failing_async_command,
+            config_file="dummy.json",
+            servers=["S1"],
+            extra_params={},
         )
+    assert _ALL_TM[0].closed  # close() **must** be called
 
-    # Even though an exception was raised, cleanup should have been attempted.
-    dummy_sm = closed_marker.get("instance")
-    assert dummy_sm is not None
-    assert dummy_sm.close_called is True
 
-    monkeypatch.undo()
+@pytest.mark.asyncio
+async def test_run_command_init_failure_raises(monkeypatch):
+    monkeypatch.setattr(
+        "mcp_cli.tools.manager.ToolManager", DummyInitFailToolManager, raising=True
+    )
+    with pytest.raises(RuntimeError, match="Failed to initialise ToolManager"):
+        await run_command(
+            dummy_async_command,
+            config_file="dummy.json",
+            servers=["S1"],
+            extra_params={},
+        )
+    assert _ALL_TM[0].closed  # close even when init “fails”
 
+
+# --------------------------------------------------------------------------- #
+# run_command_sync (blocking wrapper) tests
+# --------------------------------------------------------------------------- #
 def test_run_command_sync_success():
-    # Test the synchronous wrapper `run_command`
-    config_file = "dummy_config.json"
-    servers = ["ServerSync"]
-    user_specified = ["ServerSync"]
-    extra_params = {"extra_arg": "bar"}
-    
-    # Run the synchronous command.
-    result = run_command(dummy_command_success, config_file, servers, user_specified, extra_params)
-    assert result == "success-bar"
+    result = run_command_sync(
+        dummy_async_command,           # works with async target
+        "dummy.json",
+        ["Sync"],
+        extra_params={"extra_arg": "bar"},
+    )
+    assert result == "ok-bar"
+    assert _ALL_TM[0].closed
+
 
 def test_run_command_sync_exception():
-    # Test that the synchronous wrapper catches exceptions and returns False.
-    config_file = "dummy_config.json"
-    servers = ["ServerSync"]
-    user_specified = ["ServerSync"]
-    
-    result = run_command(dummy_command_fail, config_file, servers, user_specified, extra_params={})
-    assert result is False
+    with pytest.raises(RuntimeError, match="Command failure"):
+        run_command_sync(
+            failing_async_command,
+            "dummy.json",
+            ["Sync"],
+            extra_params={},
+        )
+    assert _ALL_TM[0].closed

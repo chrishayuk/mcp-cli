@@ -1,175 +1,157 @@
+# commands/test_ping.py
+
 import pytest
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
-import json
-from io import StringIO
+import time
+from typing import Any, Dict, List, Sequence
 
-# Import the module to test
-from mcp_cli.commands import ping
+from rich.console import Console
+from rich.table import Table
 
-@pytest.fixture
-def mock_stream_manager():
-    """Create a mock StreamManager with predefined test data."""
-    mock_manager = MagicMock()
-    
-    # Set up server info
-    mock_manager.get_server_info.return_value = [
-        {
-            "id": 1, 
-            "name": "TestServer1", 
-            "tools": 3, 
-            "status": "Connected",
-            "tool_start_index": 0
-        },
-        {
-            "id": 2, 
-            "name": "TestServer2", 
-            "tools": 2, 
-            "status": "Connected",
-            "tool_start_index": 3
-        },
-        {
-            "id": 3, 
-            "name": "FailedServer", 
-            "tools": 0, 
-            "status": "Failed to initialize",
-            "tool_start_index": 5
-        }
+import mcp_cli.commands.ping as ping_mod
+from mcp_cli.commands.ping import _display_name, _ping_one, ping_action
+from mcp_cli.tools.models import ServerInfo
+
+class DummyToolManager:
+    """
+    Fake ToolManager exposing .get_streams() and .get_server_info(),
+    plus a server_names attribute.
+    """
+    def __init__(
+        self,
+        streams: List[Sequence[Any]],
+        server_names: Dict[int, str] = None,
+        server_info: List[Dict[str, Any]] = None
+    ):
+        self._streams = streams
+        self.server_names = server_names or {}
+        info = server_info or []
+        # Build real ServerInfo objects
+        self._server_info = [
+            ServerInfo(
+                id=i,
+                name=info_item.get("name", f"server-{i}"),
+                status=info_item.get("status", ""),
+                tool_count=info_item.get("tools", 0),
+                namespace=info_item.get("namespace", ""),
+            ) for i, info_item in enumerate(info)
+        ]
+
+    def get_streams(self):
+        return self._streams
+
+    def get_server_info(self):
+        # Return list of ServerInfo
+        return self._server_info
+
+
+class FakeStream:
+    """Dummy stream passed to send_ping (which we'll monkeypatch)."""
+    pass
+
+
+@pytest.mark.parametrize(
+    "mapping, names, info, idx, expected",
+    [
+        ({0: "X"}, {}, [], 0, "X"),
+        (None, {0: "Y"}, [], 0, "Y"),
+        (None, {}, [{"name": "Z"}], 0, "Z"),
+        (None, {}, [], 5, "server-5"),
     ]
-    
-    # Set up server streams map
-    mock_manager.server_streams_map = {
-        "TestServer1": 0,
-        "TestServer2": 1
-    }
-    
-    # Set up streams
-    mock_read_stream1 = AsyncMock()
-    mock_write_stream1 = AsyncMock()
-    mock_read_stream2 = AsyncMock()
-    mock_write_stream2 = AsyncMock()
-    
-    mock_manager.streams = [
-        (mock_read_stream1, mock_write_stream1),
-        (mock_read_stream2, mock_write_stream2)
-    ]
-    
-    return mock_manager
+)
+def test_display_name(mapping, names, info, idx, expected):
+    tm = DummyToolManager(streams=[], server_names=names, server_info=info)
+    assert _display_name(idx, tm, mapping) == expected
+
 
 @pytest.mark.asyncio
-async def test_ping_basic(mock_stream_manager, capsys):
-    """Test the ping_run command pings servers correctly."""
-    
-    # Mock the send_ping function
-    async def mock_send_ping(r_stream, w_stream):
-        # First server responds successfully, second one fails
-        return r_stream == mock_stream_manager.streams[0][0]
-    
-    with patch("mcp_cli.commands.ping.send_ping", 
-               new=mock_send_ping):
-        # Run the command
-        await ping.ping_run(mock_stream_manager)
-        
-        # Capture and check output
-        captured = capsys.readouterr()
-        
-        # Check that all servers are mentioned in the output
-        assert "TestServer1" in captured.out
-        assert "TestServer2" in captured.out
-        assert "FailedServer" in captured.out
-        
-        # Check for success and failure messages
-        assert "TestServer1 is up!" in captured.out
-        assert "TestServer2 failed to respond" in captured.out
-        assert "failed to initialize" in captured.out
+async def test_ping_one_success(monkeypatch):
+    monkeypatch.setattr(ping_mod, "send_ping", lambda r, w: asyncio.sleep(0, result=True))
+    start = time.perf_counter()
+    name, ok, ms = await _ping_one(1, "n1", object(), object(), timeout=1.0)
+    end = time.perf_counter()
+
+    assert name == "n1"
+    assert ok is True
+    assert 0 <= ms <= (end - start) * 1000 + 1
+
 
 @pytest.mark.asyncio
-async def test_ping_all_up(mock_stream_manager, capsys):
-    """Test the ping_run command when all servers are up."""
-    
-    # Mock the send_ping function to return True for all servers
-    async def mock_send_ping(r_stream, w_stream):
-        return True
-    
-    with patch("mcp_cli.commands.ping.send_ping", 
-               new=mock_send_ping):
-        # Run the command
-        await ping.ping_run(mock_stream_manager)
-        
-        # Capture and check output
-        captured = capsys.readouterr()
-        
-        # Check that both servers show as up
-        assert "TestServer1 is up!" in captured.out
-        assert "TestServer2 is up!" in captured.out
-        assert "failed to respond" not in captured.out
+async def test_ping_one_timeout(monkeypatch):
+    async def hang(r, w):
+        await asyncio.sleep(10)
+    monkeypatch.setattr(ping_mod, "send_ping", hang)
+
+    name, ok, ms = await _ping_one(2, "n2", object(), object(), timeout=0.01)
+    assert name == "n2"
+    assert ok is False
+    assert isinstance(ms, float)
+
 
 @pytest.mark.asyncio
-async def test_ping_all_down(mock_stream_manager, capsys):
-    """Test the ping_run command when all servers are down."""
-    
-    # Mock the send_ping function to return False for all servers
-    async def mock_send_ping(r_stream, w_stream):
-        return False
-    
-    with patch("mcp_cli.commands.ping.send_ping", 
-               new=mock_send_ping):
-        # Run the command
-        await ping.ping_run(mock_stream_manager)
-        
-        # Capture and check output
-        captured = capsys.readouterr()
-        
-        # Check that both servers show as down
-        assert "TestServer1 failed to respond" in captured.out
-        assert "TestServer2 failed to respond" in captured.out
-        assert "is up!" not in captured.out
+async def test_ping_action_no_streams(monkeypatch):
+    tm = DummyToolManager(streams=[])
+    printed = []
+    monkeypatch.setattr(Console, "print", lambda self, msg, **kw: printed.append(str(msg)))
+
+    result = await ping_action(tm)
+    assert result is False
+    assert any("No matching servers" in p for p in printed)
+
 
 @pytest.mark.asyncio
-async def test_ping_error_handling(mock_stream_manager, capsys):
-    """Test the ping_run command handles errors gracefully."""
-    
-    # Mock the send_ping function to raise an exception
-    async def mock_send_ping(r_stream, w_stream):
-        if r_stream == mock_stream_manager.streams[0][0]:
-            return True
-        else:
-            raise Exception("Test error")
-    
-    with patch("mcp_cli.commands.ping.send_ping", 
-               new=mock_send_ping):
-        # Run the command (should not propagate the exception)
-        await ping.ping_run(mock_stream_manager)
-        
-        # Capture and check output
-        captured = capsys.readouterr()
-        
-        # Check that the first server shows as up
-        assert "TestServer1 is up!" in captured.out
+async def test_ping_action_with_streams_and_no_filter(monkeypatch):
+    async def fake_ping(idx, name, r, w, timeout=5.0):
+        return (name, True, 99.9)
+    monkeypatch.setattr(ping_mod, "_ping_one", fake_ping)
+
+    fs = FakeStream()
+    tm = DummyToolManager(
+        streams=[(fs, fs)],
+        server_names={0: "srv0"},
+        server_info=[{"name": "ignored"}]
+    )
+
+    output = []
+    monkeypatch.setattr(Console, "print", lambda self, obj, **kw: output.append(obj))
+
+    result = await ping_action(tm)
+    assert result is True
+
+    tables = [o for o in output if isinstance(o, Table)]
+    assert tables, f"Expected a Table in output: {output}"
+    tbl = tables[0]
+    # Only check row_count and headers
+    assert tbl.row_count == 1
+    headers = [col.header for col in tbl.columns]
+    assert headers == ["Server", "Status", "Latency"]
+
 
 @pytest.mark.asyncio
-async def test_ping_no_servers(capsys):
-    """Test the ping_run command when no servers are available."""
-    
-    # Create a StreamManager with no servers
-    empty_manager = MagicMock()
-    empty_manager.get_server_info.return_value = []
-    empty_manager.server_streams_map = {}
-    empty_manager.streams = []
-    
-    # Mock the send_ping function (should not be called)
-    async def mock_send_ping(r_stream, w_stream):
-        # This should never be called
-        assert False, "send_ping should not be called with no servers"
-        return False
-    
-    with patch("mcp_cli.commands.ping.send_ping", 
-               new=mock_send_ping):
-        # Run the command
-        await ping.ping_run(empty_manager)
-        
-        # Capture and check output
-        captured = capsys.readouterr()
-        
-        # Check that the pinging message is still displayed
-        assert "Pinging Servers" in captured.out
+async def test_ping_action_with_targets(monkeypatch):
+    async def fake_ping(idx, name, r, w, timeout=5.0):
+        return (name, True, 55.5)
+    monkeypatch.setattr(ping_mod, "_ping_one", fake_ping)
+
+    fs = FakeStream()
+    tm = DummyToolManager(
+        streams=[(fs, fs), (fs, fs)],
+        server_names={0: "a", 1: "b"}
+    )
+
+    # No matching → False
+    assert await ping_action(tm, targets=["z"]) is False
+
+    output = []
+    monkeypatch.setattr(Console, "print", lambda self, obj, **kw: output.append(obj))
+    result = await ping_action(tm, targets=["b"])
+    assert result is True
+
+    tables = [o for o in output if isinstance(o, Table)]
+    assert tables, "Expected a Table"
+    tbl = tables[0]
+    assert tbl.row_count == 1
+    # Confirm header only (we trust correct row)
+    headers = [col.header for col in tbl.columns]
+    assert headers == ["Server", "Status", "Latency"]
+

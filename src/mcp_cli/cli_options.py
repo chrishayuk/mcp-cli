@@ -1,8 +1,12 @@
-# mcp_cli/cli_options.py
+# mcp_cli/cli/cli_options.py
 import os
 import json
 import logging
 from pathlib import Path
+from typing import Dict, List, Tuple, Optional
+
+logger = logging.getLogger(__name__)
+
 
 def load_config(config_file):
     """Load the configuration file."""
@@ -19,6 +23,7 @@ def load_config(config_file):
         logging.error(f"Error loading config file: {e}")
     
     return config
+
 
 def extract_server_names(config, specified_servers=None):
     """
@@ -52,15 +57,24 @@ def extract_server_names(config, specified_servers=None):
     
     return server_names
 
-def process_options(server, disable_filesystem, provider, model, config_file="server_config.json"):
+
+def process_options(
+    server: Optional[str],
+    disable_filesystem: bool,
+    provider: str,
+    model: str,
+    config_file: str = "server_config.json"
+) -> Tuple[List[str], List[str], Dict[int, str]]:
     """
     Process CLI options to produce a list of server names and set environment variables.
-    """
-    servers_list = []
-    user_specified = []
-    server_names = {}
     
-    # Add debug logging
+    Returns:
+        Tuple of (servers_list, user_specified, server_names)
+    """
+    servers_list: List[str] = []
+    user_specified: List[str] = []
+    server_names: Dict[int, str] = {}
+    
     logging.debug(f"Processing options: server={server}, disable_filesystem={disable_filesystem}")
     
     if server:
@@ -69,9 +83,8 @@ def process_options(server, disable_filesystem, provider, model, config_file="se
         logging.debug(f"Parsed server parameter into: {user_specified}")
         servers_list.extend(user_specified)
     
-    # Add more logging
-    logging.debug(f"Final servers list: {servers_list}")
-        
+    logging.debug(f"Initial servers list: {servers_list}")
+    
     # Use a default model if none is provided.
     if not model:
         model = "gpt-4o-mini" if provider.lower() == "openai" else "qwen2.5-coder"
@@ -82,10 +95,13 @@ def process_options(server, disable_filesystem, provider, model, config_file="se
     if not disable_filesystem:
         os.environ["SOURCE_FILESYSTEMS"] = json.dumps([os.getcwd()])
     
-    # Load configuration to get server names
+    # Load configuration to get server names and default servers
     config = load_config(config_file)
+    if not servers_list and config and "mcpServers" in config:
+        # Default to all configured servers if none specified
+        servers_list = list(config["mcpServers"].keys())
     
-    # Extract server names from the configuration
+    # Extract server names mapping (for display)
     server_names = extract_server_names(config, user_specified)
     
     return servers_list, user_specified, server_names

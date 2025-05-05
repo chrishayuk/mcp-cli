@@ -1,4 +1,5 @@
 # MCP CLI - Model Context Provider Command Line Interface
+
 A powerful, feature-rich command-line interface for interacting with Model Context Provider servers. This client enables seamless communication with LLMs through integration with the [CHUK-MCP protocol library](https://github.com/chrishayuk/chuk-mcp) which is a pyodide compatible pure python protocol implementation of MCP, supporting tool usage, conversation management, and multiple operational modes.
 
 ## 🔄 Protocol Implementation
@@ -91,9 +92,9 @@ uv sync --reinstall
 uv run mcp-cli --help
 ```
 
-## 🧰 Command-line Arguments
+## 🧰 Global Command-line Arguments
 
-Global options available for all commands:
+Global options available for all modes and commands:
 
 - `--server`: Specify the server(s) to connect to (comma-separated for multiple)
 - `--config-file`: Path to server configuration file (default: `server_config.json`)
@@ -101,22 +102,96 @@ Global options available for all commands:
 - `--model`: Specific model to use (provider-dependent defaults)
 - `--disable-filesystem`: Disable filesystem access (default: true)
 
-## 🤖 Using Chat Mode
+### CLI Argument Format Issue
 
-Chat mode provides a conversational interface with the LLM, automatically using available tools when needed:
+You might encounter a "Missing argument 'KWARGS'" error when running various commands. This is due to how the CLI parser is configured. To resolve this, use one of these approaches:
+
+1. Use the equals sign format for all arguments:
+   ```bash
+   mcp-cli tools call --server=sqlite
+   mcp-cli chat --server=sqlite --provider=ollama --model=llama3.2
+   ```
+
+2. Add a double-dash (`--`) after the command and before arguments:
+   ```bash
+   mcp-cli tools call -- --server sqlite
+   mcp-cli chat -- --server sqlite --provider ollama --model llama3.2
+   ```
+
+These format issues apply to all commands (chat, interactive, tools, etc.) and are due to how the argument parser interprets positional vs. named arguments.
+
+## 🌐 Available Modes
+
+### 1. Chat Mode
+
+Chat mode provides a natural language interface for interacting with LLMs, where the model can automatically use available tools:
 
 ```bash
-mcp-cli chat --server sqlite
+# Default (makes chat the default when no other command is specified)
+uv run mcp-cli
+
+# Explicit chat mode
+uv run mcp-cli chat --server sqlite
+```
+
+### 2. Interactive Mode
+
+Interactive mode provides a command-driven shell interface for direct server operations:
+
+```bash
+uv run mcp-cli interactive --server sqlite
+```
+
+### 3. Command Mode (Cmd)
+
+Command mode provides a Unix-friendly interface for automation and pipeline integration:
+
+```bash
+uv run mcp-cli cmd --server sqlite [options]
+```
+
+### 4. Direct Commands
+
+Run individual commands without entering an interactive mode:
+
+```bash
+# List available tools
+uv run mcp-cli tools list {} --server sqlite
+
+# Call a specific tool
+uv run mcp-cli tools call {} --server sqlite
+```
+
+## 🤖 Using Chat Mode
+
+Chat mode provides a conversational interface with the LLM, automatically using available tools when needed.
+
+### Starting Chat Mode
+
+```bash
+# Default with {} for KWARGS
+uv run mcp-cli --server sqlite
+
+# Explicit chat mode with {}
+uv run mcp-cli chat --server sqlite
+
+# With specific provider and model
+uv run mcp-cli chat --server sqlite --provider openai --model gpt-4o
 ```
 
 With specific provider and model:
 
 ```bash
-mcp-cli chat --server sqlite --provider openai --model gpt-4o
+uv run mcp-cli chat --server sqlite --provider openai --model gpt-4o
 ```
 
 ```bash
-mcp-cli chat --server sqlite --provider ollama --model llama3.2
+# Note: Be careful with the command syntax
+# Correct format without any KWARGS parameter
+uv run mcp-cli chat --server sqlite --provider ollama --model llama3.2
+
+# Or if you encounter the "Missing argument 'KWARGS'" error, try:
+uv run mcp-cli chat --server=sqlite --provider=ollama --model=llama3.2
 ```
 
 ### Chat Commands
@@ -154,43 +229,47 @@ In chat mode, use these slash commands:
 
 #### Control Commands
 - `/interrupt`, `/stop`, or `/cancel`: Interrupt running tool execution
-- `/provider <n>`: Change the current LLM provider 
-- `/model <n>`: Change the current LLM model
+- `/provider <name>`: Change the current LLM provider 
+- `/model <name>`: Change the current LLM model
 - `/servers`: List connected servers and their status
 
 ## 🖥️ Using Interactive Mode
 
-Interactive mode provides a command-line interface with slash commands for direct server interaction:
+Interactive mode provides a command-driven shell interface for direct server interaction.
+
+### Starting Interactive Mode
 
 ```bash
-mcp-cli interactive --server sqlite
+# Using {} to satisfy KWARGS requirement
+mcp-cli interactive {} --server sqlite
 ```
 
 ### Interactive Commands
 
 In interactive mode, use these commands:
 
-- `/ping`: Check if server is responsive
-- `/prompts`: List available prompts
-- `/tools`: List available tools
-- `/tools-all`: Show detailed tool information with parameters
-- `/tools-raw`: Show raw tool definitions in JSON
-- `/resources`: List available resources
-- `/chat`: Enter chat mode
-- `/cls`: Clear the screen
-- `/clear`: Clear the screen and show welcome message
-- `/help`: Show help message
-- `/exit` or `/quit`: Exit the program
+- `help`: Show available commands
+- `exit` or `quit` or `q`: Exit interactive mode
+- `clear` or `cls`: Clear the terminal screen
+- `servers` or `srv`: List connected servers with their status
+- `tools` or `t`: List available tools or call one interactively
+  - `tools --all`: Show detailed tool information
+  - `tools --raw`: Show raw JSON definitions
+  - `tools call`: Launch the interactive tool-call UI
+- `resources` or `res`: List available resources from all servers
+- `prompts` or `p`: List available prompts from all servers
+- `ping`: Ping connected servers (optionally filter by index/name)
 
-## 📄 Using Command Mode
+## 📄 Using Command Mode (Cmd)
 
-Command mode provides a Unix-friendly interface for automation and pipeline integration:
+Command mode provides a Unix-friendly interface for automation and pipeline integration.
+
+### Starting Command Mode
 
 ```bash
-mcp-cli cmd --server sqlite [options]
+# Using {} to satisfy KWARGS requirement
+mcp-cli cmd {} --server sqlite [options]
 ```
-
-This mode is designed for scripting, batch processing, and direct integration with other Unix tools.
 
 ### Command Mode Options
 
@@ -201,27 +280,28 @@ This mode is designed for scripting, batch processing, and direct integration wi
 - `--tool`: Directly call a specific tool
 - `--tool-args`: JSON arguments for tool call
 - `--system-prompt`: Custom system prompt
+- `--verbose`: Enable verbose logging
 
 ### Command Mode Examples
 
 Process content with LLM:
 
 ```bash
-# Summarize a document
-mcp-cli cmd --server sqlite --input document.md --prompt "Summarize this: {{input}}" --output summary.md
+# Summarize a document (with {} for KWARGS)
+uv run mcp-cli cmd --server sqlite --input document.md --prompt "Summarize this: {{input}}" --output summary.md
 
 # Process stdin and output to stdout
-cat document.md | mcp-cli cmd --server sqlite --input - --prompt "Extract key points: {{input}}"
+cat document.md | mcp-cli cmd {} --server sqlite --input - --prompt "Extract key points: {{input}}"
 ```
 
 Call tools directly:
 
 ```bash
 # List database tables
-mcp-cli cmd --server sqlite --tool list_tables --raw
+uv run mcp-cli cmd {} --server sqlite --tool list_tables --raw
 
 # Run a SQL query
-mcp-cli cmd --server sqlite --tool read_query --tool-args '{"query": "SELECT COUNT(*) FROM users"}'
+uv run mcp-cli cmd {} --server sqlite --tool read_query --tool-args '{"query": "SELECT COUNT(*) FROM users"}'
 ```
 
 Batch processing:
@@ -231,25 +311,44 @@ Batch processing:
 ls *.md | parallel mcp-cli cmd --server sqlite --input {} --output {}.summary.md --prompt "Summarize: {{input}}"
 ```
 
-## 🔧 Direct Commands
+## 🔧 Direct CLI Commands
 
 Run individual commands without entering interactive mode:
 
-```bash
-# List available tools
-mcp-cli tools list --server sqlite
+### Tools Commands
 
-# Call a specific tool
-mcp-cli tools call --server sqlite
+```bash
+# List all tools (using {} to satisfy KWARGS requirement)
+uv run mcp-cli tools list {} --server sqlite
+
+# Show detailed tool information
+uv run mcp-cli tools list {} --server sqlite --all
+
+# Show raw tool definitions
+uv run mcp-cli tools list {} --server sqlite --raw
+
+# Call a specific tool interactively
+uv run mcp-cli tools call {} --server sqlite
+```
+
+### Resources and Prompts Commands
+
+```bash
+# List available resources
+uv run mcp-cli resources list {} --server sqlite
 
 # List available prompts
-mcp-cli prompts list --server sqlite
+uv run mcp-cli prompts list {} --server sqlite
+```
 
-# Check server connectivity
-mcp-cli ping --server sqlite
+### Server Commands
 
-# List available resources
-mcp-cli resources list --server sqlite
+```bash
+# Ping all servers
+uv run mcp-cli ping {} --server sqlite
+
+# Ping specific server(s)
+uv run mcp-cli ping {} --server sqlite,another-server
 ```
 
 ## 📂 Server Configuration
@@ -275,114 +374,46 @@ Create a `server_config.json` file with your server configurations:
 }
 ```
 
-## 🏗️ Project Structure
+## 📈 Advanced Usage Examples
 
-```
-src/
-├── mcp_cli/
-│   ├── chat/                  # Chat mode implementation
-│   │   ├── commands/          # Chat slash commands
-│   │   │   ├── __init__.py    # Command registration system
-│   │   │   ├── conversation.py  # Conversation management
-│   │   │   ├── conversation_history.py   
-│   │   │   ├── exit.py              
-│   │   │   ├── help.py              
-│   │   │   ├── help_text.py         
-│   │   │   ├── models.py            
-│   │   │   ├── servers.py           
-│   │   │   ├── tool_history.py      
-│   │   │   └── tools.py             
-│   │   ├── chat_context.py    # Chat session state management
-│   │   ├── chat_handler.py    # Main chat loop handler
-│   │   ├── command_completer.py  # Command completion
-│   │   ├── conversation.py    # Conversation processor
-│   │   ├── system_prompt.py   # System prompt generator
-│   │   ├── tool_processor.py  # Tool handling
-│   │   └── ui_manager.py      # User interface
-│   ├── commands/              # CLI commands
-│   │   ├── __init__.py
-│   │   ├── chat.py            # Chat command
-│   │   ├── cmd.py             # Command mode
-│   │   ├── interactive.py     # Interactive mode
-│   │   ├── ping.py            # Ping command
-│   │   ├── prompts.py         # Prompts commands
-│   │   ├── register_commands.py  # Command registration
-│   │   ├── resources.py       # Resources commands
-│   │   └── tools.py           # Tools commands
-│   ├── llm/                   # LLM client implementations
-│   │   ├── providers/         # Provider-specific clients
-│   │   │   ├── __init__.py
-│   │   │   ├── base.py        # Base LLM client
-│   │   │   └── openai_client.py  # OpenAI implementation
-│   │   ├── llm_client.py      # Client factory
-│   │   ├── system_prompt_generator.py  # Prompt generator
-│   │   └── tools_handler.py   # Tools handling
-│   ├── ui/                    # User interface components
-│   │   ├── colors.py          # Color definitions
-│   │   └── ui_helpers.py      # UI utilities
-│   ├── cli_options.py         # CLI options processing
-│   ├── config.py              # Configuration loader
-│   ├── main.py                # Main entry point
-│   └── run_command.py         # Command execution
-```
+### Working with Tools in Chat Mode
 
-## 📈 Advanced Usage
-
-### Tool Execution
-
-The MCP CLI can automatically execute tools provided by the server. In chat mode, simply request information that requires tool usage, and the LLM will automatically select and call the appropriate tools.
-
-Example conversation:
+In chat mode, simply ask questions that require tool usage, and the LLM will automatically call the appropriate tools:
 
 ```
 You: What tables are available in the database?
-Assistant: Let me check for you.
 [Tool Call: list_tables]
-I found the following tables in the database:
-- users
-- products
-- orders
-- categories
+Assistant: There's one table in the database named products. How would you like to proceed?
 
-You: How many users do we have?
-Assistant: I'll query the database for that information.
+You: Select top 10 products ordered by price in descending order
 [Tool Call: read_query]
-There are 873 users in the database.
+Assistant: Here are the top 10 products ordered by price in descending order:
+  1 Mini Drone - $299.99
+  2 Smart Watch - $199.99
+  3 Portable SSD - $179.99
+  ...
 ```
 
-### Scripting with Command Mode
+### Provider and Model Selection
 
-Command mode enables powerful automation through shell scripts:
+You can change providers or models during a chat session:
 
-```bash
-#!/bin/bash
-# Example script to analyze multiple documents
+```
+> /provider
+Current provider: openai
+To change provider: /provider <provider_name>
 
-# Process all markdown files in the current directory
-for file in *.md; do
-  echo "Processing $file..."
-  
-  # Generate summary
-  mcp-cli cmd --server sqlite --input "$file" \
-    --prompt "Summarize this document: {{input}}" \
-    --output "${file%.md}.summary.md"
-  
-  # Extract entities
-  mcp-cli cmd --server sqlite --input "$file" \
-    --prompt "Extract all company names, people, and locations from this text: {{input}}" \
-    --output "${file%.md}.entities.txt" --raw
-done
+> /model
+Current model: gpt-4o-mini
+To change model: /model <model_name>
 
-# Create a combined report
-echo "Creating final report..."
-cat *.entities.txt | mcp-cli cmd --server sqlite --input - \
-  --prompt "Analyze these entities and identify the most frequently mentioned:" \
-  --output report.md
+> /model gpt-4o
+Switched to model: gpt-4o
 ```
 
-### Conversation Management
+### Using Conversation Management
 
-Track and manage your conversation history:
+The MCP CLI provides powerful conversation history management:
 
 ```
 > /conversation
@@ -391,23 +422,13 @@ Conversation History (12 messages)
 1 | system    | You are an intelligent assistant capable of using t...
 2 | user      | What tables are available in the database?
 3 | assistant | Let me check for you.
-4 | assistant | [Tool call: list_tables]
 ...
-
-> /conversation 4
-Message #4 (Role: assistant)
-[Tool call: list_tables]
-Tool Calls:
-  1. ID: call_list_tables_12345678, Type: function, Name: list_tables
-     Arguments: {}
 
 > /save conversation.json
 Conversation saved to conversation.json
 
 > /compact
 Conversation history compacted with summary.
-Summary:
-The user asked about database tables, and I listed the available tables (users, products, orders, categories). The user then asked about the number of users, and I queried the database to find there are 873 users.
 ```
 
 ## 📦 Dependencies
@@ -441,7 +462,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- [Anthropic Claude](https://www.anthropic.com/claude) for assistance with code development
 - [Rich](https://github.com/Textualize/rich) for beautiful terminal formatting
 - [Typer](https://typer.tiangolo.com/) for CLI argument parsing
 - [Prompt Toolkit](https://github.com/prompt-toolkit/python-prompt-toolkit) for interactive input

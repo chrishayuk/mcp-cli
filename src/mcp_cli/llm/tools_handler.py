@@ -1,28 +1,14 @@
 # mcp_cli/llm/tools_handler.py
 import json
 import logging
-import re
 import uuid
 from typing import Any, Dict, Optional, List, Union
 
-def parse_tool_response(response: str) -> Optional[Dict[str, Any]]:
-    """Parse tool call from Llama's XML-style format.
+# Import CHUK tool registry for tool conversions
+from chuk_tool_processor.registry.tool_export import openai_functions
 
-    Expected format:
-      <function=FUNCTION_NAME>{"arg1": "value1", ...}</function>
-
-    Returns a dictionary with 'function' and 'arguments' keys if found.
-    """
-    function_regex = r"<function=(\w+)>(.*?)</function>"
-    match = re.search(function_regex, response)
-    if match:
-        function_name, args_string = match.groups()
-        try:
-            args = json.loads(args_string)
-            return {"function": function_name, "arguments": args}
-        except json.JSONDecodeError as error:
-            logging.debug(f"Error parsing function arguments: {error}")
-    return None
+from mcp_cli.tools.manager import ToolManager
+from mcp_cli.tools.models import ToolCallResult
 
 
 def format_tool_response(response_content: Union[List[Dict[str, Any]], Any]) -> str:
@@ -60,18 +46,15 @@ def format_tool_response(response_content: Union[List[Dict[str, Any]], Any]) -> 
         return str(response_content)
 
 
-"""
-Updated handle_tool_call function to work exclusively with StreamManager.
-"""
-
 async def handle_tool_call(
     tool_call: Union[Dict[str, Any], Any],
     conversation_history: List[Dict[str, Any]],
-    server_streams = None,  # Kept for backward compatibility but not used
-    stream_manager = None
+    server_streams = None,  # Kept for backward compatibility but ignored
+    stream_manager = None,  # Kept for backward compatibility but recommended to use tool_manager
+    tool_manager: Optional[ToolManager] = None  # Preferred parameter
 ) -> None:
     """
-    Handle a single tool call for both OpenAI and Llama formats.
+    Handle a single tool call using the centralized ToolManager.
 
     This function updates the conversation history with both the tool call and its response.
     
@@ -79,94 +62,121 @@ async def handle_tool_call(
         tool_call: The tool call object
         conversation_history: The conversation history to update
         server_streams: Legacy parameter (ignored)
-        stream_manager: StreamManager instance (required)
+        stream_manager: Legacy StreamManager instance (optional)
+        tool_manager: Preferred ToolManager instance
     """
-    if stream_manager is None:
-        logging.error("StreamManager is required for handle_tool_call")
+    # Use tool_manager if provided, otherwise fall back to stream_manager
+    manager = tool_manager or stream_manager
+    
+    if manager is None:
+        logging.error("Either tool_manager or stream_manager is required for handle_tool_call")
         return
         
     tool_name: str = "unknown_tool"
-    raw_arguments: Any = {}
+    tool_args: Dict[str, Any] = {}
     tool_call_id: Optional[str] = None
 
     try:
-        # Support for object-style tool calls from both OpenAI and the new Ollama function tools.
-        if hasattr(tool_call, "function") or (isinstance(tool_call, dict) and "function" in tool_call):
-            if hasattr(tool_call, "function"):
-                tool_name = tool_call.function.name
-                raw_arguments = tool_call.function.arguments
-                # Get ID if available
-                tool_call_id = getattr(tool_call, "id", None)
-            else:
-                tool_name = tool_call["function"]["name"]
-                raw_arguments = tool_call["function"]["arguments"]
-                # Get ID if available
-                tool_call_id = tool_call.get("id")
+        # Extract tool call information
+        if hasattr(tool_call, "function"):
+            tool_name = tool_call.function.name
+            raw_arguments = tool_call.function.arguments
+            tool_call_id = getattr(tool_call, "id", None)
+        elif isinstance(tool_call, dict) and "function" in tool_call:
+            tool_name = tool_call["function"]["name"]
+            raw_arguments = tool_call["function"]["arguments"]
+            tool_call_id = tool_call.get("id")
         else:
-            # Fallback: attempt to parse Llama's XML format from the last message in history.
-            last_message = conversation_history[-1]["content"]
-            parsed_tool = parse_tool_response(last_message)
-            if not parsed_tool:
-                logging.debug("Unable to parse tool call from message")
-                return
-            tool_name = parsed_tool["function"]
-            raw_arguments = parsed_tool["arguments"]
+            logging.error("Invalid tool call format")
+            return
 
-        # Ensure tool arguments are in dictionary form.
-        tool_args: Dict[str, Any] = (
-            json.loads(raw_arguments)
-            if isinstance(raw_arguments, str)
-            else raw_arguments
-        )
+        # Ensure tool arguments are in dictionary form
+        if isinstance(raw_arguments, str):
+            try:
+                tool_args = json.loads(raw_arguments)
+            except json.JSONDecodeError:
+                logging.error(f"Failed to parse tool arguments: {raw_arguments}")
+                tool_args = {}
+        else:
+            tool_args = raw_arguments
 
-        # Generate a unique tool call ID only if one wasn't provided
+        # Generate a unique tool call ID if not provided
         if not tool_call_id:
             tool_call_id = f"call_{tool_name}_{str(uuid.uuid4())[:8]}"
 
         # Log which tool we're calling
-        server_name = stream_manager.get_server_for_tool(tool_name)
-        logging.debug(f"Calling tool '{tool_name}' on server '{server_name}'")
+        if hasattr(manager, 'get_server_for_tool'):
+            server_name = manager.get_server_for_tool(tool_name)
+            logging.debug(f"Calling tool '{tool_name}' on server '{server_name}'")
         
-        # Call the tool using StreamManager
-        tool_response = await stream_manager.call_tool(
-            tool_name=tool_name,
-            arguments=tool_args
-        )
-
-        # Handle errors in tool response
-        if tool_response.get("isError"):
-            error_msg = tool_response.get("error", "Unknown error")
-            logging.debug(f"Error calling tool '{tool_name}': {error_msg}")
+        # Call the tool using either manager
+        if isinstance(manager, ToolManager):
+            # Use ToolManager (preferred)
+            result: ToolCallResult = await manager.execute_tool(tool_name, tool_args)
             
-            # Add a failed tool call to conversation history
-            conversation_history.append({
-                "role": "assistant",
-                "content": None,
-                "tool_calls": [
-                    {
-                        "id": tool_call_id,
-                        "type": "function",
-                        "function": {
-                            "name": tool_name,
-                            "arguments": json.dumps(tool_args)
-                            if isinstance(tool_args, dict)
-                            else tool_args,
-                        },
-                    }
-                ],
-            })
+            if not result.success:
+                error_msg = result.error or "Unknown error"
+                logging.debug(f"Error calling tool '{tool_name}': {error_msg}")
+                
+                # Add failed tool call to conversation history
+                conversation_history.append({
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": tool_call_id,
+                            "type": "function",
+                            "function": {
+                                "name": tool_name,
+                                "arguments": json.dumps(tool_args),
+                            },
+                        }
+                    ],
+                })
+                
+                # Add error response
+                conversation_history.append({
+                    "role": "tool",
+                    "name": tool_name,
+                    "content": f"Error: {error_msg}",
+                    "tool_call_id": tool_call_id,
+                })
+                return
             
-            # Add error response
-            conversation_history.append({
-                "role": "tool",
-                "name": tool_name,
-                "content": f"Error: {error_msg}",
-                "tool_call_id": tool_call_id,
-            })
-            return
-
-        # Get the raw content from the response
-        raw_content = tool_response.get("content", [])
+            raw_content = result.result
+        else:
+            # Use StreamManager (backward compatibility)
+            tool_response = await manager.call_tool(tool_name, tool_args)
+            
+            if tool_response.get("isError"):
+                error_msg = tool_response.get("error", "Unknown error")
+                logging.debug(f"Error calling tool '{tool_name}': {error_msg}")
+                
+                # Handle error similar to above
+                conversation_history.append({
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": tool_call_id,
+                            "type": "function",
+                            "function": {
+                                "name": tool_name,
+                                "arguments": json.dumps(tool_args),
+                            },
+                        }
+                    ],
+                })
+                
+                conversation_history.append({
+                    "role": "tool",
+                    "name": tool_name,
+                    "content": f"Error: {error_msg}",
+                    "tool_call_id": tool_call_id,
+                })
+                return
+            
+            raw_content = tool_response.get("content", [])
         
         # Format the tool response
         formatted_response: str = format_tool_response(raw_content)
@@ -182,9 +192,7 @@ async def handle_tool_call(
                     "type": "function",
                     "function": {
                         "name": tool_name,
-                        "arguments": json.dumps(tool_args)
-                        if isinstance(tool_args, dict)
-                        else tool_args,
+                        "arguments": json.dumps(tool_args),
                     },
                 }
             ],
@@ -198,21 +206,38 @@ async def handle_tool_call(
             "tool_call_id": tool_call_id,
         })
 
-    except json.JSONDecodeError:
-        logging.debug(f"Error decoding arguments for tool '{tool_name}': {raw_arguments}")
     except Exception as e:
-        logging.debug(f"Error handling tool call '{tool_name}': {str(e)}")
-
+        logging.error(f"Error handling tool call '{tool_name}': {str(e)}")
 
 def convert_to_openai_tools(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Convert tools into OpenAI-compatible function definitions."""
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": tool["name"],
-                "parameters": tool.get("inputSchema", {}),
-            },
-        }
-        for tool in tools
-    ]
+    """
+    Convert a list of MCP-style tool metadata dictionaries into the
+    OpenAI “function call” JSON schema.
+
+    ⚠️  **Deprecated** – new code should call `ToolManager.get_tools_for_llm()`.
+    This helper remains for older tests / scripts.
+    """
+    # Already-converted? → return unchanged
+    if tools and isinstance(tools[0], dict) and tools[0].get("type") == "function":
+        return tools
+
+    openai_tools: List[Dict[str, Any]] = []
+    for tool in tools:
+        if not isinstance(tool, dict):  # skip un-recognised entries
+            continue
+
+        openai_tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": tool.get("name", "unknown"),
+                    # NEW: carry over the human-readable description
+                    "description": tool.get("description", ""),
+                    # Accept either `parameters` (already OpenAI-style) or
+                    # legacy `inputSchema`
+                    "parameters": tool.get("parameters", tool.get("inputSchema", {})),
+                },
+            }
+        )
+
+    return openai_tools

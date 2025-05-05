@@ -1,41 +1,37 @@
 # mcp_cli/chat/commands/servers.py
 """
-Commands for working with MCP servers.
+Chat command module for listing connected MCP servers,
+reusing the shared CLI logic for consistency.
 """
-from typing import List, Dict, Any
-from rich import print
-from rich.table import Table
+from typing import List, Any, Dict
 from rich.console import Console
 
-# imports
+# Shared implementation
+from mcp_cli.commands.servers import servers_action
+from mcp_cli.tools.manager import ToolManager
+
+# Chat registration helper
 from mcp_cli.chat.commands import register_command
 
-async def cmd_servers(cmd_parts: List[str], context: Dict[str, Any]) -> bool:
+async def servers_command(cmd_parts: List[str], context: Dict[str, Any]) -> bool:
     """
-    List connected MCP servers and their status.
-    
-    Usage: /servers
+    Display a table of all connected servers and their status.
+
+    Usage:
+      /servers       - List all servers
+      /srv           - Alias for /servers
     """
-    server_info = context['server_info']
-    
-    servers_table = Table(title="Connected MCP Servers")
-    servers_table.add_column("ID", style="cyan")
-    servers_table.add_column("Name", style="green")
-    servers_table.add_column("Tools", style="cyan")
-    servers_table.add_column("Status", style="green")
-    
-    for server in server_info:
-        servers_table.add_row(
-            str(server['id']),
-            server['name'],
-            str(server['tools']),
-            server['status']
-        )
-        
     console = Console()
-    console.print(servers_table)
+
+    tm: ToolManager = context.get("tool_manager")
+    if not tm:
+        console.print("[red]Error: no tool manager available[/red]")
+        return True
+
+    # Delegate to shared CLI action
+    servers_action(tm)
     return True
 
-
-# Register all commands in this module
-register_command("/servers", cmd_servers)
+# Register under /servers and /srv
+register_command("/servers", servers_command)
+register_command("/srv",     servers_command)
