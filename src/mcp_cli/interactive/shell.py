@@ -17,7 +17,7 @@ from prompt_toolkit.completion import Completer, Completion
 
 # mcp cli
 from mcp_cli.tools.manager import ToolManager
-# Removed duplicate welcome banner; upstream already displays one
+
 # commands
 from mcp_cli.interactive.commands import register_all_commands
 from mcp_cli.interactive.registry import InteractiveCommandRegistry

@@ -22,56 +22,71 @@ class ConversationProcessor:
                 try:
                     start_time = time.time()
 
-                    # ── 1.  Quick NL-to-tool shortcut ────────────────────
-                    if self.context.conversation_history:
-                        last_message = self.context.conversation_history[-1]
-                        if last_message.get("role") == "user":
-                            content = last_message.get("content", "")
-                            tool_name = self.context.tool_manager.parse_natural_language_tool(content)
-                            if tool_name:
-                                print(f"[DEBUG] Detected direct tool command: {content} -> {tool_name}")
-                                fake_tool_call = {
-                                    "function": {"name": tool_name, "arguments": {}}
-                                }
-                                await self.tool_processor.process_tool_calls([fake_tool_call])
-                                return
-
-                    # ── 2.  Refresh tools for the LLM if needed ──────────
-                    if not getattr(self.context, "openai_tools", None):
-                        self.context.openai_tools = self.context.tool_manager.get_tools_for_llm()
-                        print(f"[DEBUG] Refreshed OpenAI tools: {len(self.context.openai_tools)} tools")
-
-                    # ── 3.  Call the LLM (ASYNC) ─────────────────────────
-                    completion = await self.context.client.create_completion(   # ▲ await
-                        messages=self.context.conversation_history,
-                        tools=self.context.openai_tools,
+                    # Skip slash commands (already handled by UI)
+                    last_msg = (
+                        self.context.conversation_history[-1]
+                        if self.context.conversation_history
+                        else {}
                     )
+                    content = last_msg.get("content", "")
+                    if last_msg.get("role") == "user" and content.startswith("/"):
+                        return
+
+                    # Ensure OpenAI tools are loaded for function calling
+                    if not getattr(self.context, "openai_tools", None):
+                        self.context.openai_tools = (
+                            await self._maybe_async_get_tools()
+                        )
+                        print(f"[DEBUG] Loaded OpenAI tools: {len(self.context.openai_tools)} tools")
+
+                    # Attempt LLM call with function-calling
+                    try:
+                        completion = await self.context.client.create_completion(
+                            messages=self.context.conversation_history,
+                            tools=self.context.openai_tools,
+                        )
+                    except Exception as e:
+                        # If tools spec invalid, retry without tools
+                        err = str(e)
+                        if "Invalid 'tools[0].function.name'" in err:
+                            print("[yellow]Warning: tool definitions rejected by model, retrying without tools...[/yellow]")
+                            completion = await self.context.client.create_completion(
+                                messages=self.context.conversation_history
+                            )
+                        else:
+                            raise
 
                     response_content = completion.get("response", "No response")
                     tool_calls = completion.get("tool_calls", [])
 
-                    # ── 4.  Handle tool-calls if requested ───────────────
+                    # If model requested tool calls, execute them
                     if tool_calls:
                         await self.tool_processor.process_tool_calls(tool_calls)
-                        continue  # loop again after tools execute
+                        continue
 
-                    # ── 5.  Normal assistant reply ───────────────────────
-                    response_time = time.time() - start_time
-                    self.ui_manager.print_assistant_response(response_content, response_time)
+                    # Otherwise, display the assistant's reply
+                    elapsed = time.time() - start_time
+                    self.ui_manager.print_assistant_response(response_content, elapsed)
                     self.context.conversation_history.append(
                         {"role": "assistant", "content": response_content}
                     )
                     break
 
                 except asyncio.CancelledError:
-                    raise  # bubble up
-                except Exception as e:
-                    print(f"[red]Error during conversation processing:[/red] {e}")
-                    import traceback
-                    traceback.print_exc()
+                    raise
+                except Exception as exc:
+                    print(f"[red]Error during conversation processing:[/red] {exc}")
+                    import traceback; traceback.print_exc()
                     self.context.conversation_history.append(
-                        {"role": "assistant", "content": f"I encountered an error: {str(e)}"}
+                        {"role": "assistant", "content": f"I encountered an error: {exc}"}
                     )
                     break
         except asyncio.CancelledError:
             raise
+
+    async def _maybe_async_get_tools(self):
+        """Helper to fetch tools, awaiting if necessary."""
+        tools = self.context.tool_manager.get_tools_for_llm()
+        if asyncio.iscoroutine(tools):
+            return await tools
+        return tools

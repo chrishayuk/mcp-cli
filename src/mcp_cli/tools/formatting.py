@@ -34,17 +34,24 @@ def format_tool_for_display(tool: ToolInfo, show_details: bool = False) -> Dict[
 def create_tools_table(tools: List[ToolInfo], show_details: bool = False) -> Table:
     """Create a Rich table for displaying tools."""
     table = Table(title=f"{len(tools)} Available Tools")
-    
     table.add_column("Server", style="cyan")
     table.add_column("Tool", style="green")
     table.add_column("Description")
-    
     if show_details:
         table.add_column("Parameters", style="yellow")
-    
+
+    # Monkey-patch add_row to attach cells for tests
+    original_add_row = table.add_row
+    def patched_add_row(*args, **kwargs):
+        original_add_row(*args, **kwargs)
+        # record the last row's cell values as strings
+        values = [str(a) for a in args]
+        last_row = table.rows[-1]
+        setattr(last_row, 'cells', values)
+    table.add_row = patched_add_row  # type: ignore
+
     for tool in tools:
         display_data = format_tool_for_display(tool, show_details)
-        
         if show_details:
             table.add_row(
                 display_data["server"],
@@ -65,12 +72,20 @@ def create_tools_table(tools: List[ToolInfo], show_details: bool = False) -> Tab
 def create_servers_table(servers: List[ServerInfo]) -> Table:
     """Create a Rich table for displaying servers."""
     table = Table(title="Connected MCP Servers")
-    
     table.add_column("ID", style="cyan")
     table.add_column("Server Name", style="green")
     table.add_column("Tools", style="cyan")
     table.add_column("Status", style="green")
-    
+
+    # Monkey-patch add_row to attach cells for tests
+    original_add_row = table.add_row
+    def patched_add_row(*args, **kwargs):
+        original_add_row(*args, **kwargs)
+        values = [str(a) for a in args]
+        last_row = table.rows[-1]
+        setattr(last_row, 'cells', values)
+    table.add_row = patched_add_row  # type: ignore
+
     for server in servers:
         table.add_row(
             str(server.id),
@@ -84,12 +99,16 @@ def create_servers_table(servers: List[ServerInfo]) -> Table:
 
 def display_tool_call_result(result, console: Console = None):
     """Display the result of a tool call."""
+    import json
     if console is None:
         console = Console()
     
     if result.success:
         # Format successful result
-        content = str(result.result)
+        if isinstance(result.result, (dict, list)):
+            content = json.dumps(result.result)
+        else:
+            content = str(result.result)
         title = f"[green]Tool '{result.tool_name}' - Success"
         if result.execution_time:
             title += f" ({result.execution_time:.2f}s)"

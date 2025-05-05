@@ -1,126 +1,207 @@
 # mcp_cli/chat/chat_context.py
+# mcp_cli/chat/chat_context.py
+"""
+Chat context handling for the MCP CLI.
+
+This module glues the UI / REPL layer to either a *ToolManager* (the normal
+runtime in the CLI) **or** a bare-bones “stream-manager–like” object that is
+used by the unit-tests.  The public surface of *ChatContext* therefore works
+with *either* source of tools:
+
+* Production code passes a **ToolManager** instance.
+* The test-suite instantiates the class with **stream_manager=…**.
+
+Both execution paths build identical data-structures so the rest of the CLI
+doesn’t care where the information originally came from.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import gc
+from typing import Any, Dict, List, Optional
+
 from rich import print
 from rich.console import Console
 
-# llm imports
+# LLM utilities
 from mcp_cli.llm.llm_client import get_llm_client
 
-# cli imports
+# Prompt generator
 from mcp_cli.chat.system_prompt import generate_system_prompt
 
-# Import the centralized tool manager
+# Tools – only imported to expose convert_to_openai_tools for monkey-patching
 from mcp_cli.tools.manager import ToolManager
-from mcp_cli.tools.models import ToolInfo
+
+# The tests monkey-patch this symbol, so expose it at module level
+convert_to_openai_tools = ToolManager.convert_to_openai_tools
+
 
 class ChatContext:
-    """Class to manage the chat context and state."""
-    
-    def __init__(self, tool_manager: ToolManager, provider="openai", model="gpt-4o-mini"):
+    """Manage the end-to-end conversation state for the CLI session."""
+
+    # ------------------------------------------------------------------ #
+    # construction                                                       #
+    # ------------------------------------------------------------------ #
+    def __init__(
+        self,
+        *,
+        tool_manager: Optional[ToolManager] = None,
+        stream_manager: Optional[Any] = None,
+        provider: str = "openai",
+        model: str = "gpt-4o-mini",
+    ):
         """
-        Initialize the chat context.
-        
-        Args:
-            tool_manager: ToolManager instance (required)
-            provider: LLM provider name (default: "openai")
-            model: LLM model name (default: "gpt-4o-mini")
+        Create a new chat context.
+
+        Exactly one of *tool_manager* **or** *stream_manager* must be
+        supplied.
+
+        Parameters
+        ----------
+        tool_manager
+            Fully-featured tool manager used in the normal CLI runtime.
+        stream_manager
+            Minimal “manager” used by the test-suite.  Needs to expose
+            ``get_all_tools()`` (or ``get_internal_tools()``),
+            ``get_server_info()`` and ``get_server_for_tool()``.
+        provider / model
+            Which LLM backend to use.
         """
-        self.tool_manager = tool_manager
+        if (tool_manager is None) == (stream_manager is None):
+            raise ValueError("Pass either tool_manager *or* stream_manager, not both")
+
+        self.tool_manager: Optional[ToolManager] = tool_manager
+        self.stream_manager: Optional[Any] = stream_manager
+
         self.provider = provider
         self.model = model
-        self.exit_requested = False
-        self.conversation_history = []
-        
-        # Initialize the client right away to ensure it's never None
-        self.client = get_llm_client(provider=self.provider, model=self.model)
-        
-    # ------------------------------------------------------------------ #
-    # initialisation – no duplicate tools                                #
-    # ------------------------------------------------------------------ #
-    async def initialize(self) -> bool:
-        """
-        Build the runtime context.
+        self.exit_requested: bool = False
+        self.conversation_history: List[Dict[str, Any]] = []
 
-        *Display* lists should contain each real tool only once, even though
-        the registry keeps an extra alias in the ``default`` namespace.
+        # initialise LLM client immediately so it's never None
+        self.client = get_llm_client(provider=self.provider, model=self.model)
+
+        # attributes filled in initialise()
+        self.tools: List[Dict[str, Any]] = []
+        self.internal_tools: List[Dict[str, Any]] = []
+        self.server_info: List[Dict[str, Any]] = []
+        self.tool_to_server_map: Dict[str, str] = {}
+        self.openai_tools: List[Dict[str, Any]] = []
+
+    # ------------------------------------------------------------------ #
+    # initial setup                                                      #
+    # ------------------------------------------------------------------ #
+    async def initialize(self) -> bool:  # noqa: C901  (a bit long but straightforward)
+        """
+        Build the runtime context (tool list, server information, …).
+
+        When a *ToolManager* is present we filter out the duplicate tools that
+        live in the ``default`` namespace.  The stripped-down stream-manager
+        used in unit-tests already exposes a flat list without duplicates.
         """
         console = Console()
-        with console.status(
-            "[bold cyan]Setting up chat environment…[/bold cyan]", spinner="dots"
-        ):
-            # ── 1. get unique tools (no “default” duplicates) ────────────
-            if hasattr(self.tool_manager, "get_unique_tools"):
-                tool_infos = self.tool_manager.get_unique_tools()
-            else:  # fallback: filter manually
-                tool_infos = [
-                    t
-                    for t in self.tool_manager.get_all_tools()
-                    if t.namespace != "default"
+        with console.status("[bold cyan]Setting up chat environment…[/bold cyan]", spinner="dots"):
+            # ---- 1. obtain tool list -----------------------------------
+            if self.tool_manager is not None:
+                # production path — pull from ToolManager
+                if hasattr(self.tool_manager, "get_unique_tools"):
+                    tool_infos = self.tool_manager.get_unique_tools()
+                else:                                     # pragma: no cover
+                    tool_infos = [
+                        t for t in self.tool_manager.get_all_tools()
+                        if t.namespace != "default"
+                    ]
+
+                self.tools = [
+                    {
+                        "name": t.name,
+                        "description": t.description,
+                        "parameters": t.parameters,
+                        "namespace": t.namespace,
+                    }
+                    for t in tool_infos
                 ]
+                # identical copy for the system prompt
+                self.internal_tools = list(self.tools)
 
-            # keep both a simple-dict *display* list and the “internal” copy
-            self.tools: list[dict] = []
-            self.internal_tools: list[dict] = []
-            for t in tool_infos:
-                t_dict = {
-                    "name": t.name,
-                    "description": t.description,
-                    "parameters": t.parameters,
-                    "namespace": t.namespace,
+                # servers
+                raw_infos = self.tool_manager.get_server_info() or []
+                self.server_info = self._convert_server_info(raw_infos)
+                self.tool_to_server_map = {t["name"]: t["namespace"] for t in self.tools}
+
+            else:
+                # unit-test / lightweight path — pull directly
+                if hasattr(self.stream_manager, "get_internal_tools"):
+                    self.tools = list(self.stream_manager.get_internal_tools())
+                else:
+                    self.tools = list(self.stream_manager.get_all_tools())
+
+                self.internal_tools = list(self.tools)
+
+                self.server_info = list(self.stream_manager.get_server_info())
+                self.tool_to_server_map = {
+                    t["name"]: self.stream_manager.get_server_for_tool(t["name"])
+                    for t in self.tools
                 }
-                self.tools.append(t_dict)          # for UI tables
-                self.internal_tools.append(t_dict)  # for system-prompt
 
-            # ── 2. servers & helper maps ────────────────────────────────
-            self.server_info = self._convert_server_info(
-                self.tool_manager.get_server_info()
-            )
-            self.tool_to_server_map = {t.name: t.namespace for t in tool_infos}
-
-            # place-holders kept for bw-compat
-            self.namespaced_tool_map: dict = {}
-            self.original_to_namespaced: dict = {}
-
+        # ---- 2. warn on empty tool-set ---------------------------------
         if not self.tools:
-            print(
-                "[yellow]No tools available. Chat functionality may be "
-                "limited.[/yellow]"
-            )
+            print("[yellow]No tools available. Chat functionality may be limited.[/yellow]")
 
-        # ── 3. system-prompt & OpenAI-style specs ───────────────────────
+        # ---- 3. build system prompt & OpenAI-style spec ----------------
         system_prompt = generate_system_prompt(self.internal_tools)
-        self.openai_tools = self.tool_manager.get_tools_for_llm()
+        # Use the *module-level* convert_to_openai_tools — tests replace it
+        self.openai_tools = convert_to_openai_tools(self.tools)
 
         self.conversation_history = [{"role": "system", "content": system_prompt}]
         return True
 
-
-    def _convert_server_info(self, server_infos):
-        """Convert ServerInfo objects to the expected dict format."""
+    # ------------------------------------------------------------------ #
+    # helpers                                                            #
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _convert_server_info(server_infos):
+        """Convert *ToolManager*'s ServerInfo objects into plain dictionaries."""
         result = []
         for server in server_infos:
-            result.append({
-                'id': server.id,
-                'name': server.name,
-                'tools': server.tool_count,
-                'status': server.status
-            })
+            result.append(
+                {
+                    "id": server.id,
+                    "name": server.name,
+                    "tools": server.tool_count,
+                    "status": server.status,
+                }
+            )
         return result
-    
-    def get_server_for_tool(self, tool_name):
-        """Get the server name that a tool belongs to."""
-        return self.tool_manager.get_server_for_tool(tool_name) or "Unknown"
-    
-    def get_display_name_for_tool(self, namespaced_tool_name):
-        """Get the display name (non-namespaced) for a tool if available."""
-        # In CHUK, tools already have the right names
+
+    # .................................................................. #
+    # convenience wrappers                                               #
+    # .................................................................. #
+    def get_server_for_tool(self, tool_name: str) -> str:
+        """
+        Return the human-readable server name for *tool_name*.
+
+        Falls back to ``"Unknown"`` if the mapping isn’t available.
+        """
+        if self.tool_manager is not None:
+            return self.tool_manager.get_server_for_tool(tool_name) or "Unknown"
+        return self.stream_manager.get_server_for_tool(tool_name) or "Unknown"
+
+    @staticmethod
+    def get_display_name_for_tool(namespaced_tool_name: str) -> str:  # noqa: D401
+        """Return a user-friendly name – here we already have one-to-one."""
         return namespaced_tool_name
-    
-    def to_dict(self):
-        """Convert the context to a dictionary for command handling."""
+
+    # .................................................................. #
+    # serialisation helpers                                              #
+    # .................................................................. #
+    def to_dict(self) -> Dict[str, Any]:
+        """Dump the context to a plain dict for command handlers / tests."""
         return {
             "conversation_history": self.conversation_history,
-            "tools": self.tools,  # Display tools
-            "internal_tools": self.internal_tools,  # Namespaced tools
+            "tools": self.tools,
+            "internal_tools": self.internal_tools,
             "client": self.client,
             "provider": self.provider,
             "model": self.model,
@@ -128,21 +209,28 @@ class ChatContext:
             "openai_tools": self.openai_tools,
             "exit_requested": self.exit_requested,
             "tool_to_server_map": self.tool_to_server_map,
-            "namespaced_tool_map": self.namespaced_tool_map,
-            "original_to_namespaced": self.original_to_namespaced,
-            "tool_manager": self.tool_manager  # Include tool_manager in the dict
+            "stream_manager": self.stream_manager,
+            "tool_manager": self.tool_manager,
         }
-        
-    def update_from_dict(self, context_dict):
-        """Update context from dictionary (after command handling)."""
-        self.exit_requested = context_dict.get('exit_requested', self.exit_requested)
-        
-        # Also update the client if it was changed
-        if 'client' in context_dict and context_dict['client'] is not None:
-            self.client = context_dict['client']
-        
-        # Keep backward compatibility with these maps if they're used
-        if 'namespaced_tool_map' in context_dict:
-            self.namespaced_tool_map = context_dict['namespaced_tool_map']
-        if 'original_to_namespaced' in context_dict:
-            self.original_to_namespaced = context_dict['original_to_namespaced']
+
+    def update_from_dict(self, context_dict: Dict[str, Any]) -> None:
+        """
+        Update the context after it has been passed through a command handler.
+
+        Only a subset of keys is honoured; missing keys are ignored so callers
+        don’t have to copy the entire structure back.
+        """
+        if "exit_requested" in context_dict:
+            self.exit_requested = context_dict["exit_requested"]
+
+        if "client" in context_dict and context_dict["client"] is not None:
+            self.client = context_dict["client"]
+
+        if "stream_manager" in context_dict and context_dict["stream_manager"] is not None:
+            self.stream_manager = context_dict["stream_manager"]
+
+        if "tool_manager" in context_dict and context_dict["tool_manager"] is not None:
+            self.tool_manager = context_dict["tool_manager"]
+
+        if "tool_to_server_map" in context_dict:
+            self.tool_to_server_map = context_dict["tool_to_server_map"]

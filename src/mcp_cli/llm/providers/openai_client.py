@@ -1,5 +1,5 @@
 # mcp_cli/llm/providers/openai_client.py
-# mcp_cli/llm/providers/openai_client.py
+
 """
 OpenAI chat-completion adapter for MCP-CLI.
 

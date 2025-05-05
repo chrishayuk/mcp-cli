@@ -1,11 +1,33 @@
 # mcp_cli/interactive/test_interactice_registry.py
+import sys
+import types
 import pytest
 from typing import List, Any
+
+# ─── Stub out mcp_cli.interactive.commands so registry can import safely ───
+# Create a dummy package and module for `mcp_cli.interactive.commands`
+dummy_pkg = types.ModuleType("mcp_cli.interactive.commands")
+dummy_base = types.ModuleType("mcp_cli.interactive.commands.base")
+# Give the dummy_base a minimal InteractiveCommand class
+class InteractiveCommand:
+    def __init__(self, name, help_text="", aliases=None):
+        self.name = name
+        self.aliases = aliases or []
+dummy_base.InteractiveCommand = InteractiveCommand
+
+# Insert into sys.modules so that `import mcp_cli.interactive.commands.base` works
+sys.modules["mcp_cli.interactive.commands"] = dummy_pkg
+sys.modules["mcp_cli.interactive.commands.base"] = dummy_base
+
+# ─── Now import the registry itself ────────────────────────────────────────
 from mcp_cli.interactive.registry import InteractiveCommandRegistry
-from mcp_cli.interactive.commands.base import InteractiveCommand
 
 
 class DummyCommand(InteractiveCommand):
+    """
+    Minimal command-like object for testing the registry.
+    Inherits from the stubbed InteractiveCommand to satisfy any isinstance checks.
+    """
     def __init__(self, name: str, aliases: List[str] = None):
         super().__init__(name=name, help_text=f"help for {name}", aliases=aliases or [])
 
@@ -33,7 +55,8 @@ def test_register_and_get_by_name():
 
     # get_all_commands includes it
     all_cmds = InteractiveCommandRegistry.get_all_commands()
-    assert "foo" in all_cmds and all_cmds["foo"] is cmd
+    assert "foo" in all_cmds
+    assert all_cmds["foo"] is cmd
 
 
 def test_register_with_aliases():

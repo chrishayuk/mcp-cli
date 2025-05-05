@@ -11,7 +11,7 @@ import asyncio
 import json
 import logging
 import uuid
-from typing import Dict, List, Optional, Any, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from chuk_tool_processor.mcp import setup_mcp_stdio
 from chuk_tool_processor.core.processor import ToolProcessor
@@ -19,7 +19,7 @@ from chuk_tool_processor.registry import ToolRegistryProvider
 from chuk_tool_processor.mcp.stream_manager import StreamManager
 from chuk_tool_processor.models.tool_result import ToolResult
 
-from mcp_cli.tools.models import ToolInfo, ServerInfo, ToolCallResult
+from mcp_cli.tools.models import ServerInfo, ToolCallResult, ToolInfo
 from mcp_cli.tools.adapter import ToolNameAdapter
 
 logger = logging.getLogger(__name__)
@@ -93,16 +93,26 @@ class ToolManager:
         for ns, name in self._all_registry_items():
             md = self._metadata(name, ns)
             if md:
-                tools.append(
-                    ToolInfo(
-                        name=name,
-                        namespace=ns,
-                        description=md.description,
-                        parameters=md.argument_schema,
-                        is_async=md.is_async,
-                        tags=list(md.tags),
-                    )
+                desc = md.description
+                params = md.argument_schema
+                async_flag = md.is_async
+                tags = list(md.tags)
+            else:
+                # include tools even if metadata is missing
+                desc = ""
+                params = {}
+                async_flag = False
+                tags = []
+            tools.append(
+                ToolInfo(
+                    name=name,
+                    namespace=ns,
+                    description=desc,
+                    parameters=params,
+                    is_async=async_flag,
+                    tags=tags,
                 )
+            )
         return tools
 
     def get_unique_tools(self) -> List[ToolInfo]:
@@ -156,36 +166,29 @@ class ToolManager:
     def format_tool_response(response_content: Union[List[Dict[str, Any]], Any]) -> str:
         """
         Format the response content from a tool in a way that's suitable for LLM consumption.
-        
+
         Args:
             response_content: Raw response content from tool execution
-            
+
         Returns:
             Formatted string representation
         """
         # Handle list of dictionaries (likely structured data like SQL results)
         if isinstance(response_content, list) and response_content and isinstance(response_content[0], dict):
-            # Check if this looks like text records with type field
-            if all(item.get("type") == "text" for item in response_content if "type" in item):
-                # Text records - extract just the text
-                return "\n".join(
-                    item.get("text", "No content")
-                    for item in response_content
-                    if item.get("type") == "text"
-                )
+            # Treat as text records only if every item has type == "text"
+            if all(isinstance(item, dict) and item.get("type") == "text" for item in response_content):
+                return "\n".join(item.get("text", "") for item in response_content)
             else:
                 # This could be data records (like SQL results)
-                # Return a JSON representation that preserves all data
                 try:
                     return json.dumps(response_content, indent=2)
-                except:
-                    # Fallback if JSON serialization fails
+                except Exception:
                     return str(response_content)
         elif isinstance(response_content, dict):
             # Single dictionary - return as JSON
             try:
                 return json.dumps(response_content, indent=2)
-            except:
+            except Exception:
                 return str(response_content)
         else:
             # Default case - convert to string
@@ -195,10 +198,10 @@ class ToolManager:
     def convert_to_openai_tools(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Convert a list of tool metadata dictionaries into the OpenAI function call format.
-        
+
         Args:
             tools: List of tool metadata dictionaries
-            
+
         Returns:
             List of OpenAI-compatible function definitions
         """
@@ -230,11 +233,11 @@ class ToolManager:
     async def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> ToolCallResult:
         """
         Execute a tool using the ToolProcessor.
-        
+
         Args:
             tool_name: Name of the tool to execute
             arguments: Arguments to pass to the tool
-            
+
         Returns:
             ToolCallResult with success status and result/error
         """
@@ -269,44 +272,44 @@ class ToolManager:
         )
 
     async def process_llm_tool_calls(
-        self, 
-        tool_calls: List[Dict[str, Any]], 
+        self,
+        tool_calls: List[Dict[str, Any]],
         name_mapping: Dict[str, str],
         conversation_history: Optional[List[Dict[str, Any]]] = None
     ) -> List[ToolResult]:
         """
         Process tool calls from an LLM, handling name transformations as needed.
-        
+
         Args:
             tool_calls: List of tool call objects from the LLM
             name_mapping: Mapping from LLM tool names to original MCP tool names
             conversation_history: Optional conversation history to update
-            
+
         Returns:
             List of tool results
         """
         if not self.processor:
             logger.error("Tool processor not initialized")
             return []
-            
-        results = []
-        
+
+        results: List[ToolResult] = []
+
         for tc in tool_calls:
             if not (tc.get("function") and "name" in tc.get("function", {})):
                 continue
-                
+
             openai_name = tc["function"]["name"]
             tool_call_id = tc.get("id") or f"call_{openai_name}_{uuid.uuid4().hex[:8]}"
-            
+
             # Convert tool name if needed
             original_name = name_mapping.get(openai_name, openai_name)
-            
+
             # Parse arguments
             args_str = tc["function"].get("arguments", "{}")
             args_dict = json.loads(args_str) if isinstance(args_str, str) else args_str
-            
+
             logger.debug(f"Processing tool call: {original_name} with args: {args_dict}")
-            
+
             # If conversation history is provided, add the tool call first
             if conversation_history is not None:
                 conversation_history.append({
@@ -323,30 +326,30 @@ class ToolManager:
                         }
                     ],
                 })
-            
+
             # Create tool call in MCP format and execute
             tool_call_text = f'<tool name="{original_name}" args=\'{json.dumps(args_dict)}\'/>'
             execution_results = await self.processor.process_text(tool_call_text)
-            
+
             # Add to results list
             results.extend(execution_results)
-            
+
             # Update conversation history if provided
             if conversation_history is not None and execution_results:
                 result = execution_results[0]
-                
+
                 if result.error:
                     content = f"Error: {result.error}"
                 else:
                     content = self.format_tool_response(result.result)
-                
+
                 conversation_history.append({
                     "role": "tool",
                     "name": original_name,
                     "content": content,
                     "tool_call_id": tool_call_id,
                 })
-        
+
         return results
 
     # ------------------------------------------------------------------ #
@@ -360,7 +363,7 @@ class ToolManager:
         """Get information about all connected servers."""
         if not self.stream_manager:
             return []
-        infos = []
+        infos: List[ServerInfo] = []
         for raw in self.stream_manager.get_server_info():
             infos.append(
                 ServerInfo(
@@ -392,10 +395,10 @@ class ToolManager:
     def get_tools_for_llm(self) -> List[Dict[str, Any]]:
         """
         Get OpenAI-compatible tool definitions for all unique tools.
-        
+
         Note: This uses the original names (with dots) which may not work with OpenAI.
         Use get_adapted_tools_for_llm() instead for OpenAI compatibility.
-        
+
         Returns:
             List of tool definitions in OpenAI format
         """
@@ -417,45 +420,39 @@ class ToolManager:
     def get_adapted_tools_for_llm(self, provider: str = "openai") -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
         """
         Get tools in a format compatible with the specified LLM provider.
-        
+
         This method handles the needed name transformations for different LLM providers.
-        
+
         Args:
             provider: LLM provider name (openai, ollama, etc.)
-            
+
         Returns:
             Tuple of (llm_compatible_tools, name_mapping)
         """
         unique_tools = self.get_unique_tools()
-        
-        # Different providers have different naming constraints
         adapter_needed = provider.lower() == "openai"
-        
-        llm_tools = []
-        name_mapping = {}
-        
+
+        llm_tools: List[Dict[str, Any]] = []
+        name_mapping: Dict[str, str] = {}
+
         for tool in unique_tools:
-            # For OpenAI, we need to transform names to avoid dots
             if adapter_needed:
-                tool_name = ToolNameAdapter.to_openai_compatible(tool.namespace, tool.name)
-                original_name = f"{tool.namespace}.{tool.name}"
-                name_mapping[tool_name] = original_name
-                description = f"{tool.description or ''} (Original: {original_name})"
+                adapted = ToolNameAdapter.to_openai_compatible(tool.namespace, tool.name)
+                original = f"{tool.namespace}.{tool.name}"
+                name_mapping[adapted] = original
+                description = f"{tool.description or ''} (Original: {original})"
+                tool_name = adapted
             else:
-                # For other providers, use original name with namespace
                 tool_name = f"{tool.namespace}.{tool.name}"
                 description = tool.description or ""
-            
+
             llm_tools.append({
                 "name": tool_name,
                 "description": description,
                 "parameters": tool.parameters or {}
             })
-        
-        # Convert to OpenAI function format
-        function_tools = self.convert_to_openai_tools(llm_tools)
-        
-        return function_tools, name_mapping
+
+        return llm_tools, name_mapping
 
     # ------------------------------------------------------------------ #
     # Compatibility shims

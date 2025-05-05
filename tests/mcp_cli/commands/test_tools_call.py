@@ -1,71 +1,69 @@
 # commands/test_tools_call.py
 import pytest
-import asyncio
-import builtins
-import json
-
 from rich.console import Console
-from mcp_cli.commands.tools_call import tools_call_action
-from mcp_cli.tools.models import ToolInfo, ToolCallResult
+from rich.table import Table
 
-class DummyTMEmpty:
-    def get_all_tools(self):
+from mcp_cli.commands.resources import resources_action
+
+class DummyTMNoResources:
+    def list_resources(self):
         return []
 
-class DummyTMOne:
-    def __init__(self, tool_info: ToolInfo):
-        self._tool = tool_info
-        self.executed = None
+class DummyTMWithResources:
+    def __init__(self, data):
+        self._data = data
 
-    def get_all_tools(self):
-        return [self._tool]
+    def list_resources(self):
+        return self._data
 
-    async def execute_tool(self, name, args):
-        self.executed = (name, args)
-        return ToolCallResult(tool_name=name, success=True, result={"ok": True})
+class DummyTMError:
+    def list_resources(self):
+        raise RuntimeError("fail!")
+
 
 @pytest.mark.asyncio
-async def test_no_tools(monkeypatch):
-    tm = DummyTMEmpty()
+async def test_resources_action_error(monkeypatch):
+    tm = DummyTMError()
     printed = []
     monkeypatch.setattr(Console, "print", lambda self, msg, **kw: printed.append(str(msg)))
 
-    await tools_call_action(tm)
-    assert any("No tools available" in m for m in printed)
+    result = await resources_action(tm)
+    assert result == []
+    assert any("Error:" in p and "fail!" in p for p in printed)
+
 
 @pytest.mark.asyncio
-async def test_invalid_selection(monkeypatch):
-    tool = ToolInfo(name="t1", namespace="ns", description="", parameters={}, is_async=False, tags=[])
-    tm = DummyTMOne(tool)
-    # input not a number
-    monkeypatch.setattr(builtins, "input", lambda prompt="": "foo")
-
+async def test_resources_action_no_resources(monkeypatch):
+    tm = DummyTMNoResources()
     printed = []
     monkeypatch.setattr(Console, "print", lambda self, msg, **kw: printed.append(str(msg)))
 
-    await tools_call_action(tm)
-    assert any("Please enter a valid number" in m for m in printed)
+    result = await resources_action(tm)
+    assert result == []
+    assert any("No resources recorded" in p for p in printed)
+
 
 @pytest.mark.asyncio
-async def test_full_flow(monkeypatch):
-    tool = ToolInfo(
-        name="t2",
-        namespace="ns",
-        description="desc",
-        parameters={"properties": {}, "required": []},
-        is_async=False,
-        tags=[]
-    )
-    tm = DummyTMOne(tool)
-    # inputs: "1" then "{}"
-    inputs = iter(["1", "{}"])
-    monkeypatch.setattr(builtins, "input", lambda prompt="": next(inputs))
+async def test_resources_action_with_resources(monkeypatch):
+    data = [
+        {"server": "s1", "uri": "/path/1", "size": 500, "mimeType": "text/plain"},
+        {"server": "s2", "uri": "/path/2", "size": 2048, "mimeType": "application/json"},
+    ]
+    tm = DummyTMWithResources(data)
 
-    printed = []
-    monkeypatch.setattr(Console, "print", lambda self, msg, **kw: printed.append(msg))
+    output = []
+    monkeypatch.setattr(Console, "print", lambda self, obj, **kw: output.append(obj))
 
-    await tools_call_action(tm)
-    # verify execution
-    assert tm.executed == ("t2", {})
-    # ensure we printed the JSON back out
-    assert any(isinstance(m, dict) or (isinstance(m, str) and "{}" in m) for m in printed)
+    result = await resources_action(tm)
+    assert result == data
+
+    tables = [o for o in output if isinstance(o, Table)]
+    assert tables, f"No Table printed, got {output}"
+    table = tables[0]
+
+    # Two data rows
+    assert table.row_count == 2
+
+    # Headers
+    headers = [col.header for col in table.columns]
+    assert headers == ["Server", "URI", "Size", "MIME-type"]

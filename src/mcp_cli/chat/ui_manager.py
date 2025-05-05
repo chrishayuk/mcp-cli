@@ -11,7 +11,6 @@ Key improvements
    flip it back to False after the batch is fully cleaned up, inside
    print_assistant_response().
 """
-
 from __future__ import annotations
 
 import json
@@ -242,25 +241,13 @@ class ChatUIManager:
 
     # ───────────────────────────── commands ─────────────────────────────
     async def handle_command(self, cmd: str) -> bool:
-        lc = cmd.lower()
-        if lc in ("/verbose", "/v"):
-            self.verbose_mode = not self.verbose_mode
-            print(
-                f"[green]Switched to "
-                f"{'verbose' if self.verbose_mode else 'compact'} mode.[/green]"
-            )
-            return True
-
-        if lc in ("/interrupt", "/stop", "/cancel"):
-            if self.tools_running or self.interrupt_requested:
-                self.interrupt_requested = True
-                self._interrupt_now()
-                return True
-            print("[yellow]No tool execution in progress to interrupt.[/yellow]")
-            return True
-
+        # build a dict context including the real ToolManager
         ctx_dict = self.context.to_dict()
+        ctx_dict['tool_manager'] = self.context.tool_manager
+
         handled = await handle_command(cmd, ctx_dict)
+
+        # update any mutated bits (like exit_requested) back into the true context
         self.context.update_from_dict(ctx_dict)
         return handled
 

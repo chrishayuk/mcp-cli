@@ -1,230 +1,37 @@
-"""Bind all high-level CLI sub-commands to a Typer app.
-
-Each sub-command is wired to the *runner* that takes care of creating /
-closing a StreamManager and executing the coroutine in an event loop.
+# mcp_cli/chat/commands/servers.py
 """
-from __future__ import annotations
+Chat command module for listing connected MCP servers,
+reusing the shared CLI logic for consistency.
+"""
+from typing import List, Any, Dict
+from rich.console import Console
 
-from typing import Any, Callable, Dict, List, Optional, Tuple
+# Shared implementation
+from mcp_cli.commands.servers import servers_action
+from mcp_cli.tools.manager import ToolManager
 
-import typer
+# Chat registration helper
+from mcp_cli.chat.commands import register_command
 
-# --------------------------------------------------------------------------- #
-# individual command implementations
-# --------------------------------------------------------------------------- #
-from mcp_cli.commands import (
-    chat,
-    cmd,
-    interactive,
-    ping,
-    prompts,
-    resources,
-    tools,
-)
-
-# option / runner helpers
-from mcp_cli.cli_options import process_options
-from mcp_cli.run_command import run_command_sync
-
-__all__ = ["register_commands", "chat_command"]
-
-
-# --------------------------------------------------------------------------- #
-# Helper – wrap process_options so tests can monkey-patch it easily
-# --------------------------------------------------------------------------- #
-def _process(                                  # noqa: D401  (plain wrapper)
-    process_opts: Callable[
-        ...,
-        Tuple[
-            List[str],     # servers
-            List[str],     # user_specified
-            Dict[int, str] # server_names
-        ],
-    ],
-    server: Optional[str],
-    disable_filesystem: bool,
-    provider: str,
-    model: Optional[str],
-    config_file: str,
-) -> Tuple[List[str], Dict[int, str]]:
+async def servers_command(cmd_parts: List[str], context: Dict[str, Any]) -> bool:
     """
-    Call *process_options* and return only the pieces every sub-command
-    actually needs: **servers** and **server_names**.
+    Display a table of all connected servers and their status.
+
+    Usage:
+      /servers       - List all servers
+      /srv           - Alias for /servers
     """
-    servers, _user_specified, server_names = process_opts(
-        server, disable_filesystem, provider, model, config_file
-    )
-    return servers, server_names
+    console = Console()
 
+    tm: ToolManager = context.get("tool_manager")
+    if not tm:
+        console.print("[red]Error: no tool manager available[/red]")
+        return True
 
-# --------------------------------------------------------------------------- #
-# Main registration function
-# --------------------------------------------------------------------------- #
-def register_commands(
-    app: typer.Typer,
-    process_opts: Callable[
-        ...,
-        Tuple[List[str], List[str], Dict[int, str]]
-    ],
-    run_command_func: Callable[..., Any],  # dependency-injected in tests
-) -> None:
-    """Attach all sub-commands to *app* using the supplied *runner*."""
+    # Delegate to shared CLI action
+    servers_action(tm)
+    return True
 
-    # --------------------------- ping ---------------------------------- #
-    @app.command("ping")
-    def _ping(
-        config_file: str = "server_config.json",
-        server: Optional[str] = None,
-        provider: str = "openai",
-        model: Optional[str] = None,
-        disable_filesystem: bool = False,
-    ) -> None:
-        servers, server_names = _process(
-            process_opts, server, disable_filesystem, provider, model, config_file
-        )
-        run_command_func(ping.ping_run, servers, {"server_names": server_names})
-
-    # --------------------------- chat ---------------------------------- #
-    @app.command("chat")
-    def _chat(
-        config_file: str = "server_config.json",
-        server: Optional[str] = None,
-        provider: str = "openai",
-        model: Optional[str] = None,
-        disable_filesystem: bool = False,
-    ) -> None:
-        servers, server_names = _process(
-            process_opts, server, disable_filesystem, provider, model, config_file
-        )
-        run_command_func(chat.chat_run, servers, {"server_names": server_names})
-
-    # ----------------------- interactive ------------------------------- #
-    @app.command("interactive")
-    def _interactive(
-        config_file: str = "server_config.json",
-        server: Optional[str] = None,
-        provider: str = "openai",
-        model: Optional[str] = None,
-        disable_filesystem: bool = False,
-    ) -> None:
-        servers, _ = _process(
-            process_opts, server, disable_filesystem, provider, model, config_file
-        )
-        run_command_func(interactive.interactive_mode, servers)
-
-    # --------------------------- prompts ------------------------------- #
-    prompts_app = typer.Typer(help="Prompts commands")
-
-    @prompts_app.command("list")
-    def _prompts_list(
-        config_file: str = "server_config.json",
-        server: Optional[str] = None,
-        provider: str = "openai",
-        model: Optional[str] = None,
-        disable_filesystem: bool = False,
-    ) -> None:
-        servers, server_names = _process(
-            process_opts, server, disable_filesystem, provider, model, config_file
-        )
-        run_command_func(prompts.prompts_list, servers, {"server_names": server_names})
-
-    app.add_typer(prompts_app, name="prompts")
-
-    # ----------------------------- tools ------------------------------- #
-    tools_app = typer.Typer(help="Tools commands")
-
-    @tools_app.command("list")
-    def _tools_list(
-        config_file: str = "server_config.json",
-        server: Optional[str] = None,
-        provider: str = "openai",
-        model: Optional[str] = None,
-        disable_filesystem: bool = False,
-    ) -> None:
-        servers, server_names = _process(
-            process_opts, server, disable_filesystem, provider, model, config_file
-        )
-        run_command_func(tools.tools_list, servers, {"server_names": server_names})
-
-    @tools_app.command("call")
-    def _tools_call(
-        config_file: str = "server_config.json",
-        server: Optional[str] = None,
-        provider: str = "openai",
-        model: Optional[str] = None,
-        disable_filesystem: bool = False,
-    ) -> None:
-        servers, server_names = _process(
-            process_opts, server, disable_filesystem, provider, model, config_file
-        )
-        run_command_func(tools.tools_call, servers, {"server_names": server_names})
-
-    app.add_typer(tools_app, name="tools")
-
-    # -------------------------- resources ------------------------------ #
-    resources_app = typer.Typer(help="Resources commands")
-
-    @resources_app.command("list")
-    def _resources_list(
-        config_file: str = "server_config.json",
-        server: Optional[str] = None,
-        provider: str = "openai",
-        model: Optional[str] = None,
-        disable_filesystem: bool = False,
-    ) -> None:
-        servers, server_names = _process(
-            process_opts, server, disable_filesystem, provider, model, config_file
-        )
-        run_command_func(
-            resources.resources_list, servers, {"server_names": server_names}
-        )
-
-    app.add_typer(resources_app, name="resources")
-
-    # ------------------------------ cmd ------------------------------- #
-    @app.command("cmd")
-    def _cmd(
-        config_file: str = "server_config.json",
-        server: Optional[str] = None,
-        provider: str = "openai",
-        model: Optional[str] = None,
-        disable_filesystem: bool = False,
-        input: Optional[str] = None,   # noqa: A002
-        prompt: Optional[str] = None,
-        output: Optional[str] = None,
-        raw: bool = False,
-        tool: Optional[str] = None,
-        tool_args: Optional[str] = None,
-        system_prompt: Optional[str] = None,
-    ) -> None:
-        servers, server_names = _process(
-            process_opts, server, disable_filesystem, provider, model, config_file
-        )
-        runner_kwargs: Dict[str, Any] = {
-            "input": input,
-            "prompt": prompt,
-            "output": output,
-            "raw": raw,
-            "tool": tool,
-            "tool_args": tool_args,
-            "system_prompt": system_prompt,
-            "server_names": server_names,
-        }
-        run_command_func(cmd.cmd_run, servers, runner_kwargs)
-
-
-# --------------------------------------------------------------------------- #
-# Convenience helper used by the project’s *default* entry-point
-# --------------------------------------------------------------------------- #
-def chat_command(
-    config_file: str = "server_config.json",
-    server: Optional[str] = None,
-    provider: str = "openai",
-    model: Optional[str] = None,
-    disable_filesystem: bool = False,
-) -> None:
-    """Start an interactive chat session (shortcut for `mcp-cli chat`)."""
-    servers, _user_specified, server_names = process_options(
-        server, disable_filesystem, provider, model, config_file
-    )
-    run_command_sync(chat.chat_run, servers, {"server_names": server_names})
+# Register under /servers and /srv
+register_command("/servers", servers_command)
+register_command("/srv",     servers_command)

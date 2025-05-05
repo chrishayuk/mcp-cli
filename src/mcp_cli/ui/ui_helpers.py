@@ -67,16 +67,18 @@ def display_welcome_banner(ctx: Dict[str, Any]) -> None:
     ----------
     ctx
         A dict that *at least* contains the keys::
-
             provider   – e.g. "openai"
             model      – e.g. "gpt-4o-mini"
     """
+    provider = ctx.get("provider") or "-"
+    model    = ctx.get("model")    or "gpt-4o-mini"
+
     _console.print(
         Panel(
             Markdown(
                 f"# Welcome to MCP CLI Chat!\n\n"
-                f"**Provider:** {ctx.get('provider', '-')}"
-                f"  |  **Model:** {ctx.get('model', '-')}\n\n"
+                f"**Provider:** {provider}"
+                f"  |  **Model:** {model}\n\n"
                 "Type **`exit`** to quit."
             ),
             title="Welcome to MCP CLI Chat",

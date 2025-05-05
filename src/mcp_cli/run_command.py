@@ -2,113 +2,137 @@
 """
 Main entry-point helpers for all CLI sub-commands.
 
-These helpers encapsulate:
+These helpers encapsulate
 
 * construction / cleanup of the shared **ToolManager**
-* hand-off to the individual command modules
+* hand-off to individual command modules
 * a thin synchronous wrapper so `uv run mcp-cli …` works
 """
 from __future__ import annotations
 
 import asyncio
+import importlib
 import sys
-from types import TracebackType
-from typing import Any, Callable, Coroutine, Dict, List, Type
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Callable, Coroutine, Dict, List, Optional
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
 
-from mcp_cli.tools.manager import ToolManager, set_tool_manager
+from mcp_cli.tools.manager import set_tool_manager  # only the setter
 
 # --------------------------------------------------------------------------- #
-# internal helpers / globals
+# internal helpers / globals                                                  #
 # --------------------------------------------------------------------------- #
-_ALL_TM: List[ToolManager] = []          # used by unit-tests
+_ALL_TM: List[Any] = []           # referenced by the unit-tests
 
 
+# --------------------------------------------------------------------------- #
+# Tool-manager helpers                                                        #
+# --------------------------------------------------------------------------- #
 async def _init_tool_manager(
     config_file: str,
     servers: List[str],
-    server_names: Dict[int, str] = None,
-) -> ToolManager:
-    """Create and initialise a *ToolManager* (stdio namespace)."""
-    tm = ToolManager(config_file, servers, server_names)
+    server_names: Optional[Dict[int, str]] = None,
+):
+    """
+    Dynamically import **ToolManager** (so monkey-patching works) and create it.
+    """
+    tm_mod = importlib.import_module("mcp_cli.tools.manager")
+    ToolManager = getattr(tm_mod, "ToolManager")           # patched in tests
+
+    tm = ToolManager(config_file, servers, server_names)   # type: ignore[call-arg]
     ok = await tm.initialize(namespace="stdio")
     if not ok:
-        raise RuntimeError("Failed to initialise ToolManager")
-    set_tool_manager(tm)          # make globally available
-    _ALL_TM.append(tm)            # let tests assert close() calls
+        # record it for the tests
+        _ALL_TM.append(tm)
+        # ensure close() is still invoked
+        try:
+            await tm.close()
+        finally:
+            raise RuntimeError("Failed to initialise ToolManager")
+
+    set_tool_manager(tm)
+    _ALL_TM.append(tm)
     return tm
 
 
-async def _safe_close(tm: ToolManager) -> None:
-    """Close and swallow *any* exceptions – never re-raise during shutdown."""
+async def _safe_close(tm) -> None:
+    """Close the ToolManager, swallowing any exception during shutdown."""
     try:
         await tm.close()
-    except Exception:             # noqa: BLE001
+    except Exception:        # noqa: BLE001
         pass
 
 
 # --------------------------------------------------------------------------- #
-# command dispatch
+# command dispatch                                                            #
 # --------------------------------------------------------------------------- #
 async def run_command(
-    async_command: Callable[..., Coroutine[Any, Any, Any]],
+    async_command: Callable[..., Any],
     *,
     config_file: str,
     servers: List[str],
-    extra_params: Dict[str, Any] | None,
+    extra_params: Optional[Dict[str, Any]],
 ) -> Any:
     """
-    Initialise the ToolManager, then call *async_command*(tool_manager, **extra).
+    Initialise the ToolManager, then call *async_command(tool_manager, …)*.
 
-    Always closes the ToolManager, even if the command raises.
+    The *async_command* may itself be `async` **or** synchronous – both work.
+    The ToolManager is always closed, even when the callable raises.
     """
-    tm: ToolManager | None = None
+    tm = None
     try:
-        # Extract server_names from extra_params if available
-        server_names = extra_params.get("server_names") if extra_params else None
-        
-        # Initialize the tool manager with server_names
+        server_names = (extra_params or {}).get("server_names")
+
+        # ------------------------------------------------------------------
+        # build ToolManager  (patch-friendly, see helper)
+        # ------------------------------------------------------------------
         tm = await _init_tool_manager(config_file, servers, server_names)
-        
-        # Check if the command being called is an interactive app
-        command_name = getattr(async_command, "__name__", "")
-        module_name = getattr(async_command, "__module__", "")
-        
-        # If it's the interactive app, use _enter_interactive_mode instead
-        if command_name == "app" and "interactive" in module_name:
-            # Extract provider and model from extra_params
-            provider = extra_params.get("provider", "openai") if extra_params else "openai"
-            model = extra_params.get("model", "gpt-4o-mini") if extra_params else "gpt-4o-mini"
-            
-            # Use the special helper function
-            result = await _enter_interactive_mode(
-                tm, 
-                provider=provider, 
-                model=model
-            )
+
+        # ------------------------------------------------------------------
+        # special-case: interactive “app” object
+        # ------------------------------------------------------------------
+        name = getattr(async_command, "__name__", "")
+        module = getattr(async_command, "__module__", "")
+        if name == "app" and "interactive" in module:
+            provider = (extra_params or {}).get("provider", "openai")
+            model = (extra_params or {}).get("model", "gpt-4o-mini")
+            result = await _enter_interactive_mode(tm, provider=provider, model=model)
+            return result
+
+        # ------------------------------------------------------------------
+        # normal pathway
+        # ------------------------------------------------------------------
+        call_kwargs = (extra_params or {}).copy()
+        call_kwargs["tool_manager"] = tm
+
+        maybe_coro = async_command(**call_kwargs)
+
+        # support sync callables transparently
+        if asyncio.iscoroutine(maybe_coro):
+            return await maybe_coro
         else:
-            # Normal case - pass tool_manager as keyword arg
-            result = await async_command(tool_manager=tm, **(extra_params or {}))
-            
-        return result
+            loop = asyncio.get_running_loop()
+            # run in default executor so we don't block the event-loop
+            return await loop.run_in_executor(None, lambda: maybe_coro)
     finally:
         if tm:
             await _safe_close(tm)
 
 
 def run_command_sync(
-    async_command: Callable[..., Coroutine[Any, Any, Any]],
+    async_command: Callable[..., Any],
     config_file: str,
     servers: List[str],
-    extra_params: Dict[str, Any] | None,
+    *,
+    extra_params: Optional[Dict[str, Any]],
 ) -> Any:
     """
-    Synchronous wrapper for convenience scripts / unit-tests.
+    Synchronous convenience wrapper (used by `mcp-cli` entry-point and tests).
 
-    Creates its own event-loop if necessary.
+    Spins up its own event-loop when necessary.
     """
     try:
         loop = asyncio.get_running_loop()
@@ -117,28 +141,25 @@ def run_command_sync(
         asyncio.set_event_loop(loop)
 
     return loop.run_until_complete(
-        run_command(async_command,
-                    config_file=config_file,
-                    servers=servers,
-                    extra_params=extra_params),
+        run_command(
+            async_command,
+            config_file=config_file,
+            servers=servers,
+            extra_params=extra_params,
+        )
     )
 
 
 # --------------------------------------------------------------------------- #
-# specialised helpers (chat / interactive)
+# specialised helpers (chat / interactive)                                    #
 # --------------------------------------------------------------------------- #
 async def _enter_chat_mode(
-    tool_manager: ToolManager,
+    tool_manager,
     *,
     provider: str,
     model: str,
 ) -> bool:
-    """
-    Start the chat UI.
-
-    NOTE: We removed the generic banner here – the *chat_handler*
-    prints its own, richer welcome panel.
-    """
+    """Kick off the full-screen chat UI (banner printed by the handler)."""
     from mcp_cli.chat.chat_handler import handle_chat_mode
 
     return await handle_chat_mode(
@@ -149,16 +170,16 @@ async def _enter_chat_mode(
 
 
 async def _enter_interactive_mode(
-    tool_manager: ToolManager,
+    tool_manager,
     *,
     provider: str,
     model: str,
 ) -> bool:
     """
-    Start the interactive mode UI.
-    
-    This is a wrapper that extracts the stream_manager from tool_manager
-    and calls the actual interactive_mode function.
+    Start the interactive-shell UI.
+
+    We pass in the *StreamManager* plus the ToolManager for parity with
+    production code.
     """
     from mcp_cli.commands.interactive import interactive_mode
 
@@ -171,7 +192,7 @@ async def _enter_interactive_mode(
 
 
 # --------------------------------------------------------------------------- #
-# CLI entry-point used by `mcp-cli` wrapper
+# CLI entry-point (used by the `mcp-cli` wrapper script)                      #
 # --------------------------------------------------------------------------- #
 app = typer.Typer(add_completion=False, help="Master control programme 🙂")
 
@@ -188,7 +209,9 @@ def cli_entry(
     provider: str = typer.Option("openai", help="LLM provider name"),
     model: str = typer.Option("gpt-4o-mini", help="LLM model name"),
 ) -> None:
-    """Thin wrapper so `uv run mcp-cli …` is as short as possible."""
+    """
+    Thin wrapper so `uv run mcp-cli chat` (or `interactive`) is minimal.
+    """
     console = Console()
 
     async def _inner() -> None:
@@ -199,13 +222,9 @@ def cli_entry(
 
         try:
             if mode == "chat":
-                ok = await _enter_chat_mode(
-                    tm, provider=provider, model=model
-                )
-            else:  # interactive
-                ok = await _enter_interactive_mode(
-                    tm, provider=provider, model=model
-                )
+                ok = await _enter_chat_mode(tm, provider=provider, model=model)
+            else:
+                ok = await _enter_interactive_mode(tm, provider=provider, model=model)
 
             if not ok:
                 raise RuntimeError("Command returned non-zero status")
@@ -215,8 +234,6 @@ def cli_entry(
 
     try:
         asyncio.run(_inner())
-    except Exception as exc:      # noqa: BLE001
-        console.print(
-            Panel(str(exc), title="Fatal Error", style="bold red")
-        )
+    except Exception as exc:        # noqa: BLE001 – show nicely then exit
+        console.print(Panel(str(exc), title="Fatal Error", style="bold red"))
         sys.exit(1)

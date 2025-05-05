@@ -1,5 +1,4 @@
 # commands/test_prompts.py
-
 import pytest
 from rich.console import Console
 from rich.table import Table
@@ -13,6 +12,7 @@ class DummyTMNoPrompts:
 class DummyTMWithPromptsSync:
     def __init__(self, data):
         self._data = data
+
     def list_prompts(self):
         return self._data
 
@@ -22,17 +22,20 @@ class DummyTMWithPromptsAsync:
             {"server": "s1", "name": "n1", "description": "d1"}
         ]
 
+
 @pytest.mark.asyncio
 async def test_prompts_action_no_prompts(monkeypatch):
     tm = DummyTMNoPrompts()
     printed = []
     monkeypatch.setattr(Console, "print", lambda self, msg, **kw: printed.append(str(msg)))
 
-    result = prompts_action(tm)
+    result = await prompts_action(tm)
     assert result == []
     assert any("No prompts recorded" in p for p in printed)
 
-def test_prompts_action_with_prompts_sync(monkeypatch):
+
+@pytest.mark.asyncio
+async def test_prompts_action_with_prompts_sync(monkeypatch):
     data = [
         {"server": "srv", "name": "nm", "description": "desc"}
     ]
@@ -41,7 +44,7 @@ def test_prompts_action_with_prompts_sync(monkeypatch):
     output = []
     monkeypatch.setattr(Console, "print", lambda self, obj, **kw: output.append(obj))
 
-    result = prompts_action(tm)
+    result = await prompts_action(tm)
     assert result == data
 
     tables = [o for o in output if isinstance(o, Table)]
@@ -51,13 +54,15 @@ def test_prompts_action_with_prompts_sync(monkeypatch):
     headers = [col.header for col in table.columns]
     assert headers == ["Server", "Name", "Description"]
 
-def test_prompts_action_with_prompts_async(monkeypatch):
+
+@pytest.mark.asyncio
+async def test_prompts_action_with_prompts_async(monkeypatch):
     tm = DummyTMWithPromptsAsync()
 
     output = []
     monkeypatch.setattr(Console, "print", lambda self, obj, **kw: output.append(obj))
 
-    result = prompts_action(tm)
+    result = await prompts_action(tm)
     assert isinstance(result, list) and len(result) == 1
 
     tables = [o for o in output if isinstance(o, Table)]

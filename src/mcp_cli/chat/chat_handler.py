@@ -7,20 +7,20 @@ High-level entry point for the MCP-CLI “chat” mode.
 Initialises a ChatContext, sets up the TUI, then enters the
 main read–eval–print loop.
 
-The module purposefully contains *no* model-specific code; all LLM access is
-delegated to the llm/ sub-package through the ChatContext.
+The module contains *no* model-specific code; all LLM access is delegated
+to the llm/ sub-package through ChatContext.
 """
 
 from __future__ import annotations
 
 import asyncio
 import gc
-from typing import Optional
+from typing import Any, Optional
 
 from rich import print
 from rich.panel import Panel
 
-# ── local imports ──────────────────────────────────────────────────────────
+# ── local imports ──────────────────────────────────────────────────────
 from mcp_cli.chat.chat_context import ChatContext
 from mcp_cli.chat.ui_manager import ChatUIManager
 from mcp_cli.chat.conversation import ConversationProcessor
@@ -28,11 +28,11 @@ from mcp_cli.ui.ui_helpers import clear_screen, display_welcome_banner
 
 from mcp_cli.tools.manager import ToolManager
 
-# --------------------------------------------------------------------------- #
-# public helper                                                               #
-# --------------------------------------------------------------------------- #
-async def handle_chat_mode(           # ← provider / model can be positional
-    tool_manager: ToolManager,
+# --------------------------------------------------------------------- #
+# public helper                                                         #
+# --------------------------------------------------------------------- #
+async def handle_chat_mode(          # ← provider / model can be positional
+    manager: Any,                    # ToolManager *or* stream-manager stub
     provider: str = "openai",
     model: str = "gpt-4o-mini",
 ) -> bool:
@@ -41,10 +41,11 @@ async def handle_chat_mode(           # ← provider / model can be positional
 
     Parameters
     ----------
-    tool_manager
-        Fully–initialised ``ToolManager`` instance.
+    manager
+        Either a fully-initialised ``ToolManager`` **or** a lightweight
+        stream-manager-like object (used by the test-suite).
     provider / model
-        Display metadata and defaults for ChatContext / LLM client.
+        Passed straight through to the ChatContext / LLM client.
 
     Returns
     -------
@@ -55,21 +56,26 @@ async def handle_chat_mode(           # ← provider / model can be positional
     exit_ok = True
 
     try:
-        # ── build context ────────────────────────────────────────────────
-        ctx = ChatContext(tool_manager, provider, model)
+        # ── build chat context ─────────────────────────────────────────
+        if isinstance(manager, ToolManager):
+            ctx = ChatContext(tool_manager=manager, provider=provider, model=model)
+        else:
+            # assume test stub
+            ctx = ChatContext(stream_manager=manager, provider=provider, model=model)
+
         if not await ctx.initialize():
             print("[red]Failed to initialise chat context.[/red]")
             return False
 
-        # ── welcome banner (single!) ────────────────────────────────────
+        # ── welcome banner (only once) ────────────────────────────────
         clear_screen()
         display_welcome_banner(ctx.to_dict())
 
-        # ── UI + conversation helpers ───────────────────────────────────
+        # ── UI + conversation helpers ────────────────────────────────
         ui = ChatUIManager(ctx)
         convo = ConversationProcessor(ctx, ui)
 
-        # ── main REPL loop ──────────────────────────────────────────────
+        # ── main REPL loop ────────────────────────────────────────────
         while True:
             try:
                 user_msg = await ui.get_user_input()
@@ -93,9 +99,7 @@ async def handle_chat_mode(           # ← provider / model can be positional
 
                 # normal chat turn
                 ui.print_user_message(user_msg)
-                ctx.conversation_history.append(
-                    {"role": "user", "content": user_msg}
-                )
+                ctx.conversation_history.append({"role": "user", "content": user_msg})
                 await convo.process_conversation()
 
             except KeyboardInterrupt:
@@ -103,13 +107,13 @@ async def handle_chat_mode(           # ← provider / model can be positional
             except EOFError:
                 print(Panel("EOF detected – exiting chat.", style="bold red"))
                 break
-            except Exception as exc:                         # noqa: BLE001
+            except Exception as exc:                       # noqa: BLE001
                 print(f"[red]Error processing message:[/red] {exc}")
                 import traceback
                 traceback.print_exc()
                 continue
 
-    except Exception as exc:                                   # noqa: BLE001
+    except Exception as exc:                               # noqa: BLE001
         print(f"[red]Error in chat mode:[/red] {exc}")
         import traceback
         traceback.print_exc()
@@ -124,14 +128,18 @@ async def handle_chat_mode(           # ← provider / model can be positional
     return exit_ok
 
 
-# --------------------------------------------------------------------------- #
-# helpers                                                                     #
-# --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------- #
+# helpers                                                               #
+# --------------------------------------------------------------------- #
 async def _safe_cleanup(ui: ChatUIManager) -> None:
-    """Try very hard to run the UI manager’s cleanup without exploding."""
+    """
+    Run the UI-manager’s cleanup coroutine (or plain function) defensively.
+
+    Any exception during cleanup is caught and reported, never propagated.
+    """
     try:
         maybe_coro = ui.cleanup()
         if asyncio.iscoroutine(maybe_coro):
             await maybe_coro
-    except Exception as exc:                                      # noqa: BLE001
+    except Exception as exc:                              # noqa: BLE001
         print(f"[yellow]Cleanup failed:[/yellow] {exc}")

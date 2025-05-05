@@ -1,5 +1,5 @@
 # src/mcp_cli/main.py
-"""Entry‐point for the MCP CLI."""
+"""Entry-point for the MCP CLI."""
 
 from __future__ import annotations
 import asyncio
@@ -51,6 +51,10 @@ def _interactive_command(
     disable_filesystem: bool = False,
 ):
     """Start interactive command mode."""
+    # Ensure we always have a default model for display
+    if not model:
+        model = "gpt-4o-mini"
+
     servers, _, server_names = process_options(
         server, disable_filesystem, provider, model, config_file
     )
