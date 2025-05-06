@@ -98,28 +98,71 @@ def create_servers_table(servers: List[ServerInfo]) -> Table:
 
 
 def display_tool_call_result(result, console: Console = None):
-    """Display the result of a tool call."""
+    """Display the result of a tool call with robust error handling."""
     import json
-    if console is None:
-        console = Console()
+    from rich.text import Text
     
-    if result.success:
-        # Format successful result
-        if isinstance(result.result, (dict, list)):
-            content = json.dumps(result.result)
-        else:
-            content = str(result.result)
-        title = f"[green]Tool '{result.tool_name}' - Success"
-        if result.execution_time:
-            title += f" ({result.execution_time:.2f}s)"
-        title += "[/green]"
+    try:
+        if console is None:
+            console = Console()
         
-        console.print(Panel(content, title=title, style="green"))
-    else:
-        # Format error result
-        error_msg = result.error or "Unknown error"
-        console.print(Panel(
-            f"Error: {error_msg}",
-            title=f"Tool '{result.tool_name}' - Failed",
-            style="red"
-        ))
+        if result.success:
+            try:
+                # Format successful result
+                if isinstance(result.result, (dict, list)):
+                    try:
+                        content = json.dumps(result.result, indent=2)
+                    except (TypeError, ValueError) as json_err:
+                        content = f"Error formatting result as JSON: {json_err}\n\nRaw result: {str(result.result)}"
+                else:
+                    content = str(result.result)
+                
+                # Create a title with success information
+                title = f"[green]Tool '{result.tool_name}' - Success"
+                if result.execution_time:
+                    title += f" ({result.execution_time:.2f}s)"
+                title += "[/green]"
+                
+                # Use Text object to prevent markup parsing issues
+                # This ensures that any Rich markup in the content is treated as literal text
+                text_content = Text(content)
+                
+                # Display the panel with the Text object
+                console.print(Panel(text_content, title=title, style="green"))
+            except Exception as format_exc:
+                # Fallback to plain text if formatting fails
+                print(f"[green]Tool '{result.tool_name}' - Success[/green]")
+                if result.execution_time:
+                    print(f"[dim]Execution time: {result.execution_time:.2f}s[/dim]")
+                print(str(result.result))
+        else:
+            try:
+                # Format error result
+                error_msg = result.error or "Unknown error"
+                
+                # Use Text object for error message to prevent markup parsing issues
+                error_text = Text(f"Error: {error_msg}")
+                
+                console.print(Panel(
+                    error_text,
+                    title=f"Tool '{result.tool_name}' - Failed",
+                    style="red"
+                ))
+            except Exception as panel_exc:
+                # Fallback to plain text if panel fails
+                print(f"[red]Tool '{result.tool_name}' - Failed[/red]")
+                print(f"Error: {result.error or 'Unknown error'}")
+    except Exception as exc:
+        # Last-resort error handler
+        try:
+            # Use plain print as a last resort
+            print(f"Tool '{result.tool_name}' result:", 
+                  "Success" if result.success else "Failed")
+            if result.success:
+                print(str(result.result))
+            else:
+                print(f"Error: {result.error or 'Unknown error'}")
+            print(f"Note: Display formatting failed: {exc}")
+        except Exception:
+            # Absolute last resort
+            print("Error displaying tool result")

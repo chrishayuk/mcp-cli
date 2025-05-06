@@ -1,3 +1,4 @@
+# mcp_cli/chat/__main__.py
 import logging
 import sys
 import typer
