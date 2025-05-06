@@ -14,6 +14,12 @@ def get_llm_client(provider="openai", model="gpt-4o-mini", api_key=None, api_bas
 
         # return the ollama client
         return OllamaLLMClient(model=model)
+    elif provider == "gemini":
+        # import
+        from mcp_cli.llm.providers.gemini_client import GeminiLLMClient
+
+        # return the gemini client
+        return GeminiLLMClient(model=model)        
     else:
         # unsupported provider
         raise ValueError(f"Unsupported provider: {provider}")
