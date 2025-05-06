@@ -101,25 +101,33 @@ class ToolProcessor:
     # ------------------------------------------------------------------ #
     # internals                                                          #
     # ------------------------------------------------------------------ #
-    async def _run_single_call(self, idx: int, tool_call: Any) -> None:  # noqa: C901
+    async def _run_single_call(self, idx: int, tool_call: Any) -> None:
         """Execute one tool call and record the appropriate chat messages."""
-        async with self._sem:                   # limit concurrency
+        async with self._sem:  # limit concurrency
             tool_name = "unknown_tool"
             raw_arguments: Any = {}
             call_id = f"call_{idx}"
 
             try:
                 # ------ schema-agnostic extraction -------------------
-                if hasattr(tool_call, "function"):
-                    fn = tool_call.function
-                    tool_name = getattr(fn, "name", tool_name)
-                    raw_arguments = getattr(fn, "arguments", {})
-                    call_id = getattr(tool_call, "id", call_id)
-                elif isinstance(tool_call, dict) and "function" in tool_call:
-                    fn = tool_call["function"]
-                    tool_name = fn.get("name", tool_name)
-                    raw_arguments = fn.get("arguments", {})
-                    call_id = tool_call.get("id", call_id)
+                try:
+                    if hasattr(tool_call, "function"):
+                        fn = tool_call.function
+                        tool_name = getattr(fn, "name", tool_name)
+                        raw_arguments = getattr(fn, "arguments", {})
+                        call_id = getattr(tool_call, "id", call_id)
+                    elif isinstance(tool_call, dict) and "function" in tool_call:
+                        fn = tool_call["function"]
+                        tool_name = fn.get("name", tool_name)
+                        raw_arguments = fn.get("arguments", {})
+                        call_id = tool_call.get("id", call_id)
+                    else:
+                        # Handle unexpected tool_call format
+                        raise ValueError(f"Unrecognized tool call format: {type(tool_call)}")
+                except Exception as e:
+                    # Catch extraction errors separately to provide better diagnostics
+                    log.error(f"Error extracting tool details: {e}")
+                    raise ValueError(f"Could not extract tool details: {e}") from e
 
                 # ui feedback
                 display_name = (
@@ -128,16 +136,26 @@ class ToolProcessor:
                     else tool_name
                 )
                 log.debug("[%d] Executing tool %s", idx, display_name)
-                self.ui_manager.print_tool_call(display_name, raw_arguments)
+                
+                try:
+                    self.ui_manager.print_tool_call(display_name, raw_arguments)
+                except Exception as ui_exc:
+                    # Don't fail the whole tool call if UI display fails
+                    log.warning(f"UI display error (non-fatal): {ui_exc}")
 
                 # ------ parse args -----------------------------------
-                if isinstance(raw_arguments, str):
-                    try:
-                        arguments = json.loads(raw_arguments)
-                    except json.JSONDecodeError:
+                try:
+                    if isinstance(raw_arguments, str):
+                        try:
+                            arguments = json.loads(raw_arguments)
+                        except json.JSONDecodeError as json_err:
+                            log.warning(f"Invalid JSON in arguments: {json_err}")
+                            arguments = raw_arguments
+                    else:
                         arguments = raw_arguments
-                else:
-                    arguments = raw_arguments
+                except Exception as arg_exc:
+                    log.error(f"Error parsing arguments: {arg_exc}")
+                    arguments = raw_arguments  # Use raw as fallback
 
                 # ------ execute --------------------------------------
                 tool_result: Optional[ToolCallResult] = None
@@ -145,97 +163,136 @@ class ToolProcessor:
                 content: str | Dict[str, Any] = ""
                 error_msg: Optional[str] = None
 
-                if self.tool_manager is not None:
-                    with Console().status("[cyan]Executing tool…[/cyan]", spinner="dots"):
-                        tool_result = await self.tool_manager.execute_tool(tool_name, arguments)
+                try:
+                    if self.tool_manager is not None:
+                        with Console().status("[cyan]Executing tool…[/cyan]", spinner="dots"):
+                            tool_result = await self.tool_manager.execute_tool(tool_name, arguments)
 
-                    success = tool_result.success
-                    error_msg = tool_result.error
-                    content = tool_result.result if success else f"Error: {error_msg}"
+                        success = tool_result.success
+                        error_msg = tool_result.error
+                        content = tool_result.result if success else f"Error: {error_msg}"
 
-                elif self.stream_manager is not None and hasattr(self.stream_manager, "call_tool"):
-                    with Console().status("[cyan]Executing tool…[/cyan]", spinner="dots"):
-                        call_res = await self.stream_manager.call_tool(tool_name, arguments)
+                    elif self.stream_manager is not None and hasattr(self.stream_manager, "call_tool"):
+                        with Console().status("[cyan]Executing tool…[/cyan]", spinner="dots"):
+                            call_res = await self.stream_manager.call_tool(tool_name, arguments)
 
-                    if isinstance(call_res, dict):
-                        success = not call_res.get("isError", False)
-                        error_msg = call_res.get("error")
-                        content = call_res.get("content", call_res)
+                        if isinstance(call_res, dict):
+                            success = not call_res.get("isError", False)
+                            error_msg = call_res.get("error")
+                            content = call_res.get("content", call_res)
+                        else:
+                            success = True
+                            content = call_res
                     else:
-                        success = True
-                        content = call_res
-                else:
-                    error_msg = "No StreamManager available for tool execution."
+                        error_msg = "No tool execution engine available (neither ToolManager nor StreamManager)"
+                        content = f"Error: {error_msg}"
+                        raise RuntimeError(error_msg)
+                except asyncio.CancelledError:
+                    # Special case - propagate cancellation
+                    raise
+                except Exception as exec_exc:
+                    log.error(f"Tool execution error: {exec_exc}")
+                    error_msg = f"Execution failed: {exec_exc}"
                     content = f"Error: {error_msg}"
+                    success = False
 
                 # ------ normalise content ----------------------------
-                if not success and not str(content).startswith("Error"):
-                    content = f"Error: {content}"
-                if isinstance(content, (dict, list)):
-                    content = json.dumps(content, indent=2)
+                try:
+                    if not success and not str(content).startswith("Error"):
+                        content = f"Error: {content}"
+                    if isinstance(content, (dict, list)):
+                        try:
+                            content = json.dumps(content, indent=2)
+                        except (TypeError, ValueError) as json_err:
+                            log.warning(f"Error serializing content to JSON: {json_err}")
+                            content = str(content)  # Fall back to string representation
+                except Exception as norm_exc:
+                    log.warning(f"Error normalizing content: {norm_exc}")
+                    content = f"Error normalizing result: {norm_exc}"
 
                 # ------ ChatML bookkeeping ---------------------------
-                self.context.conversation_history.append(
-                    {
-                        "role": "assistant",
-                        "content": "",                # must be a string
-                        "tool_calls": [
-                            {
-                                "id": call_id,
-                                "type": "function",
-                                "function": {
-                                    "name": tool_name,
-                                    "arguments": (
-                                        json.dumps(arguments)
-                                        if isinstance(arguments, dict)
-                                        else str(arguments)
-                                    ),
-                                },
-                            }
-                        ],
-                    }
-                )
-                self.context.conversation_history.append(
-                    {
-                        "role": "tool",
-                        "name": tool_name,
-                        "content": str(content),
-                        "tool_call_id": call_id,
-                    }
-                )
+                try:
+                    arg_json = (
+                        json.dumps(arguments)
+                        if isinstance(arguments, dict)
+                        else str(arguments)
+                    )
+                    
+                    self.context.conversation_history.append(
+                        {
+                            "role": "assistant",
+                            "content": "",                # must be a string
+                            "tool_calls": [
+                                {
+                                    "id": call_id,
+                                    "type": "function",
+                                    "function": {
+                                        "name": tool_name,
+                                        "arguments": arg_json,
+                                    },
+                                }
+                            ],
+                        }
+                    )
+                    self.context.conversation_history.append(
+                        {
+                            "role": "tool",
+                            "name": tool_name,
+                            "content": str(content),
+                            "tool_call_id": call_id,
+                        }
+                    )
+                except Exception as hist_exc:
+                    log.error(f"Error updating conversation history: {hist_exc}")
+                    # This is serious but we'll continue to try displaying the result
 
                 # pretty-print result for real CLI runs
-                if tool_result is not None:
-                    display_tool_call_result(tool_result)
+                try:
+                    if tool_result is not None:
+                        display_tool_call_result(tool_result)
+                except Exception as display_exc:
+                    log.error(f"Error displaying tool result: {display_exc}")
+                    # Don't re-raise - we've already added to conversation history
 
-            except Exception as exc:                               # noqa: BLE001
+            except asyncio.CancelledError:
+                # Special case - always propagate cancellation
+                raise
+            except Exception as exc:
+                # General catch-all for any other errors
                 log.exception("Error executing tool call #%d", idx)
-                rprint(f"[red]Error executing tool {tool_name}: {exc}[/red]")
+                
+                try:
+                    # Use plain print instead of rprint to avoid potential markup issues
+                    print(f"Error executing tool {tool_name}: {exc}")
+                    
+                    # Add fallback messages to conversation history
+                    self.context.conversation_history.append(
+                        {
+                            "role": "assistant",
+                            "content": "",
+                            "tool_calls": [
+                                {
+                                    "id": call_id,
+                                    "type": "function",
+                                    "function": {
+                                        "name": tool_name,
+                                        "arguments": json.dumps(raw_arguments)
+                                        if isinstance(raw_arguments, dict)
+                                        else str(raw_arguments),
+                                    },
+                                }
+                            ],
+                        }
+                    )
+                    self.context.conversation_history.append(
+                        {
+                            "role": "tool",
+                            "name": tool_name,
+                            "content": f"Error: Could not execute tool. {exc}",
+                            "tool_call_id": call_id,
+                        }
+                    )
+                except Exception as recovery_exc:
+                    # Last-ditch error handling if even our error recovery fails
+                    log.critical(f"Failed to recover from tool error: {recovery_exc}")
 
-                # fallback messages so the chat can continue
-                self.context.conversation_history.append(
-                    {
-                        "role": "assistant",
-                        "content": "",            # keep it a string
-                        "tool_calls": [
-                            {
-                                "id": call_id,
-                                "type": "function",
-                                "function": {
-                                    "name": tool_name,
-                                    "arguments": json.dumps(raw_arguments)
-                                    if isinstance(raw_arguments, dict)
-                                    else str(raw_arguments),
-                                },
-                            }
-                        ],
-                    }
-                )
-                self.context.conversation_history.append(
-                    {
-                        "role": "tool",
-                        "name": tool_name,
-                        "content": f"Error: Could not execute tool. {exc}",
-                        "tool_call_id": call_id,
-                    }
-                )
