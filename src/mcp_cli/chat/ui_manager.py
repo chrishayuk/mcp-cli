@@ -72,6 +72,11 @@ class ChatUIManager:
                     "auto-suggestion": "fg:ansibrightblack",
                 }
             )
+
+            # Before initializing PromptSession
+            history_path = os.path.expanduser("~/.mcp-cli/chat_history")
+            os.makedirs(os.path.dirname(history_path), exist_ok=True)
+
             self.session = PromptSession(
                 history=FileHistory(os.path.expanduser("~/.mcp-cli/chat_history")),
                 auto_suggest=AutoSuggestFromHistory(),
