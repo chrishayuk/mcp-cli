@@ -100,26 +100,40 @@ def create_servers_table(servers: List[ServerInfo]) -> Table:
 def display_tool_call_result(result, console: Console = None):
     """Display the result of a tool call."""
     import json
+    from rich.text import Text
+    
     if console is None:
         console = Console()
     
     if result.success:
         # Format successful result
         if isinstance(result.result, (dict, list)):
-            content = json.dumps(result.result)
+            try:
+                content = json.dumps(result.result, indent=2)
+            except Exception:
+                content = str(result.result)
         else:
             content = str(result.result)
+        
+        # Create a title with success information
         title = f"[green]Tool '{result.tool_name}' - Success"
         if result.execution_time:
             title += f" ({result.execution_time:.2f}s)"
         title += "[/green]"
         
-        console.print(Panel(content, title=title, style="green"))
+        # IMPORTANT: Create a Text object with the content to avoid markup parsing issues
+        # This ensures that any Rich markup in the content is treated as literal text
+        text_content = Text(content)
+        
+        # Display the panel with the Text object
+        console.print(Panel(text_content, title=title, style="green"))
     else:
         # Format error result
         error_msg = result.error or "Unknown error"
+        # Again, use Text object to prevent markup parsing
+        error_text = Text(f"Error: {error_msg}")
         console.print(Panel(
-            f"Error: {error_msg}",
+            error_text,
             title=f"Tool '{result.tool_name}' - Failed",
             style="red"
         ))
