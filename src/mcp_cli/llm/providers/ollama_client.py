@@ -11,23 +11,27 @@ from mcp_cli.llm.providers.base import BaseLLMClient
 
 log = logging.getLogger(__name__)
 
-import asyncio
-import json
-import logging
-import uuid
-from typing import Any, Dict, List, Optional
-
-import ollama  # pip install ollama-python
-
-from mcp_cli.llm.providers.base import BaseLLMClient
-
-log = logging.getLogger(__name__)
-
 class OllamaLLMClient(BaseLLMClient):
     """Wrapper around `ollama.chat` supporting both sync and async interfaces."""
 
-    def __init__(self, model: str = "qwen2.5-coder") -> None:
+    def __init__(self, model: str = "qwen2.5-coder", api_base: Optional[str] = None) -> None:
+        """
+        Initialize Ollama client.
+        
+        Args:
+            model: Name of the model to use
+            api_base: Optional API base URL (will be applied if ollama.set_host is available)
+        """
         self.model = model
+        self.api_base = api_base
+        
+        # Configure the API base if provided and if the library supports it
+        if api_base and hasattr(ollama, 'set_host'):
+            log.info(f"Setting Ollama host to: {api_base}")
+            ollama.set_host(api_base)
+        elif api_base:
+            log.warning(f"Ollama client doesn't support set_host; api_base '{api_base}' will be ignored")
+        
         if not hasattr(ollama, 'chat'):
             raise ValueError(
                 "The installed ollama package does not expose 'chat'; "

@@ -73,7 +73,7 @@ class ChatUIManager:
                 }
             )
             self.session = PromptSession(
-                history=FileHistory(os.path.expanduser("~/.mcp_chat_history")),
+                history=FileHistory(os.path.expanduser("~/.mcp-cli/chat_history")),
                 auto_suggest=AutoSuggestFromHistory(),
                 completer=ChatCommandCompleter(context.to_dict()),
                 complete_while_typing=True,

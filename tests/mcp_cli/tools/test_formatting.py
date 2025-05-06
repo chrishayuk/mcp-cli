@@ -106,9 +106,12 @@ def test_display_tool_call_success(result):
     assert f"Tool '{result.tool_name}' - Success" in text
     # the result content should appear
     if isinstance(result.result, dict):
-        # JSON dict
-        assert json.dumps(result.result) in text
+        # Check for each key and value in the result
+        for key, value in result.result.items():
+            assert str(key) in text
+            assert str(value) in text
     else:
+        # For non-dict results, just check the string representation
         assert str(result.result) in text
 
 

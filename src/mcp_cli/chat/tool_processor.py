@@ -184,7 +184,7 @@ class ToolProcessor:
                             success = True
                             content = call_res
                     else:
-                        error_msg = "No tool execution engine available (neither ToolManager nor StreamManager)"
+                        error_msg = "No StreamManager available for tool execution."
                         content = f"Error: {error_msg}"
                         raise RuntimeError(error_msg)
                 except asyncio.CancelledError:
@@ -284,6 +284,7 @@ class ToolProcessor:
                             ],
                         }
                     )
+                    # Ensure exact match for error format
                     self.context.conversation_history.append(
                         {
                             "role": "tool",
