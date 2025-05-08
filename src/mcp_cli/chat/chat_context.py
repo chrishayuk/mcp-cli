@@ -1,10 +1,9 @@
 # mcp_cli/chat/chat_context.py
-# mcp_cli/chat/chat_context.py
 """
 Chat context handling for the MCP CLI.
 
 This module glues the UI / REPL layer to either a *ToolManager* (the normal
-runtime in the CLI) **or** a bare-bones “stream-manager–like” object that is
+runtime in the CLI) **or** a bare-bones "stream-manager–like" object that is
 used by the unit-tests.  The public surface of *ChatContext* therefore works
 with *either* source of tools:
 
@@ -12,7 +11,7 @@ with *either* source of tools:
 * The test-suite instantiates the class with **stream_manager=…**.
 
 Both execution paths build identical data-structures so the rest of the CLI
-doesn’t care where the information originally came from.
+doesn't care where the information originally came from.
 """
 
 from __future__ import annotations
@@ -33,6 +32,9 @@ from mcp_cli.chat.system_prompt import generate_system_prompt
 # Tools – only imported to expose convert_to_openai_tools for monkey-patching
 from mcp_cli.tools.manager import ToolManager
 
+# Provider configuration
+from mcp_cli.provider_config import ProviderConfig
+
 # The tests monkey-patch this symbol, so expose it at module level
 convert_to_openai_tools = ToolManager.convert_to_openai_tools
 
@@ -50,6 +52,9 @@ class ChatContext:
         stream_manager: Optional[Any] = None,
         provider: str = "openai",
         model: str = "gpt-4o-mini",
+        provider_config: Optional[ProviderConfig] = None,
+        api_base: Optional[str] = None,
+        api_key: Optional[str] = None,
     ):
         """
         Create a new chat context.
@@ -62,11 +67,15 @@ class ChatContext:
         tool_manager
             Fully-featured tool manager used in the normal CLI runtime.
         stream_manager
-            Minimal “manager” used by the test-suite.  Needs to expose
+            Minimal "manager" used by the test-suite.  Needs to expose
             ``get_all_tools()`` (or ``get_internal_tools()``),
             ``get_server_info()`` and ``get_server_for_tool()``.
         provider / model
             Which LLM backend to use.
+        provider_config
+            Optional ProviderConfig instance for LLM configurations.
+        api_base / api_key
+            Optional API settings that override provider_config.
         """
         if (tool_manager is None) == (stream_manager is None):
             raise ValueError("Pass either tool_manager *or* stream_manager, not both")
@@ -78,9 +87,26 @@ class ChatContext:
         self.model = model
         self.exit_requested: bool = False
         self.conversation_history: List[Dict[str, Any]] = []
+        
+        # Initialize provider configuration
+        self.provider_config = provider_config or ProviderConfig()
+        
+        # Update provider config if API settings were provided
+        if api_base or api_key:
+            config_updates = {}
+            if api_base:
+                config_updates["api_base"] = api_base
+            if api_key:
+                config_updates["api_key"] = api_key
+                
+            self.provider_config.set_provider_config(provider, config_updates)
 
         # initialise LLM client immediately so it's never None
-        self.client = get_llm_client(provider=self.provider, model=self.model)
+        self.client = get_llm_client(
+            provider=self.provider, 
+            model=self.model,
+            config=self.provider_config
+        )
 
         # attributes filled in initialise()
         self.tools: List[Dict[str, Any]] = []
@@ -182,7 +208,7 @@ class ChatContext:
         """
         Return the human-readable server name for *tool_name*.
 
-        Falls back to ``"Unknown"`` if the mapping isn’t available.
+        Falls back to ``"Unknown"`` if the mapping isn't available.
         """
         if self.tool_manager is not None:
             return self.tool_manager.get_server_for_tool(tool_name) or "Unknown"
@@ -205,6 +231,7 @@ class ChatContext:
             "client": self.client,
             "provider": self.provider,
             "model": self.model,
+            "provider_config": self.provider_config,  # Added provider_config
             "server_info": self.server_info,
             "openai_tools": self.openai_tools,
             "exit_requested": self.exit_requested,
@@ -218,13 +245,22 @@ class ChatContext:
         Update the context after it has been passed through a command handler.
 
         Only a subset of keys is honoured; missing keys are ignored so callers
-        don’t have to copy the entire structure back.
+        don't have to copy the entire structure back.
         """
         if "exit_requested" in context_dict:
             self.exit_requested = context_dict["exit_requested"]
 
         if "client" in context_dict and context_dict["client"] is not None:
             self.client = context_dict["client"]
+            
+        if "provider" in context_dict:
+            self.provider = context_dict["provider"]
+            
+        if "model" in context_dict:
+            self.model = context_dict["model"]
+            
+        if "provider_config" in context_dict and context_dict["provider_config"] is not None:
+            self.provider_config = context_dict["provider_config"]
 
         if "stream_manager" in context_dict and context_dict["stream_manager"] is not None:
             self.stream_manager = context_dict["stream_manager"]

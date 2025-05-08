@@ -1,4 +1,4 @@
-# mcp_cli/provider_config.py
+# mcp_cli/provider_config.py (update the class)
 """Provider configuration management for MCP CLI."""
 import os
 import json
@@ -28,6 +28,11 @@ class ProviderConfig:
     def _create_default_config(self) -> Dict[str, Dict[str, Any]]:
         """Create default provider configurations."""
         config = {
+            # Special global section for general settings
+            "__global__": {
+                "active_provider": "openai",
+                "active_model": "gpt-4o-mini"
+            },
             "openai": {
                 "api_key_env": "OPENAI_API_KEY",
                 "api_key": None,
@@ -71,13 +76,45 @@ class ProviderConfig:
     
     def set_provider_config(self, provider_name: str, config: Dict[str, Any]) -> None:
         """Update configuration for a provider."""
-        if provider_name not in self.providers:
+        if provider_name not in self.providers and provider_name != "__global__":
             self.providers[provider_name] = {}
             
         # Update config but preserve existing keys
         self.providers[provider_name].update(config)
         
         # Save changes
+        self.save_config()
+    
+    def get_active_provider(self) -> str:
+        """Get the currently active provider."""
+        if "__global__" not in self.providers:
+            self.providers["__global__"] = {"active_provider": "openai", "active_model": "gpt-4o-mini"}
+            self.save_config()
+            
+        return self.providers["__global__"].get("active_provider", "openai")
+    
+    def get_active_model(self) -> str:
+        """Get the currently active model."""
+        if "__global__" not in self.providers:
+            self.providers["__global__"] = {"active_provider": "openai", "active_model": "gpt-4o-mini"}
+            self.save_config()
+            
+        return self.providers["__global__"].get("active_model", "gpt-4o-mini")
+    
+    def set_active_provider(self, provider_name: str) -> None:
+        """Set the active provider."""
+        if "__global__" not in self.providers:
+            self.providers["__global__"] = {}
+            
+        self.providers["__global__"]["active_provider"] = provider_name
+        self.save_config()
+    
+    def set_active_model(self, model: str) -> None:
+        """Set the active model."""
+        if "__global__" not in self.providers:
+            self.providers["__global__"] = {}
+            
+        self.providers["__global__"]["active_model"] = model
         self.save_config()
         
     def get_api_key(self, provider_name: str) -> Optional[str]:

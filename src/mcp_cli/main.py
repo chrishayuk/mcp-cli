@@ -21,6 +21,7 @@ from mcp_cli.cli.registry import CommandRegistry
 from mcp_cli.run_command import run_command_sync
 from mcp_cli.ui.ui_helpers import restore_terminal
 from mcp_cli.cli_options import process_options
+from mcp_cli.provider_config import ProviderConfig  # Import ProviderConfig
 
 # ---------------------------------------------------------------------------
 # Logging setup
@@ -44,20 +45,24 @@ app = typer.Typer()
 # ---------------------------------------------------------------------------
 @app.command("interactive")
 def _interactive_command(
-    # Remove KWARGS parameter if it exists
     config_file: str = "server_config.json",
     server: Optional[str] = None,
-    provider: str = "openai",
-    model: Optional[str] = None,
+    provider: Optional[str] = None,  # Make provider optional
+    model: Optional[str] = None,     # Make model optional
+    api_base: Optional[str] = typer.Option(None, "--api-base", help="API base URL for the provider"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", help="API key for the provider"),
     disable_filesystem: bool = False,
 ):
     """Start interactive command mode."""
-    # Ensure we always have a default model for display
-    if not model:
-        model = "gpt-4o-mini"
+    # Load provider config to get saved settings
+    provider_config = ProviderConfig()
+    
+    # Use command-line parameters if provided, otherwise use saved settings
+    actual_provider = provider or provider_config.get_active_provider()
+    actual_model = model or provider_config.get_active_model()
 
     servers, _, server_names = process_options(
-        server, disable_filesystem, provider, model, config_file
+        server, disable_filesystem, actual_provider, actual_model, config_file
     )
 
     # Import the new interactive shell entrypoint
@@ -68,9 +73,11 @@ def _interactive_command(
         config_file,
         servers,
         extra_params={
-            "provider": provider,
-            "model": model,
+            "provider": actual_provider,
+            "model": actual_model,
             "server_names": server_names,
+            "api_base": api_base,
+            "api_key": api_key,
         },
     )
 
@@ -98,7 +105,7 @@ CommandRegistry.create_subcommand_group(
 # ---------------------------------------------------------------------------
 # Register standalone top‐level commands
 # ---------------------------------------------------------------------------
-for name in ("ping", "chat", "cmd"):
+for name in ("ping", "chat", "cmd", "provider"):  # Added "provider" to standalone commands
     cmd = CommandRegistry.get_command(name)
     if cmd:
         cmd.register(app, run_command_sync)

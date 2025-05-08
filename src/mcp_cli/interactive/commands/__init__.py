@@ -8,6 +8,8 @@ from .tools import ToolsCommand
 from .resources import ResourcesCommand
 from .prompts import PromptsCommand
 from .ping import PingCommand
+from .model import ModelCommand
+from .provider import ProviderCommand
 
 # Export for convenience
 __all__ = [
@@ -19,6 +21,8 @@ __all__ = [
     "ResourcesCommand",
     "PromptsCommand",
     "PingCommand",
+    "ModelCommand",
+    "ProviderCommand"  # Add this export
 ]
 
 def register_all_commands() -> None:
@@ -34,6 +38,8 @@ def register_all_commands() -> None:
     from mcp_cli.interactive.commands.resources import ResourcesCommand
     from mcp_cli.interactive.commands.prompts import PromptsCommand
     from mcp_cli.interactive.commands.ping import PingCommand
+    from mcp_cli.interactive.commands.model import ModelCommand
+    from mcp_cli.interactive.commands.provider import ProviderCommand
 
     reg = InteractiveCommandRegistry
     reg.register(HelpCommand())
@@ -44,4 +50,5 @@ def register_all_commands() -> None:
     reg.register(ResourcesCommand())
     reg.register(PromptsCommand())
     reg.register(PingCommand())
-
+    reg.register(ModelCommand())
+    reg.register(ProviderCommand())

@@ -1,6 +1,6 @@
-# MCP CLI - Model Context Provider Command Line Interface
+# MCP CLI - Model Context Protocol Command Line Interface
 
-A powerful, feature-rich command-line interface for interacting with Model Context Provider servers. This client enables seamless communication with LLMs through integration with the [CHUK-MCP protocol library](https://github.com/chrishayuk/chuk-mcp) which is a pyodide compatible pure python protocol implementation of MCP, supporting tool usage, conversation management, and multiple operational modes.
+A powerful, feature-rich command-line interface for interacting with Model Context Protocol servers. This client enables seamless communication with LLMs through integration with the [CHUK-MCP protocol library](https://github.com/chrishayuk/chuk-mcp) which is a pyodide compatible pure python protocol implementation of MCP, supporting tool usage, conversation management, and multiple operational modes.
 
 ## 🔄 Protocol Implementation
 
@@ -20,7 +20,14 @@ This CLI is built on top of the protocol library, focusing on providing a rich u
 - **Multi-Provider Support**:
   - OpenAI integration (`gpt-4o-mini`, `gpt-4o`, `gpt-4-turbo`, etc.)
   - Ollama integration (`llama3.2`, `qwen2.5-coder`, etc.)
+  - Anthropic integration (`claude-3-opus`, `claude-3-sonnet`, etc.)
   - Extensible architecture for additional providers
+
+- **Provider and Model Management**:
+  - Configure multiple LLM providers (API keys, endpoints, default models)
+  - Switch between providers and models during sessions
+  - Command-line arguments for provider/model selection
+  - Interactive commands for provider configuration
 
 - **Robust Tool System**:
   - Automatic discovery of server-provided tools
@@ -50,6 +57,7 @@ This CLI is built on top of the protocol library, focusing on providing a rich u
 
 - Python 3.11 or higher
 - For OpenAI: Valid API key in `OPENAI_API_KEY` environment variable
+- For Anthropic: Valid API key in `ANTHROPIC_API_KEY` environment variable
 - For Ollama: Local Ollama installation
 - Server configuration file (default: `server_config.json`)
 - [CHUK-MCP](https://github.com/chrishayuk/chuk-mcp) protocol library
@@ -62,7 +70,7 @@ This CLI is built on top of the protocol library, focusing on providing a rich u
 
 ```bash
 git clone https://github.com/chrishayuk/mcp-cli
-cd mcp-cli
+cd mcp-cli  
 ```
 
 2. Install the package with development dependencies:
@@ -98,7 +106,7 @@ Global options available for all modes and commands:
 
 - `--server`: Specify the server(s) to connect to (comma-separated for multiple)
 - `--config-file`: Path to server configuration file (default: `server_config.json`)
-- `--provider`: LLM provider to use (`openai` or `ollama`, default: `openai`)
+- `--provider`: LLM provider to use (`openai`, `anthropic`, `ollama`, default: `openai`)
 - `--model`: Specific model to use (provider-dependent defaults)
 - `--disable-filesystem`: Disable filesystem access (default: true)
 
@@ -132,6 +140,9 @@ uv run mcp-cli
 
 # Explicit chat mode
 uv run mcp-cli chat --server sqlite
+
+# With specific provider and model
+uv run mcp-cli chat --server sqlite --provider openai --model gpt-4o
 ```
 
 ### 2. Interactive Mode
@@ -179,12 +190,6 @@ uv run mcp-cli chat --server sqlite
 uv run mcp-cli chat --server sqlite --provider openai --model gpt-4o
 ```
 
-With specific provider and model:
-
-```bash
-uv run mcp-cli chat --server sqlite --provider openai --model gpt-4o
-```
-
 ```bash
 # Note: Be careful with the command syntax
 # Correct format without any KWARGS parameter
@@ -203,6 +208,17 @@ In chat mode, use these slash commands:
 - `/help <command>`: Show detailed help for a specific command
 - `/quickhelp` or `/qh`: Display a quick reference of common commands
 - `exit` or `quit`: Exit chat mode
+
+#### Provider and Model Commands
+- `/provider` or `/p`: Display or manage LLM providers
+  - `/provider`: Show current provider and model
+  - `/provider list`: List all configured providers
+  - `/provider config`: Show detailed provider configuration
+  - `/provider set <name> <key> <value>`: Set a provider configuration value
+  - `/provider <name>`: Switch to a different provider
+- `/model` or `/m`: Display or change the current model
+  - `/model`: Show current model
+  - `/model <name>`: Switch to a different model
 
 #### Tool Commands
 - `/tools`: Display all available tools with their server information
@@ -229,8 +245,6 @@ In chat mode, use these slash commands:
 
 #### Control Commands
 - `/interrupt`, `/stop`, or `/cancel`: Interrupt running tool execution
-- `/provider <name>`: Change the current LLM provider 
-- `/model <name>`: Change the current LLM model
 - `/servers`: List connected servers and their status
 
 ## 🖥️ Using Interactive Mode
@@ -252,6 +266,15 @@ In interactive mode, use these commands:
 - `exit` or `quit` or `q`: Exit interactive mode
 - `clear` or `cls`: Clear the terminal screen
 - `servers` or `srv`: List connected servers with their status
+- `provider` or `p`: Manage LLM providers
+  - `provider`: Show current provider and model
+  - `provider list`: List all configured providers
+  - `provider config`: Show detailed provider configuration
+  - `provider set <name> <key> <value>`: Set a provider configuration value
+  - `provider <name>`: Switch to a different provider
+- `model` or `m`: Display or change the current model
+  - `model`: Show current model
+  - `model <name>`: Switch to a different model
 - `tools` or `t`: List available tools or call one interactively
   - `tools --all`: Show detailed tool information
   - `tools --raw`: Show raw JSON definitions
@@ -281,6 +304,8 @@ mcp-cli cmd {} --server sqlite [options]
 - `--tool-args`: JSON arguments for tool call
 - `--system-prompt`: Custom system prompt
 - `--verbose`: Enable verbose logging
+- `--provider`: Specify LLM provider
+- `--model`: Specify model to use
 
 ### Command Mode Examples
 
@@ -292,6 +317,9 @@ uv run mcp-cli cmd --server sqlite --input document.md --prompt "Summarize this:
 
 # Process stdin and output to stdout
 cat document.md | mcp-cli cmd {} --server sqlite --input - --prompt "Extract key points: {{input}}"
+
+# Use a specific provider and model
+uv run mcp-cli cmd {} --server sqlite --input document.md --prompt "Summarize: {{input}}" --provider anthropic --model claude-3-opus
 ```
 
 Call tools directly:
@@ -314,6 +342,23 @@ ls *.md | parallel mcp-cli cmd --server sqlite --input {} --output {}.summary.md
 ## 🔧 Direct CLI Commands
 
 Run individual commands without entering interactive mode:
+
+### Provider Commands
+
+```bash
+# Show current provider configuration
+mcp-cli provider show
+
+# List all configured providers
+mcp-cli provider list
+
+# Show detailed provider configuration
+mcp-cli provider config
+
+# Set a configuration value
+mcp-cli provider set <provider_name> <key> <value>
+# Example: mcp-cli provider set openai api_key "sk-..."
+```
 
 ### Tools Commands
 
@@ -374,7 +419,77 @@ Create a `server_config.json` file with your server configurations:
 }
 ```
 
+## 🔐 Provider Configuration
+
+Provider configurations are stored with these key settings:
+
+- `api_key`: API key for authentication
+- `api_base`: Base URL for API requests
+- `default_model`: Default model to use with this provider
+- Other provider-specific settings
+
+### Environment Variables
+
+You can also set the default provider and model using environment variables:
+
+```bash
+export LLM_PROVIDER=openai
+export LLM_MODEL=gpt-4o-mini
+```
+
+### Configuration Example
+
+The provider configuration is typically stored in a JSON file and looks like:
+
+```json
+{
+  "openai": {
+    "api_key": "sk-...",
+    "api_base": "https://api.openai.com/v1",
+    "default_model": "gpt-4o-mini"
+  },
+  "anthropic": {
+    "api_key": "sk-...",
+    "api_base": "https://api.anthropic.com",
+    "default_model": "claude-3-opus"
+  },
+  "ollama": {
+    "api_base": "http://localhost:11434",
+    "default_model": "llama3.2"
+  }
+}
+```
+
 ## 📈 Advanced Usage Examples
+
+### Provider and Model Selection
+
+You can change providers or models during a session:
+
+```
+# In chat mode
+> /provider
+Current provider: openai
+Current model: gpt-4o-mini
+To change provider: /provider <provider_name>
+
+> /provider list
+Available Providers
+┏━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Provider  ┃ Default Model  ┃ API Base                        ┃
+┡━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ openai    │ gpt-4o-mini    │ https://api.openai.com/v1       │
+│ anthropic │ claude-3-opus  │ https://api.anthropic.com       │
+│ ollama    │ llama3.2       │ http://localhost:11434          │
+└───────────┴────────────────┴─────────────────────────────────┘
+
+> /provider anthropic
+Switched to provider: anthropic with model: claude-3-opus
+LLM client updated successfully
+
+> /model claude-3-sonnet
+Switched to model: claude-3-sonnet
+```
 
 ### Working with Tools in Chat Mode
 
@@ -392,23 +507,6 @@ Assistant: Here are the top 10 products ordered by price in descending order:
   2 Smart Watch - $199.99
   3 Portable SSD - $179.99
   ...
-```
-
-### Provider and Model Selection
-
-You can change providers or models during a chat session:
-
-```
-> /provider
-Current provider: openai
-To change provider: /provider <provider_name>
-
-> /model
-Current model: gpt-4o-mini
-To change model: /model <model_name>
-
-> /model gpt-4o
-Switched to model: gpt-4o
 ```
 
 ### Using Conversation Management
@@ -430,6 +528,15 @@ Conversation saved to conversation.json
 > /compact
 Conversation history compacted with summary.
 ```
+
+## 🛠️ Implementation Details
+
+The provider configuration is managed by the `ProviderConfig` class, which:
+- Loads/saves configuration from a local file
+- Manages active provider and model settings
+- Provides helper methods for retrieving configuration values
+
+The LLM client is created using the `get_llm_client` function, which instantiates the appropriate client based on the provider and model settings.
 
 ## 📦 Dependencies
 
