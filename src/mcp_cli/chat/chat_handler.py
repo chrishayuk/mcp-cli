@@ -3,7 +3,7 @@
 mcp_cli.chat.chat_handler
 =========================
 
-High-level entry point for the MCP-CLI “chat” mode.
+High-level entry point for the MCP-CLI "chat" mode.
 Initialises a ChatContext, sets up the TUI, then enters the
 main read–eval–print loop.
 
@@ -25,16 +25,19 @@ from mcp_cli.chat.chat_context import ChatContext
 from mcp_cli.chat.ui_manager import ChatUIManager
 from mcp_cli.chat.conversation import ConversationProcessor
 from mcp_cli.ui.ui_helpers import clear_screen, display_welcome_banner
-
+from mcp_cli.provider_config import ProviderConfig
 from mcp_cli.tools.manager import ToolManager
 
 # --------------------------------------------------------------------- #
 # public helper                                                         #
 # --------------------------------------------------------------------- #
-async def handle_chat_mode(          # ← provider / model can be positional
+async def handle_chat_mode(
     manager: Any,                    # ToolManager *or* stream-manager stub
     provider: str = "openai",
     model: str = "gpt-4o-mini",
+    api_base: Optional[str] = None,
+    api_key: Optional[str] = None,
+    provider_config: Optional[ProviderConfig] = None,
 ) -> bool:
     """
     Launch the interactive chat loop.
@@ -46,6 +49,10 @@ async def handle_chat_mode(          # ← provider / model can be positional
         stream-manager-like object (used by the test-suite).
     provider / model
         Passed straight through to the ChatContext / LLM client.
+    api_base / api_key
+        Optional API settings that override provider_config.
+    provider_config
+        Optional ProviderConfig instance for LLM configurations.
 
     Returns
     -------
@@ -56,12 +63,40 @@ async def handle_chat_mode(          # ← provider / model can be positional
     exit_ok = True
 
     try:
+        # Initialize provider configuration if not provided
+        if provider_config is None:
+            provider_config = ProviderConfig()
+            
+        # Update provider config if API settings were provided
+        if api_base or api_key:
+            config_updates = {}
+            if api_base:
+                config_updates["api_base"] = api_base
+            if api_key:
+                config_updates["api_key"] = api_key
+                
+            provider_config.set_provider_config(provider, config_updates)
+
         # ── build chat context ─────────────────────────────────────────
         if isinstance(manager, ToolManager):
-            ctx = ChatContext(tool_manager=manager, provider=provider, model=model)
+            ctx = ChatContext(
+                tool_manager=manager, 
+                provider=provider, 
+                model=model,
+                provider_config=provider_config,
+                api_base=api_base,
+                api_key=api_key
+            )
         else:
             # assume test stub
-            ctx = ChatContext(stream_manager=manager, provider=provider, model=model)
+            ctx = ChatContext(
+                stream_manager=manager, 
+                provider=provider, 
+                model=model,
+                provider_config=provider_config,
+                api_base=api_base,
+                api_key=api_key
+            )
 
         if not await ctx.initialize():
             print("[red]Failed to initialise chat context.[/red]")
@@ -84,7 +119,7 @@ async def handle_chat_mode(          # ← provider / model can be positional
                 if not user_msg:
                     continue
 
-                # plain “exit/quit” terminates chat
+                # plain "exit/quit" terminates chat
                 if user_msg.lower() in ("exit", "quit"):
                     print(Panel("Exiting chat mode.", style="bold red"))
                     break
@@ -133,7 +168,7 @@ async def handle_chat_mode(          # ← provider / model can be positional
 # --------------------------------------------------------------------- #
 async def _safe_cleanup(ui: ChatUIManager) -> None:
     """
-    Run the UI-manager’s cleanup coroutine (or plain function) defensively.
+    Run the UI-manager's cleanup coroutine (or plain function) defensively.
 
     Any exception during cleanup is caught and reported, never propagated.
     """

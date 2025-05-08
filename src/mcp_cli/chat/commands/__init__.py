@@ -1,9 +1,6 @@
+# mcp_cli/chat/commands/__init__.py
 """
 Command handling system for the MCP CLI chat interface.
-
-This module provides a registration and dispatch system for slash commands.
-Commands can be registered from various modules and dispatched by the
-chat UI manager.
 """
 from typing import Dict, List, Any, Callable, Awaitable
 import re
@@ -151,3 +148,10 @@ def _import_submodules():
 
 # Auto-import all command modules
 _import_submodules()
+
+# Explicit imports for critical modules to ensure they're loaded even if auto-discovery fails
+try:
+    from . import provider
+    from . import model
+except ImportError as e:
+    print(f"Warning: Failed to import critical command module: {e}")
