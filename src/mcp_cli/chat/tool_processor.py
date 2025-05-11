@@ -1,6 +1,6 @@
 # mcp_cli/chat/tool_processor.py
 """
-mcp_cli.chat.tool_processor – concurrent implementation with a
+mcp_cli.chat.tool_processor - concurrent implementation with a
 centralised ToolManager
 ================================================================
 
@@ -9,7 +9,7 @@ order of messages in *conversation_history*.
 
 * Normal CLI runtime: use the full **ToolManager** available via
   ``context.tool_manager``.
-* Unit-tests: fall back to a minimal “stream-manager” stub that exposes
+* Unit-tests: fall back to a minimal "stream-manager" stub that exposes
   ``call_tool()`` – no ToolManager required.
 """
 from __future__ import annotations
@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import uuid
 from typing import Any, Dict, List, Optional
 
 from rich import print as rprint
@@ -52,22 +53,30 @@ class ToolProcessor:
     # ------------------------------------------------------------------ #
     # public API                                                         #
     # ------------------------------------------------------------------ #
-    async def process_tool_calls(self, tool_calls: List[Any]) -> None:
+    async def process_tool_calls(self, tool_calls: List[Any], name_mapping: Optional[Dict[str, str]] = None) -> None:
         """
         Execute *tool_calls* concurrently, then tell the UI manager to hide
         its spinner / progress bar.
 
+        Args:
+            tool_calls: List of tool call objects from the LLM
+            name_mapping: Optional mapping from LLM tool names to original MCP tool names
+        
         The conversation history is updated in the **original** order
         produced by the LLM.
         """
         if not tool_calls:
             rprint("[yellow]Warning: Empty tool_calls list received.[/yellow]")
             return
+            
+        # Use empty mapping if none provided
+        if name_mapping is None:
+            name_mapping = {}
 
         for idx, call in enumerate(tool_calls):
             if getattr(self.ui_manager, "interrupt_requested", False):
                 break                          # user hit Ctrl-C
-            task = asyncio.create_task(self._run_single_call(idx, call))
+            task = asyncio.create_task(self._run_single_call(idx, call, name_mapping))
             self._pending.append(task)
 
         try:
@@ -101,8 +110,12 @@ class ToolProcessor:
     # ------------------------------------------------------------------ #
     # internals                                                          #
     # ------------------------------------------------------------------ #
-    async def _run_single_call(self, idx: int, tool_call: Any) -> None:
+    # mcp_cli/chat/tool_processor.py - update the _run_single_call method
+    async def _run_single_call(self, idx: int, tool_call: Any, name_mapping: Dict[str, str] = None) -> None:
         """Execute one tool call and record the appropriate chat messages."""
+        if name_mapping is None:
+            name_mapping = {}
+            
         async with self._sem:  # limit concurrency
             tool_name = "unknown_tool"
             raw_arguments: Any = {}
@@ -129,11 +142,14 @@ class ToolProcessor:
                     log.error(f"Error extracting tool details: {e}")
                     raise ValueError(f"Could not extract tool details: {e}") from e
 
+                # Get the original tool name from mapping if available
+                original_tool_name = name_mapping.get(tool_name, tool_name)
+                    
                 # ui feedback
                 display_name = (
-                    self.context.get_display_name_for_tool(tool_name)
+                    self.context.get_display_name_for_tool(original_tool_name)
                     if hasattr(self.context, "get_display_name_for_tool")
-                    else tool_name
+                    else original_tool_name
                 )
                 log.debug("[%d] Executing tool %s", idx, display_name)
                 
@@ -166,7 +182,8 @@ class ToolProcessor:
                 try:
                     if self.tool_manager is not None:
                         with Console().status("[cyan]Executing tool…[/cyan]", spinner="dots"):
-                            tool_result = await self.tool_manager.execute_tool(tool_name, arguments)
+                            # Use the original (mapped) tool name for execution
+                            tool_result = await self.tool_manager.execute_tool(original_tool_name, arguments)
 
                         success = tool_result.success
                         error_msg = tool_result.error
@@ -174,7 +191,8 @@ class ToolProcessor:
 
                     elif self.stream_manager is not None and hasattr(self.stream_manager, "call_tool"):
                         with Console().status("[cyan]Executing tool…[/cyan]", spinner="dots"):
-                            call_res = await self.stream_manager.call_tool(tool_name, arguments)
+                            # Use the original (mapped) tool name for execution
+                            call_res = await self.stream_manager.call_tool(original_tool_name, arguments)
 
                         if isinstance(call_res, dict):
                             success = not call_res.get("isError", False)
@@ -210,8 +228,12 @@ class ToolProcessor:
                     log.warning(f"Error normalizing content: {norm_exc}")
                     content = f"Error normalizing result: {norm_exc}"
 
-                # ------ ChatML bookkeeping ---------------------------
+                # ------ ChatML bookkeeping - KEY CHANGE -------------
                 try:
+                    import re
+                    # Ensure tool name is OpenAI-compatible
+                    sanitized_name = re.sub(r'[^a-zA-Z0-9_-]', '_', tool_name)
+                    
                     arg_json = (
                         json.dumps(arguments)
                         if isinstance(arguments, dict)
@@ -221,13 +243,13 @@ class ToolProcessor:
                     self.context.conversation_history.append(
                         {
                             "role": "assistant",
-                            "content": "",                # must be a string
+                            "content": "",
                             "tool_calls": [
                                 {
                                     "id": call_id,
                                     "type": "function",
                                     "function": {
-                                        "name": tool_name,
+                                        "name": sanitized_name,  # Use sanitized name for OpenAI
                                         "arguments": arg_json,
                                     },
                                 }
@@ -237,7 +259,7 @@ class ToolProcessor:
                     self.context.conversation_history.append(
                         {
                             "role": "tool",
-                            "name": tool_name,
+                            "name": sanitized_name,  # IMPORTANT: Use sanitized name for tool response too
                             "content": str(content),
                             "tool_call_id": call_id,
                         }
@@ -265,6 +287,10 @@ class ToolProcessor:
                     # Use plain print instead of rprint to avoid potential markup issues
                     print(f"Error executing tool {tool_name}: {exc}")
                     
+                    # Sanitize name for OpenAI
+                    import re
+                    sanitized_name = re.sub(r'[^a-zA-Z0-9_-]', '_', tool_name)
+                    
                     # Add fallback messages to conversation history
                     self.context.conversation_history.append(
                         {
@@ -275,7 +301,7 @@ class ToolProcessor:
                                     "id": call_id,
                                     "type": "function",
                                     "function": {
-                                        "name": tool_name,
+                                        "name": sanitized_name,  # Use sanitized name for OpenAI
                                         "arguments": json.dumps(raw_arguments)
                                         if isinstance(raw_arguments, dict)
                                         else str(raw_arguments),
@@ -288,7 +314,7 @@ class ToolProcessor:
                     self.context.conversation_history.append(
                         {
                             "role": "tool",
-                            "name": tool_name,
+                            "name": sanitized_name,  # Use sanitized name for OpenAI
                             "content": f"Error: Could not execute tool. {exc}",
                             "tool_call_id": call_id,
                         }
@@ -296,4 +322,4 @@ class ToolProcessor:
                 except Exception as recovery_exc:
                     # Last-ditch error handling if even our error recovery fails
                     log.critical(f"Failed to recover from tool error: {recovery_exc}")
-
+                    

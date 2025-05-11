@@ -1,11 +1,13 @@
 # mcp_cli/chat/conversation.py
 import time
 import asyncio
+import logging
 from rich import print
 
 # mcp cli imports
 from mcp_cli.chat.tool_processor import ToolProcessor
 
+log = logging.getLogger(__name__)
 
 class ConversationProcessor:
     """Class to handle LLM conversation processing."""
@@ -34,10 +36,22 @@ class ConversationProcessor:
 
                     # Ensure OpenAI tools are loaded for function calling
                     if not getattr(self.context, "openai_tools", None):
-                        self.context.openai_tools = (
-                            await self._maybe_async_get_tools()
-                        )
-                        print(f"[DEBUG] Loaded OpenAI tools: {len(self.context.openai_tools)} tools")
+                        try:
+                            # Get adapted tools that will work with OpenAI
+                            if hasattr(self.context.tool_manager, "get_adapted_tools_for_llm"):
+                                tools_and_mapping = await self.context.tool_manager.get_adapted_tools_for_llm()
+                                self.context.openai_tools = tools_and_mapping[0]
+                                self.context.tool_name_mapping = tools_and_mapping[1]
+                                print(f"[DEBUG] Loaded OpenAI tools: {len(self.context.openai_tools)} tools")
+                            else:
+                                # Fallback to standard tools
+                                self.context.openai_tools = await self._maybe_async_get_tools()
+                                self.context.tool_name_mapping = {}
+                                print(f"[DEBUG] Loaded OpenAI tools: {len(self.context.openai_tools)} tools")
+                        except Exception as exc:
+                            log.error(f"Error loading tools: {exc}")
+                            self.context.openai_tools = []
+                            self.context.tool_name_mapping = {}
 
                     # Attempt LLM call with function-calling
                     try:
@@ -48,7 +62,7 @@ class ConversationProcessor:
                     except Exception as e:
                         # If tools spec invalid, retry without tools
                         err = str(e)
-                        if "Invalid 'tools[0].function.name'" in err:
+                        if "Invalid 'tools" in err:
                             print("[yellow]Warning: tool definitions rejected by model, retrying without tools...[/yellow]")
                             completion = await self.context.client.create_completion(
                                 messages=self.context.conversation_history
@@ -61,7 +75,9 @@ class ConversationProcessor:
 
                     # If model requested tool calls, execute them
                     if tool_calls:
-                        await self.tool_processor.process_tool_calls(tool_calls)
+                        # Pass tool name mapping if available
+                        name_mapping = getattr(self.context, "tool_name_mapping", {})
+                        await self.tool_processor.process_tool_calls(tool_calls, name_mapping)
                         continue
 
                     # Otherwise, display the assistant's reply

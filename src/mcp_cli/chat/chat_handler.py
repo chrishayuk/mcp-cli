@@ -15,10 +15,12 @@ from __future__ import annotations
 
 import asyncio
 import gc
+import logging
 from typing import Any, Optional
 
 from rich import print
 from rich.panel import Panel
+from rich.console import Console
 
 # ── local imports ──────────────────────────────────────────────────────
 from mcp_cli.chat.chat_context import ChatContext
@@ -27,6 +29,9 @@ from mcp_cli.chat.conversation import ConversationProcessor
 from mcp_cli.ui.ui_helpers import clear_screen, display_welcome_banner
 from mcp_cli.provider_config import ProviderConfig
 from mcp_cli.tools.manager import ToolManager
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------- #
 # public helper                                                         #
@@ -61,6 +66,7 @@ async def handle_chat_mode(
     """
     ui: Optional[ChatUIManager] = None
     exit_ok = True
+    console = Console()
 
     try:
         # Initialize provider configuration if not provided
@@ -78,29 +84,32 @@ async def handle_chat_mode(
             provider_config.set_provider_config(provider, config_updates)
 
         # ── build chat context ─────────────────────────────────────────
-        if isinstance(manager, ToolManager):
-            ctx = ChatContext(
-                tool_manager=manager, 
-                provider=provider, 
-                model=model,
-                provider_config=provider_config,
-                api_base=api_base,
-                api_key=api_key
-            )
-        else:
-            # assume test stub
-            ctx = ChatContext(
-                stream_manager=manager, 
-                provider=provider, 
-                model=model,
-                provider_config=provider_config,
-                api_base=api_base,
-                api_key=api_key
-            )
-
-        if not await ctx.initialize():
-            print("[red]Failed to initialise chat context.[/red]")
-            return False
+        with console.status("[cyan]Initializing chat context...[/cyan]", spinner="dots"):
+            if isinstance(manager, ToolManager):
+                logger.debug("Creating ChatContext with ToolManager")
+                ctx = ChatContext(
+                    tool_manager=manager, 
+                    provider=provider, 
+                    model=model,
+                    provider_config=provider_config,
+                    api_base=api_base,
+                    api_key=api_key
+                )
+            else:
+                # assume test stub
+                logger.debug("Creating ChatContext with stream manager (test mode)")
+                ctx = ChatContext(
+                    stream_manager=manager, 
+                    provider=provider, 
+                    model=model,
+                    provider_config=provider_config,
+                    api_base=api_base,
+                    api_key=api_key
+                )
+    
+            if not await ctx.initialize():
+                print("[red]Failed to initialise chat context.[/red]")
+                return False
 
         # ── welcome banner (only once) ────────────────────────────────
         clear_screen()
@@ -142,21 +151,29 @@ async def handle_chat_mode(
             except EOFError:
                 print(Panel("EOF detected – exiting chat.", style="bold red"))
                 break
-            except Exception as exc:                       # noqa: BLE001
+            except Exception as exc:
+                logger.exception("Error processing message")
                 print(f"[red]Error processing message:[/red] {exc}")
-                import traceback
-                traceback.print_exc()
                 continue
 
-    except Exception as exc:                               # noqa: BLE001
+    except Exception as exc:
+        logger.exception("Error in chat mode")
         print(f"[red]Error in chat mode:[/red] {exc}")
-        import traceback
-        traceback.print_exc()
         exit_ok = False
 
     finally:
         if ui:
             await _safe_cleanup(ui)
+            
+        # Close the manager if possible
+        try:
+            if isinstance(manager, ToolManager) and hasattr(manager, "close"):
+                logger.debug("Closing ToolManager")
+                await manager.close()
+        except Exception as exc:
+            logger.warning(f"Error closing ToolManager: {exc}")
+            print(f"[yellow]Warning: Error closing ToolManager: {exc}[/yellow]")
+            
         # encourage prompt cleanup of any lingering transports
         gc.collect()
 
@@ -176,5 +193,6 @@ async def _safe_cleanup(ui: ChatUIManager) -> None:
         maybe_coro = ui.cleanup()
         if asyncio.iscoroutine(maybe_coro):
             await maybe_coro
-    except Exception as exc:                              # noqa: BLE001
+    except Exception as exc:
+        logger.warning(f"Cleanup failed: {exc}")
         print(f"[yellow]Cleanup failed:[/yellow] {exc}")

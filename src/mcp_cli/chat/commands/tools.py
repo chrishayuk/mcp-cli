@@ -6,8 +6,8 @@ reusing the shared CLI logic for consistency.
 from typing import List, Any
 from rich.console import Console
 
-# Shared implementations
-from mcp_cli.commands.tools import tools_action
+# Import the async version
+from mcp_cli.commands.tools import tools_action_async
 from mcp_cli.commands.tools_call import tools_call_action
 from mcp_cli.tools.manager import ToolManager
 
@@ -40,8 +40,8 @@ async def tools_command(cmd_parts: List[str], context: dict) -> bool:
         show_all = "--all" in args
         show_raw = "--raw" in args
 
-        # Delegate to shared CLI action
-        tools_action(
+        # Use async version
+        await tools_action_async(
             tool_manager,
             show_details=show_all,
             show_raw=show_raw

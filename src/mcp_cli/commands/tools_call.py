@@ -27,7 +27,7 @@ async def tools_call_action(tm: ToolManager) -> None:
     print("[cyan]\nTool Call Interface[/cyan]")
 
     # Use unique tools to prevent duplicate listings
-    all_tools = tm.get_unique_tools()
+    all_tools = await tm.get_unique_tools()
     if not all_tools:
         print("[yellow]No tools available from any server.[/yellow]")
         return
@@ -78,13 +78,15 @@ async def tools_call_action(tm: ToolManager) -> None:
     print(f"\n[cyan]Calling tool '{tool.name}' with arguments:[/cyan]")
     console.print(json.dumps(args, indent=2))
 
+    # Prepare fully qualified tool name
+    full_tool_name = f"{tool.namespace}.{tool.name}"
+
     # Execute
     try:
-        result: ToolCallResult = await tm.execute_tool(tool.name, args)
+        result: ToolCallResult = await tm.execute_tool(full_tool_name, args)
         # Display result nicely
         from mcp_cli.tools.formatting import display_tool_call_result
         display_tool_call_result(result)
     except Exception as e:
         logger.exception("Error executing tool")
         print(f"[red]Error: {e}[/red]")
-
