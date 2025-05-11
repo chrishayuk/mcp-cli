@@ -1,37 +1,40 @@
 # mcp_cli/chat/commands/prompts.py
 """
-Chat command for listing prompts from connected MCP servers.
-Delegates to the shared prompts_action.
-"""
+Interactive `/prompts` command – lists stored prompts on every
+connected MCP server.
 
-from typing import List, Dict, Any
+It re-uses the canonical async implementation from
+`mcp_cli.commands.prompts`.
+"""
+from __future__ import annotations
+
+from typing import Any, Dict, List
+
 from rich.console import Console
 
-# Shared implementation
-from mcp_cli.commands.prompts import prompts_action
+from mcp_cli.commands.prompts import prompts_action_cmd  # ← async helper
 from mcp_cli.tools.manager import ToolManager
-
-# Chat registry
 from mcp_cli.chat.commands import register_command
 
-async def cmd_prompts(cmd_parts: List[str], context: Dict[str, Any]) -> bool:
-    """
-    List prompts recorded by connected servers.
 
-    Usage:
-      /prompts    — Show all prompts
-      /p          — Alias for /prompts
+async def cmd_prompts(_parts: List[str], ctx: Dict[str, Any]) -> bool:
+    """
+    Usage
+    -----
+      /prompts    List prompts
+      /p          Alias
     """
     console = Console()
-    tm: ToolManager = context.get("tool_manager")
+    tm: ToolManager | None = ctx.get("tool_manager")
+
     if not tm:
-        console.print("[red]Error: no tool manager available[/red]")
+        console.print("[red]Error:[/red] ToolManager not available.")
         return True
 
-    # Delegate to the shared action
-    await prompts_action(tm)
+    await prompts_action_cmd(tm)
     return True
 
-# Register under /prompts and /p
+
+# Register command + short alias
 register_command("/prompts", cmd_prompts)
-register_command("/p",        cmd_prompts)
+register_command("/p", cmd_prompts)

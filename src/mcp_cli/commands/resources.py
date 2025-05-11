@@ -1,39 +1,38 @@
-# mcp_cli/commands/resources.py
+# src/mcp_cli/commands/resources.py
 """
-Shared resources‐listing logic for both interactive and CLI interfaces.
+Shared resources-listing logic for both interactive and CLI interfaces.
 """
+from __future__ import annotations
+
+import inspect
 from typing import Any, Dict, List
+
 from rich.console import Console
 from rich.table import Table
+
 from mcp_cli.tools.manager import ToolManager
+from mcp_cli.utils.async_utils import run_blocking
+
 
 def _human_size(size: int | None) -> str:
     if not size or size < 0:
         return "-"
     for unit in ("B", "KB", "MB", "GB"):
         if size < 1024:
-            return f"{size} {unit}"
+            return f"{size:.0f} {unit}"
         size /= 1024
     return f"{size:.1f} TB"
 
-async def resources_action(tm: ToolManager) -> List[Dict[str, Any]]:
-    """
-    (async) Retrieve resources from the tool manager and render them.
-    Returns the raw list of resource dicts.
-    """
+
+async def resources_action_async(tm: ToolManager) -> List[Dict[str, Any]]:
     console = Console()
     try:
         maybe = tm.list_resources()
-    except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Error:[/red] {exc}")
         return []
 
-    # If it’s a coroutine, await it
-    if hasattr(maybe, "__await__"):
-        resources = await maybe  # type: ignore
-    else:
-        resources = maybe  # type: ignore
-
+    resources = await maybe if inspect.isawaitable(maybe) else maybe
     resources = resources or []
     if not resources:
         console.print("[dim]No resources recorded.[/dim]")
@@ -55,3 +54,7 @@ async def resources_action(tm: ToolManager) -> List[Dict[str, Any]]:
 
     console.print(table)
     return resources
+
+
+def resources_action(tm: ToolManager) -> List[Dict[str, Any]]:
+    return run_blocking(resources_action_async(tm))

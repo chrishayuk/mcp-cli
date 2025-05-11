@@ -1,30 +1,34 @@
 # mcp_cli/interactive/commands/help.py
+"""
+Interactive “help” command - shows global help or details for a single command.
+"""
+from __future__ import annotations
+
 from typing import Any, List, Optional
+
 from rich.console import Console
+
 from .base import InteractiveCommand
 from mcp_cli.commands.help import help_action
 
+
 class HelpCommand(InteractiveCommand):
-    """Command to display help information."""
-    
-    def __init__(self):
+    """Display available commands or detailed help for one command."""
+
+    def __init__(self) -> None:
         super().__init__(
             name="help",
-            help_text="Display available commands or help for a specific command.",
             aliases=["?", "h"],
+            help_text="Display available commands or help for a specific command.",
         )
-    
+
     async def execute(
         self,
         args: List[str],
-        tool_manager: Any = None,
-        **kwargs: Any
+        tool_manager: Any = None,  # unused but kept for interface parity
+        **_: Any,
     ) -> None:
-        """
-        Execute the help command. If an argument is provided and matches
-        a command name, show detailed help for that command; otherwise
-        list all commands.
-        """
         console = Console()
         cmd_name: Optional[str] = args[0] if args else None
-        help_action(console, cmd_name)
+        # new signature: first arg is *command_name*, console is keyword-only
+        help_action(cmd_name, console=console)
