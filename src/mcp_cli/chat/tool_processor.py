@@ -10,7 +10,7 @@ order of messages in *conversation_history*.
 * Normal CLI runtime: use the full **ToolManager** available via
   ``context.tool_manager``.
 * Unit-tests: fall back to a minimal "stream-manager" stub that exposes
-  ``call_tool()`` – no ToolManager required.
+  ``call_tool()`` - no ToolManager required.
 """
 from __future__ import annotations
 
@@ -110,12 +110,14 @@ class ToolProcessor:
     # ------------------------------------------------------------------ #
     # internals                                                          #
     # ------------------------------------------------------------------ #
-    # mcp_cli/chat/tool_processor.py - update the _run_single_call method
     async def _run_single_call(self, idx: int, tool_call: Any, name_mapping: Dict[str, str] = None) -> None:
         """Execute one tool call and record the appropriate chat messages."""
         if name_mapping is None:
             name_mapping = {}
             
+        # Create a reverse mapping to look up OpenAI names from original names if needed
+        reverse_mapping = {v: k for k, v in name_mapping.items()}
+                
         async with self._sem:  # limit concurrency
             tool_name = "unknown_tool"
             raw_arguments: Any = {}
@@ -144,7 +146,20 @@ class ToolProcessor:
 
                 # Get the original tool name from mapping if available
                 original_tool_name = name_mapping.get(tool_name, tool_name)
-                    
+                log.debug(f"Tool call: {tool_name} -> {original_tool_name} (after mapping)")
+                
+                # If tool_name looks like a sanitized name (has underscore but no dot) and
+                # there's no mapping for it, try to recover the namespace
+                if "_" in tool_name and "." not in tool_name and tool_name not in name_mapping:
+                    # This is likely a sanitized tool name like stdio_list_tables
+                    # Try to extract namespace from the name
+                    parts = tool_name.split("_", 1)
+                    if len(parts) == 2:
+                        namespace, base_name = parts[0], parts[1]
+                        log.debug(f"Extracted namespace '{namespace}' and base name '{base_name}' from '{tool_name}'")
+                        original_tool_name = f"{namespace}.{base_name}"
+                        log.debug(f"Reconstructed original tool name: {original_tool_name}")
+                        
                 # ui feedback
                 display_name = (
                     self.context.get_display_name_for_tool(original_tool_name)
@@ -230,9 +245,15 @@ class ToolProcessor:
 
                 # ------ ChatML bookkeeping - KEY CHANGE -------------
                 try:
+                    # IMPORTANT: For conversation history, we use the SAME NAME that was in the original tool call
+                    # The tool_name from the tool_call should be in the right format for OpenAI
+                    
+                    # Double-check it's OpenAI compatible  
                     import re
-                    # Ensure tool name is OpenAI-compatible
-                    sanitized_name = re.sub(r'[^a-zA-Z0-9_-]', '_', tool_name)
+                    if not re.match(r'^[a-zA-Z0-9_-]+$', tool_name):
+                        # If it's not compatible, sanitize it
+                        log.warning(f"Tool name '{tool_name}' is not OpenAI compatible, sanitizing")
+                        tool_name = re.sub(r'[^a-zA-Z0-9_-]', '_', tool_name)
                     
                     arg_json = (
                         json.dumps(arguments)
@@ -240,30 +261,36 @@ class ToolProcessor:
                         else str(arguments)
                     )
                     
+                    # Add the assistant's tool call to history
                     self.context.conversation_history.append(
                         {
                             "role": "assistant",
-                            "content": "",
+                            "content": None,
                             "tool_calls": [
                                 {
                                     "id": call_id,
                                     "type": "function",
                                     "function": {
-                                        "name": sanitized_name,  # Use sanitized name for OpenAI
+                                        "name": tool_name,  # Use OpenAI-compatible name
                                         "arguments": arg_json,
                                     },
                                 }
                             ],
                         }
                     )
+                    
+                    # Add the tool's response
                     self.context.conversation_history.append(
                         {
                             "role": "tool",
-                            "name": sanitized_name,  # IMPORTANT: Use sanitized name for tool response too
+                            "name": tool_name,  # Use OpenAI-compatible name
                             "content": str(content),
                             "tool_call_id": call_id,
                         }
                     )
+                    
+                    log.debug(f"Added to conversation history with tool name: {tool_name}")
+                    
                 except Exception as hist_exc:
                     log.error(f"Error updating conversation history: {hist_exc}")
                     # This is serious but we'll continue to try displaying the result
@@ -287,21 +314,23 @@ class ToolProcessor:
                     # Use plain print instead of rprint to avoid potential markup issues
                     print(f"Error executing tool {tool_name}: {exc}")
                     
-                    # Sanitize name for OpenAI
+                    # Ensure we use a sanitized tool name for the history
                     import re
-                    sanitized_name = re.sub(r'[^a-zA-Z0-9_-]', '_', tool_name)
+                    sanitized_name = tool_name  # Start with existing name
+                    if not re.match(r'^[a-zA-Z0-9_-]+$', sanitized_name):
+                        sanitized_name = re.sub(r'[^a-zA-Z0-9_-]', '_', sanitized_name)
                     
                     # Add fallback messages to conversation history
                     self.context.conversation_history.append(
                         {
                             "role": "assistant",
-                            "content": "",
+                            "content": None,
                             "tool_calls": [
                                 {
                                     "id": call_id,
                                     "type": "function",
                                     "function": {
-                                        "name": sanitized_name,  # Use sanitized name for OpenAI
+                                        "name": sanitized_name,  # Use sanitized name
                                         "arguments": json.dumps(raw_arguments)
                                         if isinstance(raw_arguments, dict)
                                         else str(raw_arguments),
@@ -310,11 +339,12 @@ class ToolProcessor:
                             ],
                         }
                     )
+                    
                     # Ensure exact match for error format
                     self.context.conversation_history.append(
                         {
                             "role": "tool",
-                            "name": sanitized_name,  # Use sanitized name for OpenAI
+                            "name": sanitized_name,  # Use sanitized name
                             "content": f"Error: Could not execute tool. {exc}",
                             "tool_call_id": call_id,
                         }
@@ -322,4 +352,3 @@ class ToolProcessor:
                 except Exception as recovery_exc:
                     # Last-ditch error handling if even our error recovery fails
                     log.critical(f"Failed to recover from tool error: {recovery_exc}")
-                    

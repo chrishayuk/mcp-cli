@@ -550,7 +550,6 @@ class ToolManager:
             for t in unique_tools
         ]
 
-    # mcp_cli/tools/manager.py - update the get_adapted_tools_for_llm method
     async def get_adapted_tools_for_llm(self, provider: str = "openai") -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
         """
         Get tools in a format compatible with the specified LLM provider.
@@ -562,6 +561,8 @@ class ToolManager:
 
         llm_tools: List[Dict[str, Any]] = []
         name_mapping: Dict[str, str] = {}
+
+        print(f"[DEBUG] Adapting {len(unique_tools)} tools for provider: {provider}, adapter_needed: {adapter_needed}")
 
         for tool in unique_tools:
             original = f"{tool.namespace}.{tool.name}"
@@ -578,11 +579,15 @@ class ToolManager:
                 sanitized = re.sub(r'[^a-zA-Z0-9_-]', '_', combined)
                 
                 name_mapping[sanitized] = original
-                description = f"{tool.description or ''} (Original: {original})"
+                description = f"{tool.description or ''}"
                 tool_name = sanitized
+                
+                # Debug logging
+                print(f"[DEBUG] Tool adapted: {original} -> {sanitized}")
             else:
                 tool_name = original
                 description = tool.description or ""
+                print(f"[DEBUG] Tool not sanitized: {original}")
 
             llm_tools.append({
                 "type": "function", 
@@ -593,7 +598,12 @@ class ToolManager:
                 }
             })
 
+        # Print full tools list for debugging
+        print(f"[DEBUG] Adapted tools: {[t['function']['name'] for t in llm_tools]}")
+        print(f"[DEBUG] Name mapping: {name_mapping}")
+
         return llm_tools, name_mapping
+
     # ------------------------------------------------------------------ #
     # Formatting helpers                                                 #
     # ------------------------------------------------------------------ #

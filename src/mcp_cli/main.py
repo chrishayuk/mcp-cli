@@ -31,6 +31,9 @@ logging.basicConfig(
     stream=sys.stderr,
 )
 
+# Set specific noisy loggers to a higher level
+logging.getLogger("chuk_tool_processor.span.inprocess_execution").setLevel(logging.WARNING)
+
 # --------------------------------------------------------------------------- #
 # Typer application + global “quiet” flag
 # --------------------------------------------------------------------------- #

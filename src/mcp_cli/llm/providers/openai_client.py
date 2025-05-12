@@ -1,5 +1,4 @@
 # mcp_cli/llm/providers/openai_client.py
-
 """
 OpenAI chat-completion adapter for MCP-CLI.
 
@@ -27,7 +26,7 @@ import asyncio
 # base
 from mcp_cli.llm.providers.base import BaseLLMClient
 
-# load environment variables
+# load environment variables
 load_dotenv()
 
 
@@ -67,6 +66,22 @@ class OpenAILLMClient(BaseLLMClient):
         Send *messages* (plus optional *tools*) to the chat-completion API
         and return the standardised response dict.
         """
+        # Sanitize tool names to ensure they match OpenAI pattern
+        if tools:
+            import re
+            sanitized_tools = []
+            for tool in tools:
+                tool_copy = dict(tool)
+                if "function" in tool_copy and "name" in tool_copy["function"]:
+                    name = tool_copy["function"]["name"]
+                    if not re.match(r'^[a-zA-Z0-9_-]+$', name):
+                        # Sanitize the name
+                        sanitized = re.sub(r'[^a-zA-Z0-9_-]', '_', name)
+                        logging.debug(f"Sanitizing tool name for API call: {name} -> {sanitized}")
+                        tool_copy["function"]["name"] = sanitized
+                sanitized_tools.append(tool_copy)
+            tools = sanitized_tools
+
         # get the running loop
         loop = asyncio.get_running_loop()
 
