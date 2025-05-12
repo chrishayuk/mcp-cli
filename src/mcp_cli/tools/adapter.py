@@ -2,6 +2,7 @@
 """
 Adapters for transforming tool names and definitions for different LLM providers.
 """
+import re
 from typing import Dict, List
 
 from mcp_cli.tools.models import ToolInfo
@@ -15,14 +16,22 @@ class ToolNameAdapter:
         """
         Convert MCP tool name with namespace to OpenAI-compatible format.
         
+        OpenAI requires tool names to match pattern: ^[a-zA-Z0-9_-]+$
+        
         Args:
             namespace: Tool namespace
             name: Tool name
             
         Returns:
-            OpenAI-compatible name (namespace_name)
+            OpenAI-compatible name (namespace_name with invalid chars replaced)
         """
-        return f"{namespace}_{name}"
+        # First combine namespace and name with underscore
+        combined = f"{namespace}_{name}"
+        
+        # Replace any characters that don't comply with OpenAI's pattern
+        sanitized = re.sub(r'[^a-zA-Z0-9_-]', '_', combined)
+        
+        return sanitized
     
     @staticmethod
     def from_openai_compatible(openai_name: str) -> str:
@@ -36,8 +45,8 @@ class ToolNameAdapter:
             Original MCP tool name with namespace (namespace.name)
         """
         # Check if there's an underscore to convert back to dot notation
-        if "_" in openai_name:
-            parts = openai_name.split("_", 1)
+        if '_' in openai_name:
+            parts = openai_name.split('_', 1)
             return f"{parts[0]}.{parts[1]}"
         return openai_name
     

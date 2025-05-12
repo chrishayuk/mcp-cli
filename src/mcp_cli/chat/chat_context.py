@@ -2,23 +2,17 @@
 """
 Chat context handling for the MCP CLI.
 
-This module glues the UI / REPL layer to either a *ToolManager* (the normal
-runtime in the CLI) **or** a bare-bones "stream-manager–like" object that is
-used by the unit-tests.  The public surface of *ChatContext* therefore works
-with *either* source of tools:
-
-* Production code passes a **ToolManager** instance.
-* The test-suite instantiates the class with **stream_manager=…**.
-
-Both execution paths build identical data-structures so the rest of the CLI
-doesn't care where the information originally came from.
+This module provides a context for managing conversation state and tool access
+during a chat session. It interfaces with the ToolManager for tool execution
+and discovery, and manages the conversation history.
 """
 
 from __future__ import annotations
 
 import asyncio
 import gc
-from typing import Any, Dict, List, Optional
+import logging
+from typing import Any, Dict, List, Optional, AsyncIterator
 
 from rich import print
 from rich.console import Console
@@ -29,14 +23,15 @@ from mcp_cli.llm.llm_client import get_llm_client
 # Prompt generator
 from mcp_cli.chat.system_prompt import generate_system_prompt
 
-# Tools – only imported to expose convert_to_openai_tools for monkey-patching
+# Tools and configuration
 from mcp_cli.tools.manager import ToolManager
-
-# Provider configuration
 from mcp_cli.provider_config import ProviderConfig
 
-# The tests monkey-patch this symbol, so expose it at module level
+# For backward compatibility with imports
 convert_to_openai_tools = ToolManager.convert_to_openai_tools
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 
 class ChatContext:
@@ -59,26 +54,23 @@ class ChatContext:
         """
         Create a new chat context.
 
-        Exactly one of *tool_manager* **or** *stream_manager* must be
-        supplied.
-
         Parameters
         ----------
         tool_manager
-            Fully-featured tool manager used in the normal CLI runtime.
+            The ToolManager instance for tool operations.
         stream_manager
-            Minimal "manager" used by the test-suite.  Needs to expose
-            ``get_all_tools()`` (or ``get_internal_tools()``),
-            ``get_server_info()`` and ``get_server_for_tool()``.
-        provider / model
-            Which LLM backend to use.
+            Legacy test-mode stream manager (mutually exclusive with tool_manager).
+        provider
+            LLM provider to use (e.g., "openai", "anthropic").
+        model
+            LLM model to use (e.g., "gpt-4o-mini", "claude-3-opus").
         provider_config
             Optional ProviderConfig instance for LLM configurations.
         api_base / api_key
             Optional API settings that override provider_config.
         """
         if (tool_manager is None) == (stream_manager is None):
-            raise ValueError("Pass either tool_manager *or* stream_manager, not both")
+            raise ValueError("Pass either tool_manager or stream_manager, not both")
 
         self.tool_manager: Optional[ToolManager] = tool_manager
         self.stream_manager: Optional[Any] = stream_manager
@@ -101,14 +93,14 @@ class ChatContext:
                 
             self.provider_config.set_provider_config(provider, config_updates)
 
-        # initialise LLM client immediately so it's never None
+        # Initialize LLM client
         self.client = get_llm_client(
             provider=self.provider, 
             model=self.model,
             config=self.provider_config
         )
 
-        # attributes filled in initialise()
+        # Attributes filled during initialization
         self.tools: List[Dict[str, Any]] = []
         self.internal_tools: List[Dict[str, Any]] = []
         self.server_info: List[Dict[str, Any]] = []
@@ -116,112 +108,176 @@ class ChatContext:
         self.openai_tools: List[Dict[str, Any]] = []
 
     # ------------------------------------------------------------------ #
-    # initial setup                                                      #
+    # initialization                                                     #
     # ------------------------------------------------------------------ #
-    async def initialize(self) -> bool:  # noqa: C901  (a bit long but straightforward)
+    async def initialize(self) -> bool:
         """
-        Build the runtime context (tool list, server information, …).
-
-        When a *ToolManager* is present we filter out the duplicate tools that
-        live in the ``default`` namespace.  The stripped-down stream-manager
-        used in unit-tests already exposes a flat list without duplicates.
+        Build the runtime context by fetching tools and server information.
+        
+        Returns:
+            True on successful initialization, False otherwise.
         """
         console = Console()
-        with console.status("[bold cyan]Setting up chat environment…[/bold cyan]", spinner="dots"):
-            # ---- 1. obtain tool list -----------------------------------
-            if self.tool_manager is not None:
-                # production path — pull from ToolManager
-                if hasattr(self.tool_manager, "get_unique_tools"):
-                    tool_infos = self.tool_manager.get_unique_tools()
-                else:                                     # pragma: no cover
-                    tool_infos = [
-                        t for t in self.tool_manager.get_all_tools()
-                        if t.namespace != "default"
+        try:
+            with console.status("[bold cyan]Setting up chat environment…[/bold cyan]", spinner="dots"):
+                # Get tools and server info based on available manager
+                if self.tool_manager is not None:
+                    # Get unique tools
+                    logger.debug("Fetching tools from ToolManager")
+                    tool_infos = await self.tool_manager.get_unique_tools()
+                    
+                    # Convert to dictionary format for system prompt
+                    self.tools = [
+                        {
+                            "name": t.name,
+                            "description": t.description,
+                            "parameters": t.parameters,
+                            "namespace": t.namespace,
+                            "supports_streaming": getattr(t, "supports_streaming", False),
+                        }
+                        for t in tool_infos
                     ]
-
-                self.tools = [
-                    {
-                        "name": t.name,
-                        "description": t.description,
-                        "parameters": t.parameters,
-                        "namespace": t.namespace,
-                    }
-                    for t in tool_infos
-                ]
-                # identical copy for the system prompt
-                self.internal_tools = list(self.tools)
-
-                # servers
-                raw_infos = self.tool_manager.get_server_info() or []
-                self.server_info = self._convert_server_info(raw_infos)
-                self.tool_to_server_map = {t["name"]: t["namespace"] for t in self.tools}
-
-            else:
-                # unit-test / lightweight path — pull directly
-                if hasattr(self.stream_manager, "get_internal_tools"):
-                    self.tools = list(self.stream_manager.get_internal_tools())
+                    
+                    # Keep identical copy for system prompt
+                    self.internal_tools = list(self.tools)
+    
+                    # Get server information
+                    logger.debug("Fetching server info")
+                    raw_infos = await self.tool_manager.get_server_info()
+                    self.server_info = self._convert_server_info(raw_infos)
+                    
+                    # Build mapping from tool name to server/namespace
+                    self.tool_to_server_map = {t["name"]: t["namespace"] for t in self.tools}
+                    
+                    # Get tool specifications for LLM
+                    logger.debug("Fetching LLM tool specifications")
+                    self.openai_tools = await self.tool_manager.get_tools_for_llm()
+                    
                 else:
-                    self.tools = list(self.stream_manager.get_all_tools())
+                    # Legacy test mode with stream_manager
+                    logger.debug("Using stream_manager for tool information (test mode)")
+                    if hasattr(self.stream_manager, "get_internal_tools"):
+                        self.tools = list(self.stream_manager.get_internal_tools())
+                    else:
+                        self.tools = list(self.stream_manager.get_all_tools())
+    
+                    self.internal_tools = list(self.tools)
+                    self.server_info = list(self.stream_manager.get_server_info())
+                    
+                    # Build tool to server mapping
+                    self.tool_to_server_map = {
+                        t["name"]: self.stream_manager.get_server_for_tool(t["name"])
+                        for t in self.tools
+                    }
+                    
+                    # Convert tools to OpenAI format
+                    self.openai_tools = convert_to_openai_tools(self.tools)
+                    
+            # Warn on empty tool-set
+            if not self.tools:
+                print("[yellow]No tools available. Chat functionality may be limited.[/yellow]")
+                logger.warning("No tools found during initialization")
 
-                self.internal_tools = list(self.tools)
-
-                self.server_info = list(self.stream_manager.get_server_info())
-                self.tool_to_server_map = {
-                    t["name"]: self.stream_manager.get_server_for_tool(t["name"])
-                    for t in self.tools
-                }
-
-        # ---- 2. warn on empty tool-set ---------------------------------
-        if not self.tools:
-            print("[yellow]No tools available. Chat functionality may be limited.[/yellow]")
-
-        # ---- 3. build system prompt & OpenAI-style spec ----------------
-        system_prompt = generate_system_prompt(self.internal_tools)
-        # Use the *module-level* convert_to_openai_tools — tests replace it
-        self.openai_tools = convert_to_openai_tools(self.tools)
-
-        self.conversation_history = [{"role": "system", "content": system_prompt}]
-        return True
+            # Build system prompt and set initial conversation state
+            system_prompt = generate_system_prompt(self.internal_tools)
+            self.conversation_history = [{"role": "system", "content": system_prompt}]
+            
+            logger.info(f"Chat context initialized with {len(self.tools)} tools")
+            return True
+            
+        except Exception as exc:
+            logger.exception("Error initializing chat context")
+            print(f"[red]Error initializing chat context: {exc}[/red]")
+            return False
 
     # ------------------------------------------------------------------ #
     # helpers                                                            #
     # ------------------------------------------------------------------ #
     @staticmethod
     def _convert_server_info(server_infos):
-        """Convert *ToolManager*'s ServerInfo objects into plain dictionaries."""
+        """Convert ServerInfo objects into plain dictionaries."""
         result = []
         for server in server_infos:
-            result.append(
-                {
-                    "id": server.id,
-                    "name": server.name,
-                    "tools": server.tool_count,
-                    "status": server.status,
-                }
-            )
+            result.append({
+                "id": server.id,
+                "name": server.name,
+                "tools": server.tool_count,
+                "status": server.status,
+            })
         return result
 
-    # .................................................................. #
-    # convenience wrappers                                               #
-    # .................................................................. #
-    def get_server_for_tool(self, tool_name: str) -> str:
+    # ------------------------------------------------------------------ #
+    # tool and server helpers                                            #
+    # ------------------------------------------------------------------ #
+    async def get_server_for_tool(self, tool_name: str) -> str:
         """
-        Return the human-readable server name for *tool_name*.
-
-        Falls back to ``"Unknown"`` if the mapping isn't available.
+        Get the server/namespace for a tool.
+        
+        Args:
+            tool_name: The name of the tool
+            
+        Returns:
+            Server/namespace name, or "Unknown" if not found
         """
         if self.tool_manager is not None:
-            return self.tool_manager.get_server_for_tool(tool_name) or "Unknown"
+            return await self.tool_manager.get_server_for_tool(tool_name) or "Unknown"
+            
+        # Fallback to stream manager for test mode
         return self.stream_manager.get_server_for_tool(tool_name) or "Unknown"
 
     @staticmethod
-    def get_display_name_for_tool(namespaced_tool_name: str) -> str:  # noqa: D401
-        """Return a user-friendly name – here we already have one-to-one."""
+    def get_display_name_for_tool(namespaced_tool_name: str) -> str:
+        """Return a user-friendly name for display in UI."""
         return namespaced_tool_name
 
-    # .................................................................. #
-    # serialisation helpers                                              #
-    # .................................................................. #
+    # ------------------------------------------------------------------ #
+    # tool execution helpers                                             #
+    # ------------------------------------------------------------------ #
+    async def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
+        """
+        Execute a tool using the appropriate manager.
+        
+        Args:
+            tool_name: Name of the tool to execute
+            arguments: Arguments to pass to the tool
+            
+        Returns:
+            The result of the tool execution
+            
+        Raises:
+            ValueError: If no tool manager is available
+        """
+        if self.tool_manager is not None:
+            return await self.tool_manager.execute_tool(tool_name, arguments)
+            
+        elif self.stream_manager is not None and hasattr(self.stream_manager, "call_tool"):
+            return await self.stream_manager.call_tool(tool_name, arguments)
+            
+        raise ValueError(f"No tool manager available to execute {tool_name}")
+    
+    async def stream_execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> AsyncIterator[Any]:
+        """
+        Execute a tool with streaming support.
+        
+        Args:
+            tool_name: Name of the tool to execute
+            arguments: Arguments to pass to the tool
+            
+        Returns:
+            An async iterator of incremental results
+            
+        Raises:
+            ValueError: If streaming is not supported
+        """
+        if not self.tool_manager:
+            raise ValueError("Streaming execution requires ToolManager")
+            
+        async for result in self.tool_manager.stream_execute_tool(tool_name, arguments):
+            yield result
+
+    # ------------------------------------------------------------------ #
+    # serialization helpers                                              #
+    # ------------------------------------------------------------------ #
     def to_dict(self) -> Dict[str, Any]:
         """Dump the context to a plain dict for command handlers / tests."""
         return {
@@ -231,7 +287,7 @@ class ChatContext:
             "client": self.client,
             "provider": self.provider,
             "model": self.model,
-            "provider_config": self.provider_config,  # Added provider_config
+            "provider_config": self.provider_config,
             "server_info": self.server_info,
             "openai_tools": self.openai_tools,
             "exit_requested": self.exit_requested,
@@ -242,10 +298,9 @@ class ChatContext:
 
     def update_from_dict(self, context_dict: Dict[str, Any]) -> None:
         """
-        Update the context after it has been passed through a command handler.
-
-        Only a subset of keys is honoured; missing keys are ignored so callers
-        don't have to copy the entire structure back.
+        Update the context after command handling.
+        
+        Only updates specified keys, allowing partial updates.
         """
         if "exit_requested" in context_dict:
             self.exit_requested = context_dict["exit_requested"]

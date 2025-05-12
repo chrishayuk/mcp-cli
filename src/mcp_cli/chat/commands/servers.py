@@ -1,37 +1,37 @@
 # mcp_cli/chat/commands/servers.py
 """
-Chat command module for listing connected MCP servers,
-reusing the shared CLI logic for consistency.
+Chat-mode `/servers` command – lists all connected MCP servers.
 """
-from typing import List, Any, Dict
+from __future__ import annotations
+
+from typing import Any, Dict, List
+
 from rich.console import Console
+from rich import print
 
-# Shared implementation
-from mcp_cli.commands.servers import servers_action
+from mcp_cli.commands.servers import servers_action_async  # ← async helper
 from mcp_cli.tools.manager import ToolManager
-
-# Chat registration helper
 from mcp_cli.chat.commands import register_command
 
-async def servers_command(cmd_parts: List[str], context: Dict[str, Any]) -> bool:
-    """
-    Display a table of all connected servers and their status.
 
-    Usage:
-      /servers       - List all servers
-      /srv           - Alias for /servers
+async def servers_command(_parts: List[str], ctx: Dict[str, Any]) -> bool:
+    """
+    Usage
+    -----
+      /servers     List servers
+      /srv         Alias
     """
     console = Console()
+    tm: ToolManager | None = ctx.get("tool_manager")
 
-    tm: ToolManager = context.get("tool_manager")
     if not tm:
-        console.print("[red]Error: no tool manager available[/red]")
+        print("[red]Error:[/red] ToolManager not available.")
         return True
 
-    # Delegate to shared CLI action
-    servers_action(tm)
+    await servers_action_async(tm)
     return True
 
-# Register under /servers and /srv
+
+# Register command + short alias
 register_command("/servers", servers_command)
-register_command("/srv",     servers_command)
+register_command("/srv", servers_command)

@@ -1,90 +1,78 @@
 # src/mcp_cli/commands/tools_call.py
+"""
+Interactive “call a tool with JSON args” utility.
+"""
 from __future__ import annotations
+
 import asyncio
 import json
 import logging
-from typing import Any
+from typing import Any, Dict
+
 from rich.console import Console
 
-# mcp cli
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.tools.models import ToolCallResult
+from mcp_cli.tools.formatting import display_tool_call_result
 
-# logger
 logger = logging.getLogger(__name__)
 
 
 async def tools_call_action(tm: ToolManager) -> None:
-    """
-    Prompts the user to select a tool, gather JSON args,
-    execute the tool via ToolManager, and render the result.
-
-    Uses only unique tools to avoid duplicates across namespaces.
-    """
     console = Console()
-    print = console.print
+    print_rich = console.print
 
-    print("[cyan]\nTool Call Interface[/cyan]")
+    print_rich("[cyan]\nTool Call Interface[/cyan]")
 
-    # Use unique tools to prevent duplicate listings
-    all_tools = tm.get_unique_tools()
+    # unique tools to avoid dupes
+    all_tools = await tm.get_unique_tools()
     if not all_tools:
-        print("[yellow]No tools available from any server.[/yellow]")
+        print_rich("[yellow]No tools available from any server.[/yellow]")
         return
 
-    # List tools
-    print("[green]Available tools:[/green]")
-    for idx, tool in enumerate(all_tools, start=1):
-        print(f"  {idx}. {tool.name} (from {tool.namespace}) – {tool.description or 'No description'}")
+    # list tools
+    print_rich("[green]Available tools:[/green]")
+    for idx, tool in enumerate(all_tools, 1):
+        print_rich(
+            f"  {idx}. {tool.name} (from {tool.namespace}) – "
+            f"{tool.description or 'No description'}"
+        )
 
-    # Ask for selection
+    # user selection
     sel_raw = await asyncio.to_thread(input, "\nEnter tool number to call: ")
     try:
         sel = int(sel_raw) - 1
-        if not (0 <= sel < len(all_tools)):
-            print("[red]Invalid selection.[/red]")
-            return
-    except ValueError:
-        print("[red]Please enter a valid number.[/red]")
+        tool = all_tools[sel]
+    except (ValueError, IndexError):
+        print_rich("[red]Invalid selection.[/red]")
         return
 
-    tool = all_tools[sel]
-    print(f"\n[green]Selected:[/green] {tool.name} from {tool.namespace}")
-    print(f"[cyan]Description:[/cyan] {tool.description or 'No description'}")
+    print_rich(f"\n[green]Selected:[/green] {tool.name} from {tool.namespace}")
+    if tool.description:
+        print_rich(f"[cyan]Description:[/cyan] {tool.description}")
 
-    # Show parameters if any
-    params = tool.parameters or {}
-    if isinstance(params, dict) and "properties" in params and params["properties"]:
-        print("\n[yellow]Parameters:[/yellow]")
-        required = set(params.get("required", []))
-        for name, details in params["properties"].items():
-            req = "[Required]" if name in required else "[Optional]"
-            ptype = details.get("type", "any")
-            desc = details.get("description", "")
-            print(f"  – {name} ({ptype}) {req}: {desc}")
+    # arguments?
+    params_schema: Dict[str, Any] = tool.parameters or {}
+    args: Dict[str, Any] = {}
 
-    # Get JSON args
-    print("\n[yellow]Enter arguments as JSON (empty for none):[/yellow]")
-    args_raw = await asyncio.to_thread(input, "> ")
-    if args_raw.strip():
-        try:
-            args = json.loads(args_raw)
-        except json.JSONDecodeError:
-            print("[red]Invalid JSON. Please try again.[/red]")
-            return
+    if params_schema.get("properties"):
+        print_rich("\n[yellow]Enter arguments as JSON (empty for none):[/yellow]")
+        args_raw = await asyncio.to_thread(input, "> ")
+        if args_raw.strip():
+            try:
+                args = json.loads(args_raw)
+            except json.JSONDecodeError:
+                print_rich("[red]Invalid JSON – aborting.[/red]")
+                return
     else:
-        args = {}
+        print_rich("[dim]Tool takes no arguments.[/dim]")
 
-    print(f"\n[cyan]Calling tool '{tool.name}' with arguments:[/cyan]")
-    console.print(json.dumps(args, indent=2))
-
-    # Execute
+    # execute
+    fq_name = f"{tool.namespace}.{tool.name}"
+    print_rich(f"\n[cyan]Calling '{fq_name}'…[/cyan]")
     try:
-        result: ToolCallResult = await tm.execute_tool(tool.name, args)
-        # Display result nicely
-        from mcp_cli.tools.formatting import display_tool_call_result
-        display_tool_call_result(result)
-    except Exception as e:
+        result: ToolCallResult = await tm.execute_tool(fq_name, args)
+        display_tool_call_result(result, console)
+    except Exception as exc:  # noqa: BLE001
         logger.exception("Error executing tool")
-        print(f"[red]Error: {e}[/red]")
-
+        print_rich(f"[red]Error: {exc}[/red]")

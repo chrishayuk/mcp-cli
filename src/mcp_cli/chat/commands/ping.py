@@ -1,35 +1,39 @@
 # mcp_cli/chat/commands/ping.py
 """
-Chat command module for pinging connected MCP servers,
-reusing the shared CLI logic for consistency.
+Chat-mode `/ping` command – measure latency to connected MCP servers.
 """
-from typing import List, Any, Dict
+from __future__ import annotations
+
+from typing import Any, Dict, List
+
 from rich.console import Console
-from mcp_cli.commands.ping import ping_action
+from rich import print
+
+from mcp_cli.commands.ping import ping_action_async      # ← async helper
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.chat.commands import register_command
 
-async def ping_command(cmd_parts: List[str], context: Dict[str, Any]) -> bool:
-    """
-    Ping connected servers (optionally filter by index or name).
 
-    Usage:
-      /ping             - Ping all servers
-      /ping <target>    - Ping only servers matching index or name
-      /p                - Alias for /ping
+async def ping_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
+    """
+    Usage
+    -----
+      /ping            Ping all servers
+      /ping <filter>   Ping only servers whose index or name matches <filter>
+      /p               Alias
     """
     console = Console()
-    tm: ToolManager = context.get("tool_manager")
+    tm: ToolManager | None = ctx.get("tool_manager")
+
     if not tm:
-        console.print("[red]Error: no tool manager available[/red]")
+        print("[red]Error:[/red] ToolManager not available.")
         return True
 
-    # Skip the "/ping" itself; anything else is a filter target
-    targets = cmd_parts[1:]
-    success = await ping_action(tm, None, targets)
-    # ping_action already prints its table or error
+    targets = parts[1:]  # anything after /ping is treated as filter text
+    success = await ping_action_async(tm, targets=targets)
     return success
 
-# Register under /ping and /p
+
+# Register command + short alias
 register_command("/ping", ping_command)
-register_command("/p",     ping_command)
+register_command("/p", ping_command)

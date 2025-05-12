@@ -116,7 +116,7 @@ wheels = [
 
 [[package]]
 name = "chuk-tool-processor"
-version = "0.1.5"
+version = "0.1.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "chuk-mcp" },
@@ -126,7 +126,7 @@ dependencies = [
     { name = "uuid" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/73/56/5c1351b5b6fc16f799b5b385bc879e82426e2d15b91de7a3449f6683410c/chuk_tool_processor-0.1.5-py3-none-any.whl", hash = "sha256:08d454342b93e0c0d610044409767a972c7e4c9d9d24f9da2072bb5e79d951d5", size = 58814 },
+    { url = "https://files.pythonhosted.org/packages/d0/88/062ce8e1af577ac5ade19c957fbcce8bf01da6ffdd1f5206ea4b3fdc3571/chuk_tool_processor-0.1.7-py3-none-any.whl", hash = "sha256:09b3c0a7a6c3bc73da4eaa7cc6fed8d3d766ada12a3cc85c6eab63301577e130", size = 88105 },
 ]
 
 [[package]]
@@ -336,7 +336,7 @@ requires-dist = [
     { name = "asyncio", specifier = ">=3.4.3" },
     { name = "asyncio", marker = "extra == 'dev'", specifier = ">=3.4.3" },
     { name = "chuk-mcp", specifier = ">=0.1.7" },
-    { name = "chuk-tool-processor", specifier = ">=0.1.5" },
+    { name = "chuk-tool-processor", specifier = ">=0.1.7" },
     { name = "chuk-virtual-fs", specifier = ">=0.1.6" },
     { name = "numpy", marker = "extra == 'dev'", specifier = ">=2.2.3" },
     { name = "ollama", specifier = ">=0.4.2" },

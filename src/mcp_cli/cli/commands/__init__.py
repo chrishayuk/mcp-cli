@@ -11,21 +11,24 @@ def register_all_commands() -> None:
     from mcp_cli.cli.commands.chat import ChatCommand
     from mcp_cli.cli.commands.cmd import CmdCommand
     from mcp_cli.cli.commands.ping import PingCommand
-    from mcp_cli.cli.commands.provider import ProviderCommand  # Add Provider command
+    from mcp_cli.cli.commands.provider import ProviderCommand
 
     # Sub-app commands
     from mcp_cli.cli.commands.tools import ToolsListCommand
     from mcp_cli.cli.commands.tools_call import ToolsCallCommand
     from mcp_cli.cli.commands.prompts import PromptsListCommand
     from mcp_cli.cli.commands.resources import ResourcesListCommand
+    from mcp_cli.cli.commands.servers import ServersListCommand        # ← NEW
 
     # Register everything in the central registry
     CommandRegistry.register(InteractiveCommand())
     CommandRegistry.register(ChatCommand())
     CommandRegistry.register(CmdCommand())
     CommandRegistry.register(PingCommand())
-    CommandRegistry.register(ProviderCommand())  # Register Provider command
+    CommandRegistry.register(ProviderCommand())
+
     CommandRegistry.register(ToolsListCommand())
     CommandRegistry.register(ToolsCallCommand())
     CommandRegistry.register(PromptsListCommand())
     CommandRegistry.register(ResourcesListCommand())
+    CommandRegistry.register(ServersListCommand())                     # ← NEW

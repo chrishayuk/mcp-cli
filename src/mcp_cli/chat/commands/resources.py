@@ -1,36 +1,37 @@
 # mcp_cli/chat/commands/resources.py
 """
-Chat command for listing resources from connected MCP servers.
-Delegates to the shared resources_action.
+Chat-mode `/resources` command – list resources discovered by MCP servers.
 """
-from typing import List, Dict, Any
+from __future__ import annotations
+
+from typing import Any, Dict, List
+
 from rich.console import Console
+from rich import print
 
-# Shared implementation
-from mcp_cli.commands.resources import resources_action
+from mcp_cli.commands.resources import resources_action_async  # ← async helper
 from mcp_cli.tools.manager import ToolManager
-
-# Chat registry
 from mcp_cli.chat.commands import register_command
 
-async def cmd_resources(cmd_parts: List[str], context: Dict[str, Any]) -> bool:
-    """
-    List resources recorded by connected servers.
 
-    Usage:
-      /resources    — Show all resources
-      /res          — Alias for /resources
+async def cmd_resources(_parts: List[str], ctx: Dict[str, Any]) -> bool:
+    """
+    Usage
+    -----
+      /resources   Show resources
+      /res         Alias
     """
     console = Console()
-    tm: ToolManager = context.get("tool_manager")
+    tm: ToolManager | None = ctx.get("tool_manager")
+
     if not tm:
-        console.print("[red]Error: no tool manager available[/red]")
+        print("[red]Error:[/red] ToolManager not available.")
         return True
 
-    # resources_action already handles printing
-    await resources_action(tm)
+    await resources_action_async(tm)
     return True
 
-# Register under /resources and /res
+
+# Register command & alias
 register_command("/resources", cmd_resources)
-register_command("/res",       cmd_resources)
+register_command("/res", cmd_resources)

@@ -1,54 +1,54 @@
 # mcp_cli/chat/commands/tools.py
 """
-Chat command module for listing and calling available tools,
-reusing the shared CLI logic for consistency.
+Chat-mode `/tools` command – list tools or open the interactive call helper.
 """
-from typing import List, Any
-from rich.console import Console
+from __future__ import annotations
 
-# Shared implementations
-from mcp_cli.commands.tools import tools_action
+from typing import Any, Dict, List
+
+from rich.console import Console
+from mcp_cli.commands.tools import tools_action_async
 from mcp_cli.commands.tools_call import tools_call_action
 from mcp_cli.tools.manager import ToolManager
-
-# Chat registry
 from mcp_cli.chat.commands import register_command
 
-async def tools_command(cmd_parts: List[str], context: dict) -> bool:
-    """
-    Display or call tools in chat mode.
 
-    Usage:
+async def tools_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
+    """
+    Usage
+    -----
       /tools            List tools
-      /tools --all      Show detailed tool info
+      /tools --all      Show parameter details
       /tools --raw      Show raw JSON definitions
-      /tools call       Launch interactive tool-call UI
+      /tools call       Open interactive tool-call UI
+      /t                Alias for /tools
     """
     console = Console()
-    tool_manager: ToolManager = context.get("tool_manager")
-    if not tool_manager:
-        console.print("[red]Error: no tool manager available[/red]")
+    tm: ToolManager | None = ctx.get("tool_manager")
+
+    if not tm:
+        console.print("[red]Error:[/red] ToolManager not available.")
         return True
 
-    # Parse flags and subcommand
-    args = cmd_parts[1:] if len(cmd_parts) > 1 else []
+    args = parts[1:]  # strip the command word itself
+
+    # ── interactive call helper ─────────────────────────────────────
     if args and args[0].lower() == "call":
-        # Interactive tool call
-        await tools_call_action(tool_manager)
-    else:
-        # Listing mode
-        show_all = "--all" in args
-        show_raw = "--raw" in args
+        await tools_call_action(tm)
+        return True
 
-        # Delegate to shared CLI action
-        tools_action(
-            tool_manager,
-            show_details=show_all,
-            show_raw=show_raw
-        )
+    # ── list tools ───────────────────────────────────────────────────
+    show_details = "--all" in args
+    show_raw     = "--raw" in args
 
+    await tools_action_async(
+        tm,
+        show_details=show_details,
+        show_raw=show_raw,
+    )
     return True
 
-# Register under /tools and alias /t
-register_command("/tools", tools_command, ["--all", "--raw"])
-register_command("/t", tools_command, ["--all", "--raw"])
+
+# Register command and short alias
+register_command("/tools", tools_command)
+register_command("/t", tools_command)

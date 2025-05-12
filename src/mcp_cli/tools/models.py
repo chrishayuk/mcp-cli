@@ -18,6 +18,7 @@ class ToolInfo:
     parameters: Optional[Dict[str, Any]] = None
     is_async: bool = False
     tags: List[str] = field(default_factory=list)
+    supports_streaming: bool = False  # Add this field
 
 
 @dataclass
