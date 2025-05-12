@@ -13,7 +13,7 @@ import logging
 import uuid
 from typing import Any, Dict, List, Optional, Tuple, Union, AsyncIterator
 
-from chuk_tool_processor.mcp import setup_mcp_stdio
+from chuk_tool_processor.mcp.setup_mcp_stdio import setup_mcp_stdio
 from chuk_tool_processor.core.processor import ToolProcessor
 from chuk_tool_processor.registry import ToolRegistryProvider
 from chuk_tool_processor.mcp.stream_manager import StreamManager

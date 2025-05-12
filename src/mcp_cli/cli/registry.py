@@ -1,125 +1,118 @@
-# mcp_cli/cli/registry.py (updated)
-"""Command registry for MCP CLI.
-
-This module provides a centralized registry for all available CLI commands
-in the MCP CLI system, with utilities for registration and discovery.
+# mcp_cli/cli/registry.py
+"""
+Command registry for MCP-CLI – central place to register & discover commands.
 """
 from __future__ import annotations
+
 import logging
 from typing import Any, Callable, Dict, List, Optional
+
 import typer
 
-# mcp cli commands
 from mcp_cli.cli.commands.base import BaseCommand, CommandFunc, FunctionCommand
 
-# logger
 logger = logging.getLogger(__name__)
 
+
 class CommandRegistry:
-    """Central registry for all MCP CLI commands."""
-    
+    """Central registry holding every CLI command object."""
     _commands: Dict[str, BaseCommand] = {}
-    
+
+    # ── registration helpers ─────────────────────────────────────────
     @classmethod
     def register(cls, command: BaseCommand) -> None:
-        """Register a command in the registry."""
         cls._commands[command.name] = command
-    
+
     @classmethod
-    def register_function(cls, name: str, func: CommandFunc, help_text: str = "") -> None:
-        """Register a function as a command."""
-        command = FunctionCommand(name, func, help_text)
-        cls.register(command)
-    
+    def register_function(
+        cls,
+        name: str,
+        func: CommandFunc,
+        help_text: str = "",
+    ) -> None:
+        cls.register(FunctionCommand(name, func, help_text))
+
+    # ── retrieval helpers ────────────────────────────────────────────
     @classmethod
     def get_command(cls, name: str) -> Optional[BaseCommand]:
-        """Get a command by name."""
         return cls._commands.get(name)
-    
+
     @classmethod
     def get_all_commands(cls) -> List[BaseCommand]:
-        """Get all registered commands."""
         return list(cls._commands.values())
-    
+
+    # ── bulk registration into a Typer app ───────────────────────────
     @classmethod
-    def register_with_typer(cls, app: typer.Typer, run_command_func: Callable) -> None:
-        """Register all commands with a Typer app."""
-        for command in cls._commands.values():
-            command.register(app, run_command_func)
-    
+    def register_with_typer(cls, app: typer.Typer, run_cmd: Callable) -> None:
+        for cmd in cls._commands.values():
+            cmd.register(app, run_cmd)
+
+    # ── create grouped sub-commands (e.g. “tools list”) ──────────────
     @classmethod
-    def create_subcommand_group(cls, app: typer.Typer, group_name: str, 
-                               sub_commands: List[str], run_command_func: Callable) -> None:
+    def create_subcommand_group(
+        cls,
+        app: typer.Typer,
+        group_name: str,
+        sub_commands: List[str],
+        run_cmd: Callable,
+    ) -> None:
         """
-        Create a subcommand group (e.g., 'tools') with multiple commands.
-        
-        Args:
-            app: The Typer app to register with
-            group_name: Name of the command group (e.g., 'tools')
-            sub_commands: List of subcommand names in this group (e.g., ['list', 'call'])
-            run_command_func: Function to run commands
+        Attach a Typer sub-app that exposes commands like “tools list”.
         """
-        # Create a new Typer subcommand group
         subapp = typer.Typer(help=f"{group_name.capitalize()} commands")
-        
-        # For each subcommand (like 'list', 'call')
-        for sub_cmd_name in sub_commands:
-            # Get the full command (e.g., 'tools list')
-            full_name = f"{group_name} {sub_cmd_name}"
-            cmd = cls.get_command(full_name)
-            
-            if not cmd:
-                logger.warning(f"Command '{full_name}' not found in registry")
+
+        for sub_name in sub_commands:
+            full_name = f"{group_name} {sub_name}"
+            cmd_obj = cls.get_command(full_name)
+
+            if not cmd_obj:
+                logger.warning("Command '%s' not found in registry", full_name)
                 continue
-                
-            # Define a wrapper function that will call the command
-            def create_command_wrapper(command, full_cmd_name):
-                # This is a factory function to capture the command variable properly
-                
-                # Get the original execute method
-                original_execute = command.wrapped_execute
-                
-                # Define the actual wrapper that will become the Typer command
-                # FIX: Remove KWARGS parameter from here
+
+            # ------------------------------------------------------------------
+            # Wrapper factory – binds variables at definition time to avoid the
+            # classic late-binding-in-a-loop bug.
+            # ------------------------------------------------------------------
+            # create wrapper with variables bound at *definition* time
+            # mcp_cli/cli/registry.py  — only the inner wrapper changed
+            def _make_wrapper(command: BaseCommand) -> Callable[..., None]:
+                _orig_exec = command.wrapped_execute  # bind once
+
                 def command_wrapper(
+                    *,
                     config_file: str = "server_config.json",
-                    server: Optional[str] = None,
+                    server: str | None = None,
                     provider: str = "openai",
-                    model: Optional[str] = None,
+                    model: str | None = None,
                     disable_filesystem: bool = False,
-                    **kwargs  # Use **kwargs to capture any additional parameters
-                ):
-                    """Dynamically generated wrapper for subcommand."""
+                ) -> None:
+                    """Dynamically generated Typer wrapper."""
                     from mcp_cli.cli_options import process_options
-                    
-                    # Process options
+
                     servers, _, server_names = process_options(
                         server, disable_filesystem, provider, model, config_file
                     )
-                    
-                    # Prepare parameters
+
                     extra_params = {
                         "provider": provider,
                         "model": model,
                         "server_names": server_names,
-                        **kwargs
                     }
-                    
-                    # Execute the command
-                    run_command_func(
-                        original_execute,
+
+                    run_cmd(
+                        _orig_exec,
                         config_file,
                         servers,
                         extra_params=extra_params,
                     )
-                
-                # Add the docstring from the original command
-                command_wrapper.__doc__ = f"{command.help}"
+
+                # carry original help text safely
+                help_str = getattr(command, "help_text", None) or getattr(command, "help", "")
+                command_wrapper.__doc__ = help_str or "Sub-command wrapper"
                 return command_wrapper
-            
-            # Create and register the wrapper
-            wrapper = create_command_wrapper(cmd, full_name)
-            subapp.command(sub_cmd_name)(wrapper)
-        
-        # Add the subapp to the main app
+
+
+
+            subapp.command(sub_name)(_make_wrapper(cmd_obj))
+
         app.add_typer(subapp, name=group_name)

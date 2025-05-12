@@ -1,71 +1,95 @@
 # src/mcp_cli/main.py
 """Entry-point for the MCP CLI."""
-
 from __future__ import annotations
+
 import asyncio
 import atexit
 import gc
 import logging
+import os
 import signal
 import sys
 from typing import Optional
 
 import typer
 
-# ---------------------------------------------------------------------------
-# Local imports
-# ---------------------------------------------------------------------------
-# 1) Bring in the CLI‐side register_all_commands, which populates CommandRegistry
+# --------------------------------------------------------------------------- #
+# Local imports (kept as-is except for new log-level handling)
+# --------------------------------------------------------------------------- #
 from mcp_cli.cli.commands import register_all_commands
 from mcp_cli.cli.registry import CommandRegistry
 from mcp_cli.run_command import run_command_sync
 from mcp_cli.ui.ui_helpers import restore_terminal
 from mcp_cli.cli_options import process_options
-from mcp_cli.provider_config import ProviderConfig  # Import ProviderConfig
+from mcp_cli.provider_config import ProviderConfig
 
-# ---------------------------------------------------------------------------
-# Logging setup
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
+# Logging set-up
+# --------------------------------------------------------------------------- #
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     stream=sys.stderr,
 )
 
-# Ensure terminal restoration on exit
-atexit.register(restore_terminal)
-
-# ---------------------------------------------------------------------------
-# Typer application
-# ---------------------------------------------------------------------------
-app = typer.Typer()
+# --------------------------------------------------------------------------- #
+# Typer application + global “quiet” flag
+# --------------------------------------------------------------------------- #
+app = typer.Typer(add_completion=False)
 
 
-# ---------------------------------------------------------------------------
-# Interactive Mode (special top‐level command)
-# ---------------------------------------------------------------------------
+@app.callback(invoke_without_command=False)
+def main_callback(
+    ctx: typer.Context,
+    quiet: bool = typer.Option(
+        False,
+        "-q", "--quiet",                # put the short flag first ✅
+        help="Suppress server log output (sets CHUK_LOG_LEVEL=WARNING)",
+        is_flag=True,
+        show_default=False,
+    ),
+) -> None:
+    """
+    Executed before any sub-command.
+
+    • Raises the root logger to WARNING when --quiet is given  
+    • Exports CHUK_LOG_LEVEL so child servers are silent too
+    """
+    if quiet:
+        logging.getLogger().setLevel(logging.WARNING)
+        os.environ["CHUK_LOG_LEVEL"] = "WARNING"  # children read this
+    # Typer still proceeds to sub-command normally.
+
+
+# --------------------------------------------------------------------------- #
+# Interactive Mode (unchanged except minor formatting)
+# --------------------------------------------------------------------------- #
 @app.command("interactive")
 def _interactive_command(
     config_file: str = "server_config.json",
     server: Optional[str] = None,
-    provider: Optional[str] = None,  # Make provider optional
-    model: Optional[str] = None,     # Make model optional
-    api_base: Optional[str] = typer.Option(None, "--api-base", help="API base URL for the provider"),
-    api_key: Optional[str] = typer.Option(None, "--api-key", help="API key for the provider"),
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    api_base: Optional[str] = typer.Option(
+        None, "--api-base", help="API base URL for the provider"
+    ),
+    api_key: Optional[str] = typer.Option(
+        None, "--api-key", help="API key for the provider"
+    ),
     disable_filesystem: bool = False,
 ):
     """Start interactive command mode."""
-    # Load provider config to get saved settings
-    provider_config = ProviderConfig()
-    
-    # Use command-line parameters if provided, otherwise use saved settings
-    actual_provider = provider or provider_config.get_active_provider()
-    actual_model = model or provider_config.get_active_model()
+    provider_cfg = ProviderConfig()
+    actual_provider = provider or provider_cfg.get_active_provider()
+    actual_model = model or provider_cfg.get_active_model()
 
     servers, _, server_names = process_options(
-        server, disable_filesystem, actual_provider, actual_model, config_file
+        server,
+        disable_filesystem,
+        actual_provider,
+        actual_model,
+        config_file,
     )
 
-    # Import the new interactive shell entrypoint
     from mcp_cli.interactive.shell import interactive_mode
 
     run_command_sync(
@@ -82,46 +106,29 @@ def _interactive_command(
     )
 
 
-# ---------------------------------------------------------------------------
-# Register all CLI commands into the registry
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
+# Register commands & groups (unchanged)
+# --------------------------------------------------------------------------- #
 register_all_commands()
 
+CommandRegistry.create_subcommand_group(app, "tools",     ["list", "call"], run_command_sync)
+CommandRegistry.create_subcommand_group(app, "resources", ["list"],         run_command_sync)
+CommandRegistry.create_subcommand_group(app, "prompts",   ["list"],         run_command_sync)
+CommandRegistry.create_subcommand_group(app, "servers",   ["list"],         run_command_sync)
 
-# ---------------------------------------------------------------------------
-# Wire up sub‐command groups
-# ---------------------------------------------------------------------------
-CommandRegistry.create_subcommand_group(
-    app, "tools",     ["list", "call"], run_command_sync
-)
-CommandRegistry.create_subcommand_group(
-    app, "resources", ["list"],         run_command_sync
-)
-CommandRegistry.create_subcommand_group(
-    app, "prompts",   ["list"],         run_command_sync
-)
-
-
-# ---------------------------------------------------------------------------
-# Register standalone top‐level commands
-# ---------------------------------------------------------------------------
-for name in ("ping", "chat", "cmd", "provider"):  # Added "provider" to standalone commands
+for name in ("ping", "chat", "cmd", "provider"):
     cmd = CommandRegistry.get_command(name)
     if cmd:
         cmd.register(app, run_command_sync)
 
-
-# ---------------------------------------------------------------------------
-# Make "chat" the default if no subcommand is supplied
-# ---------------------------------------------------------------------------
 chat_cmd = CommandRegistry.get_command("chat")
 if chat_cmd:
     chat_cmd.register_as_default(app, run_command_sync)
 
 
-# ---------------------------------------------------------------------------
-# Signal‐handler for clean shutdown
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
+# Clean shutdown helpers (unchanged)
+# --------------------------------------------------------------------------- #
 def _signal_handler(sig, _frame):
     logging.debug("Received signal %s, restoring terminal", sig)
     restore_terminal()
@@ -135,17 +142,16 @@ def _setup_signal_handlers() -> None:
         signal.signal(signal.SIGQUIT, _signal_handler)
 
 
-# ---------------------------------------------------------------------------
-# Main entry‐point
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
+# Main
+# --------------------------------------------------------------------------- #
 if __name__ == "__main__":
     if sys.platform == "win32":
-        # Use the selector event loop on Windows
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
     _setup_signal_handlers()
     try:
-        app()
+        app()  # Typer dispatch
     finally:
         restore_terminal()
         gc.collect()
