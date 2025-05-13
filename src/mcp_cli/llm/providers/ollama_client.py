@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 class OllamaLLMClient(BaseLLMClient):
     """Wrapper around `ollama.chat` supporting both sync and async interfaces."""
 
-    def __init__(self, model: str = "qwen2.5-coder", api_base: Optional[str] = None) -> None:
+    def __init__(self, model: str = "qwen3", api_base: Optional[str] = None) -> None:
         """
         Initialize Ollama client.
         

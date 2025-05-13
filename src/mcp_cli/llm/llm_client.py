@@ -1,90 +1,96 @@
 # mcp_cli/llm/llm_client.py
-"""LLM client factory with improved provider configuration."""
-from typing import Optional, Dict, Any
+"""
+Central factory for obtaining a provider-specific LLM client.
+
+* Reads client class path from ProviderConfig (“client” key).
+* Filters kwargs to match each adapter's __init__.
+* Late host override via set_host().
+* Loads .env (dotenv) so API-key env-vars are available before we touch them.
+"""
+from __future__ import annotations
+
+# ── NEW: load variables from .env early ────────────────────────────────────
+try:
+    from dotenv import load_dotenv
+    load_dotenv()                    # silently ignores if .env absent
+except ModuleNotFoundError:
+    # python-dotenv not installed – no big deal; continue
+    pass
+# -------------------------------------------------------------------------
+
+import importlib
+import inspect
 import logging
+from types import ModuleType
+from typing import Any, Dict, Optional, Type, TypeVar
 
 from mcp_cli.llm.providers.base import BaseLLMClient
 from mcp_cli.provider_config import ProviderConfig
 
 log = logging.getLogger(__name__)
+_T = TypeVar("_T", bound=BaseLLMClient)
 
+# ────────────────────────────────────────────────────────────────────────────
+# helpers
+# ────────────────────────────────────────────────────────────────────────────
+def _import_string(path: str) -> Any:
+    module_path, _, attr = path.replace(":", ".").rpartition(".")
+    if not module_path or not attr:
+        raise ImportError(f"Invalid import path: {path!r}")
+    module: ModuleType = importlib.import_module(module_path)
+    return getattr(module, attr)
+
+
+def _supports_param(cls: Type, param: str) -> bool:
+    return param in inspect.signature(cls.__init__).parameters
+
+
+def _constructor_kwargs(cls: Type[_T], cfg: Dict[str, Any]) -> Dict[str, Any]:
+    cand = {
+        "model":    cfg.get("model") or cfg.get("default_model"),
+        "api_key":  cfg.get("api_key"),
+        "api_base": cfg.get("api_base"),
+    }
+    params = inspect.signature(cls.__init__).parameters
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return {k: v for k, v in cand.items() if v is not None}
+    return {k: v for k, v in cand.items() if k in params and v is not None}
+
+# ────────────────────────────────────────────────────────────────────────────
+# public factory
+# ────────────────────────────────────────────────────────────────────────────
 def get_llm_client(
-    provider: str = "openai", 
-    model: Optional[str] = None, 
+    provider: str = "openai",
+    *,
+    model: Optional[str] = None,
     api_key: Optional[str] = None,
     api_base: Optional[str] = None,
-    config: Optional[ProviderConfig] = None
+    config: Optional[ProviderConfig] = None,
 ) -> BaseLLMClient:
-    """
-    Get an LLM client for the specified provider.
-    
-    Args:
-        provider: Provider name (e.g., "openai", "ollama")
-        model: Model name (e.g., "gpt-4o-mini")
-        api_key: API key (overrides configuration)
-        api_base: API base URL (overrides configuration)
-        config: ProviderConfig instance (created if None)
-        
-    Returns:
-        An instance of BaseLLMClient for the specified provider
-    """
-    # Load provider configuration
-    provider_config = config or ProviderConfig()
-    
+    cfg_mgr = config or ProviderConfig()
+    cfg = cfg_mgr.get_provider_config(provider.lower())  # raises if unknown
+
+    for k, v in (("model", model), ("api_key", api_key), ("api_base", api_base)):
+        if v is not None:
+            cfg[k] = v
+
+    client_path = cfg.get("client")
+    if not client_path:
+        raise ValueError(f"No 'client' class configured for provider '{provider}'")
+
+    ClientCls: Type[_T] = _import_string(client_path)
+    kwargs = _constructor_kwargs(ClientCls, cfg)
+
     try:
-        # Get provider-specific configuration
-        provider_settings = provider_config.get_provider_config(provider)
-        
-        # Override with function parameters if provided
-        if api_key:
-            provider_settings["api_key"] = api_key
-        if api_base:
-            provider_settings["api_base"] = api_base
-        if model:
-            provider_settings["model"] = model
-        else:
-            provider_settings["model"] = provider_settings.get("default_model")
-            
-        # Instantiate appropriate client based on provider
-        if provider.lower() == "openai":
-            from mcp_cli.llm.providers.openai_client import OpenAILLMClient
-            return OpenAILLMClient(
-                model=provider_settings["model"],
-                api_key=provider_settings["api_key"],
-                api_base=provider_settings["api_base"]
-            )
-        elif provider.lower() == "ollama":
-            from mcp_cli.llm.providers.ollama_client import OllamaLLMClient
-            
-            # Original OllamaLLMClient doesn't accept api_base in constructor
-            # So we'll create the client first
-            client = OllamaLLMClient(
-                model=provider_settings["model"]
-            )
-            
-            # Then handle the api_base if provided (will be ignored in current implementation)
-            if api_base:
-                log.warning(
-                    f"The current OllamaLLMClient implementation doesn't support api_base. "
-                    f"Parameter '{api_base}' will be ignored."
-                )
-                
-                # Try to set the host if the ollama library supports it
-                import ollama
-                if hasattr(ollama, 'set_host'):
-                    log.info(f"Setting Ollama host to: {api_base}")
-                    ollama.set_host(api_base)
-            
-            return client
-            
-        elif provider.lower() == "anthropic":
-            from mcp_cli.llm.providers.anthropic_client import AnthropicLLMClient
-            return AnthropicLLMClient(
-                model=provider_settings["model"],
-                api_key=provider_settings["api_key"],
-                api_base=provider_settings["api_base"]
-            )
-        else:
-            raise ValueError(f"Unsupported provider: {provider}")
-    except Exception as e:
-        raise ValueError(f"Error initializing {provider} client: {e}")
+        client: BaseLLMClient = ClientCls(**kwargs)  # type: ignore[arg-type]
+    except Exception as exc:
+        raise ValueError(f"Error initialising '{provider}' client: {exc}") from exc
+
+    if cfg.get("api_base") and not _supports_param(ClientCls, "api_base") and hasattr(client, "set_host"):
+        try:
+            log.info("Setting host via set_host() on %s → %s", provider, cfg["api_base"])
+            client.set_host(cfg["api_base"])  # type: ignore[attr-defined]
+        except Exception as exc:
+            log.warning("Unable to set host on %s: %s", provider, exc)
+
+    return client

@@ -1,6 +1,6 @@
 # mcp_cli/cli/registry.py
 """
-Command registry for MCP-CLI – central place to register & discover commands.
+Command registry for MCP-CLI - central place to register & discover commands.
 """
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ class CommandRegistry:
         for cmd in cls._commands.values():
             cmd.register(app, run_cmd)
 
-    # ── create grouped sub-commands (e.g. “tools list”) ──────────────
+    # ── create grouped sub-commands (e.g. "tools list") ──────────────
     @classmethod
     def create_subcommand_group(
         cls,
@@ -57,9 +57,11 @@ class CommandRegistry:
         run_cmd: Callable,
     ) -> None:
         """
-        Attach a Typer sub-app that exposes commands like “tools list”.
+        Attach a Typer sub-app that exposes commands like "tools list".
         """
-        subapp = typer.Typer(help=f"{group_name.capitalize()} commands")
+        # Provide a description for the command group itself
+        group_desc = f"{group_name.capitalize()} commands"
+        subapp = typer.Typer(help=group_desc)
 
         for sub_name in sub_commands:
             full_name = f"{group_name} {sub_name}"
@@ -74,17 +76,16 @@ class CommandRegistry:
             # classic late-binding-in-a-loop bug.
             # ------------------------------------------------------------------
             # create wrapper with variables bound at *definition* time
-            # mcp_cli/cli/registry.py  — only the inner wrapper changed
             def _make_wrapper(command: BaseCommand) -> Callable[..., None]:
                 _orig_exec = command.wrapped_execute  # bind once
 
                 def command_wrapper(
                     *,
-                    config_file: str = "server_config.json",
-                    server: str | None = None,
-                    provider: str = "openai",
-                    model: str | None = None,
-                    disable_filesystem: bool = False,
+                    config_file: str = typer.Option("server_config.json", help="Configuration file path"),
+                    server: str | None = typer.Option(None, help="Server to connect to"),
+                    provider: str = typer.Option("openai", help="LLM provider name"),
+                    model: str | None = typer.Option(None, help="Model name"),
+                    disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
                 ) -> None:
                     """Dynamically generated Typer wrapper."""
                     from mcp_cli.cli_options import process_options
@@ -111,8 +112,14 @@ class CommandRegistry:
                 command_wrapper.__doc__ = help_str or "Sub-command wrapper"
                 return command_wrapper
 
+            # Extract help text from the command
+            cmd_help = getattr(cmd_obj, "help_text", None) or getattr(cmd_obj, "help", "")
+            if not cmd_help:
+                cmd_help = f"Execute the {full_name} command"
+            
+            # Register with explicit help text
+            wrapper = _make_wrapper(cmd_obj)
+            subapp.command(sub_name, help=cmd_help)(wrapper)
 
-
-            subapp.command(sub_name)(_make_wrapper(cmd_obj))
-
-        app.add_typer(subapp, name=group_name)
+        # Add command group with descriptive help
+        app.add_typer(subapp, name=group_name, help=group_desc)

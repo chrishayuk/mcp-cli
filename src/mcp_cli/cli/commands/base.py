@@ -1,5 +1,5 @@
 # mcp_cli/cli/commands/base.py
-"""Base command classes for MCP CLI.s
+"""Base command classes for MCP CLI.
 This module defines the abstract base classes used by all CLI command implementations.
 """
 from __future__ import annotations
@@ -41,15 +41,17 @@ class BaseCommand(ABC):
     def register(self, app: typer.Typer, run_command_func: Callable) -> None:
         """Register this command with the Typer app."""
         # Default implementation - override in subclasses if needed
-        @app.command(self.name)
+        # Pass help text explicitly to the command decorator
+        @app.command(self.name, help=self.help)
         def _command_wrapper(
-            config_file: str = "server_config.json",
-            server: Optional[str] = None,
-            provider: str = "openai",
-            model: Optional[str] = None,
-            disable_filesystem: bool = False,
+            config_file: str = typer.Option("server_config.json", help="Configuration file path"),
+            server: Optional[str] = typer.Option(None, help="Server to connect to"),
+            provider: str = typer.Option("openai", help="LLM provider name"),
+            model: Optional[str] = typer.Option(None, help="Model name"),
+            disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
             **kwargs
         ) -> None:
+            """Command wrapper with preserved help text."""
             servers, _, server_names = process_options(
                 server, disable_filesystem, provider, model, config_file
             )
@@ -67,6 +69,9 @@ class BaseCommand(ABC):
                 servers,
                 extra_params=extra_params
             )
+        
+        # Explicitly set the wrapper's docstring to match the help text
+        _command_wrapper.__doc__ = self.help
     
     async def wrapped_execute(self, tool_manager: ToolManager, **kwargs) -> Any:
         """Standard wrapper for execute to ensure consistent behavior."""

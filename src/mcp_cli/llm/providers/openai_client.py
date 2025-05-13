@@ -2,138 +2,68 @@
 """
 OpenAI chat-completion adapter for MCP-CLI.
 
-* Exposes a single async `create_completion()` method that always
-  returns a normalised dict:
-
-      {
-          "response":  <str | None>,     # assistant message (None if only tool-calls)
-          "tool_calls": <list[dict]>,    # OpenAI-style tool-call payloads
-      }
-
-* Internally the blocking OpenAI SDK call is executed in a background
-  thread so the event-loop never stalls.
+• Shares sanitising / normalising / streaming helpers via OpenAIStyleMixin.
+• create_completion(..., stream=False) → single MCP dict  (legacy behaviour)
+• create_completion(..., stream=True)  → async iterator of MCP-style deltas.
 """
 from __future__ import annotations
-import json
-import logging
-import os
-import uuid
-from typing import Any, Dict, List, Optional
-from dotenv import load_dotenv
-from openai import OpenAI
-import asyncio
 
-# base
+from typing import Any, AsyncIterator, Dict, List, Optional
+
+from openai import OpenAI
+
+from mcp_cli.llm.openai_style_mixin import OpenAIStyleMixin
 from mcp_cli.llm.providers.base import BaseLLMClient
 
-# load environment variables
-load_dotenv()
 
-
-class OpenAILLMClient(BaseLLMClient):
-    """Async wrapper around the (blocking) OpenAI SDK."""
+class OpenAILLMClient(OpenAIStyleMixin, BaseLLMClient):
+    """
+    Thin wrapper around the official `openai` SDK.
+    """
 
     def __init__(
         self,
         model: str = "gpt-4o-mini",
-        api_key: str | None = None,
-        api_base: str | None = None,
-    ):
-        # get the model, api key and base url
+        api_key: Optional[str] = None,
+        api_base: Optional[str] = None,
+    ) -> None:
         self.model = model
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
-        self.api_base = api_base or os.getenv("OPENAI_API_BASE")
-
-        # check we have an api key
-        if not self.api_key:
-            raise ValueError("OPENAI_API_KEY environment variable is not set.")
-        
-        # check if we need to override the base
-        if self.api_base:
-            self.client = OpenAI(api_key=self.api_key, base_url=self.api_base)
-        else:
-            self.client = OpenAI(api_key=self.api_key)
+        self.client = (
+            OpenAI(api_key=api_key, base_url=api_base)
+            if api_base else
+            OpenAI(api_key=api_key)
+        )
 
     # ------------------------------------------------------------------ #
-    # public API – always async                                          #
+    # public API                                                          #
     # ------------------------------------------------------------------ #
     async def create_completion(
         self,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
+        *,
+        stream: bool = False,
+    ) -> Dict[str, Any] | AsyncIterator[Dict[str, Any]]:
         """
-        Send *messages* (plus optional *tools*) to the chat-completion API
-        and return the standardised response dict.
+        • stream=False → returns a single normalised dict
+        • stream=True  → returns an async iterator yielding MCP-delta dicts
         """
-        # Sanitize tool names to ensure they match OpenAI pattern
-        if tools:
-            import re
-            sanitized_tools = []
-            for tool in tools:
-                tool_copy = dict(tool)
-                if "function" in tool_copy and "name" in tool_copy["function"]:
-                    name = tool_copy["function"]["name"]
-                    if not re.match(r'^[a-zA-Z0-9_-]+$', name):
-                        # Sanitize the name
-                        sanitized = re.sub(r'[^a-zA-Z0-9_-]', '_', name)
-                        logging.debug(f"Sanitizing tool name for API call: {name} -> {sanitized}")
-                        tool_copy["function"]["name"] = sanitized
-                sanitized_tools.append(tool_copy)
-            tools = sanitized_tools
+        tools = self._sanitize_tool_names(tools)
 
-        # get the running loop
-        loop = asyncio.get_running_loop()
-
-        # The OpenAI SDK method is blocking → offload to executor
-        try:
-            response = await loop.run_in_executor(
-                None,
-                lambda: self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    tools=tools or [],
-                ),
+        # 1️⃣ streaming
+        if stream:
+            return self._stream_from_blocking(
+                self.client.chat.completions.create,
+                model=self.model,
+                messages=messages,
+                tools=tools or [],
             )
-        except Exception as exc:
-            logging.error("OpenAI API Error: %s", exc)
-            raise
 
-        # -----------------------------------------------------------------
-        # Normalise output ⇢ {"response": str|None, "tool_calls": [...]}
-        # -----------------------------------------------------------------
-        msg = response.choices[0].message
-        raw_tool_calls = getattr(msg, "tool_calls", None)
-
-        # ----- tool-call normalisation -----------------------------------
-        tool_calls: List[Dict[str, Any]] = []
-        if raw_tool_calls:
-            for call in raw_tool_calls:
-                # Ensure we have a stable ID
-                call_id = call.id or f"call_{uuid.uuid4().hex[:8]}"
-
-                # Always stringify arguments for consistency
-                try:
-                    arguments = (
-                        json.dumps(json.loads(call.function.arguments))
-                        if isinstance(call.function.arguments, str)
-                        else json.dumps(call.function.arguments)
-                    )
-                except (TypeError, json.JSONDecodeError):
-                    arguments = "{}"
-
-                tool_calls.append(
-                    {
-                        "id": call_id,
-                        "type": "function",
-                        "function": {
-                            "name": call.function.name,
-                            "arguments": arguments,
-                        },
-                    }
-                )
-
-        return {
-            "response": msg.content if not tool_calls else None,
-            "tool_calls": tool_calls,
-        }
+        # 2️⃣ one-shot
+        resp = await self._call_blocking(
+            self.client.chat.completions.create,
+            model=self.model,
+            messages=messages,
+            tools=tools or [],
+        )
+        return self._normalise_message(resp.choices[0].message)
