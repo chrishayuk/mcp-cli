@@ -30,13 +30,13 @@ logger = logging.getLogger(__name__)
 # helper – robust tool list extractor
 # --------------------------------------------------------------------
 
-def _extract_tools_list(manager: Any) -> List[Dict[str, Any]]:
+async def _extract_tools_list(manager: Any) -> List[Dict[str, Any]]:
     """Return tools as list[dict] irrespective of manager flavour."""
     if manager is None:
         return []
     if hasattr(manager, "get_unique_tools"):
         tools: List[Dict[str, Any]] = []
-        for t in manager.get_unique_tools():  # type: ignore[attr-defined]
+        for t in await manager.get_unique_tools():
             tools.append(
                 {
                     "name": t.name,
@@ -181,7 +181,7 @@ class CmdCommand(BaseCommand):
         from mcp_cli.llm.llm_client import get_llm_client
         from mcp_cli.llm.tools_handler import convert_to_openai_tools
 
-        tools = _extract_tools_list(manager)
+        tools = await _extract_tools_list(manager)
         openai_tools = convert_to_openai_tools(tools)
 
         system_prompt = custom_system_prompt or generate_system_prompt(tools)
