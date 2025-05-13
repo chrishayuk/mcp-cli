@@ -26,28 +26,27 @@ from mcp_cli.tools.manager import ToolManager
 
 logger = logging.getLogger(__name__)
 
+# --------------------------------------------------------------------
+# helper – robust tool list extractor
+# --------------------------------------------------------------------
 
-# ════════════════════════════════════════════════════════════════════════
-# Helpers
-# ════════════════════════════════════════════════════════════════════════
-async def _extract_tools_list(manager: Any) -> List[Dict[str, Any]]:
-    """Return a serialisable list of tool metadata from any ToolManager."""
-    if not manager:
+def _extract_tools_list(manager: Any) -> List[Dict[str, Any]]:
+    """Return tools as list[dict] irrespective of manager flavour."""
+    if manager is None:
         return []
 
     if hasattr(manager, "get_unique_tools"):
-        maybe_iterable = manager.get_unique_tools()                     # type: ignore[attr-defined]
-        tools_iter = await maybe_iterable if asyncio.iscoroutine(maybe_iterable) else maybe_iterable
-        return [
-            {
-                "name": t.name,
-                "description": t.description,
-                "parameters": t.parameters,
-                "namespace": t.namespace,
-            }
-            for t in tools_iter
-        ]
-
+        tools: List[Dict[str, Any]] = []
+        for t in manager.get_unique_tools():  # type: ignore[attr-defined]
+            tools.append(
+                {
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.parameters,
+                    "namespace": t.namespace,
+                }
+            )
+        return tools
     if hasattr(manager, "get_internal_tools"):
         return list(manager.get_internal_tools())                       # type: ignore[attr-defined]
 
