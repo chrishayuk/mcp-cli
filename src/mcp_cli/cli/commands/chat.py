@@ -10,6 +10,7 @@ import typer
 
 from mcp_cli.cli.commands.base import BaseCommand
 from mcp_cli.cli_options import process_options
+from mcp_cli.provider_config import ProviderConfig        # ← NEW
 from mcp_cli.tools.manager import ToolManager
 
 log = logging.getLogger(__name__)
@@ -19,10 +20,19 @@ log = logging.getLogger(__name__)
 # helpers
 # ──────────────────────────────────────────────────────────────────────────────
 def _default_model(provider: str, explicit: Optional[str]) -> str:
-    """Return a guaranteed model string."""
-    if explicit:          # user passed --model
+    """
+    Return a guaranteed model string.
+
+    Priority:
+    1. Explicit --model from CLI
+    2. ProviderConfig.default_model for that provider
+    3. Library fallback (“gpt-4o-mini”)
+    """
+    if explicit:  # user passed --model
         return explicit
-    return "gpt-4o-mini" if provider.lower() == "openai" else "qwen2.5-coder"
+
+    cfg = ProviderConfig().get_provider_config(provider.lower())
+    return cfg.get("default_model", "gpt-4o-mini")
 
 
 def _set_logging(level: str) -> None:
@@ -41,7 +51,7 @@ class ChatCommand(BaseCommand):
     def __init__(self) -> None:
         super().__init__("chat", "Start interactive chat mode.")
 
-    # --------------------------------------------------------------------- execute
+    # ----------------------------------------------------------------- execute
     async def execute(self, tool_manager: ToolManager, **params) -> Any:
         """Spin up the chat UI with sane defaults."""
         from mcp_cli.chat.chat_handler import handle_chat_mode
@@ -52,7 +62,7 @@ class ChatCommand(BaseCommand):
         log.debug("Starting chat (provider=%s model=%s)", provider, model)
         return await handle_chat_mode(tool_manager, provider=provider, model=model)
 
-    # --------------------------------------------------------------------- register (sub-command)
+    # ----------------------------------------------------------- register (sub)
     def register(self, app: typer.Typer, run_command_func: Callable) -> None:
         """Register `/chat` as an explicit sub-command (no KWARGS)."""
 
@@ -82,7 +92,7 @@ class ChatCommand(BaseCommand):
             }
             run_command_func(self.wrapped_execute, config_file, servers, extra_params=extra)
 
-    # --------------------------------------------------------------------- register_as_default
+    # ------------------------------------------------------- register_default
     def register_as_default(self, app: typer.Typer, run_command_func: Callable) -> None:
         """
         Make `/chat` the action when the user runs plain `mcp-cli …`

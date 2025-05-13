@@ -1,133 +1,134 @@
-# mcp_cli/provider_config.py (update the class)
-"""Provider configuration management for MCP CLI."""
-import os
+# mcp_cli/provider_config.py
+"""
+Provider configuration management for MCP-CLI.
+
+* One place for defaults  - `DEFAULTS`.
+* Single path for “load → merge env-vars → expose”.
+* Convenience helpers (`get_active_*`, `set_active_*`, etc.) preserved.
+"""
+from __future__ import annotations
+
 import json
+import os
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional
+
+# provider_config.py  (only the DEFAULTS block shown)
+DEFAULTS: Dict[str, Dict[str, Any]] = {
+    "__global__": {
+        "active_provider": "openai",
+        "active_model": "gpt-4o-mini",
+    },
+    "openai": {
+        "client": "mcp_cli.llm.providers.openai_client.OpenAILLMClient",
+        "api_key_env": "OPENAI_API_KEY",
+        "api_base": None,
+        "api_key": None,
+        "default_model": "gpt-4o-mini",
+    },
+    "groq": {
+        "client": "mcp_cli.llm.providers.groq_client.GroqAILLMClient",
+        "api_key_env": "GROQ_API_KEY",
+        "api_key": None,
+        "api_base": None,
+        "default_model": "llama-3.3-70b-versatile"
+    },
+    "ollama": {
+        "client": "mcp_cli.llm.providers.ollama_client.OllamaLLMClient",
+        "api_key_env": None,
+        "api_base": "http://localhost:11434",
+        "api_key": None,
+        "default_model": "qwen3",
+    },
+    # "anthropic": {
+    #     "client": "mcp_cli.llm.providers.anthropic_client.AnthropicLLMClient",
+    #     "api_key_env": "ANTHROPIC_API_KEY",
+    #     "api_base": None,
+    #     "api_key": None,
+    #     "default_model": "claude-3-7-sonnet",
+    # },
+}
+
+CFG_PATH = Path(os.path.expanduser("~/.mcp-cli/providers.json"))
+
 
 class ProviderConfig:
-    """Manages provider configuration including API keys and base URLs."""
-    
-    DEFAULT_CONFIG_PATH = "~/.mcp-cli/providers.json"
-    
-    def __init__(self, config_path: Optional[str] = None):
-        self.config_path = os.path.expanduser(config_path or self.DEFAULT_CONFIG_PATH)
-        self.providers = self._load_providers()
-        
-    def _load_providers(self) -> Dict[str, Dict[str, Any]]:
-        """Load provider configurations from file or create defaults."""
-        if os.path.exists(self.config_path):
+    """Load / mutate / persist provider configuration."""
+
+    def __init__(self, config_path: Optional[str] = None) -> None:
+        self._path = Path(os.path.expanduser(config_path)) if config_path else CFG_PATH
+        self.providers: Dict[str, Dict[str, Any]] = self._load_from_disk()
+
+    # ------------------------------------------------------------------ #
+    # I/O                                                                 #
+    # ------------------------------------------------------------------ #
+    def _load_from_disk(self) -> Dict[str, Dict[str, Any]]:
+        if self._path.is_file():
             try:
-                with open(self.config_path, 'r') as f:
-                    return json.load(f)
+                return json.loads(self._path.read_text())
             except json.JSONDecodeError:
-                return self._create_default_config()
-        else:
-            return self._create_default_config()
-    
-    def _create_default_config(self) -> Dict[str, Dict[str, Any]]:
-        """Create default provider configurations."""
-        config = {
-            # Special global section for general settings
-            "__global__": {
-                "active_provider": "openai",
-                "active_model": "gpt-4o-mini"
-            },
-            "openai": {
-                "api_key_env": "OPENAI_API_KEY",
-                "api_key": None,
-                "api_base": None,
-                "default_model": "gpt-4o-mini"
-            },
-            "ollama": {
-                "api_key": None,
-                "api_base": "http://localhost:11434",
-                "default_model": "llama3.2"
-            },
-            "anthropic": {
-                "api_key_env": "ANTHROPIC_API_KEY",
-                "api_key": None,
-                "api_base": None,
-                "default_model": "claude-3-opus-20240229"
-            }
-        }
-        return config
-    
-    def save_config(self) -> None:
-        """Save the current configuration to disk."""
-        # Create directory if it doesn't exist
-        os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
-        
-        with open(self.config_path, 'w') as f:
-            json.dump(self.providers, f, indent=2)
-    
-    def get_provider_config(self, provider_name: str) -> Dict[str, Any]:
-        """Get configuration for a specific provider."""
-        if provider_name not in self.providers:
-            raise ValueError(f"Provider '{provider_name}' not configured")
-        
-        provider_config = self.providers[provider_name].copy()
-        
-        # Try to get API key from environment if not set directly
-        if not provider_config.get("api_key") and provider_config.get("api_key_env"):
-            provider_config["api_key"] = os.environ.get(provider_config["api_key_env"])
-            
-        return provider_config
-    
-    def set_provider_config(self, provider_name: str, config: Dict[str, Any]) -> None:
-        """Update configuration for a provider."""
-        if provider_name not in self.providers and provider_name != "__global__":
-            self.providers[provider_name] = {}
-            
-        # Update config but preserve existing keys
-        self.providers[provider_name].update(config)
-        
-        # Save changes
-        self.save_config()
-    
+                pass  # fall back to defaults
+        return json.loads(json.dumps(DEFAULTS))  # deep copy
+
+    def _save(self) -> None:
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._path.write_text(json.dumps(self.providers, indent=2))
+
+    # ------------------------------------------------------------------ #
+    # Internal helpers                                                    #
+    # ------------------------------------------------------------------ #
+    def _ensure_section(self, name: str) -> None:
+        if name not in self.providers:
+            self.providers[name] = {}
+
+    def _merge_env_key(self, cfg: Dict[str, Any]) -> None:
+        """If api_key is empty but api_key_env is set → pull from env."""
+        if not cfg.get("api_key") and (env_var := cfg.get("api_key_env")):
+            cfg["api_key"] = os.getenv(env_var)
+
+    # ------------------------------------------------------------------ #
+    # Public API                                                          #
+    # ------------------------------------------------------------------ #
+    def get_provider_config(self, provider: str) -> Dict[str, Any]:
+        """Return config for *provider*, merged with env vars + defaults."""
+        self._ensure_section(provider)
+        # start with defaults → overlay saved values
+        cfg = {**DEFAULTS.get(provider, {}), **self.providers[provider]}
+        self._merge_env_key(cfg)
+        return cfg
+
+    def set_provider_config(self, provider: str, updates: Dict[str, Any]) -> None:
+        """Merge *updates* into provider’s section and persist."""
+        self._ensure_section(provider)
+        self.providers[provider].update(updates)
+        self._save()
+
+    # ----- active provider / model ------------------------------------ #
+    @property
+    def _glob(self) -> Dict[str, Any]:
+        self._ensure_section("__global__")
+        return self.providers["__global__"]
+
     def get_active_provider(self) -> str:
-        """Get the currently active provider."""
-        if "__global__" not in self.providers:
-            self.providers["__global__"] = {"active_provider": "openai", "active_model": "gpt-4o-mini"}
-            self.save_config()
-            
-        return self.providers["__global__"].get("active_provider", "openai")
-    
+        return self._glob.get("active_provider", DEFAULTS["__global__"]["active_provider"])
+
+    def set_active_provider(self, provider: str) -> None:
+        self._glob["active_provider"] = provider
+        self._save()
+
     def get_active_model(self) -> str:
-        """Get the currently active model."""
-        if "__global__" not in self.providers:
-            self.providers["__global__"] = {"active_provider": "openai", "active_model": "gpt-4o-mini"}
-            self.save_config()
-            
-        return self.providers["__global__"].get("active_model", "gpt-4o-mini")
-    
-    def set_active_provider(self, provider_name: str) -> None:
-        """Set the active provider."""
-        if "__global__" not in self.providers:
-            self.providers["__global__"] = {}
-            
-        self.providers["__global__"]["active_provider"] = provider_name
-        self.save_config()
-    
+        return self._glob.get("active_model", DEFAULTS["__global__"]["active_model"])
+
     def set_active_model(self, model: str) -> None:
-        """Set the active model."""
-        if "__global__" not in self.providers:
-            self.providers["__global__"] = {}
-            
-        self.providers["__global__"]["active_model"] = model
-        self.save_config()
-        
-    def get_api_key(self, provider_name: str) -> Optional[str]:
-        """Get API key for a provider."""
-        config = self.get_provider_config(provider_name)
-        return config.get("api_key")
-    
-    def get_api_base(self, provider_name: str) -> Optional[str]:
-        """Get API base URL for a provider."""
-        config = self.get_provider_config(provider_name)
-        return config.get("api_base")
-    
-    def get_default_model(self, provider_name: str) -> str:
-        """Get default model for a provider."""
-        config = self.get_provider_config(provider_name)
-        return config.get("default_model", "")
+        self._glob["active_model"] = model
+        self._save()
+
+    # ----- convenience getters ---------------------------------------- #
+    def get_api_key(self, provider: str) -> Optional[str]:
+        return self.get_provider_config(provider).get("api_key")
+
+    def get_api_base(self, provider: str) -> Optional[str]:
+        return self.get_provider_config(provider).get("api_base")
+
+    def get_default_model(self, provider: str) -> str:
+        return self.get_provider_config(provider).get("default_model", "")

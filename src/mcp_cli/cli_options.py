@@ -1,107 +1,117 @@
 # mcp_cli/cli/cli_options.py
-import os
+"""
+Shared option-processing helpers for MCP-CLI commands.
+"""
+from __future__ import annotations
+
 import json
 import logging
+import os
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
+
+from mcp_cli.provider_config import ProviderConfig   # ← NEW
 
 logger = logging.getLogger(__name__)
 
 
-def load_config(config_file):
-    """Load the configuration file."""
-    config = None
+# ──────────────────────────────────────────────────────────────────────────────
+# basic JSON / filesystem helpers
+# ──────────────────────────────────────────────────────────────────────────────
+def load_config(config_file: str) -> Optional[dict]:
+    """Read *config_file* (if it exists) and return a dict or None."""
     try:
-        if os.path.exists(config_file):
-            with open(config_file, 'r') as f:
-                config = json.load(f)
-        else:
-            logging.warning(f"Config file '{config_file}' not found.")
+        if Path(config_file).is_file():
+            with open(config_file, "r", encoding="utf-8") as fh:
+                return json.load(fh)
+        logger.warning("Config file '%s' not found.", config_file)
     except json.JSONDecodeError:
-        logging.error(f"Invalid JSON in config file '{config_file}'")
-    except Exception as e:
-        logging.error(f"Error loading config file: {e}")
-    
-    return config
+        logger.error("Invalid JSON in config file '%s'", config_file)
+    except OSError as exc:
+        logger.error("Error loading config file: %s", exc)
+    return None
 
 
-def extract_server_names(config, specified_servers=None):
+def extract_server_names(cfg: Optional[dict], specified: list[str] | None = None) -> Dict[int, str]:
     """
-    Extract server names from the config.
-    
-    Args:
-        config: Configuration dictionary
-        specified_servers: Optional list of specific servers to use
-        
-    Returns:
-        Dictionary mapping server indices to their names
+    Convert the ``mcpServers`` dict in *cfg* into {index: name}.
+    If *specified* is provided, keep only those servers (in the same order).
     """
-    server_names = {}
-    
-    # Return empty dict if no config
-    if not config or "mcpServers" not in config:
-        return server_names
-    
-    # Get the list of servers from config
-    mcp_servers = config["mcpServers"]
-    
-    # If specific servers were requested, map them in order
-    if specified_servers:
-        for i, name in enumerate(specified_servers):
-            if name in mcp_servers:
-                server_names[i] = name
+    names: Dict[int, str] = {}
+    if not cfg or "mcpServers" not in cfg:
+        return names
+
+    servers = cfg["mcpServers"]
+
+    if specified:
+        for i, name in enumerate(specified):
+            if name in servers:
+                names[i] = name
     else:
-        # Map all servers to their indices
-        for i, name in enumerate(mcp_servers.keys()):
-            server_names[i] = name
-    
-    return server_names
+        for i, name in enumerate(servers.keys()):
+            names[i] = name
+    return names
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# main helper used by /chat and /cmd
+# ──────────────────────────────────────────────────────────────────────────────
+def _provider_default_model(provider: str) -> str:
+    """
+    Return the configured default_model for *provider*.
+    Falls back to 'gpt-4o-mini' if the provider is unknown / mis-configured.
+    """
+    try:
+        cfg = ProviderConfig().get_provider_config(provider.lower())
+        return cfg.get("default_model", "gpt-4o-mini")
+    except Exception:
+        # ProviderConfig might throw if provider is absent – keep CLI resilient.
+        return "gpt-4o-mini"
 
 
 def process_options(
     server: Optional[str],
     disable_filesystem: bool,
     provider: str,
-    model: str,
-    config_file: str = "server_config.json"
+    model: Optional[str],
+    config_file: str = "server_config.json",
 ) -> Tuple[List[str], List[str], Dict[int, str]]:
     """
-    Process CLI options to produce a list of server names and set environment variables.
-    
-    Returns:
-        Tuple of (servers_list, user_specified, server_names)
+    Process CLI options → (servers_list, user_specified, server_names).
+
+    * Sets env-vars LLM_PROVIDER / LLM_MODEL / SOURCE_FILESYSTEMS.
+    * Expands comma-separated ``--server`` argument.
     """
     servers_list: List[str] = []
     user_specified: List[str] = []
-    server_names: Dict[int, str] = {}
-    
-    logging.debug(f"Processing options: server={server}, disable_filesystem={disable_filesystem}")
-    
+
+    logger.debug("Processing options: server=%s disable_fs=%s", server, disable_filesystem)
+
+    # ------------------------------------------------------------------ servers
     if server:
-        # Allow comma-separated servers.
         user_specified = [s.strip() for s in server.split(",")]
-        logging.debug(f"Parsed server parameter into: {user_specified}")
         servers_list.extend(user_specified)
-    
-    logging.debug(f"Initial servers list: {servers_list}")
-    
-    # Use a default model if none is provided.
-    if not model:
-        model = "gpt-4o-mini" if provider.lower() == "openai" else "qwen2.5-coder"
-    
-    # Set environment variables used by the MCP code.
+
+    # ------------------------------------------------------------------ model
+    effective_model = (
+        model
+        or os.getenv("LLM_MODEL")
+        or _provider_default_model(provider)
+    )
+
+    # ------------------------------------------------------------------ env vars
     os.environ["LLM_PROVIDER"] = provider
-    os.environ["LLM_MODEL"] = model
+    os.environ["LLM_MODEL"] = effective_model
     if not disable_filesystem:
         os.environ["SOURCE_FILESYSTEMS"] = json.dumps([os.getcwd()])
-    
-    # Load configuration to get server names and default servers
-    config = load_config(config_file)
-    if not servers_list and config and "mcpServers" in config:
-        # Default to all configured servers if none specified
-        servers_list = list(config["mcpServers"].keys())
-    
-    # Extract server names mapping (for display)
-    server_names = extract_server_names(config, user_specified)
-    
+
+    # ------------------------------------------------------------------ read cfg
+    cfg = load_config(config_file)
+
+    if not servers_list and cfg and "mcpServers" in cfg:
+        servers_list = list(cfg["mcpServers"].keys())  # default: all configured
+
+    server_names = extract_server_names(cfg, user_specified)
+
+    logger.debug("Resolved model=%s servers=%s", effective_model, servers_list)
     return servers_list, user_specified, server_names
