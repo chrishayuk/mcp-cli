@@ -15,7 +15,6 @@ keywords = ["llm", "openai", "claude", "mcp", "cli"]
 license = {text = "MIT"}
 dependencies = [
   "anthropic>=0.51.0",
-  "anyio>=4.6.2.post1",
   "asyncio>=3.4.3",
   "chuk-mcp>=0.1.7",
   "chuk-tool-processor>=0.1.7",
@@ -23,10 +22,8 @@ dependencies = [
   "groq>=0.24.0",
   "ollama>=0.4.2",
   "openai>=1.55.3",
-  "pandas>=2.2.3",
   "prompt-toolkit>=3.0.50",
   "python-dotenv>=1.0.1",
-  "requests>=2.32.3", # Re-enable if you actually want to install from PyPI
   "rich>=13.9.4",
   "typer>=0.15.2",
 ]
