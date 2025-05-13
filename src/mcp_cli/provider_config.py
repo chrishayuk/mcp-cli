@@ -40,6 +40,12 @@ DEFAULTS: Dict[str, Dict[str, Any]] = {
         "api_key": None,
         "default_model": "qwen3",
     },
+    "gemini": {
+        "client": "mcp_cli.llm.providers.gemini_client.GeminiLLMClient",
+        "api_key_env": None,
+        "api_key": None,
+        "default_model": "gemini-2.0-flash",
+    },
     # "anthropic": {
     #     "client": "mcp_cli.llm.providers.anthropic_client.AnthropicLLMClient",
     #     "api_key_env": "ANTHROPIC_API_KEY",
