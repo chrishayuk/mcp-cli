@@ -26,27 +26,28 @@ from mcp_cli.tools.manager import ToolManager
 
 logger = logging.getLogger(__name__)
 
-# --------------------------------------------------------------------
-# helper – robust tool list extractor
-# --------------------------------------------------------------------
 
-def _extract_tools_list(manager: Any) -> List[Dict[str, Any]]:
-    """Return tools as list[dict] irrespective of manager flavour."""
-    if manager is None:
+# ════════════════════════════════════════════════════════════════════════
+# Helpers
+# ════════════════════════════════════════════════════════════════════════
+async def _extract_tools_list(manager: Any) -> List[Dict[str, Any]]:
+    """Return a serialisable list of tool metadata from any ToolManager."""
+    if not manager:
         return []
 
     if hasattr(manager, "get_unique_tools"):
-        tools: List[Dict[str, Any]] = []
-        for t in manager.get_unique_tools():  # type: ignore[attr-defined]
-            tools.append(
-                {
-                    "name": t.name,
-                    "description": t.description,
-                    "parameters": t.parameters,
-                    "namespace": t.namespace,
-                }
-            )
-        return tools
+        maybe_iterable = manager.get_unique_tools()                     # type: ignore[attr-defined]
+        tools_iter = await maybe_iterable if asyncio.iscoroutine(maybe_iterable) else maybe_iterable
+        return [
+            {
+                "name": t.name,
+                "description": t.description,
+                "parameters": t.parameters,
+                "namespace": t.namespace,
+            }
+            for t in tools_iter
+        ]
+
     if hasattr(manager, "get_internal_tools"):
         return list(manager.get_internal_tools())                       # type: ignore[attr-defined]
 
@@ -67,7 +68,7 @@ def _extract_response_text(completion: Any) -> str:
 # Command
 # ════════════════════════════════════════════════════════════════════════
 class CmdCommand(BaseCommand):
-    """`mcp-cli cmd` - run a prompt (multi-turn by default) then exit."""
+    """`mcp-cli cmd` – run a prompt (multi-turn by default) then exit."""
 
     def __init__(self) -> None:
         help_text = (
