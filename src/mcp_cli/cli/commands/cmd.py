@@ -1,5 +1,5 @@
 """
-CMD – non-interactive one-shot command for MCP-CLI
+CMD - non-interactive one-shot command for MCP-CLI
 ──────────────────────────────────────────────────
 • Sends a single prompt (or tool call) to the LLM, optionally with
   multi-turn reasoning & tool use, then exits.
@@ -68,14 +68,15 @@ def _extract_response_text(completion: Any) -> str:
 # Command
 # ════════════════════════════════════════════════════════════════════════
 class CmdCommand(BaseCommand):
-    """`mcp-cli cmd` – run a prompt (multi-turn by default) then exit."""
+    """`mcp-cli cmd` - run a prompt (multi-turn by default) then exit."""
 
     def __init__(self) -> None:
         help_text = (
             "Execute commands non-interactively (with multi-turn by default)."
         )
-        super().__init__(name="cmd", help_text=help_text)
-        self.help_text = help_text 
+        super().__init__(name="cmd", help_text=help_text)  # BaseCommand stores this as `.help`
+        self.help_text = help_text                         # Typer wrapper expects `.help_text`
+
 
     # ---------------------------------------------------------------------
     # Core logic
