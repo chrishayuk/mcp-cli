@@ -1,11 +1,18 @@
-# mcp_cli/provider_config.py
 """
 Provider configuration management for MCP-CLI.
 
-* One place for defaults  - `DEFAULTS`.
-* Single path for “load → merge env-vars → expose”.
-* Convenience helpers (`get_active_*`, `set_active_*`, etc.) preserved.
+Enhancements
+------------
+* **Auto-sync with new DEFAULTS:** When MCP‑CLI ships new providers or updates
+  default values, the user’s on‑disk configuration is now *deep‑merged* with
+  the baked‑in ``DEFAULTS`` on every load.
+    • Missing providers are added.
+    • Missing keys inside existing providers are filled in.
+    • User‑overridden keys always take precedence.
+* The merged structure is written back to disk if it differs, so subsequent
+  runs start from an up‑to‑date baseline while still reflecting custom edits.
 """
+
 from __future__ import annotations
 
 import json
@@ -13,7 +20,9 @@ import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-# provider_config.py  (only the DEFAULTS block shown)
+# ---------------------------------------------------------------------------
+# global defaults (unchanged except for illustrative whitespace tweak)
+# ---------------------------------------------------------------------------
 DEFAULTS: Dict[str, Dict[str, Any]] = {
     "__global__": {
         "active_provider": "openai",
@@ -31,7 +40,7 @@ DEFAULTS: Dict[str, Dict[str, Any]] = {
         "api_key_env": "GROQ_API_KEY",
         "api_key": None,
         "api_base": None,
-        "default_model": "llama-3.3-70b-versatile"
+        "default_model": "llama-3.3-70b-versatile",
     },
     "ollama": {
         "client": "mcp_cli.llm.providers.ollama_client.OllamaLLMClient",
@@ -59,57 +68,69 @@ CFG_PATH = Path(os.path.expanduser("~/.mcp-cli/providers.json"))
 
 
 class ProviderConfig:
-    """Load / mutate / persist provider configuration."""
+    """Load / mutate / persist provider configuration with default syncing."""
 
+    # ------------------------------------------------------------------
+    # construction & I/O
+    # ------------------------------------------------------------------
     def __init__(self, config_path: Optional[str] = None) -> None:
         self._path = Path(os.path.expanduser(config_path)) if config_path else CFG_PATH
-        self.providers: Dict[str, Dict[str, Any]] = self._load_from_disk()
+        self.providers: Dict[str, Dict[str, Any]] = self._load_and_sync()
 
-    # ------------------------------------------------------------------ #
-    # I/O                                                                 #
-    # ------------------------------------------------------------------ #
-    def _load_from_disk(self) -> Dict[str, Dict[str, Any]]:
+    # ------------------------------------------------------------------
+    # private helpers
+    # ------------------------------------------------------------------
+    def _load_and_sync(self) -> Dict[str, Dict[str, Any]]:
+        """Return the merged provider map and flush to disk if it changed."""
+        on_disk: Dict[str, Dict[str, Any]] = {}
         if self._path.is_file():
             try:
-                return json.loads(self._path.read_text())
+                on_disk = json.loads(self._path.read_text())
             except json.JSONDecodeError:
-                pass  # fall back to defaults
-        return json.loads(json.dumps(DEFAULTS))  # deep copy
+                pass  # bad JSON → ignore and rebuild
+
+        # deep‑copy defaults then overlay anything from disk (user wins)
+        merged: Dict[str, Dict[str, Any]] = json.loads(json.dumps(DEFAULTS))
+        for prov, cfg in on_disk.items():
+            if prov not in merged:
+                merged[prov] = cfg  # custom provider entirely provided by user
+                continue
+            merged[prov].update(cfg)  # user overrides baked‑in defaults
+
+        # write back if structure changed (keeps file current with new providers)
+        if merged != on_disk:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            self._path.write_text(json.dumps(merged, indent=2))
+
+        return merged
 
     def _save(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._path.write_text(json.dumps(self.providers, indent=2))
 
-    # ------------------------------------------------------------------ #
-    # Internal helpers                                                    #
-    # ------------------------------------------------------------------ #
     def _ensure_section(self, name: str) -> None:
         if name not in self.providers:
             self.providers[name] = {}
 
     def _merge_env_key(self, cfg: Dict[str, Any]) -> None:
-        """If api_key is empty but api_key_env is set → pull from env."""
-        if not cfg.get("api_key") and (env_var := cfg.get("api_key_env")):
-            cfg["api_key"] = os.getenv(env_var)
+        if not cfg.get("api_key") and (env := cfg.get("api_key_env")):
+            cfg["api_key"] = os.getenv(env)
 
-    # ------------------------------------------------------------------ #
-    # Public API                                                          #
-    # ------------------------------------------------------------------ #
+    # ------------------------------------------------------------------
+    # public API
+    # ------------------------------------------------------------------
     def get_provider_config(self, provider: str) -> Dict[str, Any]:
-        """Return config for *provider*, merged with env vars + defaults."""
         self._ensure_section(provider)
-        # start with defaults → overlay saved values
         cfg = {**DEFAULTS.get(provider, {}), **self.providers[provider]}
         self._merge_env_key(cfg)
         return cfg
 
     def set_provider_config(self, provider: str, updates: Dict[str, Any]) -> None:
-        """Merge *updates* into provider’s section and persist."""
         self._ensure_section(provider)
         self.providers[provider].update(updates)
         self._save()
 
-    # ----- active provider / model ------------------------------------ #
+    # ── active provider / model ──────────────────────────────────────
     @property
     def _glob(self) -> Dict[str, Any]:
         self._ensure_section("__global__")
@@ -129,7 +150,7 @@ class ProviderConfig:
         self._glob["active_model"] = model
         self._save()
 
-    # ----- convenience getters ---------------------------------------- #
+    # ── convenience getters ─────────────────────────────────────────
     def get_api_key(self, provider: str) -> Optional[str]:
         return self.get_provider_config(provider).get("api_key")
 

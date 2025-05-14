@@ -1,3 +1,4 @@
+# mcp_cli/llm/providers/gemini_client.py
 """
 Google Gemini chat-completion adapter for MCP-CLI **(debug-enhanced)**.
 
