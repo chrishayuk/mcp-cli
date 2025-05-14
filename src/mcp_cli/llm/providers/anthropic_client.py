@@ -1,16 +1,29 @@
+# mcp_cli/llm/providers/anthropic_client.py
 """
-Anthropic chat‑completion adapter for MCP‑CLI (Claude 3 family).
+Anthropic chat-completion adapter for MCP-CLI (Claude 3 family).
 
-* Converts OpenAI‑style tool specs to Anthropic format (`input_schema`).
-* Moves `system` role messages to the top‑level `system` arg (Claude 3 API requirement).
+* Accepts OpenAI-style **or** bare function schemas.
+* Converts those schemas to Claude’s `input_schema`.
+* Lifts `system` messages to the top-level arg (Claude requirement).
+* Converts:
+    • assistant tool-calls  → `tool_use` blocks
+    • tool results          → `tool_result` blocks
+  so loops are avoided.
 * Streams via the shared OpenAIStyleMixin helper.
-* Provides default `max_tokens = 1024`.
-* Detects `tool_use` blocks (from the SDK or raw dict) and surfaces them as
-  MCP‑style `tool_calls` so the upstream handler can execute them.
+* DEBUG logging honours the LOGLEVEL env-var.
+
+Fixes
+-----
+* `tools` is always a list (never `null`).
+* **NEW** 2025-05-14 – omit the `"system"` key entirely when there is no system
+  prompt, preventing `system: Input should be a valid list` 400 errors.
 """
+
 from __future__ import annotations
 
 import json
+import logging
+import os
 import uuid
 from typing import Any, AsyncIterator, Dict, List, Optional
 
@@ -19,11 +32,41 @@ from anthropic import Anthropic
 from mcp_cli.llm.openai_style_mixin import OpenAIStyleMixin
 from mcp_cli.llm.providers.base import BaseLLMClient
 
+log = logging.getLogger(__name__)
+if os.getenv("LOGLEVEL"):
+    logging.basicConfig(level=os.getenv("LOGLEVEL", "INFO").upper())
 
+
+# ─────────────────────────── helpers
+def _safe_get(obj: Any, key: str, default: Any = None) -> Any:
+    return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
+
+
+def _parse_claude_response(resp) -> Dict[str, Any]:
+    tool_calls: List[Dict[str, Any]] = []
+    for blk in getattr(resp, "content", []):
+        if _safe_get(blk, "type") != "tool_use":
+            continue
+        tool_calls.append(
+            {
+                "id": _safe_get(blk, "id") or f"call_{uuid.uuid4().hex[:8]}",
+                "type": "function",
+                "function": {
+                    "name": _safe_get(blk, "name"),
+                    "arguments": json.dumps(_safe_get(blk, "input", {})),
+                },
+            }
+        )
+
+    if tool_calls:
+        return {"response": None, "tool_calls": tool_calls}
+
+    text = resp.content[0].text if getattr(resp, "content", None) else ""
+    return {"response": text, "tool_calls": []}
+
+
+# ─────────────────────────── client
 class AnthropicLLMClient(OpenAIStyleMixin, BaseLLMClient):
-    """A very thin wrapper around the official *anthropic* SDK."""
-
-    # --------------------------------------------------------------------- init
     def __init__(
         self,
         model: str = "claude-3-sonnet-20250219",
@@ -33,50 +76,90 @@ class AnthropicLLMClient(OpenAIStyleMixin, BaseLLMClient):
         self.model = model
         kwargs: Dict[str, Any] = {"base_url": api_base} if api_base else {}
         if api_key:
-            kwargs["api_key"] = api_key  # otherwise SDK falls back to env‑var
+            kwargs["api_key"] = api_key
         self.client = Anthropic(**kwargs)
 
-    # ------------------------------------------------------------------ helpers
+    # ------------- helpers
     @staticmethod
-    def _convert_tools(tools: Optional[List[Dict[str, Any]]]) -> Optional[List[Dict[str, Any]]]:
-        """Translate OpenAI function‑call schema → Anthropic `input_schema`."""
+    def _convert_tools(tools: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
         if not tools:
-            return None
+            return []
+
         converted: List[Dict[str, Any]] = []
-        for t in tools:
-            fn = t.get("function", t)
-            converted.append(
-                {
-                    "name": fn["name"],
-                    "description": fn.get("description", ""),
-                    "input_schema": fn.get("parameters") or fn.get("input_schema") or {},
-                }
-            )
+        for entry in tools:
+            fn = entry.get("function", entry)
+            try:
+                converted.append(
+                    {
+                        "name": fn["name"],
+                        "description": fn.get("description", ""),
+                        "input_schema": fn.get("parameters") or fn.get("input_schema") or {},
+                    }
+                )
+            except Exception as exc:
+                log.debug("Tool schema error (%s) – using open schema", exc)
+                converted.append(
+                    {
+                        "name": fn.get("name", f"tool_{uuid.uuid4().hex[:6]}"),
+                        "description": fn.get("description", ""),
+                        "input_schema": {"type": "object", "additionalProperties": True},
+                    }
+                )
         return converted
 
     @staticmethod
     def _split_for_anthropic(messages: List[Dict[str, Any]]) -> tuple[str, List[Dict[str, Any]]]:
-        """Return `(system_text, filtered_messages)` removing unsupported roles."""
-        system_parts: List[str] = []
-        filtered: List[Dict[str, Any]] = []
+        sys_txt: List[str] = []
+        out: List[Dict[str, Any]] = []
+
         for msg in messages:
             role = msg.get("role")
+
             if role == "system":
-                system_parts.append(msg.get("content", ""))
-            elif role in {"user", "assistant"}:  # Claude accepts only these two
+                sys_txt.append(msg.get("content", ""))
+                continue
+
+            if role == "assistant" and msg.get("tool_calls"):
+                blocks = [
+                    {
+                        "type": "tool_use",
+                        "id": tc["id"],
+                        "name": tc["function"]["name"],
+                        "input": json.loads(tc["function"].get("arguments", "{}")),
+                    }
+                    for tc in msg["tool_calls"]
+                ]
+                out.append({"role": "assistant", "content": blocks})
+                continue
+
+            if role == "tool":
+                out.append(
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": msg.get("tool_call_id")
+                                or msg.get("id", f"tr_{uuid.uuid4().hex[:8]}"),
+                                "content": msg.get("content") or "",
+                            }
+                        ],
+                    }
+                )
+                continue
+
+            if role in {"user", "assistant"}:
                 cont = msg.get("content")
                 if cont is None:
-                    # skip empty assistant placeholders (e.g. old OpenAI tool_call stubs)
                     continue
-                # ensure proper list form
                 if isinstance(cont, str):
                     msg = dict(msg)
                     msg["content"] = [{"type": "text", "text": cont}]
-                filtered.append(msg)
-            # ignore any other role (e.g. "tool")
-        return "\n".join(system_parts).strip(), filtered
+                out.append(msg)
 
-    # ------------------------------------------------------------------ public
+        return "\n".join(sys_txt).strip(), out
+
+    # ------------- public
     async def create_completion(
         self,
         messages: List[Dict[str, Any]],
@@ -86,54 +169,30 @@ class AnthropicLLMClient(OpenAIStyleMixin, BaseLLMClient):
         max_tokens: Optional[int] = None,
         **extra,
     ) -> Dict[str, Any] | AsyncIterator[Dict[str, Any]]:
-        # Sanitize + convert tool schemas
+
         tools = self._sanitize_tool_names(tools)
         anth_tools = self._convert_tools(tools)
 
-        # Split out system prompt and strip unsupported roles
         system_text, msg_no_system = self._split_for_anthropic(messages)
 
         payload: Dict[str, Any] = {
             "model": self.model,
-            "system": system_text or None,
             "messages": msg_no_system,
             "stream": stream,
             "tools": anth_tools,
             "max_tokens": max_tokens or 1024,
             **extra,
         }
+        if system_text:            # ← only send if non-empty
+            payload["system"] = system_text
         if anth_tools:
             payload["tool_choice"] = {"type": "auto"}
 
-        # ---------------- streaming -----------------
+        log.debug("Claude payload: %s", payload)
+
         if stream:
             return self._stream_from_blocking(self.client.messages.create, **payload)
 
-        # ---------------- one‑shot -------------------
         resp = await self._call_blocking(self.client.messages.create, **payload)
-
-        # Detect tool_use blocks → convert to MCP tool_calls
-        tool_calls: List[Dict[str, Any]] = []
-        for blk in getattr(resp, "content", []):
-            blk_type = blk.get("type") if isinstance(blk, dict) else getattr(blk, "type", None)
-            if blk_type != "tool_use":
-                continue
-            blk_id = blk.get("id") if isinstance(blk, dict) else getattr(blk, "id", None)
-            blk_name = blk.get("name") if isinstance(blk, dict) else getattr(blk, "name", None)
-            blk_input = blk.get("input") if isinstance(blk, dict) else getattr(blk, "input", None)
-            tool_calls.append(
-                {
-                    "id": blk_id or f"call_{uuid.uuid4().hex[:8]}",
-                    "type": "function",
-                    "function": {
-                        "name": blk_name,
-                        "arguments": json.dumps(blk_input or {}),
-                    },
-                }
-            )
-
-        if tool_calls:
-            return {"response": None, "tool_calls": tool_calls}
-
-        assistant_text = resp.content[0].text if getattr(resp, "content", None) else ""
-        return {"response": assistant_text, "tool_calls": []}
+        log.debug("Claude raw response: %s", resp)
+        return _parse_claude_response(resp)
