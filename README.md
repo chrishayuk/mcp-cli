@@ -126,6 +126,11 @@ You might encounter a "Missing argument 'KWARGS'" error when running various com
    mcp-cli chat -- --server sqlite --provider ollama --model llama3.2
    ```
 
+3. When using uv and multiple extra parameters, follow the 2nd step but add an empty string at the end:
+   ```
+   uv run mcp-cli chat -- --server sqlite --provider ollama --model llama3.2 ""
+   ```
+
 These format issues apply to all commands (chat, interactive, tools, etc.) and are due to how the argument parser interprets positional vs. named arguments.
 
 ## 🌐 Available Modes
