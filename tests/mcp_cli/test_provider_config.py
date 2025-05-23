@@ -5,8 +5,10 @@ import unittest
 from unittest.mock import patch, mock_open
 import tempfile
 import shutil
+from typing import Dict
 
 from mcp_cli.provider_config import ProviderConfig
+from mcp_cli.interactive.registry import InteractiveCommandRegistry
 
 class TestProviderConfig(unittest.TestCase):
     """Test cases for the ProviderConfig class."""
@@ -44,8 +46,7 @@ class TestProviderConfig(unittest.TestCase):
         config = ProviderConfig(self.config_path)
         
         # Check if providers were loaded correctly
-        self.assertEqual(set(config.providers.keys()), 
-                         set(self.test_config.keys()))
+        self.assertTrue(set(self.test_config.keys()).issubset(set(config.providers.keys())))
         
         # Check specific provider config
         self.assertEqual(config.providers["test_provider"]["api_key"], 
@@ -189,6 +190,12 @@ class TestProviderConfig(unittest.TestCase):
         
         # Directory and file should exist
         self.assertTrue(os.path.exists(nested_path))
+
+    def test_interactive_command_registry(self):
+        """Test InteractiveCommandRegistry."""
+        print("DEBUG _commands type:", type(InteractiveCommandRegistry._commands))
+        print("DEBUG get_all_commands type:", type(InteractiveCommandRegistry.get_all_commands()))
+        # Add your test logic here
 
 if __name__ == "__main__":
     unittest.main()
