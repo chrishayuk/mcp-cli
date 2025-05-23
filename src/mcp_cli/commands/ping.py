@@ -26,26 +26,20 @@ logger = logging.getLogger(__name__)
 def display_server_name(
     idx: int,
     explicit_map: Dict[int, str] | None,
-    fallback_infos: List,
+    fallback_infos: list,
 ) -> str:
     """
     Resolve a human-readable server label.
 
     Precedence:
-      1. `explicit_map` (passed in via CLI flags)
-      2. ToolManager.server_names
-      3. The name reported by get_server_info()
-      4. "server-{idx}"
+      1. `explicit_map` (passed in via CLI flags or ToolManager.server_names)
+      2. The name reported by get_server_info()
+      3. "server-{idx}"
     """
     if explicit_map and idx in explicit_map:
         return explicit_map[idx]
-
-    if idx in (explicit_map or {}):
-        return explicit_map[idx]
-
     if idx < len(fallback_infos):
         return fallback_infos[idx].name
-
     return f"server-{idx}"
 
 
