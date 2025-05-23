@@ -82,19 +82,19 @@ def format_tool_response(response_content: Any) -> str:
 # ------------------------------------------------------------------ #
 # Helper functions for displaying registry tools and results
 # ------------------------------------------------------------------ #
-def display_registry_tools(registry: Any, namespace_filter: Optional[str] = None) -> List[Tuple[str, str]]:
+async def display_registry_tools(registry: Any, namespace_filter: Optional[str] = None) -> List[Tuple[str, str]]:
     """Display all tools in the registry, optionally filtered by namespace."""
     # Get tools, optionally filtered by namespace
     if namespace_filter:
-        tools = [(ns, name) for ns, name in registry.list_tools() if ns == namespace_filter]
+        tools = [(ns, name) for ns, name in await registry.list_tools() if ns == namespace_filter]
     else:
-        tools = registry.list_tools()
+        tools = await registry.list_tools()
     
     # Print tools
     print(Fore.CYAN + f"🔧  Registered MCP tools ({len(tools)}):")
     
     for ns, name in tools:
-        md = registry.get_metadata(name, ns)
+        md = await registry.get_metadata(name, ns)
         print(f"  • {Fore.GREEN}{ns}.{name:<20}{Style.RESET_ALL} – {md.description or '<no description>'}")
     print()
     
@@ -130,7 +130,7 @@ def display_tool_results(results: List[ToolResult]) -> None:
 # ------------------------------------------------------------------ #
 # Helper function for preparing OpenAI-compatible tools
 # ------------------------------------------------------------------ #
-def prepare_openai_tools(registry: Any, tools: List[Tuple[str, str]]) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
+async def prepare_openai_tools(registry: Any, tools: List[Tuple[str, str]]) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     """
     Prepare OpenAI-compatible tool definitions with name mapping.
     
@@ -145,7 +145,7 @@ def prepare_openai_tools(registry: Any, tools: List[Tuple[str, str]]) -> Tuple[L
     name_mapping = {}
     
     for ns, name in tools:
-        md = registry.get_metadata(name, ns)
+        md = await registry.get_metadata(name, ns)
         if md:
             openai_name = ToolNameAdapter.to_openai_compatible(ns, name)
             original_name = f"{ns}.{name}"
@@ -182,8 +182,8 @@ async def main() -> None:
 
     try:
         # 2) Get the registry and list tools
-        registry = ToolRegistryProvider.get_registry()
-        sqlite_tools = display_registry_tools(registry, namespace_filter="sqlite")
+        registry = await ToolRegistryProvider.get_registry()
+        sqlite_tools = await display_registry_tools(registry, namespace_filter="sqlite")
         
         # 3) Create a ToolProcessor for handling tool execution
         tool_processor = ToolProcessor(
@@ -197,7 +197,7 @@ async def main() -> None:
         )
         
         # 4) Prepare OpenAI-compatible tool definitions
-        openai_tools, name_mapping = prepare_openai_tools(registry, sqlite_tools)
+        openai_tools, name_mapping = await prepare_openai_tools(registry, sqlite_tools)
         
         # 5) Send prompt to LLM
         client = get_llm_client(provider=args.provider, model=args.model)

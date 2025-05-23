@@ -30,10 +30,10 @@ colorama_init(autoreset=True)
 # ------------------------------------------------------------------ #
 # Helper functions for displaying registry tools and results
 # ------------------------------------------------------------------ #
-def display_registry_tools(tool_manager: ToolManager, namespace_filter: Optional[str] = None) -> None:
+async def display_registry_tools(tool_manager: ToolManager, namespace_filter: Optional[str] = None) -> Any:
     """Display all tools from the tool manager, optionally filtered by namespace."""
     # Get all tools
-    tools = tool_manager.get_all_tools()
+    tools = await tool_manager.get_all_tools()
     
     # Filter by namespace if requested
     if namespace_filter:
@@ -107,14 +107,14 @@ async def main() -> None:
 
     try:
         # 2) Display and filter stdio tools
-        tools = display_registry_tools(tool_manager, namespace_filter="stdio")
+        tools = await display_registry_tools(tool_manager, namespace_filter="stdio")
         
         if not tools:
             print(f"{Fore.YELLOW}No tools found with 'stdio' namespace. Showing all tools:{Style.RESET_ALL}")
-            tools = display_registry_tools(tool_manager)
+            tools = await display_registry_tools(tool_manager)
         
         # 3) Get LLM-compatible tools with name mapping
-        llm_tools, name_mapping = tool_manager.get_adapted_tools_for_llm(provider=args.provider)
+        llm_tools, name_mapping = await tool_manager.get_adapted_tools_for_llm(provider=args.provider)
         
         if not llm_tools:
             print(f"{Fore.RED}No tools available for LLM. Check your configuration.{Style.RESET_ALL}")
