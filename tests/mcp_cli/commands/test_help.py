@@ -18,26 +18,26 @@ class DummyCmd:
 
 @pytest.fixture(autouse=True)
 def clear_registry():
-    # reset registry before each test
-    InteractiveCommandRegistry._commands.clear()
-    InteractiveCommandRegistry._aliases.clear()
+    # Force type to dict in case any other test or code polluted it
+    InteractiveCommandRegistry._commands = {}
+    InteractiveCommandRegistry._aliases = {}
     yield
-    InteractiveCommandRegistry._commands.clear()
-    InteractiveCommandRegistry._aliases.clear()
+    InteractiveCommandRegistry._commands = {}
+    InteractiveCommandRegistry._aliases = {}
 
 
 def test_help_action_list_all(monkeypatch):
     # Register two dummy commands
     cmd_a = DummyCmd("a", "help A", aliases=["x"])
     cmd_b = DummyCmd("b", "help B", aliases=[])
-    InteractiveCommandRegistry._commands["a"] = cmd_a
-    InteractiveCommandRegistry._commands["b"] = cmd_b
+    InteractiveCommandRegistry.register(cmd_a)
+    InteractiveCommandRegistry.register(cmd_b)
 
     printed = []
-    monkeypatch.setattr(Console, "print", lambda self, obj, **kw: printed.append(obj))
+    monkeypatch.setattr(Console, "print", lambda self, *args, **kw: printed.append(args[0]))
 
     console = Console()
-    help_action(console)
+    help_action(console=console)
 
     # Should have printed a Table of commands
     tables = [o for o in printed if isinstance(o, Table)]
@@ -45,27 +45,26 @@ def test_help_action_list_all(monkeypatch):
     table = tables[0]
     # Check headers
     headers = [col.header for col in table.columns]
-    assert headers == ["Command", "Description"]
+    assert headers == ["Command", "Aliases", "Description"]
     # Two rows
     assert table.row_count == 2
 
     # And a dim hint at the end (string)
-    hints = [o for o in printed if isinstance(o, str) and "Type 'help <command>'" in o]
+    hints = [o for o in printed if isinstance(o, str) and "Type 'help &lt;command&gt;'" in o]
     assert hints, "Expected hint string at end"
 
 
 def test_help_action_specific(monkeypatch):
     # Register one dummy command
     cmd = DummyCmd("foo", "Foo does X", aliases=["f"])
-    InteractiveCommandRegistry._commands["foo"] = cmd
-    InteractiveCommandRegistry._aliases["f"] = "foo"
+    InteractiveCommandRegistry.register(cmd)
 
     printed = []
-    monkeypatch.setattr(Console, "print", lambda self, obj, **kw: printed.append(obj))
+    monkeypatch.setattr(Console, "print", lambda self, *args, **kw: printed.append(args[0]))
 
     console = Console()
     # Request help for command "foo"
-    help_action(console, "foo")
+    help_action("foo")
 
     # Should have printed a Panel
     panels = [o for o in printed if isinstance(o, Panel)]
@@ -86,10 +85,10 @@ async def test_interactive_wrapper(monkeypatch):
     # Register a no-op help command to satisfy registry in shell
     # (so that HelpCommand.execute() finds something)
     cmd_dummy = DummyCmd("foo", "help foo", aliases=[])
-    InteractiveCommandRegistry._commands["foo"] = cmd_dummy
+    InteractiveCommandRegistry.register(cmd_dummy)
 
     printed = []
-    monkeypatch.setattr(Console, "print", lambda self, obj, **kw: printed.append(obj))
+    monkeypatch.setattr(Console, "print", lambda self, *args, **kw: printed.append(args[0]))
 
     help_cmd = HelpCommand()
     # call wrapper with no args → should call help_action(console, None)

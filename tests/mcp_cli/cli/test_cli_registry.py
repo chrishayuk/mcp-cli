@@ -68,7 +68,7 @@ def test_register_with_typer():
     class DummyApp:
         def __init__(self):
             self.registered = {}
-        def command(self, name: str):
+        def command(self, name: str, **kwargs):
             def decorator(fn):
                 self.registered[name] = fn
                 return fn
@@ -97,7 +97,7 @@ def test_create_subcommand_group_logs_warning(caplog):
 
     # Fake app only needs add_typer()
     class FakeApp:
-        def add_typer(self, subapp, name):
+        def add_typer(self, subapp, name, help=None):
             pass
     fake_app = FakeApp()
 
@@ -109,7 +109,7 @@ def test_create_subcommand_group_logs_warning(caplog):
         app=fake_app,
         group_name="tools",
         sub_commands=["list", "call"],
-        run_command_func=runner
+        run_cmd=runner
     )
 
     # Assert a warning was logged about missing 'tools call'

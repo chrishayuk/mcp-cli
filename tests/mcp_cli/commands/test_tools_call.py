@@ -3,7 +3,7 @@ import pytest
 from rich.console import Console
 from rich.table import Table
 
-from mcp_cli.commands.resources import resources_action
+from mcp_cli.commands.resources import resources_action_async
 
 class DummyTMNoResources:
     def list_resources(self):
@@ -27,7 +27,7 @@ async def test_resources_action_error(monkeypatch):
     printed = []
     monkeypatch.setattr(Console, "print", lambda self, msg, **kw: printed.append(str(msg)))
 
-    result = await resources_action(tm)
+    result = await resources_action_async(tm)
     assert result == []
     assert any("Error:" in p and "fail!" in p for p in printed)
 
@@ -38,7 +38,7 @@ async def test_resources_action_no_resources(monkeypatch):
     printed = []
     monkeypatch.setattr(Console, "print", lambda self, msg, **kw: printed.append(str(msg)))
 
-    result = await resources_action(tm)
+    result = await resources_action_async(tm)
     assert result == []
     assert any("No resources recorded" in p for p in printed)
 
@@ -54,7 +54,7 @@ async def test_resources_action_with_resources(monkeypatch):
     output = []
     monkeypatch.setattr(Console, "print", lambda self, obj, **kw: output.append(obj))
 
-    result = await resources_action(tm)
+    result = await resources_action_async(tm)
     assert result == data
 
     tables = [o for o in output if isinstance(o, Table)]
