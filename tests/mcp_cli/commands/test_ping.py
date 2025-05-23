@@ -9,7 +9,7 @@ from rich.console import Console
 from rich.table import Table
 
 import mcp_cli.commands.ping as ping_mod
-from mcp_cli.commands.ping import _display_name, _ping_one, ping_action
+from mcp_cli.commands.ping import display_server_name, _ping_one, ping_action_async
 from mcp_cli.tools.models import ServerInfo
 
 class DummyToolManager:
@@ -20,12 +20,18 @@ class DummyToolManager:
     def __init__(
         self,
         streams: List[Sequence[Any]],
-        server_names: Dict[int, str] = None,
-        server_info: List[Dict[str, Any]] = None
+        server_names: Dict[int, str] = {},
+        server_info: List[Dict[str, Any]] = []
     ):
         self._streams = streams
         self.server_names = server_names or {}
-        info = server_info or []
+        # If server_info is not provided, build it from server_names if available
+        if server_info:
+            info = server_info
+        elif server_names:
+            info = [{"name": v} for k, v in sorted(server_names.items())]
+        else:
+            info = []
         # Build real ServerInfo objects
         self._server_info = [
             ServerInfo(
@@ -40,7 +46,7 @@ class DummyToolManager:
     def get_streams(self):
         return self._streams
 
-    def get_server_info(self):
+    async def get_server_info(self):
         # Return list of ServerInfo
         return self._server_info
 
@@ -51,17 +57,18 @@ class FakeStream:
 
 
 @pytest.mark.parametrize(
-    "mapping, names, info, idx, expected",
+    "mapping, names, idx, expected",
     [
-        ({0: "X"}, {}, [], 0, "X"),
-        (None, {0: "Y"}, [], 0, "Y"),
-        (None, {}, [{"name": "Z"}], 0, "Z"),
-        (None, {}, [], 5, "server-5"),
+        ({0: "X"}, {}, 0, "X"),
+        (None, {0: "Y"}, 0, "Y"),
+        (None, {}, 5, "server-5"),
     ]
 )
-def test_display_name(mapping, names, info, idx, expected):
-    tm = DummyToolManager(streams=[], server_names=names, server_info=info)
-    assert _display_name(idx, tm, mapping) == expected
+@pytest.mark.asyncio
+async def test_display_name(mapping, names, idx, expected):
+    tm = DummyToolManager(streams=[], server_names=names)
+    server_infos = await tm.get_server_info()
+    assert display_server_name(idx, mapping, server_infos) == expected
 
 
 @pytest.mark.asyncio
@@ -94,7 +101,7 @@ async def test_ping_action_no_streams(monkeypatch):
     printed = []
     monkeypatch.setattr(Console, "print", lambda self, msg, **kw: printed.append(str(msg)))
 
-    result = await ping_action(tm)
+    result = await ping_action_async(tm)
     assert result is False
     assert any("No matching servers" in p for p in printed)
 
@@ -115,7 +122,7 @@ async def test_ping_action_with_streams_and_no_filter(monkeypatch):
     output = []
     monkeypatch.setattr(Console, "print", lambda self, obj, **kw: output.append(obj))
 
-    result = await ping_action(tm)
+    result = await ping_action_async(tm)
     assert result is True
 
     tables = [o for o in output if isinstance(o, Table)]
@@ -140,11 +147,11 @@ async def test_ping_action_with_targets(monkeypatch):
     )
 
     # No matching → False
-    assert await ping_action(tm, targets=["z"]) is False
+    assert await ping_action_async(tm, server_names=tm.server_names, targets=["z"]) is False
 
     output = []
     monkeypatch.setattr(Console, "print", lambda self, obj, **kw: output.append(obj))
-    result = await ping_action(tm, targets=["b"])
+    result = await ping_action_async(tm, server_names=tm.server_names, targets=["b"])
     assert result is True
 
     tables = [o for o in output if isinstance(o, Table)]

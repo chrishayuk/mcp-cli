@@ -151,7 +151,7 @@ async def test_process_tool_calls_no_stream_manager(capfd):
     
     # MODIFIED TEST: Look for any error message about StreamManager
     # since the actual message is "Error: No StreamManager available for tool execution."
-    error_msgs = [entry.get("content", "") for entry in context.conversation_history]
+    error_msgs = [entry.get("content", "") for entry in context.conversation_history if entry.get("content") is not None]
     assert any("No StreamManager available" in msg for msg in error_msgs)
     # This will pass with the text "Error: No StreamManager available for tool execution."
 

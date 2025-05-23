@@ -4,17 +4,17 @@ import pytest
 from rich.console import Console
 from rich.table import Table
 
-from mcp_cli.commands.servers import servers_action
+from mcp_cli.commands.servers import servers_action_async
 from mcp_cli.tools.models import ServerInfo
 
 class DummyToolManagerNoServers:
-    def get_server_info(self):
+    async def get_server_info(self):
         return []
 
 class DummyToolManagerWithServers:
     def __init__(self, infos):
         self._infos = infos
-    def get_server_info(self):
+    async def get_server_info(self):
         return self._infos
 
 def make_info(id, name, tools, status):
@@ -24,9 +24,9 @@ def make_info(id, name, tools, status):
 async def test_servers_action_no_servers(monkeypatch):
     tm = DummyToolManagerNoServers()
     printed = []
-    monkeypatch.setattr(Console, "print", lambda self, msg, **kw: printed.append(str(msg)))
+    monkeypatch.setattr(Console, "print", lambda self, *args, **kw: printed.append(str(args[0])))
 
-    servers_action(tm)
+    await servers_action_async(tm)
     assert any("No servers connected" in p for p in printed)
 
 @pytest.mark.asyncio
@@ -38,9 +38,9 @@ async def test_servers_action_with_servers(monkeypatch):
     tm = DummyToolManagerWithServers(infos)
 
     output = []
-    monkeypatch.setattr(Console, "print", lambda self, obj, **kw: output.append(obj))
+    monkeypatch.setattr(Console, "print", lambda self, *args, **kw: output.append(args[0]))
 
-    servers_action(tm)
+    await servers_action_async(tm)
 
     tables = [o for o in output if isinstance(o, Table)]
     assert tables, f"Expected a Table, got: {output}"

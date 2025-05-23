@@ -4,7 +4,7 @@ Provider configuration management for MCP-CLI.
 Enhancements
 ------------
 * **Auto-sync with new DEFAULTS:** When MCP‑CLI ships new providers or updates
-  default values, the user’s on‑disk configuration is now *deep‑merged* with
+  default values, the user's on‑disk configuration is now *deep‑merged* with
   the baked‑in ``DEFAULTS`` on every load.
     • Missing providers are added.
     • Missing keys inside existing providers are filled in.
@@ -120,6 +120,9 @@ class ProviderConfig:
     # public API
     # ------------------------------------------------------------------
     def get_provider_config(self, provider: str) -> Dict[str, Any]:
+        # Only allow known providers (in DEFAULTS or already present)
+        if provider not in DEFAULTS and provider not in self.providers:
+            raise ValueError(f"Unknown provider: {provider}")
         self._ensure_section(provider)
         cfg = {**DEFAULTS.get(provider, {}), **self.providers[provider]}
         self._merge_env_key(cfg)
@@ -159,3 +162,7 @@ class ProviderConfig:
 
     def get_default_model(self, provider: str) -> str:
         return self.get_provider_config(provider).get("default_model", "")
+
+    def save_config(self) -> None:
+        """Public method to save the current provider config to disk."""
+        self._save()

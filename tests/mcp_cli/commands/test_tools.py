@@ -8,45 +8,46 @@ from rich.table import Table
 from rich.syntax import Syntax
 
 import mcp_cli.commands.tools as tools_mod
-from mcp_cli.commands.tools import tools_action
+from mcp_cli.commands.tools import tools_action, tools_action_async
 from mcp_cli.tools.models import ToolInfo
 
 
 class DummyTMNoTools:
-    def get_unique_tools(self):
+    async def get_unique_tools(self):
         return []
 
 class DummyTMWithTools:
     def __init__(self, tools):
         self._tools = tools
-    def get_unique_tools(self):
+    async def get_unique_tools(self):
         return self._tools
 
 @pytest.mark.asyncio
 async def test_tools_action_no_tools(monkeypatch):
     tm = DummyTMNoTools()
     printed = []
-    monkeypatch.setattr(Console, "print", lambda self, msg, **kw: printed.append(msg))
+    monkeypatch.setattr(Console, "print", lambda self, *args, **kw: printed.append(args[0]))
 
-    out = tools_action(tm)
+    out = await tools_action_async(tm)
     assert out == []
     assert any("No tools available" in str(m) for m in printed)
 
 def make_tool(name, namespace):
     return ToolInfo(name=name, namespace=namespace, description="d", parameters={}, is_async=False, tags=[])
 
-def test_tools_action_table(monkeypatch):
+@pytest.mark.asyncio
+async def test_tools_action_table(monkeypatch):
     fake_tools = [make_tool("t1", "ns1"), make_tool("t2", "ns2")]
     tm = DummyTMWithTools(fake_tools)
 
     printed = []
-    monkeypatch.setattr(Console, "print", lambda self, obj, **kw: printed.append(obj))
+    monkeypatch.setattr(Console, "print", lambda self, *args, **kw: printed.append(args[0]))
 
     # Monkeypatch create_tools_table to return a dummy Table
     dummy_table = Table(title="Dummy")
     monkeypatch.setattr(tools_mod, "create_tools_table", lambda tools, show_details=False: dummy_table)
 
-    out = tools_action(tm, show_details=True, show_raw=False)
+    out = await tools_action_async(tm, show_details=True, show_raw=False)
     # Should return the original tool list
     assert out == fake_tools
 
@@ -59,15 +60,16 @@ def test_tools_action_table(monkeypatch):
     # And finally the summary string
     assert any("Total tools available: 2" in str(m) for m in printed)
 
-def test_tools_action_raw(monkeypatch):
+@pytest.mark.asyncio
+async def test_tools_action_raw(monkeypatch):
     fake_tools = [make_tool("x", "ns")]
     tm = DummyTMWithTools(fake_tools)
 
     printed = []
-    monkeypatch.setattr(Console, "print", lambda self, obj, **kw: printed.append(obj))
+    monkeypatch.setattr(Console, "print", lambda self, *args, **kw: printed.append(args[0]))
 
     # Call action in raw mode
-    out = tools_action(tm, show_raw=True)
+    out = await tools_action_async(tm, show_raw=True)
     # Should return raw JSON list
     assert isinstance(out, list) and isinstance(out[0], dict)
     # And printed a Syntax

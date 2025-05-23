@@ -79,7 +79,7 @@ def patch_chat_handler_dependencies(monkeypatch):
     # Patch get_llm_client in chat_context to always return a dummy client.
     monkeypatch.setattr(
         "mcp_cli.chat.chat_context.get_llm_client",
-        lambda provider, model: {"provider": provider, "model": model, "dummy": True}
+        lambda provider, model, config=None: {"provider": provider, "model": model, "dummy": True}
     )
 
 # Test for chat mode handler.
