@@ -49,8 +49,7 @@ class BaseCommand(ABC):
             provider: str = typer.Option("openai", help="LLM provider name"),
             model: Optional[str] = typer.Option(None, help="Model name"),
             disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
-            **kwargs
-        ) -> None:
+        ) -> None:  # ← REMOVED **kwargs - this was causing the error
             """Command wrapper with preserved help text."""
             servers, _, server_names = process_options(
                 server, disable_filesystem, provider, model, config_file
@@ -60,7 +59,6 @@ class BaseCommand(ABC):
                 "provider": provider,
                 "model": model,
                 "server_names": server_names,
-                **kwargs
             }
             
             run_command_func(

@@ -1,5 +1,6 @@
 # mcp_cli/cli/commands/chat.py
-"""Chat command implementation (no more ‘KWARGS’!)."""
+"""Clean chat command implementation using ModelManager."""
+
 from __future__ import annotations
 
 import logging
@@ -10,7 +11,7 @@ import typer
 
 from mcp_cli.cli.commands.base import BaseCommand
 from mcp_cli.cli_options import process_options
-from mcp_cli.provider_config import ProviderConfig        # ← NEW
+from mcp_cli.model_manager import ModelManager
 from mcp_cli.tools.manager import ToolManager
 
 log = logging.getLogger(__name__)
@@ -19,23 +20,8 @@ log = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────────────────────────
 # helpers
 # ──────────────────────────────────────────────────────────────────────────────
-def _default_model(provider: str, explicit: Optional[str]) -> str:
-    """
-    Return a guaranteed model string.
-
-    Priority:
-    1. Explicit --model from CLI
-    2. ProviderConfig.default_model for that provider
-    3. Library fallback (“gpt-4o-mini”)
-    """
-    if explicit:  # user passed --model
-        return explicit
-
-    cfg = ProviderConfig().get_provider_config(provider.lower())
-    return cfg.get("default_model", "gpt-4o-mini")
-
-
 def _set_logging(level: str) -> None:
+    """Set logging level from string."""
     numeric = getattr(logging, level.upper(), None)
     if not isinstance(numeric, int):
         raise typer.BadParameter(f"Invalid logging level: {level}")
@@ -46,91 +32,108 @@ def _set_logging(level: str) -> None:
 # command
 # ──────────────────────────────────────────────────────────────────────────────
 class ChatCommand(BaseCommand):
-    """Top-level `/chat` command (and default action)."""
+    """Chat command that starts interactive chat mode."""
 
     def __init__(self) -> None:
         super().__init__("chat", "Start interactive chat mode.")
 
-    # ----------------------------------------------------------------- execute
     async def execute(self, tool_manager: ToolManager, **params) -> Any:
-        """Spin up the chat UI with sane defaults."""
+        """Start the chat UI."""
         from mcp_cli.chat.chat_handler import handle_chat_mode
 
-        provider: str = params.get("provider", "openai")
-        model: str = _default_model(provider, params.get("model"))
+        # Get parameters - ModelManager will handle defaults
+        provider = params.get("provider")
+        model = params.get("model")
+        api_base = params.get("api_base")
+        api_key = params.get("api_key")
 
         log.debug("Starting chat (provider=%s model=%s)", provider, model)
-        return await handle_chat_mode(tool_manager, provider=provider, model=model)
+        
+        return await handle_chat_mode(
+            tool_manager=tool_manager,
+            provider=provider,
+            model=model,
+            api_base=api_base,
+            api_key=api_key
+        )
 
-    # ----------------------------------------------------------- register (sub)
     def register(self, app: typer.Typer, run_command_func: Callable) -> None:
-        """Register `/chat` as an explicit sub-command (no KWARGS)."""
+        """Register chat as an explicit sub-command."""
 
         @app.command(self.name, help=self.help)
-        def _chat(                                   # noqa: D401
-            config_file: str = "server_config.json",
-            server: Optional[str] = None,
-            provider: str = "openai",
-            model: Optional[str] = None,
-            disable_filesystem: bool = False,
-            logging_level: str = typer.Option(
-                "WARNING",
-                help="Set logging level: DEBUG/INFO/WARNING/ERROR/CRITICAL",
-            ),
+        def _chat(
+            config_file: str = typer.Option("server_config.json", help="Configuration file path"),
+            server: Optional[str] = typer.Option(None, help="Server to connect to"),
+            provider: Optional[str] = typer.Option(None, help="LLM provider name"),
+            model: Optional[str] = typer.Option(None, help="Model name"),
+            api_base: Optional[str] = typer.Option(None, "--api-base", help="API base URL"),
+            api_key: Optional[str] = typer.Option(None, "--api-key", help="API key"),
+            disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
+            logging_level: str = typer.Option("WARNING", help="Set logging level"),
         ) -> None:
+            """Start interactive chat mode."""
             _set_logging(logging_level)
-            model_fallback = _default_model(provider, model)
+
+            # Use ModelManager to determine provider/model if not specified
+            model_manager = ModelManager()
+            effective_provider = provider or model_manager.get_active_provider()
+            effective_model = model or model_manager.get_active_model()
 
             servers, _, server_names = process_options(
-                server, disable_filesystem, provider, model_fallback, config_file
+                server, disable_filesystem, effective_provider, effective_model, config_file
             )
 
             extra = {
-                "provider": provider,
-                "model": model_fallback,
+                "provider": provider,  # Pass None if not specified - let ModelManager decide
+                "model": model,        # Pass None if not specified - let ModelManager decide
+                "api_base": api_base,
+                "api_key": api_key,
                 "server_names": server_names,
             }
+            
             run_command_func(self.wrapped_execute, config_file, servers, extra_params=extra)
 
-    # ------------------------------------------------------- register_default
     def register_as_default(self, app: typer.Typer, run_command_func: Callable) -> None:
         """
-        Make `/chat` the action when the user runs plain `mcp-cli …`
-        with no sub-command.
+        Make chat the default action when no sub-command is given.
         """
 
         @app.callback(invoke_without_command=True)
-        def _default(                                 # noqa: D401
+        def _default(
             ctx: typer.Context,
-            config_file: str = "server_config.json",
-            server: Optional[str] = None,
-            provider: str = "openai",
-            model: Optional[str] = None,
-            disable_filesystem: bool = False,
-            logging_level: str = typer.Option(
-                "WARNING",
-                help="Set logging level: DEBUG/INFO/WARNING/ERROR/CRITICAL",
-            ),
+            config_file: str = typer.Option("server_config.json", help="Configuration file path"),
+            server: Optional[str] = typer.Option(None, help="Server to connect to"),
+            provider: Optional[str] = typer.Option(None, help="LLM provider name"),
+            model: Optional[str] = typer.Option(None, help="Model name"),
+            api_base: Optional[str] = typer.Option(None, "--api-base", help="API base URL"),
+            api_key: Optional[str] = typer.Option(None, "--api-key", help="API key"),
+            disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
+            logging_level: str = typer.Option("WARNING", help="Set logging level"),
         ) -> None:
+            """Default command handler."""
             _set_logging(logging_level)
-            model_fallback = _default_model(provider, model)
+
+            # Use ModelManager to determine provider/model if not specified
+            model_manager = ModelManager()
+            effective_provider = provider or model_manager.get_active_provider()
+            effective_model = model or model_manager.get_active_model()
 
             servers, _, server_names = process_options(
-                server, disable_filesystem, provider, model_fallback, config_file
+                server, disable_filesystem, effective_provider, effective_model, config_file
             )
+            
             ctx.obj = {
                 "config_file": config_file,
                 "servers": servers,
                 "server_names": server_names,
             }
 
-            # If the user typed *only* `mcp-cli` (no sub-command) …
+            # If no sub-command was invoked, start chat mode
             if ctx.invoked_subcommand is None:
-                # Graceful Ctrl-C / SIGTERM handling
-                def _sig_handler(sig, _frame):          # noqa: D401
+                # Set up signal handlers for graceful shutdown
+                def _sig_handler(sig, _frame):
                     log.debug("Received signal %s – exiting chat", sig)
                     from mcp_cli.ui.ui_helpers import restore_terminal
-
                     restore_terminal()
                     raise typer.Exit()
 
@@ -138,18 +141,77 @@ class ChatCommand(BaseCommand):
                 signal.signal(signal.SIGTERM, _sig_handler)
 
                 extra = {
-                    "provider": provider,
-                    "model": model_fallback,
+                    "provider": provider,  # Pass None if not specified
+                    "model": model,        # Pass None if not specified  
+                    "api_base": api_base,
+                    "api_key": api_key,
                     "server_names": server_names,
                 }
-                run_command_func(
-                    self.wrapped_execute,
-                    config_file,
-                    servers,
-                    extra_params=extra,
-                )
+                
+                try:
+                    run_command_func(
+                        self.wrapped_execute,
+                        config_file,
+                        servers,
+                        extra_params=extra,
+                    )
+                finally:
+                    from mcp_cli.ui.ui_helpers import restore_terminal
+                    restore_terminal()
+                    raise typer.Exit()
 
-                from mcp_cli.ui.ui_helpers import restore_terminal
 
-                restore_terminal()
-                raise typer.Exit()
+# ──────────────────────────────────────────────────────────────────────────────
+# Alternative: Simplified version without default registration
+# ──────────────────────────────────────────────────────────────────────────────
+
+class SimpleChatCommand(BaseCommand):
+    """Simplified chat command that only handles explicit chat invocation."""
+
+    def __init__(self) -> None:
+        super().__init__("chat", "Start interactive chat mode.")
+
+    async def execute(self, tool_manager: ToolManager, **params) -> Any:
+        """Start the chat UI."""
+        from mcp_cli.chat.chat_handler import handle_chat_mode
+
+        return await handle_chat_mode(
+            tool_manager=tool_manager,
+            provider=params.get("provider"),
+            model=params.get("model"),
+            api_base=params.get("api_base"),
+            api_key=params.get("api_key")
+        )
+
+    def register(self, app: typer.Typer, run_command_func: Callable) -> None:
+        """Register chat command."""
+
+        @app.command(self.name, help=self.help)
+        def _chat(
+            config_file: str = typer.Option("server_config.json", help="Configuration file path"),
+            server: Optional[str] = typer.Option(None, help="Server to connect to"),
+            provider: Optional[str] = typer.Option(None, help="LLM provider name"),
+            model: Optional[str] = typer.Option(None, help="Model name"),
+            api_base: Optional[str] = typer.Option(None, "--api-base", help="API base URL"),
+            api_key: Optional[str] = typer.Option(None, "--api-key", help="API key"),
+            disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
+            logging_level: str = typer.Option("WARNING", help="Set logging level"),
+        ) -> None:
+            """Start interactive chat mode."""
+            _set_logging(logging_level)
+
+            # Let ModelManager handle provider/model defaults
+            servers, _, server_names = process_options(
+                server, disable_filesystem, provider or "openai", model or "gpt-4o-mini", config_file
+            )
+
+            extra = {
+                "provider": provider,
+                "model": model,
+                "api_base": api_base,
+                "api_key": api_key,
+                "server_names": server_names,
+            }
+            
+            run_command_func(self.wrapped_execute, config_file, servers, extra_params=extra)
+            

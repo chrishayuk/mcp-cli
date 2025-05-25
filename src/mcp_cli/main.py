@@ -1,4 +1,4 @@
-# src/mcp_cli/main.py
+# src/mcp_cli/main.py - Fixed version with chat as default
 """Entry-point for the MCP CLI."""
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import logging
 import os
 import signal
 import sys
-from typing import Optional, Callable
+from typing import Optional
 
 import typer
 
@@ -21,7 +21,6 @@ from mcp_cli.cli.registry import CommandRegistry
 from mcp_cli.run_command import run_command_sync
 from mcp_cli.ui.ui_helpers import restore_terminal
 from mcp_cli.cli_options import process_options
-from mcp_cli.provider_config import ProviderConfig
 
 # ──────────────────────────────────────────────────────────────────────────────
 # logging
@@ -35,119 +34,99 @@ logging.getLogger("chuk_tool_processor.span.inprocess_execution").setLevel(
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
-# helper: generic wrapper builder
-# ──────────────────────────────────────────────────────────────────────────────
-def _register_command_with_help(
-    app: typer.Typer,
-    command_name: str,
-    cmd,
-    run_cmd: Callable,
-) -> None:
-    """Register *cmd* on *app* with a thin Typer wrapper keeping its help."""
-    if not cmd:
-        return
-
-    help_text = getattr(cmd, "help_text", None) or getattr(cmd, "help", "") or (
-        f"Execute the {command_name} command"
-    )
-
-    def make_wrapper(cmd_obj):
-        _orig_exec = cmd_obj.wrapped_execute
-
-        def wrapper(  # noqa: D401
-            config_file: str = typer.Option(
-                "server_config.json", help="Configuration file path"
-            ),
-            server: Optional[str] = typer.Option(
-                None, help="Server to connect to"
-            ),
-            provider: str = typer.Option("openai", help="LLM provider name"),
-            model: Optional[str] = typer.Option(None, help="Model name"),
-            disable_filesystem: bool = typer.Option(
-                False, help="Disable filesystem access"
-            ),
-            **kwargs,
-        ):
-            """Auto-generated CLI wrapper (help preserved)."""
-            servers, _, server_names = process_options(
-                server, disable_filesystem, provider, model, config_file
-            )
-            extra_params = {
-                "provider": provider,
-                "model": model,
-                "server_names": server_names,
-                **kwargs,
-            }
-            run_cmd(_orig_exec, config_file, servers, extra_params=extra_params)
-
-        wrapper.__doc__ = help_text
-        wrapper.__name__ = f"_{command_name}_command"
-        return wrapper
-
-    wrapper = make_wrapper(cmd)
-    app.command(command_name, help=help_text)(wrapper)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Typer root app + global “quiet” flag
+# Typer root app
 # ──────────────────────────────────────────────────────────────────────────────
 app = typer.Typer(add_completion=False)
 
 
-@app.callback(invoke_without_command=False)
-def main_callback(  # noqa: D401
+# ──────────────────────────────────────────────────────────────────────────────
+# Default callback that handles no-subcommand case
+# ──────────────────────────────────────────────────────────────────────────────
+@app.callback(invoke_without_command=True)
+def main_callback(
     ctx: typer.Context,
-    quiet: bool = typer.Option(
-        False,
-        "-q",
-        "--quiet",
-        help="Suppress server log output (sets CHUK_LOG_LEVEL=WARNING)",
-        is_flag=True,
-        show_default=False,
-    ),
+    config_file: str = typer.Option("server_config.json", help="Configuration file path"),
+    server: Optional[str] = typer.Option(None, help="Server to connect to"),
+    provider: str = typer.Option("openai", help="LLM provider name"),
+    model: Optional[str] = typer.Option(None, help="Model name"),
+    api_base: Optional[str] = typer.Option(None, "--api-base", help="API base URL"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", help="API key"),
+    disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
+    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress server log output"),
 ) -> None:
-    """Common pre-command setup (handles --quiet)."""
+    """MCP CLI - If no subcommand is given, start chat mode."""
+    
+    # If a subcommand was invoked, let it handle things
+    if ctx.invoked_subcommand is not None:
+        if quiet:
+            logging.getLogger().setLevel(logging.WARNING)
+            os.environ["CHUK_LOG_LEVEL"] = "WARNING"
+        return
+    
+    # No subcommand - start chat mode (default behavior)
     if quiet:
         logging.getLogger().setLevel(logging.WARNING)
         os.environ["CHUK_LOG_LEVEL"] = "WARNING"
+    
+    servers, _, server_names = process_options(
+        server, disable_filesystem, provider, model, config_file
+    )
+
+    from mcp_cli.chat.chat_handler import handle_chat_mode
+    from mcp_cli.tools.manager import ToolManager
+
+    # Start chat mode directly
+    async def _start_chat():
+        tm = None
+        try:
+            from mcp_cli.run_command import _init_tool_manager
+            tm = await _init_tool_manager(config_file, servers, server_names)
+            
+            success = await handle_chat_mode(
+                tool_manager=tm,
+                provider=provider,
+                model=model,
+                api_base=api_base,
+                api_key=api_key
+            )
+            
+        finally:
+            if tm:
+                from mcp_cli.run_command import _safe_close
+                await _safe_close(tm)
+    
+    try:
+        asyncio.run(_start_chat())
+    except KeyboardInterrupt:
+        print("\n[yellow]Interrupted[/yellow]")
+    except Exception as e:
+        print(f"[red]Error:[/red] {e}")
+    finally:
+        restore_terminal()
+        raise typer.Exit()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# interactive (unchanged)
+# Built-in commands
 # ──────────────────────────────────────────────────────────────────────────────
 @app.command("interactive", help="Start interactive command mode.")
-def _interactive_command(  # noqa: D401
-    config_file: str = typer.Option(
-        "server_config.json", help="Configuration file path"
-    ),
+def _interactive_command(
+    config_file: str = typer.Option("server_config.json", help="Configuration file path"),
     server: Optional[str] = typer.Option(None, help="Server to connect to"),
-    provider: Optional[str] = typer.Option(
-        None, help="LLM provider name (defaults to active provider)"
-    ),
-    model: Optional[str] = typer.Option(
-        None, help="Model name (defaults to active model)"
-    ),
-    api_base: Optional[str] = typer.Option(
-        None, "--api-base", help="API base URL for the provider"
-    ),
-    api_key: Optional[str] = typer.Option(
-        None, "--api-key", help="API key for the provider"
-    ),
-    disable_filesystem: bool = typer.Option(
-        False, help="Disable filesystem access"
-    ),
+    provider: str = typer.Option("openai", help="LLM provider name"),
+    model: Optional[str] = typer.Option(None, help="Model name"),
+    api_base: Optional[str] = typer.Option(None, "--api-base", help="API base URL"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", help="API key"),
+    disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
+    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress server log output"),
 ) -> None:
     """Start interactive command mode."""
-    provider_cfg = ProviderConfig()
-    actual_provider = provider or provider_cfg.get_active_provider()
-    actual_model = model or provider_cfg.get_active_model()
-
+    if quiet:
+        logging.getLogger().setLevel(logging.WARNING)
+        os.environ["CHUK_LOG_LEVEL"] = "WARNING"
+    
     servers, _, server_names = process_options(
-        server,
-        disable_filesystem,
-        actual_provider,
-        actual_model,
-        config_file,
+        server, disable_filesystem, provider, model, config_file
     )
 
     from mcp_cli.interactive.shell import interactive_mode
@@ -157,8 +136,8 @@ def _interactive_command(  # noqa: D401
         config_file,
         servers,
         extra_params={
-            "provider": actual_provider,
-            "model": actual_model,
+            "provider": provider,
+            "model": model,
             "server_names": server_names,
             "api_base": api_base,
             "api_key": api_key,
@@ -167,128 +146,52 @@ def _interactive_command(  # noqa: D401
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# sub-command groups (tools/resources/…)
+# Command registration - ONLY individual commands (no subgroups)
 # ──────────────────────────────────────────────────────────────────────────────
-def _create_enhanced_subcommand_group(
-    app: typer.Typer,
-    group_name: str,
-    sub_commands: list[str],
-    run_cmd: Callable,
-) -> None:
-    """Add a Typer sub-app exposing e.g. “tools list”."""
-    group_title = f"{group_name.capitalize()} commands"
-    subapp = typer.Typer(help=f"Commands for working with {group_name}")
-
-    for sub_name in sub_commands:
-        full_name = f"{group_name} {sub_name}"
-        cmd_obj = CommandRegistry.get_command(full_name)
-        if not cmd_obj:
-            logging.warning("Command '%s' not found in registry", full_name)
-            continue
-
-        help_text = getattr(cmd_obj, "help_text", None) or getattr(
-            cmd_obj, "help", ""
-        )
-
-        def make_wrapper(command):
-            _orig_exec = command.wrapped_execute
-
-            def wrapper(  # noqa: D401
-                config_file: str = typer.Option(
-                    "server_config.json", help="Configuration file path"
-                ),
-                server: Optional[str] = typer.Option(
-                    None, help="Server to connect to"
-                ),
-                provider: str = typer.Option("openai", help="LLM provider name"),
-                model: Optional[str] = typer.Option(None, help="Model name"),
-                disable_filesystem: bool = typer.Option(
-                    False, help="Disable filesystem access"
-                ),
-                **kwargs,
-            ):
-                servers, _, server_names = process_options(
-                    server, disable_filesystem, provider, model, config_file
-                )
-                extra = {
-                    "provider": provider,
-                    "model": model,
-                    "server_names": server_names,
-                    **kwargs,
-                }
-                run_cmd(_orig_exec, config_file, servers, extra_params=extra)
-
-            wrapper.__name__ = f"_{group_name}_{sub_name}_command"
-            wrapper.__doc__ = help_text
-            return wrapper
-
-        wrapper = make_wrapper(cmd_obj)
-        subapp.command(sub_name, help=help_text)(wrapper)
-
-    app.add_typer(subapp, name=group_name, help=group_title)
+def _register_simple_command(command_name: str) -> None:
+    """Register a simple command from the registry."""
+    cmd = CommandRegistry.get_command(command_name)
+    if cmd:
+        cmd.register(app, run_command_sync)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# command registration
-# ──────────────────────────────────────────────────────────────────────────────
+# Register all commands in the registry first
 register_all_commands()
 
-_create_enhanced_subcommand_group(
-    app, "tools", ["list", "call"], run_command_sync
-)
-_create_enhanced_subcommand_group(
-    app, "resources", ["list"], run_command_sync
-)
-_create_enhanced_subcommand_group(
-    app, "prompts", ["list"], run_command_sync
-)
-_create_enhanced_subcommand_group(
-    app, "servers", ["list"], run_command_sync
-)
+# Register individual commands that we know work
+for command_name in ["chat", "provider", "cmd", "ping"]:
+    _register_simple_command(command_name)
 
-# commands that *don’t* supply their own Typer wrapper
-for name in ("ping", "chat", "provider"):
-    cmd = CommandRegistry.get_command(name)
-    if cmd:
-        _register_command_with_help(app, name, cmd, run_command_sync)
-
-# let CmdCommand register its own rich wrapper (keeps --prompt etc.)
-cmd_cmd = CommandRegistry.get_command("cmd")
-if cmd_cmd:
-    cmd_cmd.register(app, run_command_sync)
-
-# make /chat the default when no sub-command is given
-chat_cmd = CommandRegistry.get_command("chat")
-if chat_cmd:
-    chat_cmd.register_as_default(app, run_command_sync)
-
+print("✓ MCP CLI ready - chat is default, or use: chat, interactive, provider, cmd, ping")
 
 # ──────────────────────────────────────────────────────────────────────────────
-# graceful shutdown
+# Signal handling
 # ──────────────────────────────────────────────────────────────────────────────
-def _signal_handler(sig, _frame):
-    logging.debug("Received signal %s, restoring terminal", sig)
-    restore_terminal()
-    sys.exit(0)
-
-
 def _setup_signal_handlers() -> None:
-    signal.signal(signal.SIGINT, _signal_handler)
-    signal.signal(signal.SIGTERM, _signal_handler)
+    """Setup signal handlers for clean shutdown."""
+    def handler(sig, _frame):
+        logging.debug(f"Received signal {sig}, shutting down")
+        restore_terminal()
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, handler)
+    signal.signal(signal.SIGTERM, handler)
     if hasattr(signal, "SIGQUIT"):
-        signal.signal(signal.SIGQUIT, _signal_handler)
+        signal.signal(signal.SIGQUIT, handler)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# main
+# Main entry point
 # ──────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
     _setup_signal_handlers()
+    atexit.register(restore_terminal)
+    
     try:
-        app()  # Typer dispatch
+        app()
     finally:
         restore_terminal()
         gc.collect()
