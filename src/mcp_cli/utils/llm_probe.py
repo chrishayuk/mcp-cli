@@ -54,6 +54,20 @@ class LLMProbe:
             chuk_logger = logging.getLogger('chuk_llm')
             chuk_logger.setLevel(self._original_log_level)
     
+    async def __aenter__(self):
+        """Async context manager entry - suppress logging if requested."""
+        if self.suppress_logging:
+            chuk_logger = logging.getLogger('chuk_llm')
+            self._original_log_level = chuk_logger.level
+            chuk_logger.setLevel(logging.CRITICAL)
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit - restore logging level."""
+        if self.suppress_logging and self._original_log_level is not None:
+            chuk_logger = logging.getLogger('chuk_llm')
+            chuk_logger.setLevel(self._original_log_level)
+    
     async def test_provider_model(
         self, 
         provider: str, 

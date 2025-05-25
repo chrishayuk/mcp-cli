@@ -20,7 +20,7 @@ from rich.console import Console
 from rich.table import Table
 from rich import print
 
-from mcp_cli.model_manager import ModelManager
+from mcp_cli.model_manager import ModelManager  # ← CHANGED
 from mcp_cli.utils.llm_probe import LLMProbe
 
 DiagRow = Tuple[str, str | None]  # (provider, default_model)

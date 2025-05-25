@@ -47,7 +47,7 @@ def main_callback(
     ctx: typer.Context,
     config_file: str = typer.Option("server_config.json", help="Configuration file path"),
     server: Optional[str] = typer.Option(None, help="Server to connect to"),
-    provider: str = typer.Option("openai", help="LLM provider name"),
+    provider: Optional[str] = typer.Option(None, help="LLM provider name"),  # ← CHANGED to Optional
     model: Optional[str] = typer.Option(None, help="Model name"),
     api_base: Optional[str] = typer.Option(None, "--api-base", help="API base URL"),
     api_key: Optional[str] = typer.Option(None, "--api-key", help="API key"),
@@ -68,8 +68,33 @@ def main_callback(
         logging.getLogger().setLevel(logging.WARNING)
         os.environ["CHUK_LOG_LEVEL"] = "WARNING"
     
+    # Use ModelManager to get active provider/model if not specified
+    from mcp_cli.model_manager import ModelManager
+    model_manager = ModelManager()
+    
+    # Smart provider/model resolution:
+    # 1. If both specified: use both
+    # 2. If only provider specified: use provider + its default model
+    # 3. If neither specified: use active provider + active model
+    if provider and model:
+        # Both specified explicitly
+        effective_provider = provider
+        effective_model = model
+    elif provider and not model:
+        # Provider specified, get its default model
+        effective_provider = provider
+        effective_model = model_manager.get_default_model(provider)
+    elif not provider and model:
+        # Model specified, use current provider
+        effective_provider = model_manager.get_active_provider()
+        effective_model = model
+    else:
+        # Neither specified, use active configuration
+        effective_provider = model_manager.get_active_provider()
+        effective_model = model_manager.get_active_model()
+    
     servers, _, server_names = process_options(
-        server, disable_filesystem, provider, model, config_file
+        server, disable_filesystem, effective_provider, effective_model, config_file
     )
 
     from mcp_cli.chat.chat_handler import handle_chat_mode
@@ -84,8 +109,8 @@ def main_callback(
             
             success = await handle_chat_mode(
                 tool_manager=tm,
-                provider=provider,
-                model=model,
+                provider=effective_provider,  # Use effective values
+                model=effective_model,        # Use effective values
                 api_base=api_base,
                 api_key=api_key
             )
@@ -113,7 +138,7 @@ def main_callback(
 def _interactive_command(
     config_file: str = typer.Option("server_config.json", help="Configuration file path"),
     server: Optional[str] = typer.Option(None, help="Server to connect to"),
-    provider: str = typer.Option("openai", help="LLM provider name"),
+    provider: Optional[str] = typer.Option(None, help="LLM provider name"),  # ← CHANGED to Optional
     model: Optional[str] = typer.Option(None, help="Model name"),
     api_base: Optional[str] = typer.Option(None, "--api-base", help="API base URL"),
     api_key: Optional[str] = typer.Option(None, "--api-key", help="API key"),
@@ -125,8 +150,33 @@ def _interactive_command(
         logging.getLogger().setLevel(logging.WARNING)
         os.environ["CHUK_LOG_LEVEL"] = "WARNING"
     
+    # Use ModelManager to get active provider/model if not specified
+    from mcp_cli.model_manager import ModelManager
+    model_manager = ModelManager()
+    
+    # Smart provider/model resolution:
+    # 1. If both specified: use both
+    # 2. If only provider specified: use provider + its default model
+    # 3. If neither specified: use active provider + active model
+    if provider and model:
+        # Both specified explicitly
+        effective_provider = provider
+        effective_model = model
+    elif provider and not model:
+        # Provider specified, get its default model
+        effective_provider = provider
+        effective_model = model_manager.get_default_model(provider)
+    elif not provider and model:
+        # Model specified, use current provider
+        effective_provider = model_manager.get_active_provider()
+        effective_model = model
+    else:
+        # Neither specified, use active configuration
+        effective_provider = model_manager.get_active_provider()
+        effective_model = model_manager.get_active_model()
+    
     servers, _, server_names = process_options(
-        server, disable_filesystem, provider, model, config_file
+        server, disable_filesystem, effective_provider, effective_model, config_file
     )
 
     from mcp_cli.interactive.shell import interactive_mode
@@ -136,8 +186,8 @@ def _interactive_command(
         config_file,
         servers,
         extra_params={
-            "provider": provider,
-            "model": model,
+            "provider": effective_provider,  # Use effective values
+            "model": effective_model,        # Use effective values
             "server_names": server_names,
             "api_base": api_base,
             "api_key": api_key,
