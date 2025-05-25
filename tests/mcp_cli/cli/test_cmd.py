@@ -2,6 +2,7 @@
 import pytest
 import json
 import typer
+import click
 
 from mcp_cli.cli.commands.cmd import CmdCommand
 
@@ -26,7 +27,7 @@ async def test_run_single_tool_success(monkeypatch):
 
     outputs = []
     # Capture writes
-    monkeypatch.setattr(cmd, "_write_output", lambda data, path, raw: outputs.append((data, path, raw)))
+    monkeypatch.setattr(cmd, "_write_output", lambda data, path, raw, plain: outputs.append((data, path, raw, plain)))
 
     result = await cmd.execute(
         tool_manager=tm,
@@ -48,7 +49,7 @@ async def test_run_single_tool_invalid_json():
     tm = DummySM()
     cmd = CmdCommand()
 
-    with pytest.raises(typer.Exit):
+    with pytest.raises(click.BadParameter):
         await cmd.execute(tool_manager=tm, tool="t", tool_args="{bad}")
 
 @pytest.mark.asyncio
@@ -56,13 +57,14 @@ async def test_llm_workflow(monkeypatch):
     tm = DummySM()
     cmd = CmdCommand()
 
-    # Stub the LLM path to be an async function
-    async def fake_llm(**kwargs):
-        return "LLM_RESULT"
-    monkeypatch.setattr(cmd, "_run_llm_with_tools", fake_llm)
+    # Patch get_llm_client to return a dummy client with async create_completion
+    class DummyLLMClient:
+        async def create_completion(self, *args, **kwargs):
+            return "LLM_RESULT"
+    monkeypatch.setattr("mcp_cli.llm.llm_client.get_llm_client", lambda *a, **kw: DummyLLMClient())
 
     outputs = []
-    monkeypatch.setattr(cmd, "_write_output", lambda data, path, raw: outputs.append((data, path, raw)))
+    monkeypatch.setattr(cmd, "_write_output", lambda data, path, raw, plain: outputs.append((data, path, raw, plain)))
 
     result = await cmd.execute(
         tool_manager=tm,
@@ -78,4 +80,4 @@ async def test_llm_workflow(monkeypatch):
 
     assert result == "LLM_RESULT"
     # And _write_output was invoked once with the raw flag
-    assert outputs == [("LLM_RESULT", "-", True)]
+    assert outputs == [("LLM_RESULT", "-", True, False)]

@@ -28,22 +28,23 @@ async def resources_action_async(tm: ToolManager) -> List[Dict[str, Any]]:
     console = Console()
     try:
         maybe = tm.list_resources()
-    except Exception as exc:  # noqa: BLE001
+        try:
+            resources = await maybe if inspect.isawaitable(maybe) else maybe
+        except Exception as exc:
+            console.print(f"[red]Error:[/red] {exc}")
+            return []
+    except Exception as exc:
         console.print(f"[red]Error:[/red] {exc}")
         return []
-
-    resources = await maybe if inspect.isawaitable(maybe) else maybe
     resources = resources or []
     if not resources:
         console.print("[dim]No resources recorded.[/dim]")
         return resources
-
     table = Table(title="Resources", header_style="bold magenta")
     table.add_column("Server", style="cyan")
     table.add_column("URI", style="yellow")
     table.add_column("Size", justify="right")
     table.add_column("MIME-type")
-
     for item in resources:
         table.add_row(
             item.get("server", "-"),
@@ -51,7 +52,6 @@ async def resources_action_async(tm: ToolManager) -> List[Dict[str, Any]]:
             _human_size(item.get("size")),
             item.get("mimeType", "-"),
         )
-
     console.print(table)
     return resources
 

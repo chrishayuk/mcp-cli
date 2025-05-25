@@ -48,6 +48,11 @@ def client(monkeypatch) -> GroqAILLMClient:
     return cl
 
 
+@pytest.fixture(autouse=True)
+def groq_api_key(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "dummy-key")
+
+
 # ---------------------------------------------------------------------------
 # non-streaming path
 # ---------------------------------------------------------------------------

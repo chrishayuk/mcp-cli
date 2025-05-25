@@ -3,17 +3,17 @@ import pytest
 from rich.console import Console
 from rich.table import Table
 
-from mcp_cli.commands.prompts import prompts_action
+from mcp_cli.commands.prompts import prompts_action_async
 
 class DummyTMNoPrompts:
-    def list_prompts(self):
+    async def list_prompts(self):
         return []
 
 class DummyTMWithPromptsSync:
     def __init__(self, data):
         self._data = data
 
-    def list_prompts(self):
+    async def list_prompts(self):
         return self._data
 
 class DummyTMWithPromptsAsync:
@@ -27,9 +27,9 @@ class DummyTMWithPromptsAsync:
 async def test_prompts_action_no_prompts(monkeypatch):
     tm = DummyTMNoPrompts()
     printed = []
-    monkeypatch.setattr(Console, "print", lambda self, msg, **kw: printed.append(str(msg)))
+    monkeypatch.setattr(Console, "print", lambda self, *args, **kw: printed.append(str(args[0])))
 
-    result = await prompts_action(tm)
+    result = await prompts_action_async(tm)
     assert result == []
     assert any("No prompts recorded" in p for p in printed)
 
@@ -42,9 +42,9 @@ async def test_prompts_action_with_prompts_sync(monkeypatch):
     tm = DummyTMWithPromptsSync(data)
 
     output = []
-    monkeypatch.setattr(Console, "print", lambda self, obj, **kw: output.append(obj))
+    monkeypatch.setattr(Console, "print", lambda self, *args, **kw: output.append(args[0]))
 
-    result = await prompts_action(tm)
+    result = await prompts_action_async(tm)
     assert result == data
 
     tables = [o for o in output if isinstance(o, Table)]
@@ -62,7 +62,7 @@ async def test_prompts_action_with_prompts_async(monkeypatch):
     output = []
     monkeypatch.setattr(Console, "print", lambda self, obj, **kw: output.append(obj))
 
-    result = await prompts_action(tm)
+    result = await prompts_action_async(tm)
     assert isinstance(result, list) and len(result) == 1
 
     tables = [o for o in output if isinstance(o, Table)]

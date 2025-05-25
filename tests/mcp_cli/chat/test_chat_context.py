@@ -3,10 +3,11 @@ import asyncio
 
 # Import the ChatContext to test.
 from mcp_cli.chat.chat_context import ChatContext
+from mcp_cli.provider_config import ProviderConfig
 
 # Create dummy implementations for dependencies.
-def dummy_get_llm_client(provider, model):
-    return {"provider": provider, "model": model, "dummy": True}
+def dummy_get_llm_client(provider, model, config = None):
+    return {"provider": provider, "model": model, "config": config, "dummy": True}
 
 def dummy_generate_system_prompt(tools):
     return "Dummy system prompt."
@@ -68,19 +69,22 @@ async def test_initialize_chat_context(chat_context):
     expected_server_info = chat_context.stream_manager.get_server_info()
     assert chat_context.server_info == expected_server_info
 
-    expected_client = dummy_get_llm_client("dummy_provider", "dummy_model")
-    assert chat_context.client == expected_client
+    # Instead of calling dummy_get_llm_client, check the fields directly
+    client = chat_context.client
+    assert client["provider"] == "dummy_provider"
+    assert client["model"] == "dummy_model"
+    assert isinstance(client["config"], ProviderConfig)
 
 @pytest.mark.asyncio
 async def test_get_server_for_tool(chat_context):
     # Ensure initialization before using the helper.
     await chat_context.initialize()
-    server_for_tool1 = chat_context.get_server_for_tool("tool1")
-    server_for_tool2 = chat_context.get_server_for_tool("tool2")
+    server_for_tool1 = await chat_context.get_server_for_tool("tool1")
+    server_for_tool2 = await chat_context.get_server_for_tool("tool2")
     assert server_for_tool1 == "Server1"
     assert server_for_tool2 == "Server2"
     
-    server_unknown = chat_context.get_server_for_tool("nonexistent")
+    server_unknown = await chat_context.get_server_for_tool("nonexistent")
     assert server_unknown == "Unknown"
 
 @pytest.mark.asyncio
