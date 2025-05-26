@@ -1,41 +1,60 @@
 # mcp_cli/interactive/commands/ping.py
 """
-Interactive “ping” command – measure latency to connected MCP servers.
+Interactive **ping** command - measure round-trip latency to each
+connected MCP server.
+
+Usage
+-----
+  ping               → ping every server
+  ping 0 api         → ping only server #0 and the one named “api”
+  pg …               → short alias
 """
 from __future__ import annotations
 
-from typing import Any, List
+import logging
+from typing import Any, Dict, List
 
-from rich import print
-
-from .base import InteractiveCommand
-from mcp_cli.commands.ping import ping_action_async        # ← async helper
+from mcp_cli.utils.rich_helpers import get_console           # ← NEW
+from mcp_cli.commands.ping import ping_action_async          # shared async helper
 from mcp_cli.tools.manager import ToolManager
+from .base import InteractiveCommand
+
+log = logging.getLogger(__name__)
 
 
 class PingCommand(InteractiveCommand):
-    """Ping connected servers (optionally filter by index or name)."""
+    """Measure server latency (interactive shell)."""
 
     def __init__(self) -> None:
         super().__init__(
             name="ping",
-            help_text="Ping connected servers (optionally filter by index/name).",
-            aliases=[],
+            aliases=["pg"],  # handy two-letter shortcut
+            help_text="Ping each MCP server (optionally filter by index or name).",
         )
 
-    async def execute(
+    # ------------------------------------------------------------------
+    async def execute(  # noqa: D401
         self,
         args: List[str],
         tool_manager: ToolManager | None = None,
-        **ctx: Any,
-    ) -> bool:
-        if not tool_manager:
-            print("[red]Error:[/red] ToolManager not available.")
-            return False
+        **ctx: Dict[str, Any],
+    ) -> None:
+        """
+        Delegate to :func:`mcp_cli.commands.ping.ping_action_async`.
+
+        *args* contains any filters supplied after the command word.
+        """
+        console = get_console()
+
+        if tool_manager is None:
+            log.debug("PingCommand executed without ToolManager – aborting.")
+            console.print("[red]Error:[/red] ToolManager not available.")
+            return
 
         server_names = ctx.get("server_names")  # may be None
-        targets = args  # args exclude the command word itself
-        return await ping_action_async(
+        targets = args                          # filters (index / partial name)
+
+        await ping_action_async(
             tool_manager,
             server_names=server_names,
             targets=targets,

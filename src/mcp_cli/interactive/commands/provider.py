@@ -1,43 +1,59 @@
 # mcp_cli/interactive/commands/provider.py
 """
-Interactive “provider” command that re-uses the shared provider_action_async.
+Interactive **provider** command - inspect or switch the active LLM provider
+(and optionally the default model) from inside the shell.
 """
 from __future__ import annotations
 
-from typing import Any, List
+import logging
+from typing import Any, Dict, List
 
-from mcp_cli.commands.provider import provider_action_async
+from mcp_cli.utils.rich_helpers import get_console           # ← NEW
+from mcp_cli.commands.provider import provider_action_async  # shared logic
 from .base import InteractiveCommand
+
+log = logging.getLogger(__name__)
 
 
 class ProviderCommand(InteractiveCommand):
-    """Manage active LLM provider / model (interactive shell)."""
+    """Show / switch providers, tweak config, run diagnostics."""
 
     def __init__(self) -> None:
         super().__init__(
             name="provider",
+            aliases=["p"],
             help_text=(
                 "Manage LLM providers.\n\n"
-                "  provider                         Show current provider/model\n"
-                "  provider list                    List providers\n"
-                "  provider config                  Show provider config\n"
-                "  provider set <prov> <k> <v>      Update one setting\n"
-                "  provider <prov> [model]          Switch provider (and model)\n"
+                "  provider                          Show current provider/model\n"
+                "  provider list                     List available providers\n"
+                "  provider config                   Show provider configuration\n"
+                "  provider diagnostic [prov]        Probe provider(s) health\n"
+                "  provider set <prov> <key> <val>   Update one config key\n"
+                "  provider <prov> [model]           Switch provider (and model)\n"
             ),
-            aliases=["p"],
         )
 
-    # InteractiveCommand interface ------------------------------------
-    async def execute(
+    # ------------------------------------------------------------------
+    async def execute(                      # noqa: D401  (simple entry-point)
         self,
         args: List[str],
-        tool_manager: Any = None,   # unused but kept for parity
-        **ctx: Any,
+        tool_manager: Any = None,           # kept for API parity (unused)
+        **ctx: Dict[str, Any],
     ) -> None:
         """
-        Delegate to the shared async helper.
+        Delegate to :func:`provider_action_async`.
 
-        *args* excludes the command word itself, exactly what
-        provider_action_async expects.
+        *args* arrive without the leading command word, exactly as the
+        shared helper expects.
         """
-        await provider_action_async(args, context=ctx)
+        console = get_console()
+
+        # The provider command does not require ToolManager, but log if absent
+        if tool_manager is None:
+            log.debug("ProviderCommand executed without ToolManager – OK for now.")
+
+        try:
+            await provider_action_async(args, context=ctx)
+        except Exception as exc:  # noqa: BLE001
+            console.print(f"[red]Provider command failed:[/red] {exc}")
+            log.exception("ProviderCommand error")

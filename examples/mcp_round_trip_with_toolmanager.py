@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 # examples/mcp_round_trip_with_toolmanager.py
 """
-MCP round-trip demo using ToolManager + SQLite (stdio transport).
+MCP round-trip demo using ToolManager + SQLite (stdio).
 
-• Lists all stdio-namespace tools.
+• Lists all stdio tools.
 • Lets an OpenAI (or Ollama) model call them via function-calling.
-• Executes the calls through ToolManager and feeds results back to the model.
+• Executes the calls one-by-one via ToolManager.run_tool().
+• Feeds results back to the LLM for a polished final answer.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import argparse
 import asyncio
 import json
 import os
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from colorama import Fore, Style, init as colorama_init
@@ -27,44 +29,36 @@ from mcp_cli.llm.system_prompt_generator import SystemPromptGenerator
 colorama_init(autoreset=True)
 
 
-# ╭── pretty-printing helpers ────────────────────────────────────────────╮
+# ╭── printing helpers ──────────────────────────────────────────────────╮
 async def display_registry_tools(
-    tm: ToolManager, namespace_filter: Optional[str] = None
-) -> List[Any]:
-    """Return & pretty-print all tools (optionally filtered by namespace)."""
+    tm: ToolManager, namespace: Optional[str] = None
+) -> Dict[str, Any]:
     tools = await tm.get_all_tools()
-    if namespace_filter:
-        tools = [t for t in tools if t.namespace == namespace_filter]
+    if namespace:
+        tools = [t for t in tools if t.namespace == namespace]
 
-    ns_info = f" – namespace='{namespace_filter}'" if namespace_filter else ""
-    print(Fore.CYAN + f"🔧  Registered MCP tools ({len(tools)}){ns_info}" + Style.RESET_ALL)
+    ns_note = f" – namespace='{namespace}'" if namespace else ""
+    print(
+        Fore.CYAN + f"🔧  Registered MCP tools ({len(tools)}){ns_note}" + Style.RESET_ALL
+    )
     for t in tools:
-        desc = t.description or "<no description>"
-        print(f"  • {Fore.GREEN}{t.namespace}.{t.name:<20}{Style.RESET_ALL} – {desc}")
+        print(
+            f"  • {Fore.GREEN}{t.namespace}.{t.name:<20}{Style.RESET_ALL} – "
+            f"{t.description or '<no description>'}"
+        )
     print()
-    return tools
+    return {f"{t.namespace}.{t.name}": t for t in tools}
 
 
-def display_tool_result(res: Any) -> None:
-    """Pretty-print a ToolResult (or ToolCallResult)."""
-    name = getattr(res, "tool_name", getattr(res, "tool", "unknown"))
-    is_err = bool(getattr(res, "error", None))
-    data = getattr(res, "result", None)
-
-    head_color = Fore.RED if is_err else Fore.GREEN
-    head = head_color + name
-
-    # duration info if timestamps are present
-    if hasattr(res, "start_time") and hasattr(res, "end_time"):
-        dur = (res.end_time - res.start_time).total_seconds()
-        head += f" ({dur:.3f}s)"
-    print(head + Style.RESET_ALL)
-
-    if is_err:
-        print(f"  {Fore.RED}Error:{Style.RESET_ALL} {res.error}")
-    else:
-        body = json.dumps(data, indent=2) if isinstance(data, (dict, list)) else data
-        print(f"  {Fore.CYAN}Result:{Style.RESET_ALL} {body}")
+def pretty_result(name: str, result: Any, started: datetime, ended: datetime) -> None:
+    head = f"{Fore.GREEN}{name} ({(ended - started).total_seconds():.3f}s){Style.RESET_ALL}"
+    print(head)
+    body = (
+        json.dumps(result, indent=2)
+        if isinstance(result, (dict, list))
+        else str(result)
+    )
+    print(f"  {Fore.CYAN}Result:{Style.RESET_ALL} {body}")
 
 
 # ╰───────────────────────────────────────────────────────────────────────╯
@@ -73,13 +67,13 @@ def display_tool_result(res: Any) -> None:
 async def main() -> None:
     load_dotenv()
 
-    ap = argparse.ArgumentParser(description="MCP ↔ LLM round-trip with ToolManager")
+    ap = argparse.ArgumentParser(description="MCP ↔ LLM round-trip demo")
     ap.add_argument("--provider", default="openai", help="LLM provider (openai|ollama)")
     ap.add_argument("--model", default="gpt-4o-mini", help="Model name")
     ap.add_argument("--prompt", required=True, help="User prompt for the LLM")
     args = ap.parse_args()
 
-    # 1️⃣  create ToolManager & connect to stdio/SQLite
+    # 1️⃣  ToolManager initialisation
     tm = ToolManager(
         config_file="server_config.json",
         servers=["sqlite"],
@@ -90,21 +84,18 @@ async def main() -> None:
         return
 
     try:
-        # 2️⃣  list stdio tools (or all if none under that namespace)
-        stdio_tools = await display_registry_tools(tm, "stdio")
-        if not stdio_tools:
-            stdio_tools = await display_registry_tools(tm)
+        await display_registry_tools(tm, "stdio")
 
-        # 3️⃣  convert registry tools → tools-v2 schema + OpenAI-safe names
+        # 2️⃣  Build tools-v2 schema for the LLM
         llm_tools, name_map = await tm.get_adapted_tools_for_llm(provider=args.provider)
         if not llm_tools:
             print(Fore.RED + "❌  No LLM-compatible tools found" + Style.RESET_ALL)
             return
 
-        # 4️⃣  ask the model, allowing tool calls
+        # 3️⃣  Initial LLM call (allow tool usage)
         client = get_llm_client(provider=args.provider, model=args.model)
         sys_prompt = SystemPromptGenerator().generate_prompt({"tools": llm_tools})
-        messages: List[Dict[str, str]] = [
+        messages: List[Dict[str, str | None]] = [
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": args.prompt},
         ]
@@ -112,42 +103,43 @@ async def main() -> None:
         completion = await client.create_completion(
             messages=messages, tools=llm_tools, tool_choice="auto"
         )
-
-        reply = completion.get("response", "")
-        tool_calls = completion.get("tool_calls", [])
+        reply, tool_calls = completion.get("response", ""), completion.get(
+            "tool_calls", []
+        )
 
         if reply:
             print(Fore.CYAN + "\n=== Assistant reply ===" + Style.RESET_ALL)
             print(reply, "\n")
 
-        # 5️⃣  run any tool calls via ToolManager
+        # 4️⃣  Execute tool calls one-by-one through ToolManager.run_tool()
         if tool_calls:
             print(Fore.CYAN + "=== Tool calls ===" + Style.RESET_ALL)
+
+            results: List[Any] = []
             for tc in tool_calls:
-                fn = tc["function"]
-                openai_name = fn["name"]
-                orig_name = name_map.get(openai_name, openai_name)
-                args_dict = json.loads(fn.get("arguments", "{}"))
-                print(f"{Fore.GREEN}{openai_name} → {orig_name}{Style.RESET_ALL}")
-                print(f"  {Fore.YELLOW}Args:{Style.RESET_ALL} {json.dumps(args_dict, indent=2)}")
+                oai_name = tc["function"]["name"]
+                orig_name = name_map.get(oai_name, oai_name)
+                args_dict = json.loads(tc["function"].get("arguments", "{}"))
+                print(f"{Fore.GREEN}{oai_name} → {orig_name}{Style.RESET_ALL}")
+                print(
+                    f"  {Fore.YELLOW}Args:{Style.RESET_ALL} {json.dumps(args_dict, indent=2)}"
+                )
 
-            # process calls (old API → returns plain ToolResult objects)
-            results = await tm.process_tool_calls(tool_calls=tool_calls, name_mapping=name_map)
+                start = datetime.utcnow()
+                res = await tm.run_tool(orig_name, args_dict)  # ← key change
+                end = datetime.utcnow()
+                results.append(res)
 
-            print(Fore.CYAN + "\n=== Tool results ===" + Style.RESET_ALL)
-            for res in results:
-                display_tool_result(res)
+                pretty_result(orig_name, res, start, end)
 
-            # 6️⃣  hand tool outputs back to the LLM for a final answer
-            messages.append(
-                {"role": "assistant", "content": None, "tool_calls": tool_calls}
-            )
+            # 5️⃣  Feed tool outputs back for a final model answer
+            messages.append({"role": "assistant", "content": None, "tool_calls": tool_calls})
             for tc, res in zip(tool_calls, results):
                 messages.append(
                     {
                         "role": "tool",
                         "name": tc["function"]["name"],
-                        "content": json.dumps(getattr(res, "result", None)),
+                        "content": json.dumps(res),
                         "tool_call_id": tc["id"],
                     }
                 )

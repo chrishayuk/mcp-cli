@@ -1,38 +1,54 @@
 # mcp_cli/interactive/commands/prompts.py
 """
-Interactive “prompts” command - lists stored prompts on all connected servers.
+Interactive **prompts** command - list prompt templates stored on every
+connected MCP server.
+
+Usage inside the shell
+----------------------
+  prompts          → show a table of prompts
+  pr               → short alias
 """
 from __future__ import annotations
 
-from typing import Any, List
+import logging
+from typing import Any, Dict, List
 
-from mcp_cli.commands.prompts import prompts_action_cmd  # ← async helper
+from mcp_cli.utils.rich_helpers import get_console           # ← NEW
+from mcp_cli.commands.prompts import prompts_action_cmd       # shared async helper
 from mcp_cli.tools.manager import ToolManager
 from .base import InteractiveCommand
 
+log = logging.getLogger(__name__)
+
 
 class PromptsCommand(InteractiveCommand):
-    """List available prompts."""
+    """Display stored prompt templates found on all servers."""
 
     def __init__(self) -> None:
         super().__init__(
             name="prompts",
-            help_text="List available prompts from all connected servers.",
-            aliases=["p"],
+            aliases=["pr"],  # avoid clash with /provider ("p")
+            help_text="List prompt templates available on connected MCP servers.",
         )
 
     # ------------------------------------------------------------------
-    # InteractiveCommand interface
-    # ------------------------------------------------------------------
-    async def execute(
+    async def execute(  # noqa: D401  (simple delegation)
         self,
         args: List[str],
         tool_manager: ToolManager | None = None,
-        **_: Any,
+        **ctx: Dict[str, Any],
     ) -> None:
-        if not tool_manager:
-            from rich import print
-            print("[red]Error:[/red] ToolManager not available.")
+        """
+        Delegate to :func:`mcp_cli.commands.prompts.prompts_action_cmd`.
+        """
+        console = get_console()
+
+        if tool_manager is None:
+            log.debug("PromptsCommand executed without ToolManager – aborting.")
+            console.print("[red]Error:[/red] ToolManager not available.")
             return
+
+        # No sub-arguments are supported right now:
+        _ = args  # kept for future flags
 
         await prompts_action_cmd(tool_manager)

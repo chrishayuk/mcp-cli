@@ -18,7 +18,7 @@ Compared with the old module:
 """
 from __future__ import annotations
 import inspect
-from typing import Any, Dict, Lists
+from typing import Any, Dict, List
 from rich.table import Table
 
 # mcp cli
