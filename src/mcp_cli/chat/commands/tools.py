@@ -1,43 +1,52 @@
 # mcp_cli/chat/commands/tools.py
-"""
-Chat-mode `/tools` command – list tools or open the interactive call helper.
-"""
 from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from rich.console import Console
+# Cross-platform Rich console helper
+from mcp_cli.utils.rich_helpers import get_console
+
+# Shared helpers
 from mcp_cli.commands.tools import tools_action_async
 from mcp_cli.commands.tools_call import tools_call_action
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.chat.commands import register_command
 
 
-async def tools_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
+# ════════════════════════════════════════════════════════════════════════════
+# Command handler
+# ════════════════════════════════════════════════════════════════════════════
+async def tools_command(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
     """
+    List available tools (or call one interactively).
+
+    This chat-command shows every server-side tool exposed by the connected
+    MCP servers and can also launch a mini-wizard that walks you through
+    executing a tool with JSON arguments.
+
     Usage
     -----
-      /tools            List tools
-      /tools --all      Show parameter details
-      /tools --raw      Show raw JSON definitions
-      /tools call       Open interactive tool-call UI
-      /t                Alias for /tools
+    /tools              – list tools  
+    /tools --all        – include parameter schemas  
+    /tools --raw        – dump raw JSON definitions  
+    /tools call         – interactive “call tool” helper  
+    /t                  – short alias
     """
-    console = Console()
+    console = get_console()
+
     tm: ToolManager | None = ctx.get("tool_manager")
-
-    if not tm:
+    if tm is None:
         console.print("[red]Error:[/red] ToolManager not available.")
-        return True
+        return True   # command handled
 
-    args = parts[1:]  # strip the command word itself
+    args = parts[1:]  # drop the command itself
 
-    # ── interactive call helper ─────────────────────────────────────
+    # ── Interactive call helper ────────────────────────────────────────────
     if args and args[0].lower() == "call":
         await tools_call_action(tm)
         return True
 
-    # ── list tools ───────────────────────────────────────────────────
+    # ── Tool listing ───────────────────────────────────────────────────────
     show_details = "--all" in args
     show_raw     = "--raw" in args
 
@@ -49,6 +58,8 @@ async def tools_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
     return True
 
 
-# Register command and short alias
+# ════════════════════════════════════════════════════════════════════════════
+# Registration
+# ════════════════════════════════════════════════════════════════════════════
 register_command("/tools", tools_command)
-register_command("/t", tools_command)
+

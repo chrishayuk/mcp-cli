@@ -1,35 +1,64 @@
 # mcp_cli/chat/commands/exit.py
 """
-Chat‐mode exit commands for MCP CLI.
-Provides `/exit` and `/quit` to terminate the session gracefully.
+Chat-mode “/exit” and “/quit” commands for MCP-CLI
+==================================================
+
+Both commands perform a single task: **politely end the current chat
+session**.
+
+* They set ``context["exit_requested"] = True`` – the main chat loop checks
+  this flag and breaks.
+* A red confirmation panel is printed so the user knows the request was
+  acknowledged.
+* No other session state is mutated, making the handler safe to hot-reload.
+
+The module uses :pyfunc:`mcp_cli.utils.rich_helpers.get_console`, which
+automatically falls back to plain text when ANSI colours are unavailable
+(e.g. legacy Windows consoles or when piping output to a file).
 """
-from typing import List, Dict, Any
-from rich.console import Console
+
+from __future__ import annotations
+
+from typing import Any, Dict, List
+
+# Cross-platform Rich console helper
+from mcp_cli.utils.rich_helpers import get_console
 from rich.panel import Panel
 
-# Chat registry
+# Chat-command registry
 from mcp_cli.chat.commands import register_command
 
-async def cmd_exit(cmd_parts: List[str], context: Dict[str, Any]) -> bool:
-    """
-    Exit the chat session.
 
-    Usage: /exit
+# ════════════════════════════════════════════════════════════════════════════
+# Core handlers
+# ════════════════════════════════════════════════════════════════════════════
+async def cmd_exit(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
     """
-    console = Console()
-    # Signal the main loop to stop
-    context["exit_requested"] = True
+    Terminate the chat session.
+
+    Usage
+    -----
+      /exit
+    """
+    console = get_console()
+    ctx["exit_requested"] = True
     console.print(Panel("Exiting chat mode.", style="bold red"))
     return True
 
-async def cmd_quit(cmd_parts: List[str], context: Dict[str, Any]) -> bool:
-    """
-    Exit the chat session (alias for /exit).
 
-    Usage: /quit
+async def cmd_quit(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
     """
-    return await cmd_exit(cmd_parts, context)
+    Terminate the chat session.
 
-# Register commands
+    Usage
+    -----
+      /quit
+    """
+    return await cmd_exit(parts, ctx)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Registration
+# ════════════════════════════════════════════════════════════════════════════
 register_command("/exit", cmd_exit)
 register_command("/quit", cmd_quit)

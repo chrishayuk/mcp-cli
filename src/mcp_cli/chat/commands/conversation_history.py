@@ -1,36 +1,46 @@
 # mcp_cli/chat/commands/conversation_history.py
 """
-Chat-mode `/conversation` command – inspect current session history.
+Inspect the current chat history with */conversation*
+=====================================================
+
+The */conversation* (alias */ch*) command lets you browse or export the
+messages exchanged in this session:
+
+* **/conversation** - show the whole history as a Rich table  
+* **/conversation -n 5** - table of the last five messages  
+* **/conversation --json** - dump everything to JSON  
+* **/conversation <row>** - pretty-print a single message  
+* **/conversation <row>; --json** - same but as raw JSON
+
+Column widths are capped so the view stays readable even on narrow
+terminals.  When a message contains tool calls the table shows a
+placeholder; the full list is included in the single-row view.
+
+The command is completely read-only and never mutates the chat context,
+so you can invoke it as often as you like without side-effects.
 """
 from __future__ import annotations
 
 import json
 from typing import Any, Dict, List
 
-from rich.console import Console
+# Cross-platform Rich console
+from mcp_cli.utils.rich_helpers import get_console
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
-from rich import box, print
+from rich import box, print  # noqa: T201 – used deliberately
 
 from mcp_cli.chat.commands import register_command
-from mcp_cli.ui.ui_helpers import display_welcome_banner, clear_screen
 
 
-# ──────────────────────────────────────────────────────────────────
-# core handler
-# ──────────────────────────────────────────────────────────────────
-async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
-    """
-    Usage
-    -----
-      /conversation                Show history table
-      /conversation -n 5           Show last 5 messages
-      /conversation --json         Dump history as JSON
-      /conversation <row> [--json] Show one message (# starts at 1)
-    """
-    console = Console()
+# ════════════════════════════════════════════════════════════════════════════
+# Handler
+# ════════════════════════════════════════════════════════════════════════════
+async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
+    """Browse or export the in-memory conversation history."""
+    console = get_console()
     history = ctx.get("conversation_history", []) or []
 
     if not history:
@@ -42,7 +52,7 @@ async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) ->
     limit       = None
     single_row  = None
 
-    # row index?
+    # Row index?
     if args and args[0].isdigit():
         single_row = int(args[0])
         if not (1 <= single_row <= len(history)):
@@ -52,12 +62,12 @@ async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) ->
     # -n limit?
     if "-n" in args:
         try:
-            idx = args.index("-n")
+            idx   = args.index("-n")
             limit = int(args[idx + 1])
         except Exception:
             console.print("[red]Invalid -n value; showing all[/red]")
 
-    # slice history
+    # Slice history
     if single_row is not None:
         selection = [history[single_row - 1]]
     elif limit and limit > 0:
@@ -65,10 +75,14 @@ async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) ->
     else:
         selection = history
 
-    # ── JSON output ─────────────────────────────────────────────────
+    # ── JSON output ─────────────────────────────────────────────────────────
     if show_json:
         payload = selection[0] if single_row else selection
-        title   = f"Message #{single_row} (JSON)" if single_row else "Conversation History (JSON)"
+        title   = (
+            f"Message #{single_row} (JSON)"
+            if single_row
+            else "Conversation History (JSON)"
+        )
         console.print(
             Panel(
                 Syntax(json.dumps(payload, indent=2, ensure_ascii=False), "json", word_wrap=True),
@@ -81,7 +95,7 @@ async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) ->
         )
         return True
 
-    # ── single-message pretty panel ────────────────────────────────
+    # ── single-message pretty panel ─────────────────────────────────────────
     if single_row is not None:
         msg   = selection[0]
         role  = msg.get("role", "")
@@ -113,7 +127,7 @@ async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) ->
         )
         return True
 
-    # ── tabular list view ──────────────────────────────────────────
+    # ── tabular list view ───────────────────────────────────────────────────
     table = Table(title=f"Conversation History ({len(selection)} messages)")
     table.add_column("#", style="dim", width=4)
     table.add_column("Role", style="cyan", width=12)
@@ -137,8 +151,8 @@ async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) ->
     return True
 
 
-# ──────────────────────────────────────────────────────────────────
-# registration
-# ──────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════
+# Registration
+# ════════════════════════════════════════════════════════════════════════════
 register_command("/conversation", conversation_history_command)
 register_command("/ch",           conversation_history_command)

@@ -1,6 +1,10 @@
 # src/mcp_cli/commands/ping.py
 """
-Ping every connected MCP server (or a filtered subset) and show latency.
+Ping MCP servers (CLI + registry command).
+
+* Supports both synchronous CLI invocation and async in-process usage.
+* Uses `get_console()` from `mcp_cli.utils.rich_helpers` so colouring &
+  width detection work reliably on Windows, macOS, ANSI-less pipes, etc.
 """
 from __future__ import annotations
 
@@ -9,7 +13,8 @@ import logging
 import time
 from typing import Any, Dict, List, Sequence, Tuple
 
-from rich.console import Console
+# ── Rich console helper (handles Windows ANSI, pipes, etc.) ─────────────
+from mcp_cli.utils.rich_helpers import get_console
 from rich.table import Table
 from rich.text import Text
 
@@ -19,22 +24,21 @@ from mcp_cli.utils.async_utils import run_blocking
 
 logger = logging.getLogger(__name__)
 
-
-# ──────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════
 # helpers
-# ──────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════
+
 def display_server_name(
     idx: int,
     explicit_map: Dict[int, str] | None,
     fallback_infos: list,
 ) -> str:
-    """
-    Resolve a human-readable server label.
+    """Resolve a human-readable server label.
 
     Precedence:
-      1. `explicit_map` (passed in via CLI flags or ToolManager.server_names)
-      2. The name reported by get_server_info()
-      3. "server-{idx}"
+      1. ``explicit_map`` (from CLI flags or ToolManager.server_names)
+      2. The name reported by ``get_server_info()``
+      3. ``server-{idx}``
     """
     if explicit_map and idx in explicit_map:
         return explicit_map[idx]
@@ -50,7 +54,7 @@ async def _ping_one(
     write_stream: Any,
     timeout: float = 5.0,
 ) -> Tuple[str, bool, float]:
-    """Low-level ping for one stream pair."""
+    """Low-level round-trip latency measurement for one stream pair."""
     start = time.perf_counter()
     try:
         ok = await asyncio.wait_for(send_ping(read_stream, write_stream), timeout)
@@ -60,30 +64,29 @@ async def _ping_one(
     return name, ok, latency_ms
 
 
-# ──────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════
 # async (canonical) implementation
-# ──────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════
 async def ping_action_async(
     tm: ToolManager,
     server_names: Dict[int, str] | None = None,
     targets: Sequence[str] = (),
 ) -> bool:
-    """
-    Ping all (or filtered) servers.
+    """Ping all (or filtered) servers and render a Rich table.
 
     Returns **True** if at least one server was pinged.
     """
     streams = list(tm.get_streams())
-    console = Console()
+    console = get_console()
 
-    # Pre-fetch server info once (await!)
+    # Fetch server info once (await!)
     server_infos = await tm.get_server_info()
 
     tasks = []
     for idx, (r, w) in enumerate(streams):
         name = display_server_name(idx, server_names, server_infos)
 
-        # filter if user passed explicit targets
+        # Filter if user passed explicit targets
         if targets and not any(t.lower() in (str(idx), name.lower()) for t in targets):
             continue
 
@@ -114,17 +117,16 @@ async def ping_action_async(
     return True
 
 
-# ──────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════
 # legacy sync wrapper
-# ──────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════
+
 def ping_action(
     tm: ToolManager,
     server_names: Dict[int, str] | None = None,
     targets: Sequence[str] = (),
 ) -> bool:
-    """
-    Synchronous helper for old call-sites.
-
-    Raises if invoked from inside a running event-loop.
-    """
-    return run_blocking(ping_action_async(tm, server_names=server_names, targets=targets))
+    """Synchronous helper for old call-sites (wraps *ping_action_async*)."""
+    return run_blocking(
+        ping_action_async(tm, server_names=server_names, targets=targets)
+    )

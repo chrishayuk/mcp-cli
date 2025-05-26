@@ -1,37 +1,78 @@
 # mcp_cli/chat/commands/resources.py
 """
-Chat-mode `/resources` command – list resources discovered by MCP servers.
+Chat-mode “/resources” command for MCP-CLI
+=========================================
+
+The **/resources** slash-command shows every *resource* currently recorded
+by the connected MCP server(s) - things like uploaded files, database
+snapshots, or any other artefact that a tool has stored.
+
+Why it exists
+-------------
+* Quickly verify that an upload/tool-execution succeeded.
+* Check MIME-type and size before attempting to download or process a
+  resource.
+* Discover orphaned artefacts you may want to clean up.
+
+Implementation highlights
+-------------------------
+* Delegates all heavy lifting to
+  :pyfunc:`mcp_cli.commands.resources.resources_action_async`, ensuring one
+  source of truth for table formatting across CLI, interactive shell and
+  chat modes.
+* Uses :pyfunc:`mcp_cli.utils.rich_helpers.get_console` so colours degrade
+  gracefully on Windows consoles or when output is piped.
+* Read-only - does **not** mutate the chat context, therefore safe to
+  hot-reload.
+
+Example
+-------
+>>> /resources
+┏━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━┓
+┃ Server   ┃ URI                                        ┃ Size  ┃ MIME-type    ┃
+┡━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━┩
+│ sqlite   │ /tmp/report_2025-05-26T00-01-03.csv        │ 4 KB  │ text/csv     │
+│ sqlite   │ /tmp/raw_dump_2025-05-25T23-59-10.parquet  │ 12 MB │ application… │
+└──────────┴────────────────────────────────────────────┴───────┴──────────────┘
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from rich.console import Console
-from rich import print
+# Cross-platform Rich console helper
+from mcp_cli.utils.rich_helpers import get_console
 
-from mcp_cli.commands.resources import resources_action_async  # ← async helper
+# Shared async helper
+from mcp_cli.commands.resources import resources_action_async
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.chat.commands import register_command
 
 
-async def cmd_resources(_parts: List[str], ctx: Dict[str, Any]) -> bool:
+# ════════════════════════════════════════════════════════════════════════════
+# Command handler
+# ════════════════════════════════════════════════════════════════════════════
+async def cmd_resources(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
     """
+    List all recorded resources across connected servers.
+
     Usage
     -----
-      /resources   Show resources
-      /res         Alias
+      /resources      - show resources
     """
-    console = Console()
+    console = get_console()
+
     tm: ToolManager | None = ctx.get("tool_manager")
+    if tm is None:
+        console.print("[red]Error:[/red] ToolManager not available.")
+        return True  # command handled
 
-    if not tm:
-        print("[red]Error:[/red] ToolManager not available.")
-        return True
-
+    # Delegate to the canonical async implementation
     await resources_action_async(tm)
     return True
 
 
-# Register command & alias
+# ════════════════════════════════════════════════════════════════════════════
+# Registration
+# ════════════════════════════════════════════════════════════════════════════
 register_command("/resources", cmd_resources)
-register_command("/res", cmd_resources)
