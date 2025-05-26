@@ -19,7 +19,7 @@ from typing import Any, Dict, List
 from dotenv import load_dotenv
 
 # imports
-from mcp_cli.llm.llm_client import get_llm_client
+from chuk_llm.llm.llm_client import get_llm_client
 from mcp_cli.llm.system_prompt_generator import SystemPromptGenerator
 
 # load environment variables

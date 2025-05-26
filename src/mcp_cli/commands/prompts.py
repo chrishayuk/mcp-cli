@@ -1,53 +1,71 @@
 # src/mcp_cli/commands/prompts.py
 """
-List stored *prompts* on every connected MCP server.
+List stored *prompt* templates on every connected MCP server
+============================================================
 
-There are three public call-sites:
+Public entry-points
+-------------------
+* **prompts_action_async(tm)** - canonical coroutine (used by chat */prompts*).
+* **prompts_action(tm)**       - small synchronous wrapper for plain CLI usage.
+* **prompts_action_cmd(tm)**   - thin alias kept for backward-compatibility.
 
-* **prompts_action_async(tm)**   – canonical async implementation.
-* **prompts_action(tm)**         – sync wrapper for plain CLI commands.
-* **prompts_action_cmd(tm)**     – thin alias for interactive `/prompts`
-  so the chat UI can `await` directly without hitting run_blocking().
+All variants ultimately render the same Rich table:
+
+┏━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Server ┃ Name       ┃ Description                         ┃
+┡━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ local  │ greet      │ Friendly greeting prompt            │
+│ api    │ sql_query  │ Extract columns & types from table  │
+└────────┴────────────┴─────────────────────────────────────┘
 """
 from __future__ import annotations
-
 import inspect
 from typing import Any, Dict, List
-
-from rich.console import Console
 from rich.table import Table
 
+# mcp cli
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.utils.async_utils import run_blocking
+from mcp_cli.utils.rich_helpers import get_console
 
 
-# ──────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════
 # async (primary) implementation
-# ──────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════
 async def prompts_action_async(tm: ToolManager) -> List[Dict[str, Any]]:
-    console = Console()
+    """
+    Fetch **all** prompt templates from every connected server and
+    display them in a nicely formatted Rich table.
+
+    Returns
+    -------
+    list[dict]
+        The raw prompt dictionaries exactly as returned by `ToolManager`.
+    """
+    console = get_console()
 
     try:
         maybe = tm.list_prompts()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:          # pragma: no cover – network / server errors
         console.print(f"[red]Error:[/red] {exc}")
         return []
 
+    # `tm.list_prompts()` can be sync or async - handle both gracefully
     prompts = await maybe if inspect.isawaitable(maybe) else maybe
-    prompts = prompts or []
-    if not prompts:
+    if not prompts:                   #  None or empty list
         console.print("[dim]No prompts recorded.[/dim]")
-        return prompts
+        return []
 
+    # ── render table ────────────────────────────────────────────────────
     table = Table(title="Prompts", header_style="bold magenta")
-    table.add_column("Server", style="cyan")
-    table.add_column("Name", style="yellow")
+    table.add_column("Server",      style="cyan",   no_wrap=True)
+    table.add_column("Name",        style="yellow", no_wrap=True)
     table.add_column("Description", overflow="fold")
 
     for item in prompts:
         table.add_row(
             item.get("server", "-"),
-            item.get("name", "-"),
+            item.get("name",   "-"),
             item.get("description", ""),
         )
 
@@ -55,26 +73,28 @@ async def prompts_action_async(tm: ToolManager) -> List[Dict[str, Any]]:
     return prompts
 
 
-# ──────────────────────────────────────────────────────────────────
-# sync wrapper – used by *non-interactive* CLI commands
-# ──────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════
+# sync wrapper – used by legacy CLI commands
+# ════════════════════════════════════════════════════════════════════════
 def prompts_action(tm: ToolManager) -> List[Dict[str, Any]]:
     """
-    Blocking helper so legacy CLI commands can remain synchronous.
-    Raises a RuntimeError if invoked from inside a running event-loop.
+    Blocking helper around :pyfunc:`prompts_action_async`.
+
+    It calls :pyfunc:`mcp_cli.utils.async_utils.run_blocking`, raising a
+    ``RuntimeError`` if invoked from *inside* a running event-loop.
     """
     return run_blocking(prompts_action_async(tm))
 
 
-# ──────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════
 # alias for chat/interactive mode
-# ──────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════
 async def prompts_action_cmd(tm: ToolManager) -> List[Dict[str, Any]]:
     """
-    Alias exported for the interactive `/prompts` command.
+    Alias kept for the interactive */prompts* command.
 
-    The chat UI runs inside an event-loop already, so it should import and
-    `await` this coroutine directly instead of using the sync wrapper above.
+    Chat-mode already runs inside an event-loop, so callers should simply
+    `await` this coroutine instead of the synchronous wrapper.
     """
     return await prompts_action_async(tm)
 

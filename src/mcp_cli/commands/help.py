@@ -1,17 +1,36 @@
 # mcp_cli/commands/help.py
 """
-Unified help command for both interactive and CLI modes.
+Human-friendly *help* output for both chat-mode and command-line
+================================================================
+
+This helper renders either:
+
+* **A single command's details** when a *command_name* is given.
+* **A summary table of *all* commands** otherwise.
+
+It first tries the *interactive* registry (chat-mode); if that is not
+importable we fall back to the CLI registry instead.
+
+Highlights
+----------
+* **Cross-platform console** - via
+  :pyfunc:`mcp_cli.utils.rich_helpers.get_console` so colours work on
+  Windows terminals and disappear automatically when output is redirected.
+* **Doc-string parsing** - the first non-empty line that *doesn't* start
+  with “usage” becomes the one-liner in the command table.
+* **Alias column** - shows “–” when a command has no aliases, keeping the
+  table tidy.
 """
 from __future__ import annotations
-
 from typing import Dict, Optional
-
-from rich.console import Console
 from rich.markdown import Markdown
-from rich.panel import Panel
-from rich.table import Table
+from rich.panel     import Panel
+from rich.table     import Table
 
-# Prefer interactive registry, but gracefully fall back to CLI registry
+# mcp cli
+from mcp_cli.utils.rich_helpers import get_console
+
+# Prefer interactive registry, gracefully fall back to CLI registry
 try:
     from mcp_cli.interactive.registry import InteractiveCommandRegistry as _Reg
 except ImportError:  # not in interactive mode
@@ -19,60 +38,71 @@ except ImportError:  # not in interactive mode
 
 
 def _get_commands() -> Dict[str, object]:
-    """Return the mapping of command-name → command-object."""
+    """Return *name → Command* mapping from whichever registry is available."""
     return _Reg.get_all_commands() if hasattr(_Reg, "get_all_commands") else {}
 
 
-# ──────────────────────────────────────────────────────────────────
-# public API
-# ──────────────────────────────────────────────────────────────────
-def help_action(command_name: Optional[str] = None, *, console: Console | None = None) -> None:
+# ─────────────────────────────────────────────────────────────────────────────
+# Public API
+# ─────────────────────────────────────────────────────────────────────────────
+def help_action(
+    command_name: Optional[str] = None,
+    *,
+    console=None,
+) -> None:
     """
-    Print help for *all* commands, or a specific command if `command_name`
-    is supplied.
+    Render help for one command or for the whole command set.
 
     Parameters
     ----------
-    command_name
-        Optional – the command to describe in detail.
-    console
-        Optional – Rich Console; one is created automatically if omitted.
+    command_name:
+        Show detailed help for *this* command only.  If *None* (default)
+        a table of every command is produced.
+    console:
+        Optional :class:`rich.console.Console` instance.  If omitted a
+        cross-platform console is created automatically via
+        :pyfunc:`mcp_cli.utils.rich_helpers.get_console`.
     """
-    console = console or Console()
+    console = console or get_console()
     commands = _get_commands()
 
-    # ── detailed help for one command ────────────────────────────────
+    # ── detailed view ────────────────────────────────────────────────────
     if command_name:
         cmd = commands.get(command_name)
-        if not cmd:
+        if cmd is None:
             console.print(f"[red]Unknown command:[/red] {command_name}")
             return
 
-        md = Markdown(f"## `{cmd.name}`\n\n{cmd.help or '_No description provided._'}")
-        console.print(
-            Panel(
-                md,
-                title="Command Help",
-                border_style="cyan",
-            )
+        md = Markdown(
+            f"## `{cmd.name}`\n\n{cmd.help or '*No description provided.*'}"
         )
+        console.print(Panel(md, title="Command Help", border_style="cyan"))
+
         if getattr(cmd, "aliases", None):
-            aliases = ", ".join(cmd.aliases)
-            console.print(f"[dim]Aliases:[/dim] {aliases}")
+            console.print(
+                f"[dim]Aliases:[/dim] {', '.join(cmd.aliases)}", justify="right"
+            )
         return
 
-    # ── full list ────────────────────────────────────────────────────
-    table = Table(title="Available Commands")
-    table.add_column("Command", style="green")
-    table.add_column("Aliases", style="cyan")
-    table.add_column("Description")
+    # ── summary table ────────────────────────────────────────────────────
+    tbl = Table(title="Available Commands")
+    tbl.add_column("Command",   style="green",  no_wrap=True)
+    tbl.add_column("Aliases",   style="cyan",   no_wrap=True)
+    tbl.add_column("Description")
 
     for name, cmd in sorted(commands.items()):
-        desc = (cmd.help or "").split("\n", 1)[0]  # first line
-        alias_str = ", ".join(cmd.aliases) if getattr(cmd, "aliases", None) else "-"
-        table.add_row(name, alias_str, desc or "-")
+        # First non-blank line that isn't a "usage" header
+        lines = [
+            ln.strip()
+            for ln in (cmd.help or "").splitlines()
+            if ln.strip() and not ln.strip().lower().startswith("usage")
+        ]
+        desc = lines[0] if lines else "No description"
+        aliases = ", ".join(cmd.aliases) if getattr(cmd, "aliases", None) else "–"
+        tbl.add_row(name, aliases, desc)
 
-    console.print(table)
+    console.print(tbl)
     console.print(
-        "[dim]Type 'help &lt;command&gt;' for detailed info on a specific command.[/dim]"
+        "[dim]Type 'help &lt;command&gt;' for detailed information on a specific "
+        "command.[/dim]"
     )

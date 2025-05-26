@@ -1,34 +1,44 @@
 # mcp_cli/commands/exit.py
 """
-Shared exit / quit helper used by both interactive and CLI UIs.
+Terminate the current MCP-CLI session
+=====================================
+
+Used by both chat-mode (/exit | /quit) **and** the non-interactive CLI's
+`exit` sub-command.  It restores the TTY first, then either returns to the
+caller (interactive) or exits the process (one-shot mode).
 """
 from __future__ import annotations
-
 import sys
-from rich import print
 
+# mcp cli
 from mcp_cli.ui.ui_helpers import restore_terminal
+from mcp_cli.utils.rich_helpers import get_console
 
 
-def exit_action(interactive: bool = True) -> bool:
+def exit_action(interactive: bool = True) -> bool:  # noqa: D401
     """
-    Cleanly terminate the session.
+    Cleanly close the current MCP-CLI session.
 
     Parameters
     ----------
     interactive
-        • **True**  → signal the interactive loop to break (returns ``True``).  
-        • **False** → exit the whole process via ``sys.exit(0)``.
+        • **True**  → just tell the outer loop to break and *return*  
+        • **False** → restore the TTY **then** call :pyfunc:`sys.exit(0)`
 
     Returns
     -------
     bool
-        Always ``True`` so the interactive driver knows to stop.
+        Always ``True`` so interactive callers can treat it as a
+        “please-stop” flag.  (When *interactive* is ``False`` the function
+        never returns because the process terminates.)
     """
-    print("[yellow]Exiting… Goodbye![/yellow]")
+    console = get_console()          # unified Rich/plain console
+    console.print("[yellow]Exiting… Goodbye![/yellow]")
+
     restore_terminal()
 
     if not interactive:
         sys.exit(0)
 
     return True
+

@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 # examples/mcp_round_trip_with_toolmanager.py
 """
-MCP "round-trip" example with SQLite stdio transport using ToolManager.
+MCP round-trip demo using ToolManager + SQLite (stdio transport).
 
-This script demonstrates:
-1. Connecting to an MCP SQLite server
-2. Using the enhanced ToolManager to handle tool execution
-3. Handling OpenAI's function naming restrictions automatically
+• Lists all stdio-namespace tools.
+• Lets an OpenAI (or Ollama) model call them via function-calling.
+• Executes the calls through ToolManager and feeds results back to the model.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -19,163 +19,151 @@ from typing import Any, Dict, List, Optional
 from colorama import Fore, Style, init as colorama_init
 from dotenv import load_dotenv
 
-# MCP CLI imports
+# ── MCP & LLM helpers ───────────────────────────────────────────────────
+from chuk_llm.llm.llm_client import get_llm_client
 from mcp_cli.tools.manager import ToolManager
-from mcp_cli.llm.llm_client import get_llm_client
 from mcp_cli.llm.system_prompt_generator import SystemPromptGenerator
 
-# Initialize colorama for colored output
 colorama_init(autoreset=True)
 
-# ------------------------------------------------------------------ #
-# Helper functions for displaying registry tools and results
-# ------------------------------------------------------------------ #
-async def display_registry_tools(tool_manager: ToolManager, namespace_filter: Optional[str] = None) -> Any:
-    """Display all tools from the tool manager, optionally filtered by namespace."""
-    # Get all tools
-    tools = await tool_manager.get_all_tools()
-    
-    # Filter by namespace if requested
+
+# ╭── pretty-printing helpers ────────────────────────────────────────────╮
+async def display_registry_tools(
+    tm: ToolManager, namespace_filter: Optional[str] = None
+) -> List[Any]:
+    """Return & pretty-print all tools (optionally filtered by namespace)."""
+    tools = await tm.get_all_tools()
     if namespace_filter:
         tools = [t for t in tools if t.namespace == namespace_filter]
-    
-    # Print tools
-    print(Fore.CYAN + f"🔧  Registered MCP tools ({len(tools)}):")
-    
-    for tool in tools:
-        print(f"  • {Fore.GREEN}{tool.namespace}.{tool.name:<20}{Style.RESET_ALL} – {tool.description or '<no description>'}")
+
+    ns_info = f" – namespace='{namespace_filter}'" if namespace_filter else ""
+    print(Fore.CYAN + f"🔧  Registered MCP tools ({len(tools)}){ns_info}" + Style.RESET_ALL)
+    for t in tools:
+        desc = t.description or "<no description>"
+        print(f"  • {Fore.GREEN}{t.namespace}.{t.name:<20}{Style.RESET_ALL} – {desc}")
     print()
-    
     return tools
 
-def display_tool_result(result: Any, duration: float = None) -> None:
-    """Display a single tool result with nice formatting."""
-    # Determine if this is a ToolCallResult or a ToolResult
-    is_error = False
-    tool_name = getattr(result, 'tool_name', getattr(result, 'tool', 'unknown'))
-    error = getattr(result, 'error', None)
-    
-    if error:
-        is_error = True
-    
-    # Get the result content
-    result_data = getattr(result, 'result', None)
-    
-    # Format output
-    status = Fore.GREEN if not is_error else Fore.RED
-    
-    # Print header with tool name and duration
-    if duration is not None:
-        print(f"{status}{tool_name} ({duration:.3f}s){Style.RESET_ALL}")
-    else:
-        print(f"{status}{tool_name}{Style.RESET_ALL}")
-    
-    # Print error if any
-    if is_error:
-        print(f"  {Fore.RED}Error:{Style.RESET_ALL} {error}")
-    else:
-        # Format result based on type
-        if isinstance(result_data, (dict, list)):
-            print(f"  {Fore.CYAN}Result:{Style.RESET_ALL} {json.dumps(result_data, indent=2)}")
-        else:
-            print(f"  {Fore.CYAN}Result:{Style.RESET_ALL} {result_data}")
 
-# ------------------------------------------------------------------ #
-# Main function
-# ------------------------------------------------------------------ #
+def display_tool_result(res: Any) -> None:
+    """Pretty-print a ToolResult (or ToolCallResult)."""
+    name = getattr(res, "tool_name", getattr(res, "tool", "unknown"))
+    is_err = bool(getattr(res, "error", None))
+    data = getattr(res, "result", None)
+
+    head_color = Fore.RED if is_err else Fore.GREEN
+    head = head_color + name
+
+    # duration info if timestamps are present
+    if hasattr(res, "start_time") and hasattr(res, "end_time"):
+        dur = (res.end_time - res.start_time).total_seconds()
+        head += f" ({dur:.3f}s)"
+    print(head + Style.RESET_ALL)
+
+    if is_err:
+        print(f"  {Fore.RED}Error:{Style.RESET_ALL} {res.error}")
+    else:
+        body = json.dumps(data, indent=2) if isinstance(data, (dict, list)) else data
+        print(f"  {Fore.CYAN}Result:{Style.RESET_ALL} {body}")
+
+
+# ╰───────────────────────────────────────────────────────────────────────╯
+
+
 async def main() -> None:
     load_dotenv()
 
-    p = argparse.ArgumentParser(description="MCP round-trip with ToolManager")
-    p.add_argument("--provider", default="openai", help="LLM provider (openai|ollama)")
-    p.add_argument("--model", default="gpt-4o-mini", help="Model name")
-    p.add_argument("--prompt", required=True, help="User prompt for the LLM")
-    args = p.parse_args()
+    ap = argparse.ArgumentParser(description="MCP ↔ LLM round-trip with ToolManager")
+    ap.add_argument("--provider", default="openai", help="LLM provider (openai|ollama)")
+    ap.add_argument("--model", default="gpt-4o-mini", help="Model name")
+    ap.add_argument("--prompt", required=True, help="User prompt for the LLM")
+    args = ap.parse_args()
 
-    # 1) Create and initialize the ToolManager
-    # The key difference: use "stdio" namespace to match the direct ToolProcessor script
-    tool_manager = ToolManager(
+    # 1️⃣  create ToolManager & connect to stdio/SQLite
+    tm = ToolManager(
         config_file="server_config.json",
         servers=["sqlite"],
-        server_names={0: "sqlite"}
+        server_names={0: "sqlite"},
     )
-    
-    # Initialize with the stdio namespace
-    if not await tool_manager.initialize(namespace="stdio"):
-        print(f"{Fore.RED}Failed to initialize ToolManager{Style.RESET_ALL}")
+    if not await tm.initialize(namespace="stdio"):
+        print(Fore.RED + "❌  ToolManager initialisation failed" + Style.RESET_ALL)
         return
 
     try:
-        # 2) Display and filter stdio tools
-        tools = await display_registry_tools(tool_manager, namespace_filter="stdio")
-        
-        if not tools:
-            print(f"{Fore.YELLOW}No tools found with 'stdio' namespace. Showing all tools:{Style.RESET_ALL}")
-            tools = await display_registry_tools(tool_manager)
-        
-        # 3) Get LLM-compatible tools with name mapping
-        llm_tools, name_mapping = await tool_manager.get_adapted_tools_for_llm(provider=args.provider)
-        
+        # 2️⃣  list stdio tools (or all if none under that namespace)
+        stdio_tools = await display_registry_tools(tm, "stdio")
+        if not stdio_tools:
+            stdio_tools = await display_registry_tools(tm)
+
+        # 3️⃣  convert registry tools → tools-v2 schema + OpenAI-safe names
+        llm_tools, name_map = await tm.get_adapted_tools_for_llm(provider=args.provider)
         if not llm_tools:
-            print(f"{Fore.RED}No tools available for LLM. Check your configuration.{Style.RESET_ALL}")
+            print(Fore.RED + "❌  No LLM-compatible tools found" + Style.RESET_ALL)
             return
-        
-        # 4) Send prompt to LLM
+
+        # 4️⃣  ask the model, allowing tool calls
         client = get_llm_client(provider=args.provider, model=args.model)
         sys_prompt = SystemPromptGenerator().generate_prompt({"tools": llm_tools})
-        messages = [
+        messages: List[Dict[str, str]] = [
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": args.prompt},
         ]
-        
-        completion = await client.create_completion(messages=messages, tools=llm_tools)
-        
-        # Print the assistant's response
+
+        completion = await client.create_completion(
+            messages=messages, tools=llm_tools, tool_choice="auto"
+        )
+
         reply = completion.get("response", "")
         tool_calls = completion.get("tool_calls", [])
-        
+
         if reply:
-            print(Fore.CYAN + "=== Assistant Reply ===")
-            print(reply, end="\n\n")
-        
-        # 5) Process tool calls using the ToolManager
+            print(Fore.CYAN + "\n=== Assistant reply ===" + Style.RESET_ALL)
+            print(reply, "\n")
+
+        # 5️⃣  run any tool calls via ToolManager
         if tool_calls:
-            print(Fore.CYAN + "=== Tool Calls ===")
-            
-            # Display each tool call before execution
+            print(Fore.CYAN + "=== Tool calls ===" + Style.RESET_ALL)
             for tc in tool_calls:
-                if tc.get("function") and "name" in tc.get("function", {}):
-                    openai_name = tc["function"]["name"]
-                    
-                    # Convert back to original name for display
-                    original_name = name_mapping.get(openai_name, openai_name)
-                    args_str = tc["function"].get("arguments", "{}")
-                    args_dict = json.loads(args_str) if isinstance(args_str, str) else args_str
-                    
-                    print(f"{Fore.GREEN}Tool: {openai_name} → {original_name}{Style.RESET_ALL}")
-                    print(f"  {Fore.YELLOW}Arguments:{Style.RESET_ALL} {json.dumps(args_dict, indent=2)}")
-            
-            # Process all tool calls
-            results = await tool_manager.process_llm_tool_calls(
-                tool_calls=tool_calls,
-                name_mapping=name_mapping
+                fn = tc["function"]
+                openai_name = fn["name"]
+                orig_name = name_map.get(openai_name, openai_name)
+                args_dict = json.loads(fn.get("arguments", "{}"))
+                print(f"{Fore.GREEN}{openai_name} → {orig_name}{Style.RESET_ALL}")
+                print(f"  {Fore.YELLOW}Args:{Style.RESET_ALL} {json.dumps(args_dict, indent=2)}")
+
+            # process calls (old API → returns plain ToolResult objects)
+            results = await tm.process_tool_calls(tool_calls=tool_calls, name_mapping=name_map)
+
+            print(Fore.CYAN + "\n=== Tool results ===" + Style.RESET_ALL)
+            for res in results:
+                display_tool_result(res)
+
+            # 6️⃣  hand tool outputs back to the LLM for a final answer
+            messages.append(
+                {"role": "assistant", "content": None, "tool_calls": tool_calls}
             )
-            
-            # Display results
-            if results:
-                print(Fore.CYAN + "=== Tool Results ===")
-                for result in results:
-                    duration = (result.end_time - result.start_time).total_seconds()
-                    display_tool_result(result, duration)
-            else:
-                print(Fore.YELLOW + "[no results returned]")
-                
+            for tc, res in zip(tool_calls, results):
+                messages.append(
+                    {
+                        "role": "tool",
+                        "name": tc["function"]["name"],
+                        "content": json.dumps(getattr(res, "result", None)),
+                        "tool_call_id": tc["id"],
+                    }
+                )
+
+            follow_up = await client.create_completion(messages=messages)
+            final = follow_up.get("response", "")
+            if final:
+                print(Fore.CYAN + "\n=== Final answer ===" + Style.RESET_ALL)
+                print(final)
+
         elif not reply:
-            print(Fore.YELLOW + "[no response or tool calls]")
-    
+            print(Fore.YELLOW + "[no reply and no tool calls]" + Style.RESET_ALL)
+
     finally:
-        # 6) Clean up
-        await tool_manager.close()
+        await tm.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

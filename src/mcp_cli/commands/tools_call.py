@@ -1,78 +1,99 @@
 # src/mcp_cli/commands/tools_call.py
 """
-Interactive “call a tool with JSON args” utility.
+Open an *interactive “call a tool” wizard* that lets you pick a tool and
+pass JSON arguments right from the terminal.
+
+Highlights
+----------
+* Uses :pyfunc:`mcp_cli.utils.rich_helpers.get_console` so colours & width
+  work on Windows terminals, plain pipes, CI logs, etc.
+* Leaves **zero state** behind - safe to hot-reload while a chat/TUI is
+  running.
+* Re-uses :pyfunc:`mcp_cli.tools.formatting.display_tool_call_result`
+  for pretty result rendering, so the output looks the same everywhere.
 """
 from __future__ import annotations
-
 import asyncio
 import json
 import logging
 from typing import Any, Dict
 
-from rich.console import Console
-
+# mcp cli
+from mcp_cli.utils.rich_helpers import get_console
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.tools.models import ToolCallResult
 from mcp_cli.tools.formatting import display_tool_call_result
 
+# logger
 logger = logging.getLogger(__name__)
 
 
-async def tools_call_action(tm: ToolManager) -> None:
-    console = Console()
-    print_rich = console.print
+# ════════════════════════════════════════════════════════════════════════
+# Main entry-point (async coroutine)
+# ════════════════════════════════════════════════════════════════════════
+async def tools_call_action(tm: ToolManager) -> None:  # noqa: D401
+    """
+    Launch the mini-wizard, execute the chosen tool, show the result.
 
-    print_rich("[cyan]\nTool Call Interface[/cyan]")
+    This function is designed for *interactive* use only – it blocks on
+    `input()` twice (tool selection & JSON args).
+    """
+    console = get_console()
+    cprint = console.print
 
-    # unique tools to avoid dupes
+    cprint("[cyan]\nTool Call Interface[/cyan]")
+
+    # Fetch distinct tools (no duplicates across servers)
     all_tools = await tm.get_unique_tools()
     if not all_tools:
-        print_rich("[yellow]No tools available from any server.[/yellow]")
+        cprint("[yellow]No tools available from any server.[/yellow]")
         return
 
-    # list tools
-    print_rich("[green]Available tools:[/green]")
+    # ── list tools ────────────────────────────────────────────────────
+    cprint("[green]Available tools:[/green]")
     for idx, tool in enumerate(all_tools, 1):
-        print_rich(
-            f"  {idx}. {tool.name} (from {tool.namespace}) – "
-            f"{tool.description or 'No description'}"
-        )
+        desc = tool.description or "No description"
+        cprint(f"  {idx}. {tool.name} (from {tool.namespace}) – {desc}")
 
-    # user selection
+    # ── user selection ────────────────────────────────────────────────
     sel_raw = await asyncio.to_thread(input, "\nEnter tool number to call: ")
     try:
         sel = int(sel_raw) - 1
         tool = all_tools[sel]
     except (ValueError, IndexError):
-        print_rich("[red]Invalid selection.[/red]")
+        cprint("[red]Invalid selection.[/red]")
         return
 
-    print_rich(f"\n[green]Selected:[/green] {tool.name} from {tool.namespace}")
+    cprint(f"\n[green]Selected:[/green] {tool.name} from {tool.namespace}")
     if tool.description:
-        print_rich(f"[cyan]Description:[/cyan] {tool.description}")
+        cprint(f"[cyan]Description:[/cyan] {tool.description}")
 
-    # arguments?
+    # ── argument collection ───────────────────────────────────────────
     params_schema: Dict[str, Any] = tool.parameters or {}
     args: Dict[str, Any] = {}
 
     if params_schema.get("properties"):
-        print_rich("\n[yellow]Enter arguments as JSON (empty for none):[/yellow]")
+        cprint("\n[yellow]Enter arguments as JSON (leave blank for none):[/yellow]")
         args_raw = await asyncio.to_thread(input, "> ")
         if args_raw.strip():
             try:
                 args = json.loads(args_raw)
             except json.JSONDecodeError:
-                print_rich("[red]Invalid JSON – aborting.[/red]")
+                cprint("[red]Invalid JSON – aborting.[/red]")
                 return
     else:
-        print_rich("[dim]Tool takes no arguments.[/dim]")
+        cprint("[dim]Tool takes no arguments.[/dim]")
 
-    # execute
+    # ── execution ─────────────────────────────────────────────────────
     fq_name = f"{tool.namespace}.{tool.name}"
-    print_rich(f"\n[cyan]Calling '{fq_name}'…[/cyan]")
+    cprint(f"\n[cyan]Calling '{fq_name}'…[/cyan]")
+
     try:
         result: ToolCallResult = await tm.execute_tool(fq_name, args)
         display_tool_call_result(result, console)
     except Exception as exc:  # noqa: BLE001
         logger.exception("Error executing tool")
-        print_rich(f"[red]Error: {exc}[/red]")
+        cprint(f"[red]Error: {exc}[/red]")
+
+
+__all__ = ["tools_call_action"]
