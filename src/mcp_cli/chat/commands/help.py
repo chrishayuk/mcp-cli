@@ -1,112 +1,140 @@
 # mcp_cli/chat/commands/help.py
 """
-Chat-mode help commands for MCP CLI.
+Chat-mode “/help” commands for MCP-CLI
+======================================
 
-Displays help for all registered chat commands, or detailed help for a specific command.
+This module implements two closely-related chat commands:
+
+* **/help** - an in-session manual that either shows a concise **table of
+  every slash-command** or a **detailed panel** for a single command.
+* **/quickhelp** (alias **/qh**) - a *very* short crib-sheet of the half-dozen
+  commands new users need most often.
+
+Internally the code introspects the central **chat command registry**
+(`mcp_cli.chat.commands`) so it always stays up-to-date—no hard-coded lists.
 """
-from typing import List, Dict, Any
-from rich.console import Console
+
+from __future__ import annotations
+
+from typing import Any, Dict, List
+
+# Cross-platform Rich console helper
+from mcp_cli.utils.rich_helpers import get_console
 from rich.table import Table
 from rich.panel import Panel
 from rich.markdown import Markdown
 
-# Chat registry
-from mcp_cli.chat.commands import register_command, _COMMAND_HANDLERS, _COMMAND_COMPLETIONS
+# Chat-command registry
+from mcp_cli.chat.commands import (
+    register_command,
+    _COMMAND_HANDLERS,
+    _COMMAND_COMPLETIONS,
+)
 
 # Optional grouped help text
-from mcp_cli.chat.commands.help_text import TOOL_COMMANDS_HELP, CONVERSATION_COMMANDS_HELP
+from mcp_cli.chat.commands.help_text import (
+    TOOL_COMMANDS_HELP,
+    CONVERSATION_COMMANDS_HELP,
+)
 
-async def cmd_help(cmd_parts: List[str], context: Dict[str, Any]) -> bool:
+# ════════════════════════════════════════════════════════════════════════════
+# /help  ── contextual manual
+# ════════════════════════════════════════════════════════════════════════════
+async def cmd_help(cmd_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
     """
-    Show help for chat commands.
+    Show contextual help inside chat.
 
-    Usage:
-      /help                — List all commands
-      /help <command>      — Show detailed help for one command
-      /help tools          — Show grouped tool commands help
-      /help conversation   — Show grouped conversation history help
+    • `/help` → overview table of **all** slash-commands.  
+    • `/help <command>` → detailed panel for one command.  
+    • `/help tools` → grouped help for tool-related commands.  
+    • `/help conversation` → grouped help for conversation/history commands.
     """
-    console = Console()
+    console = get_console()
     args = cmd_parts[1:] if len(cmd_parts) > 1 else []
 
-    # Grouped help
-    if args and args[0].lower() in ("tools",):
-        console.print(Panel(Markdown(TOOL_COMMANDS_HELP), title="Tool Commands Help", style="cyan"))
-        return True
-    if args and args[0].lower() in ("conversation", "ch"):
-        console.print(Panel(Markdown(CONVERSATION_COMMANDS_HELP), title="Conversation Commands Help", style="cyan"))
+    # ── grouped topical help ────────────────────────────────────────────────
+    if args and args[0].lower() in {"tools"}:
+        console.print(
+            Panel(Markdown(TOOL_COMMANDS_HELP), title="Tool Commands", style="cyan")
+        )
         return True
 
-    # Specific command help
-    if args and args[0].startswith("/"):
-        name = args[0]
-    elif args:
-        name = "/" + args[0]
-    else:
-        name = None
+    if args and args[0].lower() in {"conversation", "ch"}:
+        console.print(
+            Panel(
+                Markdown(CONVERSATION_COMMANDS_HELP),
+                title="Conversation-History Commands",
+                style="cyan",
+            )
+        )
+        return True
+
+    # ── individual command help ────────────────────────────────────────────
+    name = None
+    if args:
+        name = args[0] if args[0].startswith("/") else f"/{args[0]}"
 
     if name and name in _COMMAND_HANDLERS:
         handler = _COMMAND_HANDLERS[name]
-        title = f"Help: {name}"
-        doc = handler.__doc__ or "No detailed help available."
-        text = f"## {name}\n\n{doc.strip()}"
-        # Append completions if any
+        doc = (handler.__doc__ or "No detailed help available.").strip()
+        text = f"## {name}\n\n{doc}"
         if name in _COMMAND_COMPLETIONS:
             comps = ", ".join(_COMMAND_COMPLETIONS[name])
             text += f"\n\n**Completions:** {comps}"
-        console.print(Panel(Markdown(text), title=title, style="cyan"))
+        console.print(Panel(Markdown(text), title=f"Help: {name}", style="cyan"))
         return True
 
-    # Fallback to listing all
-    visible = sorted(_COMMAND_HANDLERS.items())
-    table = Table(title=f"{len(visible)} Available Commands")
+    # ── fallback: list all commands ────────────────────────────────────────
+    table = Table(title=f"{len(_COMMAND_HANDLERS)} Available Commands")
     table.add_column("Command", style="green")
     table.add_column("Description")
 
-    for cmd, handler in visible:
-        # Skip internal or verbose-only commands if desired
-        desc = "No description"
-        if handler.__doc__:
-            # first non-empty line
-            for line in handler.__doc__.splitlines():
-                if line.strip():
-                    desc = line.strip()
-                    break
+    for cmd, handler in sorted(_COMMAND_HANDLERS.items()):
+        # first non-empty line *not* starting with “Usage”
+        lines = [
+            ln.strip()
+            for ln in (handler.__doc__ or "").splitlines()
+            if ln.strip() and not ln.strip().lower().startswith("usage")
+        ]
+        desc = lines[0] if lines else "No description"
         table.add_row(cmd, desc)
 
     console.print(table)
-    console.print("\nType [green]/help <command>[/green] for more details.")
+    console.print("\nType [green]/help <command>[/green] for details.")
     return True
 
-async def display_quick_help(cmd_parts: List[str], context: Dict[str, Any]) -> bool:
-    """
-    Show a quick reference of the most common commands.
 
-    Usage: /quickhelp
+# ════════════════════════════════════════════════════════════════════════════
+# /quickhelp  ── cheat-sheet
+# ════════════════════════════════════════════════════════════════════════════
+async def display_quick_help(cmd_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
     """
-    console = Console()
-    table = Table(title="Quick Command Reference")
-    table.add_column("Command", style="green")
-    table.add_column("Description")
+    Display a short cheat-sheet of the most common commands.
+    """
+    console = get_console()
 
-    entries = [
-        ("/help",       "Show this help"),
-        ("/tools",      "List available tools"),
-        ("/toolhistory","Show history of tool calls"),
+    quick_tbl = Table(title="Quick Command Reference")
+    quick_tbl.add_column("Command", style="green")
+    quick_tbl.add_column("Description")
+
+    for cmd, desc in [
+        ("/help",        "Show the full manual"),
+        ("/tools",       "List available tools"),
+        ("/toolhistory", "Show history of tool calls"),
         ("/conversation","Show conversation history"),
-        ("/clear",      "Clear screen/history"),
-        ("/interrupt",  "Interrupt running tools"),
-        ("/exit",       "Exit chat mode"),
-    ]
+        ("/clear",       "Reset screen & history"),
+        ("/interrupt",   "Cancel running tools"),
+        ("/exit",        "Leave chat"),
+    ]:
+        quick_tbl.add_row(cmd, desc)
 
-    for cmd, desc in entries:
-        table.add_row(cmd, desc)
-
-    console.print(table)
-    console.print("\nType [green]/help[/green] for full command list.")
+    console.print(quick_tbl)
+    console.print("\nType [green]/help[/green] for the complete list.")
     return True
 
-# Register commands and aliases
+
+# ════════════════════════════════════════════════════════════════════════════
+# Register the commands
+# ════════════════════════════════════════════════════════════════════════════
 register_command("/help",      cmd_help)
-register_command("/quickhelp", display_quick_help)
 register_command("/qh",        display_quick_help)

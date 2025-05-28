@@ -1,6 +1,6 @@
 # src/mcp_cli/cli/commands/provider.py
 """
-CLI binding for “provider” management commands.
+CLI binding for "provider" management commands.
 
 All heavy-lifting is delegated to the shared helper:
     mcp_cli.commands.provider.provider_action_async
@@ -14,7 +14,7 @@ import typer
 from rich.console import Console
 
 from mcp_cli.commands.provider import provider_action_async
-from mcp_cli.provider_config import ProviderConfig
+from mcp_cli.model_manager import ModelManager  # ← CHANGED
 from mcp_cli.cli.commands.base import BaseCommand
 from mcp_cli.tools.manager import get_tool_manager
 from mcp_cli.utils.async_utils import run_blocking
@@ -29,7 +29,7 @@ def _call_shared_helper(argv: list[str]) -> None:
     """Parse argv (after 'provider') and run shared async helper."""
     # Build a transient context dict (the shared helper expects it)
     ctx: dict[str, Any] = {
-        "provider_config": ProviderConfig(),
+        "model_manager": ModelManager(),  # ← CHANGED
         # The CLI path has no session client – we omit "client"
     }
     run_blocking(provider_action_async(argv, context=ctx))
@@ -91,13 +91,13 @@ class ProviderCommand(BaseCommand):
                     return
                 argv.append(str(val))
         elif sub not in {"show", "list", "config"}:
-            # treat it as “switch provider [model]”
+            # treat it as "switch provider [model]"
             argv = [sub]  # sub is actually provider name
             maybe_model = params.get("model")
             if maybe_model:
                 argv.append(maybe_model)
 
         context: dict[str, Any] = {
-            "provider_config": ProviderConfig(),
+            "model_manager": ModelManager(),  # ← CHANGED
         }
         await provider_action_async(argv, context=context)

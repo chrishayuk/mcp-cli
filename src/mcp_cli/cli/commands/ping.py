@@ -1,3 +1,4 @@
+# mcp_cli/cli/commands/ping.py
 """
 Ping MCP servers (CLI + registry command).
 """

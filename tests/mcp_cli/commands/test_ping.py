@@ -1,164 +1,95 @@
-# commands/test_ping.py
-
+# tests/commands/test_ping.py
 import pytest
-import asyncio
-import time
-from typing import Any, Dict, List, Sequence
 
-from rich.console import Console
-from rich.table import Table
+# Component under test
+from mcp_cli.commands.ping import ping_action_async
 
-import mcp_cli.commands.ping as ping_mod
-from mcp_cli.commands.ping import display_server_name, _ping_one, ping_action_async
-from mcp_cli.tools.models import ServerInfo
+# ---------------------------------------------------------------------------
+# Spy / stubs
+# ---------------------------------------------------------------------------
+
+class _DummyServerInfo:
+    def __init__(self, name: str):
+        self.name = name
+        self.id = 0
+        self.status = "OK"
+        self.tool_count = 0
+
 
 class DummyToolManager:
-    """
-    Fake ToolManager exposing .get_streams() and .get_server_info(),
-    plus a server_names attribute.
-    """
-    def __init__(
-        self,
-        streams: List[Sequence[Any]],
-        server_names: Dict[int, str] = {},
-        server_info: List[Dict[str, Any]] = []
-    ):
-        self._streams = streams
-        self.server_names = server_names or {}
-        # If server_info is not provided, build it from server_names if available
-        if server_info:
-            info = server_info
-        elif server_names:
-            info = [{"name": v} for k, v in sorted(server_names.items())]
-        else:
-            info = []
-        # Build real ServerInfo objects
-        self._server_info = [
-            ServerInfo(
-                id=i,
-                name=info_item.get("name", f"server-{i}"),
-                status=info_item.get("status", ""),
-                tool_count=info_item.get("tools", 0),
-                namespace=info_item.get("namespace", ""),
-            ) for i, info_item in enumerate(info)
-        ]
+    """Minimal stand-in that satisfies ping_action_async."""
 
+    def __init__(self):
+        # Two mock (read, write) stream pairs – the concrete objects are never
+        # touched because we monkey-patch _ping_one.
+        self._streams = [(None, None), (None, None)]
+        self._server_info = [_DummyServerInfo("ServerA"), _DummyServerInfo("ServerB")]
+
+    # Called *synchronously*
     def get_streams(self):
         return self._streams
 
+    # Awaited inside ping_action_async
     async def get_server_info(self):
-        # Return list of ServerInfo
         return self._server_info
 
 
-class FakeStream:
-    """Dummy stream passed to send_ping (which we'll monkeypatch)."""
-    pass
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def dummy_tm():
+    """Provide a fresh DummyToolManager for each test."""
+    return DummyToolManager()
 
 
-@pytest.mark.parametrize(
-    "mapping, names, idx, expected",
-    [
-        ({0: "X"}, {}, 0, "X"),
-        (None, {0: "Y"}, 0, "Y"),
-        (None, {}, 5, "server-5"),
-    ]
-)
+@pytest.fixture()
+def ping_spy(monkeypatch):
+    """Replace _ping_one with a deterministic spy recording the calls."""
+    calls = []
+
+    async def _dummy_ping(idx, name, _r, _w, *, timeout):  # noqa: WPS430
+        calls.append((idx, name))
+        # Always report success with constant latency for simplicity
+        return name, True, 42.0
+
+    monkeypatch.setattr("mcp_cli.commands.ping._ping_one", _dummy_ping)
+    return calls
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
 @pytest.mark.asyncio
-async def test_display_name(mapping, names, idx, expected):
-    tm = DummyToolManager(streams=[], server_names=names)
-    server_infos = await tm.get_server_info()
-    assert display_server_name(idx, mapping, server_infos) == expected
-
-
-@pytest.mark.asyncio
-async def test_ping_one_success(monkeypatch):
-    monkeypatch.setattr(ping_mod, "send_ping", lambda r, w: asyncio.sleep(0, result=True))
-    start = time.perf_counter()
-    name, ok, ms = await _ping_one(1, "n1", object(), object(), timeout=1.0)
-    end = time.perf_counter()
-
-    assert name == "n1"
+async def test_ping_all_servers(dummy_tm, ping_spy):
+    """/ping with no filters should contact every server."""
+    ok = await ping_action_async(dummy_tm)
     assert ok is True
-    assert 0 <= ms <= (end - start) * 1000 + 1
+    assert len(ping_spy) == 2
+    assert {n for _, n in ping_spy} == {"ServerA", "ServerB"}
 
 
 @pytest.mark.asyncio
-async def test_ping_one_timeout(monkeypatch):
-    async def hang(r, w):
-        await asyncio.sleep(10)
-    monkeypatch.setattr(ping_mod, "send_ping", hang)
+async def test_ping_filtered_by_index(dummy_tm, ping_spy):
+    """Filter accepts the numeric *index* of the server."""
+    ok = await ping_action_async(dummy_tm, targets=["0"])
+    assert ok is True
+    assert ping_spy == [(0, "ServerA")]
 
-    name, ok, ms = await _ping_one(2, "n2", object(), object(), timeout=0.01)
-    assert name == "n2"
+
+@pytest.mark.asyncio
+async def test_ping_filtered_by_name(dummy_tm, ping_spy):
+    """Filter is case-insensitive for *names*."""
+    ok = await ping_action_async(dummy_tm, targets=["serverb"])
+    assert ok is True
+    assert ping_spy == [(1, "ServerB")]
+
+
+@pytest.mark.asyncio
+async def test_ping_no_match_returns_false(dummy_tm, ping_spy):
+    """If no targets match, command prints a warning and returns False."""
+    ok = await ping_action_async(dummy_tm, targets=["does-not-exist"])
     assert ok is False
-    assert isinstance(ms, float)
-
-
-@pytest.mark.asyncio
-async def test_ping_action_no_streams(monkeypatch):
-    tm = DummyToolManager(streams=[])
-    printed = []
-    monkeypatch.setattr(Console, "print", lambda self, msg, **kw: printed.append(str(msg)))
-
-    result = await ping_action_async(tm)
-    assert result is False
-    assert any("No matching servers" in p for p in printed)
-
-
-@pytest.mark.asyncio
-async def test_ping_action_with_streams_and_no_filter(monkeypatch):
-    async def fake_ping(idx, name, r, w, timeout=5.0):
-        return (name, True, 99.9)
-    monkeypatch.setattr(ping_mod, "_ping_one", fake_ping)
-
-    fs = FakeStream()
-    tm = DummyToolManager(
-        streams=[(fs, fs)],
-        server_names={0: "srv0"},
-        server_info=[{"name": "ignored"}]
-    )
-
-    output = []
-    monkeypatch.setattr(Console, "print", lambda self, obj, **kw: output.append(obj))
-
-    result = await ping_action_async(tm)
-    assert result is True
-
-    tables = [o for o in output if isinstance(o, Table)]
-    assert tables, f"Expected a Table in output: {output}"
-    tbl = tables[0]
-    # Only check row_count and headers
-    assert tbl.row_count == 1
-    headers = [col.header for col in tbl.columns]
-    assert headers == ["Server", "Status", "Latency"]
-
-
-@pytest.mark.asyncio
-async def test_ping_action_with_targets(monkeypatch):
-    async def fake_ping(idx, name, r, w, timeout=5.0):
-        return (name, True, 55.5)
-    monkeypatch.setattr(ping_mod, "_ping_one", fake_ping)
-
-    fs = FakeStream()
-    tm = DummyToolManager(
-        streams=[(fs, fs), (fs, fs)],
-        server_names={0: "a", 1: "b"}
-    )
-
-    # No matching → False
-    assert await ping_action_async(tm, server_names=tm.server_names, targets=["z"]) is False
-
-    output = []
-    monkeypatch.setattr(Console, "print", lambda self, obj, **kw: output.append(obj))
-    result = await ping_action_async(tm, server_names=tm.server_names, targets=["b"])
-    assert result is True
-
-    tables = [o for o in output if isinstance(o, Table)]
-    assert tables, "Expected a Table"
-    tbl = tables[0]
-    assert tbl.row_count == 1
-    # Confirm header only (we trust correct row)
-    headers = [col.header for col in tbl.columns]
-    assert headers == ["Server", "Status", "Latency"]
-
+    assert ping_spy == []

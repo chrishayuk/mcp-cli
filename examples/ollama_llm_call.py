@@ -18,7 +18,7 @@ import sys
 from typing import Any, Dict, List
 
 # mcp cli imports
-from mcp_cli.llm.llm_client import get_llm_client
+from chuk_llm.llm.llm_client import get_llm_client
 from mcp_cli.llm.system_prompt_generator import SystemPromptGenerator
 
 

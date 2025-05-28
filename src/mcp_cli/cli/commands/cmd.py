@@ -1,10 +1,9 @@
+# mcp_cli/cli/commands/cmd.py
 """
-CMD - non-interactive one-shot command for MCP-CLI
-──────────────────────────────────────────────────
-• Sends a single prompt (or tool call) to the LLM, optionally with
-  multi-turn reasoning & tool use, then exits.
-• `--plain  /  -P`  ➜  no Rich colours / ANSI codes.
-• `--raw`           ➜  text is forwarded exactly as received.
+Clean CMD command implementation using ModelManager.
+
+Non-interactive one-shot command for MCP-CLI that sends a single prompt
+(or tool call) to the LLM, optionally with multi-turn reasoning & tool use.
 """
 
 from __future__ import annotations
@@ -21,7 +20,7 @@ from rich.console import Console
 
 from mcp_cli.cli.commands.base import BaseCommand
 from mcp_cli.cli_options import process_options
-from mcp_cli.provider_config import ProviderConfig
+from mcp_cli.model_manager import ModelManager
 from mcp_cli.tools.manager import ToolManager
 
 logger = logging.getLogger(__name__)
@@ -30,14 +29,13 @@ logger = logging.getLogger(__name__)
 # ════════════════════════════════════════════════════════════════════════
 # Helpers
 # ════════════════════════════════════════════════════════════════════════
-async def _extract_tools_list(manager: Any) -> List[Dict[str, Any]]:
-    """Return a serialisable list of tool metadata from any ToolManager."""
-    if not manager:
+async def _extract_tools_list(tool_manager: ToolManager) -> List[Dict[str, Any]]:
+    """Extract tool metadata from ToolManager."""
+    if not tool_manager:
         return []
 
-    if hasattr(manager, "get_unique_tools"):
-        maybe_iterable = manager.get_unique_tools()                     # type: ignore[attr-defined]
-        tools_iter = await maybe_iterable if asyncio.iscoroutine(maybe_iterable) else maybe_iterable
+    try:
+        tool_infos = await tool_manager.get_unique_tools()
         return [
             {
                 "name": t.name,
@@ -45,20 +43,15 @@ async def _extract_tools_list(manager: Any) -> List[Dict[str, Any]]:
                 "parameters": t.parameters,
                 "namespace": t.namespace,
             }
-            for t in tools_iter
+            for t in tool_infos
         ]
-
-    if hasattr(manager, "get_internal_tools"):
-        return list(manager.get_internal_tools())                       # type: ignore[attr-defined]
-
-    if hasattr(manager, "get_all_tools"):
-        return list(manager.get_all_tools())                            # type: ignore[attr-defined]
-
-    return []
+    except Exception as exc:
+        logger.warning(f"Error extracting tools: {exc}")
+        return []
 
 
 def _extract_response_text(completion: Any) -> str:
-    """Handle dict-style completions or plain strings from llm_client."""
+    """Extract text from LLM completion response."""
     if isinstance(completion, dict):
         return str(completion.get("response", ""))
     return str(completion)
@@ -68,57 +61,62 @@ def _extract_response_text(completion: Any) -> str:
 # Command
 # ════════════════════════════════════════════════════════════════════════
 class CmdCommand(BaseCommand):
-    """`mcp-cli cmd` – run a prompt (multi-turn by default) then exit."""
+    """Non-interactive command execution with LLM and tool support."""
 
     def __init__(self) -> None:
-        help_text = (
-            "Execute commands non-interactively (with multi-turn by default)."
-        )
-        super().__init__(name="cmd", help_text=help_text)  # BaseCommand stores this as `.help`
-        self.help_text = help_text                         # Typer wrapper expects `.help_text`
+        help_text = "Execute commands non-interactively (with multi-turn by default)."
+        super().__init__(name="cmd", help_text=help_text)
+        self.help_text = help_text  # For Typer wrapper
 
+    async def execute(self, tool_manager: ToolManager, **params) -> Optional[str]:
+        """Execute the command with given parameters."""
+        # Extract parameters
+        provider = params.get("provider")
+        model = params.get("model")
+        api_base = params.get("api_base")
+        api_key = params.get("api_key")
 
-    # ---------------------------------------------------------------------
-    # Core logic
-    # ---------------------------------------------------------------------
-    async def execute(self, tool_manager: ToolManager, **params) -> Optional[str]:  # noqa: C901
-        manager: Any = tool_manager
-        provider: str = params.get("provider") or "openai"
-        model: str = params.get("model") or "gpt-4o-mini"
+        plain = params.get("plain", False)
+        raw = params.get("raw", False)
+        input_file = params.get("input")
+        prompt = params.get("prompt")
+        output_file = params.get("output")
+        tool = params.get("tool")
+        tool_args = params.get("tool_args")
+        system_prompt = params.get("system_prompt")
+        verbose = params.get("verbose", False)
+        single_turn = params.get("single_turn", False)
+        max_turns = params.get("max_turns", 5)
 
-        plain: bool = params.get("plain", False)
-        raw: bool = params.get("raw", False)
-
-        input_file: Optional[str] = params.get("input")
-        prompt: Optional[str] = params.get("prompt")
-        output_file: Optional[str] = params.get("output")
-
-        tool: Optional[str] = params.get("tool")
-        tool_args: Optional[str] = params.get("tool_args")
-
-        system_prompt: Optional[str] = params.get("system_prompt")
-        verbose: bool = params.get("verbose", False)
-        single_turn: bool = params.get("single_turn", False)
-        max_turns: int = params.get("max_turns", 5)
-
-        # ---- logging --------------------
+        # Set up logging
         logging.basicConfig(
             level=logging.DEBUG if verbose else logging.WARNING,
             format="%(asctime)s %(levelname)-8s %(name)s | %(message)s",
             stream=sys.stderr,
         )
 
-        # ------------------------------------------------------------------
-        # direct tool execution
-        # ------------------------------------------------------------------
+        # Create ModelManager and configure if needed
+        model_manager = ModelManager()
+        
+        if api_base or api_key:
+            target_provider = provider or model_manager.get_active_provider()
+            model_manager.configure_provider(target_provider, api_key=api_key, api_base=api_base)
+        
+        # Switch model if requested
+        if provider and model:
+            model_manager.switch_model(provider, model)
+        elif provider:
+            model_manager.switch_provider(provider)
+        elif model:
+            model_manager.switch_to_model(model)
+
+        # Direct tool execution
         if tool:
-            result = await self._run_single_tool(manager, tool, tool_args)
+            result = await self._run_single_tool(tool_manager, tool, tool_args)
             self._write_output(result, output_file, raw, plain)
             return result
 
-        # ------------------------------------------------------------------
-        # prompt / stdin
-        # ------------------------------------------------------------------
+        # Prompt/input handling
         if input_file:
             input_content = sys.stdin.read() if input_file == "-" else open(input_file).read()
         else:
@@ -131,15 +129,11 @@ class CmdCommand(BaseCommand):
         if prompt and input_file:
             user_message = prompt.replace("{{input}}", input_content)
 
-        # ------------------------------------------------------------------
-        # LLM plumbing
-        # ------------------------------------------------------------------
-        from mcp_cli.llm.llm_client import get_llm_client
-        from mcp_cli.llm.tools_handler import convert_to_openai_tools
+        # Set up LLM interaction
+        tools = await _extract_tools_list(tool_manager)
+        openai_tools = self._convert_tools_for_llm(tools, tool_manager)
+        
         from mcp_cli.chat.system_prompt import generate_system_prompt
-
-        tools = await _extract_tools_list(manager)
-        openai_tools = convert_to_openai_tools(tools)
         system_message = system_prompt or generate_system_prompt(tools)
 
         conversation: List[Dict[str, str]] = [
@@ -147,30 +141,27 @@ class CmdCommand(BaseCommand):
             {"role": "user", "content": user_message},
         ]
 
-        llm = get_llm_client(provider=provider, model=model)
+        # Get LLM client from ModelManager
+        client = model_manager.get_client()
         progress = Console(stderr=True, no_color=plain) if verbose else None
 
-        # ------------------------------------------------------------------
-        # single-turn
-        # ------------------------------------------------------------------
+        # Single-turn mode
         if single_turn:
-            completion = await llm.create_completion(messages=conversation, tools=openai_tools)
+            completion = await client.create_completion(messages=conversation, tools=openai_tools)
             response_text = _extract_response_text(completion)
             self._write_output(response_text, output_file, raw, plain)
             return response_text
 
-        # ------------------------------------------------------------------
-        # multi-turn loop
-        # ------------------------------------------------------------------
+        # Multi-turn loop
         for turn in range(max_turns):
             if progress:
                 progress.print(f"[dim]Turn {turn+1}/{max_turns}…[/dim]", end="\r")
 
-            completion = await llm.create_completion(messages=conversation, tools=openai_tools)
+            completion = await client.create_completion(messages=conversation, tools=openai_tools)
             tool_calls = completion.get("tool_calls", []) if isinstance(completion, dict) else []
 
             if tool_calls:
-                await self._process_tool_calls(tool_calls, conversation, manager)
+                await self._process_tool_calls(tool_calls, conversation, tool_manager)
                 continue  # another turn
 
             response_text = _extract_response_text(completion)
@@ -178,43 +169,60 @@ class CmdCommand(BaseCommand):
             self._write_output(response_text, output_file, raw, plain)
             return response_text
 
+        # Max turns reached
         fallback = "Failed to complete within max_turns"
         self._write_output(fallback, output_file, raw, plain)
         return fallback
 
-    # ---------------------------------------------------------------------
-    # Helpers
-    # ---------------------------------------------------------------------
-    async def _run_single_tool(self, manager: Any, name: str, args_json: Optional[str]) -> str:
+    def _convert_tools_for_llm(self, tools: List[Dict[str, Any]], tool_manager: ToolManager) -> List[Dict[str, Any]]:
+        """Convert tools to LLM format."""
+        try:
+            # Try to use tool manager's conversion if available
+            if hasattr(tool_manager, "convert_to_openai_tools"):
+                return tool_manager.convert_to_openai_tools(tools)
+            
+            # Fallback to basic conversion
+            return [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool.get("name", "unknown"),
+                        "description": tool.get("description", ""),
+                        "parameters": tool.get("parameters", {}),
+                    },
+                }
+                for tool in tools
+            ]
+        except Exception as exc:
+            logger.warning(f"Error converting tools: {exc}")
+            return []
+
+    async def _run_single_tool(self, tool_manager: ToolManager, name: str, args_json: Optional[str]) -> str:
+        """Execute a single tool directly."""
         try:
             args = json.loads(args_json) if args_json else {}
         except json.JSONDecodeError as exc:
             raise typer.BadParameter("--tool-args must be valid JSON") from exc
 
-        if hasattr(manager, "execute_tool"):
-            res = await manager.execute_tool(name, args)                # type: ignore[attr-defined]
-            if not res.success:
-                raise RuntimeError(res.error or "Tool execution failed")
-            return json.dumps(res.result, indent=2)
+        try:
+            result = await tool_manager.execute_tool(name, args)
+            if not result.success:
+                raise RuntimeError(result.error or "Tool execution failed")
+            return json.dumps(result.result, indent=2)
+        except Exception as exc:
+            raise RuntimeError(f"Tool execution failed: {exc}") from exc
 
-        if hasattr(manager, "call_tool"):
-            res = await manager.call_tool(tool_name=name, arguments=args)  # type: ignore[attr-defined]
-            if res.get("isError"):
-                raise RuntimeError(res.get("error", "Tool execution failed"))
-            return json.dumps(res.get("content", ""), indent=2)
-
-        raise RuntimeError("ToolManager does not expose a compatible API")
-
-    async def _process_tool_calls(self, calls: List[dict], convo: List[dict], manager: Any) -> None:
+    async def _process_tool_calls(self, calls: List[dict], conversation: List[dict], tool_manager: ToolManager) -> None:
+        """Process tool calls and add results to conversation."""
         from mcp_cli.llm.tools_handler import handle_tool_call
         for call in calls:
-            await handle_tool_call(call, convo, tool_manager=manager)
+            await handle_tool_call(call, conversation, tool_manager=tool_manager)
 
     def _write_output(self, data: str, path: Optional[str], raw: bool, plain: bool) -> None:
-        """Write to a file or stdout, respecting --plain / --raw flags."""
+        """Write output to file or stdout."""
         text = str(data)
 
-        # file or stdout?
+        # Write to file
         if path and path != "-":
             with open(path, "w", encoding="utf-8") as fp:
                 fp.write(text)
@@ -222,57 +230,52 @@ class CmdCommand(BaseCommand):
                     fp.write("\n")
             return
 
+        # Write to stdout
         if plain or raw:
             print(text, end="" if text.endswith("\n") else "\n")
         else:
             rich_print(text)
 
-    # ---------------------------------------------------------------------
-    # Typer wiring
-    # ---------------------------------------------------------------------
-    def register(self, app: typer.Typer, run_command=None) -> None:  # noqa: D401
+    def register(self, app: typer.Typer, run_command=None) -> None:
+        """Register the command with Typer."""
         if run_command is None:
             from mcp_cli.run_command import run_command_sync as run_command
 
         @app.command(self.name, help=self.help_text)
-        def cmd_standalone(  # noqa: PLR0913
+        def cmd_standalone(
             prompt: Optional[str] = typer.Option(None, "--prompt", "-p", help="Prompt to send to the LLM"),
             config_file: str = typer.Option("server_config.json", "--config-file", help="Configuration file path"),
             server: Optional[str] = typer.Option(None, "--server", help="Server to connect to"),
-            provider: str = typer.Option("openai", "--provider", help="LLM provider name"),
-            model: Optional[str] = typer.Option(None, "--model", help="Model name (defaults to provider's default)"),
-            disable_filesystem: bool = typer.Option(False, "--disable-filesystem/--no-disable-filesystem", help="Disable filesystem access"),
+            provider: Optional[str] = typer.Option(None, "--provider", help="LLM provider name"),
+            model: Optional[str] = typer.Option(None, "--model", help="Model name"),
+            disable_filesystem: bool = typer.Option(False, "--disable-filesystem", help="Disable filesystem access"),
             input: Optional[str] = typer.Option(None, "--input", help="Input file path (- for stdin)"),
             output: Optional[str] = typer.Option(None, "--output", help="Output file path (- for stdout)"),
-            raw: bool = typer.Option(False, "--raw/--no-raw", help="Output raw response without formatting"),
-            plain: bool = typer.Option(False, "--plain", "-P", help="Disable colour / Rich markup in output"),
+            raw: bool = typer.Option(False, "--raw", help="Output raw response without formatting"),
+            plain: bool = typer.Option(False, "--plain", "-P", help="Disable colour/Rich markup in output"),
             tool: Optional[str] = typer.Option(None, "--tool", help="Execute a specific tool directly"),
             tool_args: Optional[str] = typer.Option(None, "--tool-args", help="JSON string of tool arguments"),
             system_prompt: Optional[str] = typer.Option(None, "--system-prompt", help="Custom system prompt"),
-            verbose: bool = typer.Option(False, "--verbose/--no-verbose", help="Enable verbose output"),
+            verbose: bool = typer.Option(False, "--verbose", help="Enable verbose output"),
             single_turn: bool = typer.Option(False, "--single-turn", "-s", help="Disable multi-turn mode"),
             max_turns: int = typer.Option(5, "--max-turns", help="Maximum number of turns in multi-turn mode"),
             api_base: Optional[str] = typer.Option(None, "--api-base", help="API base URL for the provider"),
             api_key: Optional[str] = typer.Option(None, "--api-key", help="API key for the provider"),
         ) -> None:
-            prov_cfg = ProviderConfig()
-            if api_base or api_key:
-                overrides: Dict[str, str] = {}
-                if api_base:
-                    overrides["api_base"] = api_base
-                if api_key:
-                    overrides["api_key"] = api_key
-                prov_cfg.set_provider_config(provider, overrides)
-
-            resolved_model = model or prov_cfg.get_default_model(provider)
+            """Execute non-interactive commands with LLM and tool support."""
+            
+            # Use ModelManager to determine effective provider/model
+            model_manager = ModelManager()
+            effective_provider = provider or model_manager.get_active_provider()
+            effective_model = model or model_manager.get_active_model()
 
             servers, _, server_names = process_options(
-                server, disable_filesystem, provider, resolved_model, config_file
+                server, disable_filesystem, effective_provider, effective_model, config_file
             )
 
             extra: Dict[str, Any] = {
                 "provider": provider,
-                "model": resolved_model,
+                "model": model,
                 "server_names": server_names,
                 "input": input,
                 "prompt": prompt,
@@ -290,3 +293,28 @@ class CmdCommand(BaseCommand):
             }
 
             run_command(self.wrapped_execute, config_file, servers, extra_params=extra)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# Usage Examples
+# ════════════════════════════════════════════════════════════════════════
+
+"""
+# Execute a prompt with default model
+mcp-cli cmd --prompt "List database tables"
+
+# Execute with specific provider and model
+mcp-cli cmd --provider anthropic --model claude-3-sonnet --prompt "Analyze this data"
+
+# Execute a tool directly
+mcp-cli cmd --tool list_tables --tool-args '{}'
+
+# Multi-turn conversation with output to file
+mcp-cli cmd --prompt "Create a report" --output report.txt --max-turns 10
+
+# Single-turn with custom system prompt
+mcp-cli cmd --prompt "Hello" --single-turn --system-prompt "You are a helpful assistant"
+
+# With API overrides
+mcp-cli cmd --provider openai --api-key your-key --prompt "Hello world"
+"""

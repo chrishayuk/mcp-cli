@@ -1,53 +1,60 @@
 # mcp_cli/interactive/commands/tools.py
 """
-Interactive “tools” command – list tools or open the interactive call helper.
+Interactive **tools** command - list all tools or launch the “call-a-tool”
+helper inside the *interactive shell* (not the chat TUI).
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, List
 
-from rich import print
-
-from .base import InteractiveCommand
-from mcp_cli.commands.tools import tools_action_async         # ← async helper
+from mcp_cli.utils.rich_helpers import get_console          # ← NEW
+from mcp_cli.commands.tools import tools_action_async        # shared async helper
 from mcp_cli.commands.tools_call import tools_call_action
 from mcp_cli.tools.manager import ToolManager
+from .base import InteractiveCommand
+
+log = logging.getLogger(__name__)
 
 
 class ToolsCommand(InteractiveCommand):
-    """List available tools, or interactively invoke one."""
+    """Show available tools or invoke one interactively."""
 
     def __init__(self) -> None:
         super().__init__(
             name="tools",
             aliases=["t"],
             help_text=(
-                "List available tools or call one interactively.\n\n"
+                "List available tools or run one interactively.\n\n"
                 "Usage:\n"
-                "  tools              List tools\n"
-                "  tools --all        Show parameter details\n"
-                "  tools --raw        Show raw JSON definitions\n"
-                "  tools call         Prompt to call a tool"
+                "  tools              – list tools\n"
+                "  tools --all        – include parameter details\n"
+                "  tools --raw        – dump raw JSON\n"
+                "  tools call         – open interactive call helper"
             ),
         )
 
-    # ------------------------------------------------------------------
-    async def execute(
+    # ────────────────────────────────────────────────────────────────
+    async def execute(                      # noqa: D401
         self,
         args: List[str],
         tool_manager: ToolManager | None = None,
         **_: Any,
     ) -> None:
-        if not tool_manager:
-            print("[red]Error:[/red] ToolManager not available.")
+        console = get_console()
+
+        # Ensure ToolManager exists
+        if tool_manager is None:
+            console.print("[red]Error:[/red] ToolManager not available.")
+            log.debug("ToolsCommand executed without a ToolManager instance.")
             return
 
-        # 'tools call' → open interactive tool-caller
+        # "tools call" → interactive call helper
         if args and args[0].lower() == "call":
             await tools_call_action(tool_manager)
             return
 
-        # otherwise list tools
+        # Otherwise list tools
         show_details = "--all" in args
         show_raw     = "--raw" in args
         await tools_action_async(

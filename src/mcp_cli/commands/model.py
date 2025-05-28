@@ -1,62 +1,93 @@
 # src/mcp_cli/commands/model.py
+"""
+Model-management command for MCP-CLI.
+
+Inside chat / interactive mode
+------------------------------
+  /model                → show current model & provider
+  /model list           → list models for the active provider
+  /model <name>         → probe & switch model (auto-rollback on failure)
+"""
 from __future__ import annotations
-from typing import Dict, List
+from typing import Any, Dict, List
+from rich.table import Table
 
-from rich.console import Console
-from rich import print
-
-from mcp_cli.provider_config import ProviderConfig
-from mcp_cli.llm.llm_client import get_llm_client
+# mcp cli
+from mcp_cli.model_manager import ModelManager
+from mcp_cli.utils.rich_helpers import get_console
 from mcp_cli.utils.async_utils import run_blocking
+from mcp_cli.utils.llm_probe import LLMProbe
 
 
-# ─── canonical async implementation ────────────────────────────────
-async def model_action_async(
-    args: List[str],
-    *,
-    context: Dict,                      # chat / interactive context
-) -> None:
-    """
-    *args* is the list *after* “/model” or “model” itself.
+# ════════════════════════════════════════════════════════════════════════
+# Async implementation (core logic)
+# ════════════════════════════════════════════════════════════════════════
+async def model_action_async(args: List[str], *, context: Dict[str, Any]) -> None:
+    console = get_console()
 
-    • shows current model if no arg  
-    • updates ProviderConfig & context if a new model is supplied  
-    • refreshes context["client"]  
-    """
-    console = Console()
-    cfg: ProviderConfig = context.get("provider_config") or ProviderConfig()
-    context.setdefault("provider_config", cfg)
+    # Re-use (or lazily create) a ModelManager kept in context
+    model_manager: ModelManager = context.get("model_manager") or ModelManager()
+    context.setdefault("model_manager", model_manager)
 
-    provider = cfg.get_active_provider()
-    current  = cfg.get_active_model()
+    provider      = model_manager.get_active_provider()
+    current_model = model_manager.get_active_model()
 
-    # no arg → show
+    # ── no arguments → just display current state ───────────────────────
     if not args:
-        print(f"[cyan]Current model:[/cyan] {current}")
-        print(f"[cyan]Provider     :[/cyan] {provider}")
-        print("[dim]model <name>   to switch[/dim]")
+        _print_status(console, current_model, provider)
         return
 
-    # switch
+    # ── "/model list" helper ────────────────────────────────────────────
+    if args[0].lower() == "list":
+        _print_model_list(console, model_manager, provider)
+        return
+
+    # ── attempt model switch ────────────────────────────────────────────
     new_model = args[0]
-    cfg.set_active_model(new_model)
-    context["model"] = new_model
+    console.print(f"[dim]Probing model '{new_model}'…[/dim]")
 
-    try:
-        context["client"] = get_llm_client(
-            provider=provider,
-            model=new_model,
-            config=cfg,
+    async with LLMProbe(model_manager, suppress_logging=True) as probe:
+        result = await probe.test_model(new_model)
+
+    if not result.success:
+        msg = (
+            f"provider error: {result.error_message}"
+            if result.error_message
+            else "unknown error"
         )
-        print(f"[green]Switched to model:[/green] {new_model}")
-    except Exception as exc:
-        print(f"[red]Error initialising client:[/red] {exc}")
-        # fallback: keep old client but patch .model if available
-        client = context.get("client")
-        if client and hasattr(client, "model"):
-            client.model = new_model
+        console.print(f"[red]Model switch failed:[/red] {msg}")
+        console.print(f"[yellow]Keeping current model:[/yellow] {current_model}")
+        return
+
+    # Success – commit the change
+    model_manager.set_active_model(new_model)
+    context["model"]         = new_model
+    context["client"]        = result.client
+    context["model_manager"] = model_manager
+    console.print(f"[green]Switched to model:[/green] {new_model}")
 
 
-# ─── optional sync wrapper for plain CLI use ──────────────────────
-def model_action(args: List[str], *, context: Dict) -> None:
+# ════════════════════════════════════════════════════════════════════════
+# Sync wrapper for non-async code-paths
+# ════════════════════════════════════════════════════════════════════════
+def model_action(args: List[str], *, context: Dict[str, Any]) -> None:
+    """Thin synchronous facade around *model_action_async*."""
     run_blocking(model_action_async(args, context=context))
+
+
+# ════════════════════════════════════════════════════════════════════════
+# Helper functions
+# ════════════════════════════════════════════════════════════════════════
+def _print_status(console, model: str, provider: str) -> None:
+    console.print(f"[cyan]Current model:[/cyan] {model}")
+    console.print(f"[cyan]Provider     :[/cyan] {provider}")
+    console.print("[dim]/model <name> to switch  |  /model list to list[/dim]")
+
+
+def _print_model_list(console, model_manager: ModelManager, provider: str) -> None:
+    table = Table(title=f"Models for provider '{provider}'")
+    table.add_column("Type",  style="cyan", width=10)
+    table.add_column("Model", style="green")
+
+    table.add_row("default", model_manager.get_default_model(provider))
+    console.print(table)

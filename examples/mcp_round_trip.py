@@ -27,7 +27,7 @@ from chuk_tool_processor.core.processor import ToolProcessor
 from chuk_tool_processor.models.tool_result import ToolResult
 
 # MCP CLI imports - only using llm_client and system_prompt_generator
-from mcp_cli.llm.llm_client import get_llm_client
+from chuk_llm.llm.llm_client import get_llm_client
 from mcp_cli.llm.system_prompt_generator import SystemPromptGenerator
 
 # Initialize colorama for colored output

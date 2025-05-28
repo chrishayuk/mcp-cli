@@ -1,115 +1,164 @@
-import pytest
+# tests/mcp_cli/chat/test_chat_context.py
+"""Unit-tests for the re-worked *ChatContext* class.
+
+We avoid the heavyweight real ToolManager by supplying a tiny stub that
+implements just enough of the async API surface the context expects.
+"""
+from __future__ import annotations
+
 import asyncio
+from typing import Any, Dict
 
-# Import the ChatContext to test.
+import pytest
+
 from mcp_cli.chat.chat_context import ChatContext
-from mcp_cli.provider_config import ProviderConfig
+from mcp_cli.tools.models import ToolInfo, ServerInfo
 
-# Create dummy implementations for dependencies.
-def dummy_get_llm_client(provider, model, config = None):
-    return {"provider": provider, "model": model, "config": config, "dummy": True}
+# ---------------------------------------------------------------------------
+# Dummy async ToolManager stub
+# ---------------------------------------------------------------------------
+class DummyToolManager:  # noqa: WPS110 – test helper
+    """Minimal stand-in that satisfies the methods ChatContext uses."""
 
-def dummy_generate_system_prompt(tools):
-    return "Dummy system prompt."
+    def __init__(self) -> None:
+        self._tools = [
+            ToolInfo(
+                name="tool1",
+                namespace="srv1",
+                description="demo-1",
+                parameters={},
+                is_async=False,
+            ),
+            ToolInfo(
+                name="tool2",
+                namespace="srv2",
+                description="demo-2",
+                parameters={},
+                is_async=False,
+            ),
+        ]
 
-def dummy_convert_to_openai_tools(tools):
-    return [{"name": t["name"], "dummy": True} for t in tools]
+        self._servers = [
+            ServerInfo(
+                id=0,
+                name="srv1",
+                status="ok",
+                tool_count=1,
+                namespace="srv1",
+            ),
+            ServerInfo(
+                id=1,
+                name="srv2",
+                status="ok",
+                tool_count=1,
+                namespace="srv2",
+            ),
+        ]
 
-# Dummy StreamManager to simulate the actual stream manager.
-class DummyStreamManager:
-    def __init__(self, tools=None):
-        if tools is None:
-            tools = [{"name": "tool1"}, {"name": "tool2"}]
-        self._tools = tools
-        self._server_info = [{"id": 1, "name": "ServerA"}, {"id": 2, "name": "ServerB"}]
-        self.tool_to_server_map = {tool["name"]: f"Server{tool['name'][-1]}" for tool in tools}
+        self._openai_tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": f"{t.namespace}_{t.name}",
+                    "description": t.description,
+                    "parameters": t.parameters,
+                },
+            }
+            for t in self._tools
+        ]
 
-    def get_all_tools(self):
+    # ----- discovery --------------------------------------------------
+    async def get_unique_tools(self):  # noqa: D401 – match signature
         return self._tools
 
-    # New method needed by the updated ChatContext.
-    def get_internal_tools(self):
-        return self._tools
+    async def get_server_info(self):  # noqa: D401 – match signature
+        return self._servers
 
-    def get_server_info(self):
-        return self._server_info
+    async def get_adapted_tools_for_llm(self, provider: str = "openai"):
+        mapping = {
+            f"{t.namespace}_{t.name}": f"{t.namespace}.{t.name}"
+            for t in self._tools
+        }
+        return self._openai_tools, mapping
 
-    def get_server_for_tool(self, tool_name):
-        return self.tool_to_server_map.get(tool_name, "Unknown")
+    async def get_tools_for_llm(self):
+        return self._openai_tools
 
-# Use monkeypatch to override external functions imported in chat_context.
-@pytest.fixture(autouse=True)
-def patch_dependencies(monkeypatch):
-    monkeypatch.setattr("mcp_cli.chat.chat_context.get_llm_client", dummy_get_llm_client)
-    monkeypatch.setattr("mcp_cli.chat.chat_context.generate_system_prompt", dummy_generate_system_prompt)
-    monkeypatch.setattr("mcp_cli.chat.chat_context.convert_to_openai_tools", dummy_convert_to_openai_tools)
+    async def get_server_for_tool(self, tool_name: str):
+        if "." in tool_name:
+            return tool_name.split(".", 1)[0]
+        if "_" in tool_name:
+            return tool_name.split("_", 1)[0]
+        return "Unknown"
 
-@pytest.fixture
-def dummy_stream_manager():
-    return DummyStreamManager()
+    # ----- execution stubs -------------------------------------------
+    async def execute_tool(self, tool_name: str, arguments: Dict[str, Any]):
+        return {"success": True, "result": {"echo": arguments}}
 
-@pytest.fixture
-def chat_context(dummy_stream_manager):
-    return ChatContext(stream_manager=dummy_stream_manager, provider="dummy_provider", model="dummy_model")
+    async def stream_execute_tool(self, tool_name: str, arguments: Dict[str, Any]):
+        yield {"success": True, "result": {"echo": arguments}}
 
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+@pytest.fixture()
+def dummy_tool_manager():
+    return DummyToolManager()
+
+
+@pytest.fixture()
+def chat_context(dummy_tool_manager, monkeypatch):
+    # Use deterministic system prompt
+    monkeypatch.setattr(
+        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools: "SYS_PROMPT"
+    )
+    ctx = ChatContext.create(tool_manager=dummy_tool_manager)
+    return ctx
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
 @pytest.mark.asyncio
 async def test_initialize_chat_context(chat_context):
-    # Call initialize and verify that the context is set up correctly.
-    init_result = await chat_context.initialize()
-    assert init_result is True
+    ok = await chat_context.initialize()
+    assert ok is True
 
-    assert chat_context.tools == [{"name": "tool1"}, {"name": "tool2"}]
-    system_prompt = dummy_generate_system_prompt(chat_context.tools)
-    assert chat_context.conversation_history[0]["role"] == "system"
-    assert chat_context.conversation_history[0]["content"] == system_prompt
+    # tools discovered
+    assert chat_context.get_tool_count() == 2
 
-    expected_openai_tools = dummy_convert_to_openai_tools(chat_context.tools)
-    assert chat_context.openai_tools == expected_openai_tools
+    # system prompt injected as first conversation turn
+    assert chat_context.conversation_history[0] == {
+        "role": "system",
+        "content": "SYS_PROMPT",
+    }
 
-    expected_server_info = chat_context.stream_manager.get_server_info()
-    assert chat_context.server_info == expected_server_info
+    # OpenAI tools adapted
+    assert len(chat_context.openai_tools) == 2
+    assert chat_context.tool_name_mapping  # non-empty
 
-    # Instead of calling dummy_get_llm_client, check the fields directly
-    client = chat_context.client
-    assert client["provider"] == "dummy_provider"
-    assert client["model"] == "dummy_model"
-    assert isinstance(client["config"], ProviderConfig)
 
 @pytest.mark.asyncio
 async def test_get_server_for_tool(chat_context):
-    # Ensure initialization before using the helper.
     await chat_context.initialize()
-    server_for_tool1 = await chat_context.get_server_for_tool("tool1")
-    server_for_tool2 = await chat_context.get_server_for_tool("tool2")
-    assert server_for_tool1 == "Server1"
-    assert server_for_tool2 == "Server2"
-    
-    server_unknown = await chat_context.get_server_for_tool("nonexistent")
-    assert server_unknown == "Unknown"
+
+    assert await chat_context.get_server_for_tool("srv1.tool1") == "srv1"
+    assert await chat_context.get_server_for_tool("srv2_tool2") == "srv2"
+    assert await chat_context.get_server_for_tool("unknown") == "Unknown"
+
 
 @pytest.mark.asyncio
-async def test_to_dict_and_update_from_dict(chat_context):
-    # Ensure ChatContext is initialized so that attributes are available.
+async def test_to_dict_and_update_roundtrip(chat_context):
     await chat_context.initialize()
+    original_len = chat_context.get_conversation_length()
 
-    # Set up some additional state.
-    chat_context.conversation_history = [{"role": "user", "content": "Hello"}]
-    chat_context.exit_requested = False
+    exported = chat_context.to_dict()
 
-    # Convert to dict.
-    context_dict = chat_context.to_dict()
+    # mutate exported copy
+    exported["exit_requested"] = True
+    exported["conversation_history"].append({"role": "user", "content": "Hi"})
 
-    expected_keys = {
-        "conversation_history", "tools", "client", "provider", "model",
-        "server_info", "openai_tools", "exit_requested", "tool_to_server_map", "stream_manager"
-    }
-    assert expected_keys.issubset(set(context_dict.keys()))
+    chat_context.update_from_dict(exported)
 
-    # Update the context with new values.
-    new_client = {"provider": "new_provider", "model": "new_model", "dummy": True}
-    context_dict["exit_requested"] = True
-    context_dict["client"] = new_client
-
-    chat_context.update_from_dict(context_dict)
     assert chat_context.exit_requested is True
-    assert chat_context.client == new_client
+    assert chat_context.get_conversation_length() == original_len + 1
+    assert chat_context.conversation_history[-1]["content"] == "Hi"

@@ -1,39 +1,64 @@
 # mcp_cli/chat/commands/ping.py
 """
-Chat-mode `/ping` command – measure latency to connected MCP servers.
+Chat-mode `/ping` command for MCP-CLI
+====================================
+
+This module wires the chat-command **/ping** to the shared
+:meth:`mcp_cli.commands.ping.ping_action_async` helper so that end-users
+can measure the round-trip latency to each MCP server from inside an
+interactive chat session.
+
+Key Features
+------------
+* **Cross-platform console** - uses :pyfunc:`mcp_cli.utils.rich_helpers.get_console`
+  which transparently falls back to plain text when ANSI colours are not
+  supported (e.g. Windows `cmd.exe`, PowerShell without VT, or when the
+  output is being piped to a file).
+* **Zero state** - the handler is a thin façade; it never mutates the
+  context and can be hot-reloaded safely.
+* **Filter support** - any additional tokens after */ping* are treated as
+  case-insensitive filters that match either the *index* **or** the
+  *display-name* of a server (e.g. ``/ping 0 db analytics``).
+
+Usage Examples
+--------------
+>>> /ping                # ping every connected server
+>>> /ping 0 api          # ping only server 0 and the one named "api"
+
+The response is rendered as a Rich table with three columns:
+* **Server** - the user-friendly name or index
+* **Status** - ✓ on success, ✗ on timeout or error
+* **Latency** - round-trip time in milliseconds
 """
 from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from rich.console import Console
-from rich import print
+# Rich console helper (handles Windows quirks, ANSI passthrough, etc.)
+from mcp_cli.utils.rich_helpers import get_console
 
-from mcp_cli.commands.ping import ping_action_async      # ← async helper
+# Shared implementation
+from mcp_cli.commands.ping import ping_action_async
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.chat.commands import register_command
 
 
-async def ping_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
-    """
-    Usage
-    -----
-      /ping            Ping all servers
-      /ping <filter>   Ping only servers whose index or name matches <filter>
-      /p               Alias
-    """
-    console = Console()
+async def ping_command(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
+    """Measure round-trip latency to one or more MCP servers."""
+    console = get_console()
+
     tm: ToolManager | None = ctx.get("tool_manager")
+    if tm is None:
+        console.print("[red]Error:[/red] ToolManager not available.")
+        return True  # command *was* handled (nothing else to do)
 
-    if not tm:
-        print("[red]Error:[/red] ToolManager not available.")
-        return True
-
-    targets = parts[1:]  # anything after /ping is treated as filter text
-    success = await ping_action_async(tm, targets=targets)
-    return success
+    # Everything after "/ping" is considered a filter (index or name)
+    targets = parts[1:]
+    return await ping_action_async(tm, targets=targets)
 
 
-# Register command + short alias
+# ---------------------------------------------------------------------------
+# Registration (no extra alias - keep namespace clean)
+# ---------------------------------------------------------------------------
 register_command("/ping", ping_command)
-register_command("/p", ping_command)
+
