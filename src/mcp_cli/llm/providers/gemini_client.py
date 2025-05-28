@@ -67,11 +67,27 @@ def _convert_messages(messages: List[Dict[str, Any]]) -> Tuple[Optional[str], Li
             fn_name = msg.get("name") or "tool"
             try:
                 payload = json.loads(content) if isinstance(content, str) else content
+                # when list, wrap in items
+                if isinstance(payload, list):
+                    payload = {"items": payload}
+                # when not dict, wrap in result
+                if not isinstance(payload, dict):
+                    payload = {"result": payload}
             except Exception:
                 payload = {"response": content}
-            part = gtypes.Part.from_function_response(name=fn_name, response=payload)
-            gem_contents.append(gtypes.Content(role="tool", parts=[part]))
+                
+            try:
+                part = gtypes.Part.from_function_response(name=fn_name, response=payload)
+                gem_contents.append(gtypes.Content(role="tool", parts=[part]))
+            except Exception as e:
+                log.error(f"Failed to create function response part: {e}")
+                # when failed, create alternative response
+                gem_contents.append(gtypes.Content(
+                    role="tool", 
+                    parts=[gtypes.Part.from_text(text=f"Tool call result: {payload}")]
+                ))
             continue
+
 
         # ---------------- assistant function-calls ------------------------
         if role == "assistant" and msg.get("tool_calls"):
@@ -132,7 +148,7 @@ def _convert_tools(tools: Optional[List[Dict[str, Any]]]) -> Tuple[List[gtypes.T
             schema = params if isinstance(params, gtypes.Schema) else gtypes.Schema(**params)
         except Exception as exc:
             log.error("Invalid schema for tool '%s' (%s) → using permissive schema", name, exc)
-            schema = gtypes.Schema(type="object", additionalProperties=True)
+            schema = gtypes.Schema(type="object")
 
         decl = gtypes.FunctionDeclaration(name=name, description=description, parameters=schema)
         fn_decls.append(decl)
