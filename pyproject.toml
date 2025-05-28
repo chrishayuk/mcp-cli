@@ -16,7 +16,7 @@ license = {text = "MIT"}
 dependencies = [
   "anthropic>=0.51.0",
   "asyncio>=3.4.3",
-  "chuk-llm>=0.1.3",
+  "chuk-llm>=0.1.5",
   "chuk-mcp>=0.1.7",
   "chuk-tool-processor>=0.1.7",
   "chuk-virtual-fs>=0.1.6",
