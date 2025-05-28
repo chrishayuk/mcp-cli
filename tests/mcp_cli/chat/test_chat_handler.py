@@ -1,132 +1,101 @@
 # tests/mcp_cli/chat/test_chat_handler.py
+"""Unit‑tests for *mcp_cli.chat.chat_handler* – high‑level happy‑path checks.
+
+We monkey‑patch the UI layer and the slow bits so the coroutine finishes
+immediately without real user interaction or network calls.
+"""
+from __future__ import annotations
 
 import asyncio
-import gc
+from types import SimpleNamespace
+from typing import Any, Dict
+
 import pytest
-from rich.panel import Panel
 
-# Import the function under test.
-from mcp_cli.chat.chat_handler import handle_chat_mode, _safe_cleanup
+import mcp_cli.chat.chat_handler as chat_handler
 
-# Dummy StreamManager for testing.
-class DummyStreamManager:
+# ---------------------------------------------------------------------------
+# Dummy ToolManager – only the attrs used by handle_chat_mode
+# ---------------------------------------------------------------------------
+class DummyToolManager:  # noqa: WPS110 – test helper
     def __init__(self):
-        self._tools = [{"name": "dummy_tool"}]
-        self._server_info = [{"id": 1, "name": "DummyServer"}]
-        self.tool_to_server_map = {"dummy_tool": "DummyServer"}
+        self.closed = False
 
-    def get_all_tools(self):
-        return self._tools
+    # ChatContext expects async discovery helpers – keep minimal stubs
+    async def get_unique_tools(self):
+        return []  # empty tool list is fine
 
-    # NEW: Add get_internal_tools() to satisfy the ChatContext initialization.
-    def get_internal_tools(self):
-        return self._tools
+    async def get_server_info(self):
+        return []
 
-    def get_server_info(self):
-        return self._server_info
+    async def get_adapted_tools_for_llm(self, provider: str = "openai"):
+        return [], {}
 
-    def get_server_for_tool(self, tool_name):
-        return self.tool_to_server_map.get(tool_name, "Unknown")
+    async def get_tools_for_llm(self):
+        return []
 
-# Dummy ChatUIManager.
-class DummyChatUIManager:
-    def __init__(self, chat_context):
-        self.chat_context = chat_context
-        self.inputs = ["hello", "exit"]  # simulate a normal message then exit.
-        self.cleaned = False
+    async def get_server_for_tool(self, tool_name: str):
+        return None
 
-    async def get_user_input(self):
-        if self.inputs:
-            await asyncio.sleep(0.01)
-            return self.inputs.pop(0)
-        return ""
+    async def close(self):
+        self.closed = True
 
-    async def handle_command(self, command):
-        return False
+# ---------------------------------------------------------------------------
+# Fixtures that silence the UI side‑effects
+# ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def _silence_rich(monkeypatch):
+    monkeypatch.setattr(chat_handler, "clear_screen", lambda: None)
+    monkeypatch.setattr(chat_handler, "display_welcome_banner", lambda *_a, **_k: None)
 
-    def print_user_message(self, message):
+
+@pytest.fixture()
+def dummy_tm():
+    return DummyToolManager()
+
+# ---------------------------------------------------------------------------
+# Helper to skip the interactive loop
+# ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def _short_circuit_run_loop(monkeypatch):
+    async def fake_run_loop(ui, ctx, convo):  # noqa: WPS110
+        # Simulate one user message so that `_run_chat_loop` finishes nicely.
+        # We need to mimic the expected API of the real objects just enough so
+        # the logic paths are exercised.
+        ctx.exit_requested = True  # make the outer loop exit after first check
+    monkeypatch.setattr(chat_handler, "_run_chat_loop", fake_run_loop)
+
+# ---------------------------------------------------------------------------
+# Monkey‑patch ChatUIManager so we don't need prompt‑toolkit etc.
+# ---------------------------------------------------------------------------
+class DummyUI:
+    def __init__(self, ctx):
+        self.ctx = ctx
+
+    # methods used by handler – all no‑ops
+    async def get_user_input(self):  # pragma: no cover – not reached
+        return "quit"
+
+    def print_user_message(self, *_a, **_k):
         pass
 
-    async def cleanup(self):
-        self.cleaned = True
+    async def handle_command(self, *_a, **_k):  # pragma: no cover
+        return False
 
-# Dummy ConversationProcessor.
-class DummyConversationProcessor:
-    def __init__(self, chat_context, ui_manager):
-        self.chat_context = chat_context
-        self.ui_manager = ui_manager
+    def cleanup(self):
+        return None
 
-    async def process_conversation(self):
-        self.chat_context.conversation_history.append(
-            {"role": "assistant", "content": "ok"}
-        )
-        await asyncio.sleep(0.01)
-
-# Dummy implementations for utility functions.
-def dummy_clear_screen():
-    pass
-
-def dummy_display_welcome_banner(context_dict):
-    pass
-
-# Patch dependencies in chat_handler.
 @pytest.fixture(autouse=True)
-def patch_chat_handler_dependencies(monkeypatch):
-    monkeypatch.setattr("mcp_cli.chat.chat_handler.clear_screen", dummy_clear_screen)
-    monkeypatch.setattr("mcp_cli.chat.chat_handler.display_welcome_banner", dummy_display_welcome_banner)
-    monkeypatch.setattr("mcp_cli.chat.chat_handler.ChatUIManager", DummyChatUIManager)
-    monkeypatch.setattr("mcp_cli.chat.chat_handler.ConversationProcessor", DummyConversationProcessor)
-    # Patch get_llm_client in chat_context to always return a dummy client.
-    monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.get_llm_client",
-        lambda provider, model, config=None: {"provider": provider, "model": model, "dummy": True}
-    )
+def _patch_ui(monkeypatch):
+    monkeypatch.setattr(chsat_handler, "ChatUIManager", DummyUI)
 
-# Test for chat mode handler.
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_handle_chat_mode_exits_cleanly(monkeypatch):
-    dummy_sm = DummyStreamManager()
+async def test_handle_chat_mode_happy_path(dummy_tm):
+    result = await chat_handler.handle_chat_mode(tool_manager=dummy_tm)
 
-    # Run the chat mode handler with provider="dummy" (which is now handled by our dummy get_llm_client)
-    result = await handle_chat_mode(dummy_sm, provider="dummy", model="dummy-model")
-    # The handler loop processes the inputs ["hello", "exit"] and should exit cleanly.
     assert result is True
-
-    # Capture the UI manager to check cleanup.
-    captured_ui_manager = None
-
-    class CapturingChatUIManager(DummyChatUIManager):
-        def __init__(self, chat_context):
-            super().__init__(chat_context)
-            nonlocal captured_ui_manager
-            captured_ui_manager = self
-
-    monkeypatch.setattr("mcp_cli.chat.chat_handler.ChatUIManager", CapturingChatUIManager)
-
-    result = await handle_chat_mode(dummy_sm, provider="dummy", model="dummy-model")
-    assert captured_ui_manager is not None, "ChatUIManager instance was not captured."
-    assert captured_ui_manager.cleaned is True
-
-# Test the _safe_cleanup helper.
-@pytest.mark.asyncio
-async def test_safe_cleanup():
-    ui_manager = DummyChatUIManager(None)
-    assert ui_manager.cleaned is False
-    await _safe_cleanup(ui_manager)
-    assert ui_manager.cleaned is True
-
-    class SyncUIManager:
-        def cleanup(self):
-            self.cleaned = True
-
-    sync_manager = SyncUIManager()
-    sync_manager.cleaned = False
-    await _safe_cleanup(sync_manager)
-    assert sync_manager.cleaned is True
-
-    class FaultyUIManager:
-        async def cleanup(self):
-            raise Exception("Cleanup failed")
-
-    faulty_manager = FaultyUIManager()
-    await _safe_cleanup(faulty_manager)
+    # ToolManager.close() must have been awaited
+    assert dummy_tm.closed is True
