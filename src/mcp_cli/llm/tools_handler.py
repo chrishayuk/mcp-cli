@@ -17,34 +17,58 @@ def format_tool_response(response_content: Union[List[Dict[str, Any]], Any]) -> 
     Preserves structured data in a readable format, ensuring that all data is
     available for the model in future conversation turns.
     """
-    # Handle list of dictionaries (likely structured data like SQL results)
-    if isinstance(response_content, list) and response_content and isinstance(response_content[0], dict):
-        # Check if this looks like text records with type field
-        if all(item.get("type") == "text" for item in response_content if "type" in item):
-            # Text records - extract just the text
-            return "\n".join(
-                item.get("text", "No content")
-                for item in response_content
-                if item.get("type") == "text"
-            )
-        else:
-            # This could be data records (like SQL results)
-            # Return a JSON representation that preserves all data
-            try:
-                return json.dumps(response_content, indent=2)
-            except:
-                # Fallback if JSON serialization fails
-                return str(response_content)
-    elif isinstance(response_content, dict):
-        # Single dictionary - return as JSON
+    # Handle string input (could be JSON)
+def format_tool_response(response_content: Union[List[Dict[str, Any]], Any]) -> str:
+    """Format the response content from a tool."""
+    # Handle dictionary with 'result' and 'content'
+    if isinstance(response_content, dict) and 'result' in response_content:
+        result = response_content['result']
+        if isinstance(result, dict) and 'content' in result:
+            content = result['content']
+            if isinstance(content, list) and content and isinstance(content[0], dict):
+                # Handle each content item
+                formatted_contents = []
+                for item in content:
+                    if 'text' in item:
+                        try:
+                            # Try to parse text as JSON
+                            parsed_text = json.loads(item['text'])
+                            if isinstance(parsed_text, (dict, list)):
+                                formatted_contents.append(json.dumps(parsed_text, indent=2, ensure_ascii=False))
+                            else:
+                                formatted_contents.append(str(parsed_text))
+                        except (json.JSONDecodeError, TypeError):
+                            formatted_contents.append(item['text'])
+                    elif 'type' in item and item.get('type') == 'text' and 'text' in item:
+                        formatted_contents.append(item['text'])
+                return '\n'.join(formatted_contents) if formatted_contents else 'No content'
+    
+    # Handle string input (could be JSON)
+    if isinstance(response_content, str):
         try:
-            return json.dumps(response_content, indent=2)
+            parsed = json.loads(response_content)
+            if isinstance(parsed, str):
+                return parsed
+            return format_tool_response(parsed)
+        except json.JSONDecodeError:
+            return response_content
+    
+    # Handle list of dictionaries
+    if isinstance(response_content, list) and response_content:
+        try:
+            return json.dumps(response_content, indent=2, ensure_ascii=False)
         except:
-            return str(response_content)
-    else:
-        # Default case - convert to string
-        return str(response_content)
-
+            pass
+    
+    # Handle dictionary
+    if isinstance(response_content, dict):
+        try:
+            return json.dumps(response_content, indent=2, ensure_ascii=False)
+        except:
+            pass
+    
+    # Default case
+    return str(response_content)
 
 async def handle_tool_call(
     tool_call: Union[Dict[str, Any], Any],
