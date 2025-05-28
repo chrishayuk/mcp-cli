@@ -148,7 +148,7 @@ def _convert_tools(tools: Optional[List[Dict[str, Any]]]) -> Tuple[List[gtypes.T
             schema = params if isinstance(params, gtypes.Schema) else gtypes.Schema(**params)
         except Exception as exc:
             log.error("Invalid schema for tool '%s' (%s) → using permissive schema", name, exc)
-            schema = gtypes.Schema(type="object")
+            schema = gtypes.Schema(type="object", additionalProperties=True)
 
         decl = gtypes.FunctionDeclaration(name=name, description=description, parameters=schema)
         fn_decls.append(decl)
