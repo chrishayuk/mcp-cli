@@ -1,6 +1,6 @@
 # mcp_cli/chat/chat_handler.py
 """
-Clean chat handler that uses ModelManager and ChatContext properly.
+Clean chat handler that uses ModelManager and ChatContext with streaming support.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ async def handle_chat_mode(
     api_key: str = None,
 ) -> bool:
     """
-    Launch the interactive chat loop.
+    Launch the interactive chat loop with streaming support.
 
     Args:
         tool_manager: Initialized ToolManager instance
@@ -75,8 +75,8 @@ async def handle_chat_mode(
         ui = ChatUIManager(ctx)
         convo = ConversationProcessor(ctx, ui)
 
-        # Main chat loop
-        await _run_chat_loop(ui, ctx, convo)
+        # Main chat loop with streaming support
+        await _run_enhanced_chat_loop(ui, ctx, convo)
         
         return True
 
@@ -144,8 +144,8 @@ async def handle_chat_mode_for_testing(
         ui = ChatUIManager(ctx)
         convo = ConversationProcessor(ctx, ui)
 
-        # Main chat loop
-        await _run_chat_loop(ui, ctx, convo)
+        # Main chat loop with streaming support
+        await _run_enhanced_chat_loop(ui, ctx, convo)
         
         return True
 
@@ -160,14 +160,14 @@ async def handle_chat_mode_for_testing(
         gc.collect()
 
 
-async def _run_chat_loop(ui: ChatUIManager, ctx: ChatContext, convo: ConversationProcessor) -> None:
+async def _run_enhanced_chat_loop(ui: ChatUIManager, ctx: ChatContext, convo: ConversationProcessor) -> None:
     """
-    Run the main chat loop.
+    Run the main chat loop with enhanced streaming support.
     
     Args:
-        ui: UI manager
+        ui: UI manager with streaming coordination
         ctx: Chat context  
-        convo: Conversation processor
+        convo: Conversation processor with streaming support
     """
     while True:
         try:
@@ -184,19 +184,42 @@ async def _run_chat_loop(ui: ChatUIManager, ctx: ChatContext, convo: Conversatio
 
             # Handle slash commands
             if user_msg.startswith("/"):
+                # Special handling for interrupt command during streaming
+                if user_msg.lower() in ("/interrupt", "/stop", "/cancel"):
+                    if ui.is_streaming_response:
+                        ui.interrupt_streaming()
+                        print("[yellow]Streaming response interrupted.[/yellow]")
+                        continue
+                    elif ui.tools_running:
+                        ui._interrupt_now()
+                        continue
+                    else:
+                        print("[yellow]Nothing to interrupt.[/yellow]")
+                        continue
+                
                 handled = await ui.handle_command(user_msg)
                 if ctx.exit_requested:
                     break
                 if handled:
                     continue
 
-            # Normal conversation turn
+            # Normal conversation turn with streaming support
             ui.print_user_message(user_msg)
             ctx.add_user_message(user_msg)
+            
+            # Use the enhanced conversation processor that handles streaming
             await convo.process_conversation()
 
         except KeyboardInterrupt:
-            print("\n[yellow]Interrupted – type 'exit' to quit.[/yellow]")
+            # Handle Ctrl+C gracefully
+            if ui.is_streaming_response:
+                print("\n[yellow]Streaming interrupted – type 'exit' to quit.[/yellow]")
+                ui.interrupt_streaming()
+            elif ui.tools_running:
+                print("\n[yellow]Tool execution interrupted – type 'exit' to quit.[/yellow]")
+                ui._interrupt_now()
+            else:
+                print("\n[yellow]Interrupted – type 'exit' to quit.[/yellow]")
         except EOFError:
             print(Panel("EOF detected – exiting chat.", style="bold red"))
             break
@@ -208,18 +231,54 @@ async def _run_chat_loop(ui: ChatUIManager, ctx: ChatContext, convo: Conversatio
 
 async def _safe_cleanup(ui: ChatUIManager) -> None:
     """
-    Safely cleanup UI manager.
+    Safely cleanup UI manager with enhanced error handling.
 
     Args:
         ui: UI manager to cleanup
     """
     try:
+        # Stop any streaming responses
+        if ui.is_streaming_response:
+            ui.interrupt_streaming()
+            ui.stop_streaming_response()
+            
+        # Stop any tool execution
+        if ui.tools_running:
+            ui.stop_tool_calls()
+            
+        # Standard cleanup
         cleanup_result = ui.cleanup()
         if asyncio.iscoroutine(cleanup_result):
             await cleanup_result
     except Exception as exc:
         logger.warning(f"Cleanup failed: {exc}")
         print(f"[yellow]Cleanup failed:[/yellow] {exc}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════
+# Enhanced interrupt command for chat mode
+# ═══════════════════════════════════════════════════════════════════════════════════
+
+async def handle_interrupt_command(ui: ChatUIManager) -> bool:
+    """
+    Handle the /interrupt command with streaming awareness.
+    
+    Args:
+        ui: UI manager instance
+        
+    Returns:
+        True if command was handled
+    """
+    if ui.is_streaming_response:
+        ui.interrupt_streaming()
+        print("[yellow]Streaming response interrupted.[/yellow]")
+    elif ui.tools_running:
+        ui._interrupt_now()
+        print("[yellow]Tool execution interrupted.[/yellow]")
+    else:
+        print("[yellow]Nothing currently running to interrupt.[/yellow]")
+    
+    return True
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════
@@ -268,7 +327,7 @@ async def handle_chat_mode_legacy(
 # ═══════════════════════════════════════════════════════════════════════════════════
 
 """
-# Production usage:
+# Production usage with streaming:
 success = await handle_chat_mode(
     tool_manager,
     provider="anthropic",
