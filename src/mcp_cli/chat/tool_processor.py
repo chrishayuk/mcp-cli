@@ -1,7 +1,7 @@
 # mcp_cli/chat/tool_processor.py
 """
 mcp_cli.chat.tool_processor - concurrent implementation with a
-centralised ToolManager
+centralised ToolManager with streaming fixes
 ================================================================
 
 Executes multiple tool calls **concurrently** while keeping the original
@@ -128,21 +128,34 @@ class ToolProcessor:
                 try:
                     if hasattr(tool_call, "function"):
                         fn = tool_call.function
-                        tool_name = getattr(fn, "name", tool_name)
+                        tool_name = getattr(fn, "name", "unknown_tool")
                         raw_arguments = getattr(fn, "arguments", {})
                         call_id = getattr(tool_call, "id", call_id)
                     elif isinstance(tool_call, dict) and "function" in tool_call:
                         fn = tool_call["function"]
-                        tool_name = fn.get("name", tool_name)
+                        tool_name = fn.get("name", "unknown_tool")
                         raw_arguments = fn.get("arguments", {})
                         call_id = tool_call.get("id", call_id)
                     else:
                         # Handle unexpected tool_call format
+                        log.error(f"Unrecognized tool call format: {type(tool_call)}, raw: {tool_call}")
                         raise ValueError(f"Unrecognized tool call format: {type(tool_call)}")
+                        
+                    # Ensure tool_name is not None or empty
+                    if not tool_name or tool_name == "unknown_tool":
+                        log.error(f"Tool name is empty or unknown in tool call: {tool_call}")
+                        tool_name = f"unknown_tool_{idx}"
+                        
                 except Exception as e:
                     # Catch extraction errors separately to provide better diagnostics
-                    log.error(f"Error extracting tool details: {e}")
-                    raise ValueError(f"Could not extract tool details: {e}") from e
+                    log.error(f"Error extracting tool details from {tool_call}: {e}")
+                    tool_name = f"unknown_tool_{idx}"
+                    raw_arguments = {}
+
+                # Validate tool_name is a string and not None
+                if not isinstance(tool_name, str):
+                    log.error(f"Tool name is not a string: {tool_name} (type: {type(tool_name)})")
+                    tool_name = f"unknown_tool_{idx}"
 
                 # Get the original tool name from mapping if available
                 original_tool_name = name_mapping.get(tool_name, tool_name)
@@ -178,15 +191,20 @@ class ToolProcessor:
                 try:
                     if isinstance(raw_arguments, str):
                         try:
-                            arguments = json.loads(raw_arguments)
+                            # Handle empty string case
+                            if not raw_arguments.strip():
+                                arguments = {}
+                            else:
+                                arguments = json.loads(raw_arguments)
                         except json.JSONDecodeError as json_err:
                             log.warning(f"Invalid JSON in arguments: {json_err}")
-                            arguments = raw_arguments
+                            # If it's not valid JSON, try to use it as an empty dict
+                            arguments = {}
                     else:
-                        arguments = raw_arguments
+                        arguments = raw_arguments or {}
                 except Exception as arg_exc:
                     log.error(f"Error parsing arguments: {arg_exc}")
-                    arguments = raw_arguments  # Use raw as fallback
+                    arguments = {}  # Use empty dict as fallback
 
                 # ------ execute --------------------------------------
                 tool_result: Optional[ToolCallResult] = None
@@ -316,7 +334,7 @@ class ToolProcessor:
                     
                     # Ensure we use a sanitized tool name for the history
                     import re
-                    sanitized_name = tool_name  # Start with existing name
+                    sanitized_name = tool_name if isinstance(tool_name, str) else f"unknown_tool_{idx}"
                     if not re.match(r'^[a-zA-Z0-9_-]+$', sanitized_name):
                         sanitized_name = re.sub(r'[^a-zA-Z0-9_-]', '_', sanitized_name)
                     
@@ -333,7 +351,7 @@ class ToolProcessor:
                                         "name": sanitized_name,  # Use sanitized name
                                         "arguments": json.dumps(raw_arguments)
                                         if isinstance(raw_arguments, dict)
-                                        else str(raw_arguments),
+                                        else str(raw_arguments or {}),
                                     },
                                 }
                             ],

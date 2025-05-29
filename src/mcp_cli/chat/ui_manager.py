@@ -1,6 +1,6 @@
 # mcp_cli/chat/ui_manager.py
 """
-Chat-mode TUI manager for MCP-CLI (robust Ctrl-C version).
+Chat-mode TUI manager for MCP-CLI with streaming support.
 
 Key improvements
 ----------------
@@ -10,6 +10,7 @@ Key improvements
 3. stop_tool_calls() no longer resets `interrupt_requested`; we only
    flip it back to False after the batch is fully cleaned up, inside
    print_assistant_response().
+4. Added streaming response coordination.
 """
 from __future__ import annotations
 
@@ -39,7 +40,7 @@ from mcp_cli.chat.commands import handle_command
 log = logging.getLogger(__name__)
 
 class ChatUIManager:
-    """Interactive UI layer plus progress display for tool calls."""
+    """Interactive UI layer with progress display and streaming support."""
 
     # ───────────────────────────── construction ─────────────────────────────
     def __init__(self, context) -> None:
@@ -49,6 +50,10 @@ class ChatUIManager:
         self.verbose_mode = False
         self.tools_running = False
         self.interrupt_requested = False
+        
+        # Streaming response state
+        self.is_streaming_response = False
+        self.streaming_handler: Optional[Any] = None
 
         self.tool_calls: List[Dict[str, Any]] = []
         self.tool_times: List[float] = []
@@ -92,6 +97,29 @@ class ChatUIManager:
 
         self.last_input: str | None = None
 
+    # ───────────────────────────── Streaming coordination ──────────────────
+    def start_streaming_response(self):
+        """Signal that a streaming response is starting."""
+        self.is_streaming_response = True
+        log.debug("Started streaming response")
+        
+    def stop_streaming_response(self):
+        """Signal that streaming response is complete."""
+        if self.is_streaming_response:
+            self.is_streaming_response = False
+            log.debug("Stopped streaming response")
+    
+    def interrupt_streaming(self):
+        """Interrupt any active streaming response."""
+        if hasattr(self, 'streaming_handler') and self.streaming_handler:
+            if hasattr(self.streaming_handler, 'interrupt_streaming'):
+                self.streaming_handler.interrupt_streaming()
+                log.debug("Interrupted streaming response via streaming handler")
+            else:
+                log.debug("Streaming handler doesn't support interruption")
+        else:
+            log.debug("No streaming handler available for interruption")
+
     # ───────────────────────────── SIGINT logic ─────────────────────────────
     def _install_sigint_handler(self) -> None:
         """Install SIGINT handler with error protection."""
@@ -117,6 +145,12 @@ class ChatUIManager:
                         
                     self._last_interrupt_time = current_time
                     self._interrupt_count += 1
+                    
+                    # Handle streaming response interruption
+                    if self.is_streaming_response:
+                        print("\n[yellow]Interrupting streaming response...[/yellow]")
+                        self.interrupt_streaming()
+                        return
                     
                     # Swallow every SIGINT while a batch is active or cancelling
                     if self.tools_running or self.interrupt_requested:
@@ -285,6 +319,10 @@ class ChatUIManager:
     def print_tool_call(self, tool_name: str, raw_args):
         """Display a tool call in the UI, with improved error handling."""
         try:
+            # Don't show tool calls if we're streaming a response
+            if self.is_streaming_response:
+                return
+                
             # Start timing if this is the first tool call
             if not self.tool_start_time:
                 self.tool_start_time = time.time()
@@ -443,8 +481,13 @@ class ChatUIManager:
             print(f"[yellow]Error in compact display: {exc}[/yellow]")
 
     def print_assistant_response(self, content: str, elapsed: float):
-        """Display assistant response with robust error handling."""
+        """Display assistant response with robust error handling and streaming awareness."""
         try:
+            # If we just finished a streaming response, don't print again
+            if self.is_streaming_response:
+                self.stop_streaming_response()
+                return
+                
             # Clean up tool display if needed
             if not self.verbose_mode and self.live_display:
                 try:
