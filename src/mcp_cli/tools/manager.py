@@ -47,10 +47,20 @@ class ToolManager:
         config_file: str,
         servers: List[str],
         server_names: Optional[Dict[int, str]] = None,
+        tool_timeout: Optional[float] = None,  # Make this optional for smart defaults
+        max_concurrency: int = 4,
     ):
         self.config_file = config_file
         self.servers = servers
         self.server_names = server_names or {}
+        
+        # Smart timeout configuration with priority:
+        # 1. Explicit parameter
+        # 2. Environment variable MCP_TOOL_TIMEOUT
+        # 3. Environment variable CHUK_TOOL_TIMEOUT
+        # 4. Default (120 seconds)
+        self.tool_timeout = self._determine_timeout(tool_timeout)
+        self.max_concurrency = max_concurrency
 
         # CHUK components
         self.processor: Optional[ToolProcessor] = None
@@ -61,6 +71,30 @@ class ToolManager:
         self._executor: Optional[ToolExecutor] = None
         self._metadata_cache: Dict[Tuple[str, str], Any] = {}
 
+    def _determine_timeout(self, explicit_timeout: Optional[float]) -> float:
+        """
+        Determine timeout with smart defaults and environment variable support.
+        """
+        import os
+        
+        if explicit_timeout is not None:
+            logger.info(f"Using explicit timeout: {explicit_timeout}s")
+            return explicit_timeout
+        
+        # Check environment variables
+        env_timeout = os.getenv("MCP_TOOL_TIMEOUT") or os.getenv("CHUK_TOOL_TIMEOUT")
+        if env_timeout:
+            try:
+                timeout = float(env_timeout)
+                logger.info(f"Using environment timeout: {timeout}s")
+                return timeout
+            except ValueError:
+                logger.warning(f"Invalid timeout in environment: {env_timeout}")
+        
+        # Default
+        default_timeout = 120.0  # 2 minutes
+        logger.info(f"Using default timeout: {default_timeout}s")
+        return default_timeout
     async def initialize(self, namespace: str = "stdio") -> bool:
         """Connect to the MCP servers and populate the tool registry."""
         try:
@@ -78,19 +112,20 @@ class ToolManager:
             # Get the registry
             self._registry = await ToolRegistryProvider.get_registry()
             
-            # Initialize the executor for streaming execution
+            # Initialize the executor with configurable timeout
             strategy = InProcessStrategy(
                 self._registry,
-                max_concurrency=4,
-                default_timeout=30.0  # 30 second default timeout
+                max_concurrency=self.max_concurrency,
+                default_timeout=self.tool_timeout  # Use the configurable timeout
             )
             
             self._executor = ToolExecutor(
                 registry=self._registry,
-                strategy=strategy
+                strategy=strategy,
+                default_timeout=self.tool_timeout
             )
             
-            logger.info("ToolManager initialized successfully")
+            logger.info(f"ToolManager initialized successfully with {self.tool_timeout}s timeout")
             return True
         except Exception as exc:
             logger.error(f"Error initializing tool manager: {exc}")
@@ -108,6 +143,25 @@ class ToolManager:
                 await self._executor.shutdown()
         except Exception as exc:
             logger.warning(f"Error during ToolManager shutdown: {exc}")
+
+    # ------------------------------------------------------------------ #
+    # Configuration methods                                              #
+    # ------------------------------------------------------------------ #
+    def set_tool_timeout(self, timeout: float) -> None:
+        """
+        Update the tool execution timeout.
+        
+        Args:
+            timeout: New timeout value in seconds
+        """
+        self.tool_timeout = timeout
+        if self._executor and hasattr(self._executor.strategy, 'default_timeout'):
+            self._executor.strategy.default_timeout = timeout
+            logger.info(f"Updated tool timeout to {timeout}s")
+
+    def get_tool_timeout(self) -> float:
+        """Get the current tool timeout value."""
+        return self.tool_timeout
 
     # ------------------------------------------------------------------ #
     # Tool discovery methods                                             #
@@ -198,13 +252,14 @@ class ToolManager:
     # ------------------------------------------------------------------ #
     # Tool execution methods                                             #
     # ------------------------------------------------------------------ #
-    async def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> ToolCallResult:
+    async def execute_tool(self, tool_name: str, arguments: Dict[str, Any], timeout: Optional[float] = None) -> ToolCallResult:
         """
         Execute a tool and return the result.
 
         Args:
             tool_name: Name of the tool to execute
             arguments: Arguments to pass to the tool
+            timeout: Optional timeout override for this specific call
 
         Returns:
             ToolCallResult with success status and result/error
@@ -219,11 +274,12 @@ class ToolManager:
             base_name = tool_name
             namespace = await self.get_server_for_tool(tool_name)
         
-        # Create a CHUK ToolCall
+        # Create a CHUK ToolCall with optional timeout override
         call = ToolCall(
             tool=base_name,
             namespace=namespace,
-            arguments=arguments
+            arguments=arguments,
+            timeout=timeout or self.tool_timeout  # Use override or default
         )
         
         try:
@@ -249,13 +305,14 @@ class ToolManager:
             logger.error(f"Error executing tool {original_name}: {exc}")
             return ToolCallResult(original_name, False, error=str(exc))
 
-    async def stream_execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> AsyncIterator[ToolResult]:
+    async def stream_execute_tool(self, tool_name: str, arguments: Dict[str, Any], timeout: Optional[float] = None) -> AsyncIterator[ToolResult]:
         """
         Execute a tool with streaming support.
         
         Args:
             tool_name: Name of the tool to execute
             arguments: Arguments to pass to the tool
+            timeout: Optional timeout override for this specific call
             
         Returns:
             Async iterator of ToolResult objects
@@ -269,11 +326,12 @@ class ToolManager:
             base_name = tool_name
             namespace = await self.get_server_for_tool(tool_name)
         
-        # Create a CHUK ToolCall
+        # Create a CHUK ToolCall with optional timeout override
         call = ToolCall(
             tool=base_name,
             namespace=namespace,
-            arguments=arguments
+            arguments=arguments,
+            timeout=timeout or self.tool_timeout  # Use override or default
         )
         
         # Stream execution results

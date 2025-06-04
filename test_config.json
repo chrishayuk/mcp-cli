@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "sqlite": {
+      "command": "mcp-server-sqlite",
+      "args": [
+        "--db-path",
+        "./test.db"
+      ]
+    }
+  },
+  "toolSettings": {
+    "defaultTimeout": 300.0,
+    "maxConcurrency": 4
+  }
+}

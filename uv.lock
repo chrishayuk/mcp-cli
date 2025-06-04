@@ -129,7 +129,7 @@ wheels = [
 
 [[package]]
 name = "chuk-llm"
-version = "0.1.5"
+version = "0.1.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anthropic" },
@@ -146,9 +146,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "tiktoken" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a0/36/da84883ed338eae2283ed1fb966e3e028cc9b32e0952b5dc154af585a766/chuk_llm-0.1.5.tar.gz", hash = "sha256:f6b5c837924ed4bce0c8174e0a441d7119c8d9d69bdd5e57d1d5f62beca42fa6", size = 57547 }
+sdist = { url = "https://files.pythonhosted.org/packages/e0/d3/e03fc70c2c09c643f90b3a2f8053d5c089459f54e560fc301245308da1b6/chuk_llm-0.1.8.tar.gz", hash = "sha256:ae52a1781bc7ce5b6e908ae0cf2a01aea3566e0c95b11db27fe0f989761fc1ad", size = 59734 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1d/70/fd2c41cbb926c49744ff8a9b8a52b2015fb07f71ea86688d6470aa4e65a4/chuk_llm-0.1.5-py3-none-any.whl", hash = "sha256:2442b0c13fd8592517ed98efb56591c90cc93597fe66426aec4490ffce7c25c0", size = 68276 },
+    { url = "https://files.pythonhosted.org/packages/e6/a8/5d3e1021daab306887e372612aace0f0b68336f21b6942c0ea9192756d33/chuk_llm-0.1.8-py3-none-any.whl", hash = "sha256:3ab8426a8dedb1a17ea1cd1a058fad91b1fbd34e0eb8005d519c9724b3ed909f", size = 69258 },
 ]
 
 [[package]]
@@ -167,7 +167,7 @@ wheels = [
 
 [[package]]
 name = "chuk-tool-processor"
-version = "0.1.7"
+version = "0.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "chuk-mcp" },
@@ -176,20 +176,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "uuid" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/71/fe/5b433d29d66eee42ef45f598adafde1ea45a726f8c6cd4efd655b7ad3f91/chuk_tool_processor-0.4.tar.gz", hash = "sha256:5b07e6126ee9b20dbe5772cfe5985855fbcf6abb95725635d2003085d7398964", size = 78741 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d0/88/062ce8e1af577ac5ade19c957fbcce8bf01da6ffdd1f5206ea4b3fdc3571/chuk_tool_processor-0.1.7-py3-none-any.whl", hash = "sha256:09b3c0a7a6c3bc73da4eaa7cc6fed8d3d766ada12a3cc85c6eab63301577e130", size = 88105 },
-]
-
-[[package]]
-name = "chuk-virtual-fs"
-version = "0.1.6"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pyyaml" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/77/94/fcdfceb8accc8d9201aa8dc782f61df005daceb4d99c7534ec27702ce978/chuk_virtual_fs-0.1.6.tar.gz", hash = "sha256:047e1642f96c866889324751d0c91b4fe509dae924f392ca880bdec12ebdffd0", size = 34819 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f7/c6/d7360859d8ad5e40c1fd51b7c6c54b1cd46cd63eeaf540fb76e660e81b65/chuk_virtual_fs-0.1.6-py3-none-any.whl", hash = "sha256:087447e95a137867bac9cf5bd5fb939a1e010d18ebd88c92b3f63c629d1b6ce9", size = 44430 },
+    { url = "https://files.pythonhosted.org/packages/1d/2f/ea23b36b7bb5bf20047600d48ab8887c6eb256539649268d25af9099f425/chuk_tool_processor-0.4-py3-none-any.whl", hash = "sha256:3a6a4fb203510855d49a499dbd25227c6e51c84cd415c716f7b0539db13d1d26", size = 97631 },
 ]
 
 [[package]]
@@ -487,7 +476,6 @@ dependencies = [
     { name = "chuk-llm" },
     { name = "chuk-mcp" },
     { name = "chuk-tool-processor" },
-    { name = "chuk-virtual-fs" },
     { name = "google-genai" },
     { name = "groq" },
     { name = "ollama" },
@@ -517,10 +505,9 @@ requires-dist = [
     { name = "anthropic", specifier = ">=0.51.0" },
     { name = "asyncio", specifier = ">=3.4.3" },
     { name = "asyncio", marker = "extra == 'dev'", specifier = ">=3.4.3" },
-    { name = "chuk-llm", specifier = ">=0.1.5" },
+    { name = "chuk-llm", specifier = ">=0.1.8" },
     { name = "chuk-mcp", specifier = ">=0.1.7" },
-    { name = "chuk-tool-processor", specifier = ">=0.1.7" },
-    { name = "chuk-virtual-fs", specifier = ">=0.1.6" },
+    { name = "chuk-tool-processor", specifier = ">=0.4" },
     { name = "google-genai", specifier = ">=1.15.0" },
     { name = "groq", specifier = ">=0.24.0" },
     { name = "numpy", marker = "extra == 'dev'", specifier = ">=2.2.3" },
