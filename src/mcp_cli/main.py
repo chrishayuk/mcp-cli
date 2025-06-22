@@ -60,12 +60,42 @@ def main_callback(
     if ctx.invoked_subcommand is not None:
         return
     
+    # IMPROVED: Better handling of --provider flag for common mistakes
+    provider_commands = ["list", "config", "diagnostic", "set"]
+    if provider and provider in provider_commands:
+        logger.debug(f"Detected provider command in --provider flag: {provider}")
+        print(f"[yellow]Tip:[/yellow] Use 'mcp-cli provider {provider}' or 'mcp-cli providers {provider}' instead")
+        print(f"[yellow]Running:[/yellow] provider {provider}")
+        
+        # Execute the provider command
+        from mcp_cli.commands.provider import provider_action_async
+        from mcp_cli.model_manager import ModelManager
+        
+        context = {"model_manager": ModelManager()}
+        
+        try:
+            asyncio.run(provider_action_async([provider], context=context))
+        except Exception as e:
+            print(f"[red]Error:[/red] {e}")
+        finally:
+            restore_terminal()
+        raise typer.Exit()
+    
     # No subcommand - start chat mode (default behavior)
     logger.debug("Starting default chat mode")
     
     # Use ModelManager to get active provider/model if not specified
     from mcp_cli.model_manager import ModelManager
     model_manager = ModelManager()
+    
+    # Validate provider if specified
+    if provider:
+        if not model_manager.validate_provider(provider):
+            available = ", ".join(model_manager.list_providers())
+            print(f"[red]Error:[/red] Unknown provider: {provider}")
+            print(f"[yellow]Available providers:[/yellow] {available}")
+            print(f"[yellow]Did you mean to run:[/yellow] mcp-cli provider {provider}")
+            raise typer.Exit(1)
     
     # Smart provider/model resolution:
     # 1. If both specified: use both
@@ -232,16 +262,30 @@ for command_name in core_commands:
 # Direct registration of tool-related commands
 direct_registered = []
 
-# Provider command - create a direct command
+# Shared provider command function
+def _run_provider_command(args, log_prefix="Provider command"):
+    """Shared function to run provider commands."""
+    from mcp_cli.commands.provider import provider_action_async
+    from mcp_cli.model_manager import ModelManager
+    
+    context = {"model_manager": ModelManager()}
+    
+    try:
+        asyncio.run(provider_action_async(args, context=context))
+    except Exception as e:
+        print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+# Provider command - FIXED to handle arguments properly
 @app.command("provider", help="Manage LLM providers")
 def provider_command(
-    subcommand: str = typer.Argument("show", help="Subcommand: show, list, config, diagnostic, set"),
-    provider_name: str = typer.Argument(None, help="Provider name (for set or switch commands)"),
-    key: str = typer.Argument(None, help="Config key (for set command)"),
-    value: str = typer.Argument(None, help="Config value (for set command)"),
-    model: str = typer.Option(None, "--model", help="Model name (for switch commands)"),
+    subcommand: Optional[str] = typer.Argument(None, help="Subcommand: list, config, diagnostic, set, or provider name"),
+    provider_name: Optional[str] = typer.Argument(None, help="Provider name (for set or switch commands)"),
+    key: Optional[str] = typer.Argument(None, help="Config key (for set command)"),
+    value: Optional[str] = typer.Argument(None, help="Config value (for set command)"),
+    model: Optional[str] = typer.Option(None, "--model", help="Model name (for switch commands)"),
     config_file: str = typer.Option("server_config.json", help="Configuration file path"),
-    server: str = typer.Option(None, help="Server to connect to"),
+    server: Optional[str] = typer.Option(None, help="Server to connect to"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Enable verbose logging"),
@@ -251,31 +295,90 @@ def provider_command(
     # Set up logging
     setup_logging(level=log_level, quiet=quiet, verbose=verbose)
     
-    # Import the provider action
-    from mcp_cli.commands.provider import provider_action_async
-    from mcp_cli.model_manager import ModelManager
+    # Build arguments list for the provider action
+    args = []
+    
+    # Handle different command patterns
+    if subcommand is None:
+        # No arguments - show status
+        args = []
+    elif subcommand in ["list", "config", "diagnostic"]:
+        # Command without provider name
+        args = [subcommand]
+        if provider_name and subcommand == "diagnostic":
+            # diagnostic can take a provider name
+            args.append(provider_name)
+    elif subcommand == "set":
+        # set command: set <provider> <key> <value>
+        if not provider_name or not key or not value:
+            print("[red]Error:[/red] set command requires: provider set <provider> <key> <value>")
+            raise typer.Exit(1)
+        args = [subcommand, provider_name, key, value]
+    else:
+        # Assume subcommand is a provider name for switching
+        args = [subcommand]  # provider name
+        if provider_name:
+            # Second argument is model name
+            args.append(provider_name)
+        elif model:
+            # Model specified via --model option
+            args.append(model)
+    
+    _run_provider_command(args)
+
+direct_registered.append("provider")
+
+# ADD: providers command as alias to provider (for consistency)
+@app.command("providers", help="List LLM providers (defaults to list)")
+def providers_command(
+    subcommand: Optional[str] = typer.Argument(None, help="Subcommand: list, config, diagnostic, set, or provider name"),
+    provider_name: Optional[str] = typer.Argument(None, help="Provider name (for set or switch commands)"),
+    key: Optional[str] = typer.Argument(None, help="Config key (for set command)"),
+    value: Optional[str] = typer.Argument(None, help="Config value (for set command)"),
+    model: Optional[str] = typer.Option(None, "--model", help="Model name (for switch commands)"),
+    config_file: str = typer.Option("server_config.json", help="Configuration file path"),
+    server: Optional[str] = typer.Option(None, help="Server to connect to"),
+    disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
+    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
+    verbose: bool = typer.Option(False, "-v", "--verbose", help="Enable verbose logging"),
+    log_level: str = typer.Option("WARNING", "--log-level", help="Set log level"),
+) -> None:
+    """List LLM providers (plural form defaults to 'list' command)."""
+    # Set up logging
+    setup_logging(level=log_level, quiet=quiet, verbose=verbose)
     
     # Build arguments list for the provider action
     args = []
-    if subcommand and subcommand != "show":
-        args.append(subcommand)
-        if provider_name:
+    
+    # Handle different command patterns
+    if subcommand is None:
+        # CHANGED: No arguments for "providers" defaults to list (not status)
+        args = ["list"]
+    elif subcommand in ["list", "config", "diagnostic"]:
+        # Command without provider name
+        args = [subcommand]
+        if provider_name and subcommand == "diagnostic":
+            # diagnostic can take a provider name
             args.append(provider_name)
-            if key and value:  # For set command
-                args.extend([key, value])
-            elif model:  # For switch with model
-                args.append(model)
+    elif subcommand == "set":
+        # set command: set <provider> <key> <value>
+        if not provider_name or not key or not value:
+            print("[red]Error:[/red] set command requires: providers set <provider> <key> <value>")
+            raise typer.Exit(1)
+        args = [subcommand, provider_name, key, value]
+    else:
+        # Assume subcommand is a provider name for switching
+        args = [subcommand]  # provider name
+        if provider_name:
+            # Second argument is model name
+            args.append(provider_name)
+        elif model:
+            # Model specified via --model option
+            args.append(model)
     
-    # Create context
-    context = {
-        "model_manager": ModelManager(),
-    }
-    
-    # Run the provider action directly
-    import asyncio
-    asyncio.run(provider_action_async(args, context=context))
+    _run_provider_command(args, "Providers command")
 
-direct_registered.append("provider")
+direct_registered.append("providers")
 
 # Tools command - create a direct command that wraps the tools functionality
 @app.command("tools", help="List available tools")
@@ -283,9 +386,9 @@ def tools_command(
     all: bool = typer.Option(False, "--all", help="Show detailed tool information"),
     raw: bool = typer.Option(False, "--raw", help="Show raw JSON definitions"),
     config_file: str = typer.Option("server_config.json", help="Configuration file path"),
-    server: str = typer.Option(None, help="Server to connect to"),
+    server: Optional[str] = typer.Option(None, help="Server to connect to"),
     provider: str = typer.Option("openai", help="LLM provider name"),
-    model: str = typer.Option(None, help="Model name"),
+    model: Optional[str] = typer.Option(None, help="Model name"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Enable verbose logging"),
@@ -324,9 +427,9 @@ direct_registered.append("tools")
 @app.command("servers", help="List connected MCP servers")
 def servers_command(
     config_file: str = typer.Option("server_config.json", help="Configuration file path"),
-    server: str = typer.Option(None, help="Server to connect to"),
+    server: Optional[str] = typer.Option(None, help="Server to connect to"),
     provider: str = typer.Option("openai", help="LLM provider name"),
-    model: str = typer.Option(None, help="Model name"),
+    model: Optional[str] = typer.Option(None, help="Model name"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Enable verbose logging"),
@@ -357,9 +460,9 @@ direct_registered.append("servers")
 @app.command("resources", help="List available resources")
 def resources_command(
     config_file: str = typer.Option("server_config.json", help="Configuration file path"),
-    server: str = typer.Option(None, help="Server to connect to"),
+    server: Optional[str] = typer.Option(None, help="Server to connect to"),
     provider: str = typer.Option("openai", help="LLM provider name"),
-    model: str = typer.Option(None, help="Model name"),
+    model: Optional[str] = typer.Option(None, help="Model name"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Enable verbose logging"),
@@ -390,9 +493,9 @@ direct_registered.append("resources")
 @app.command("prompts", help="List available prompts")
 def prompts_command(
     config_file: str = typer.Option("server_config.json", help="Configuration file path"),
-    server: str = typer.Option(None, help="Server to connect to"),
+    server: Optional[str] = typer.Option(None, help="Server to connect to"),
     provider: str = typer.Option("openai", help="LLM provider name"),
-    model: str = typer.Option(None, help="Model name"),
+    model: Optional[str] = typer.Option(None, help="Model name"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Enable verbose logging"),
@@ -422,7 +525,7 @@ direct_registered.append("prompts")
 # Models command - show available models for current or specified provider
 @app.command("models", help="List available models for a provider")
 def models_command(
-    provider_name: str = typer.Argument(None, help="Provider name (defaults to current)"),
+    provider_name: Optional[str] = typer.Argument(None, help="Provider name (defaults to current)"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Enable verbose logging"),
     log_level: str = typer.Option("WARNING", "--log-level", help="Set log level"),
@@ -448,9 +551,10 @@ def models_command(
         console.print(f"[yellow]Available providers:[/yellow] {', '.join(model_manager.list_providers())}")
         return
     
-    # Get provider configuration
-    provider_config = model_manager.get_provider_config(target_provider)
-    default_model = provider_config.get("default_model", "Not specified")
+    # Get provider info
+    provider_info = model_manager.get_provider_info(target_provider)
+    default_model = provider_info.get("default_model", "Not specified")
+    available_models = model_manager.get_available_models(target_provider)
     
     # Create table
     is_current_provider = target_provider == current_provider
@@ -459,29 +563,38 @@ def models_command(
         title += " (Current Provider)"
         
     table = Table(title=title)
-    table.add_column("Type", style="cyan")
     table.add_column("Model", style="green")
     table.add_column("Status", style="yellow")
     
     # Add default model
-    default_status = "Available"
+    default_status = "Default"
     if is_current_provider and default_model == current_model:
         default_status = "Current & Default"
-    elif is_current_provider:
+    elif is_current_provider and current_model in available_models:
         default_status = "Default"
         
-    table.add_row("Default", default_model, default_status)
+    if default_model and default_model != "Not specified":
+        table.add_row(default_model, default_status)
     
     # Add current model if different from default and this is current provider
-    if is_current_provider and current_model != default_model:
-        table.add_row("Active", current_model, "Current")
+    if is_current_provider and current_model != default_model and current_model:
+        table.add_row(current_model, "Current")
+    
+    # Add other available models (first 10)
+    other_models = [m for m in available_models[:10] if m not in [default_model, current_model]]
+    for model in other_models:
+        table.add_row(model, "Available")
+    
+    if len(available_models) > 10:
+        table.add_row(f"... and {len(available_models) - 10} more", "Available")
     
     console.print(table)
     
     # Show additional info
     console.print(f"\n[dim]Provider:[/dim] {target_provider}")
-    console.print(f"[dim]API Base:[/dim] {provider_config.get('api_base', 'Default')}")
-    if provider_config.get('api_key'):
+    console.print(f"[dim]Total models:[/dim] {len(available_models)}")
+    console.print(f"[dim]API Base:[/dim] {provider_info.get('api_base') or 'Default'}")
+    if provider_info.get('has_api_key'):
         console.print(f"[dim]API Key:[/dim] ********")
     else:
         console.print(f"[dim]API Key:[/dim] [red]Not configured[/red]")

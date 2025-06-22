@@ -1,333 +1,378 @@
 # mcp_cli/model_manager.py
 """
-Complete model management system for MCP-CLI.
-
-Handles all model-related operations including LLM client creation.
+Clean ModelManager that fully delegates to chuk-llm 0.7's unified configuration.
 """
-
 from __future__ import annotations
 
-import json
-import os
-from pathlib import Path
+import logging
 from typing import Any, Dict, Optional, List
+from pathlib import Path
 
-# Direct import from chuk-llm (no wrapper needed)
-from chuk_llm.llm.llm_client import get_llm_client as _chuk_get_llm_client
-from chuk_llm.llm.configuration.provider_config import DEFAULTS as CHUK_DEFAULTS
+from chuk_llm.llm.client import get_client, list_available_providers, get_provider_info, validate_provider_setup
+from chuk_llm.configuration.unified_config import get_config
 
-DEFAULTS: Dict[str, Dict[str, Any]] = CHUK_DEFAULTS
-CFG_PATH = Path(os.path.expanduser("~/.mcp-cli/models.json"))
+logger = logging.getLogger(__name__)
 
 
 class ModelManager:
     """
-    Complete model management system for MCP-CLI.
-
-    Handles:
-    - Provider/model configuration and persistence
-    - Active model selection and switching  
-    - LLM client creation and management
-    - API configuration (keys, base URLs)
-    - Model validation and testing
+    Clean ModelManager that delegates everything to chuk-llm's unified configuration.
+    
+    Responsibilities:
+    - Provide MCP CLI interface to chuk-llm configuration
+    - Handle user preference persistence (active provider/model only)
+    - Bridge between MCP CLI and chuk-llm APIs
     """
 
-    def __init__(self, config_path: str | None = None) -> None:
-        self._path = Path(os.path.expanduser(config_path)) if config_path else CFG_PATH
-        self.providers: Dict[str, Dict[str, Any]] = self._load_and_sync()
-        self._cached_client: Optional[Any] = None
-        self._cached_provider: Optional[str] = None
-        self._cached_model: Optional[str] = None
+    def __init__(self):
+        # Get chuk-llm's configuration manager
+        self.chuk_config = get_config()
+        
+        # Simple user preferences file for active selections
+        self.user_prefs_file = Path.home() / ".mcp-cli" / "preferences.yaml"
+        self._user_prefs = self._load_user_preferences()
+        
+        logger.debug("ModelManager initialized with chuk-llm unified configuration")
 
-    # ── Core configuration management ─────────────────────────────────────
-    def _load_and_sync(self) -> Dict[str, Dict[str, Any]]:
-        """Load and sync configuration with defaults."""
-        on_disk: Dict[str, Dict[str, Any]] = {}
-        if self._path.is_file():
+    def _load_user_preferences(self) -> Dict[str, str]:
+        """Load simple user preferences (just active provider/model)."""
+        import yaml
+        
+        if self.user_prefs_file.exists():
             try:
-                on_disk = json.loads(self._path.read_text())
-            except json.JSONDecodeError:
-                pass
-
-        # Deep-copy defaults then overlay user config
-        merged: Dict[str, Dict[str, Any]] = json.loads(json.dumps(DEFAULTS))
-        for prov, cfg in on_disk.items():
-            merged.setdefault(prov, {}).update(cfg)
-
-        # Prune legacy keys
-        for prov_cfg in merged.values():
-            prov_cfg.pop("client", None)
-
-        # Write back if changed
-        if merged != on_disk:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            self._path.write_text(json.dumps(merged, indent=2))
-
-        return merged
-
-    def _save(self) -> None:
-        """Save configuration to disk."""
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(json.dumps(self.providers, indent=2))
-
-    def _ensure_section(self, name: str) -> None:
-        """Ensure provider section exists."""
-        if name not in self.providers:
-            self.providers[name] = {}
-
-    def _merge_env_key(self, cfg: Dict[str, Any]) -> None:
-        """Merge environment variable API keys."""
-        if not cfg.get("api_key") and (env := cfg.get("api_key_env")):
-            cfg["api_key"] = os.getenv(env)
-
-    def _invalidate_client_cache(self) -> None:
-        """Invalidate cached client when model changes."""
-        self._cached_client = None
-        self._cached_provider = None
-        self._cached_model = None
-
-    # ── Provider configuration ────────────────────────────────────────────
-    def get_provider_config(self, provider: str) -> Dict[str, Any]:
-        """Get complete configuration for a provider."""
-        if provider not in DEFAULTS and provider not in self.providers:
-            raise ValueError(f"Unknown provider: {provider}")
-        self._ensure_section(provider)
-        cfg = {**DEFAULTS.get(provider, {}), **self.providers[provider]}
-        self._merge_env_key(cfg)
-        return cfg
-
-    def set_provider_config(self, provider: str, updates: Dict[str, Any]) -> None:
-        """Update configuration for a provider."""
-        self._ensure_section(provider)
-        self.providers[provider].update(updates)
-        self._invalidate_client_cache()
-        self._save()
-
-    def configure_provider(
-        self, 
-        provider: str, 
-        api_key: Optional[str] = None, 
-        api_base: Optional[str] = None,
-        **kwargs
-    ) -> None:
-        """
-        Configure a provider with API settings.
+                with open(self.user_prefs_file, 'r') as f:
+                    prefs = yaml.safe_load(f) or {}
+                    return {
+                        "active_provider": prefs.get("active_provider", "openai"),
+                        "active_model": prefs.get("active_model", "gpt-4o-mini")
+                    }
+            except Exception as e:
+                logger.warning(f"Failed to load user preferences: {e}")
         
-        Args:
-            provider: Provider name
-            api_key: API key
-            api_base: API base URL  
-            **kwargs: Additional provider-specific settings
-        """
-        config_updates = {}
+        # Default preferences
+        return {
+            "active_provider": "openai",
+            "active_model": "gpt-4o-mini"
+        }
+
+    def _save_user_preferences(self):
+        """Save user preferences."""
+        import yaml
         
-        if api_key is not None:
-            config_updates["api_key"] = api_key
-        if api_base is not None:
-            config_updates["api_base"] = api_base
-            
-        config_updates.update(kwargs)
-        
-        if config_updates:
-            self.set_provider_config(provider, config_updates)
+        self.user_prefs_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.user_prefs_file, 'w') as f:
+            yaml.dump(self._user_prefs, f, indent=2)
 
-    def list_providers(self) -> List[str]:
-        """Get list of available providers."""
-        providers = set(DEFAULTS.keys())
-        providers.update(self.providers.keys())
-        providers.discard("__global__")
-        return sorted(providers)
-
-    # ── Active model management ───────────────────────────────────────────
-    @property
-    def _global_config(self) -> Dict[str, Any]:
-        """Get global configuration section."""
-        self._ensure_section("__global__")
-        return self.providers["__global__"]
-
+    # ── Active model management ─────────────────────────────────────────
     def get_active_provider(self) -> str:
         """Get currently active provider."""
-        return self._global_config.get("active_provider", DEFAULTS["__global__"]["active_provider"])
+        return self._user_prefs["active_provider"]
 
     def get_active_model(self) -> str:
         """Get currently active model."""
-        return self._global_config.get("active_model", DEFAULTS["__global__"]["active_model"])
+        return self._user_prefs["active_model"]
 
     def get_active_provider_and_model(self) -> tuple[str, str]:
         """Get both active provider and model."""
         return self.get_active_provider(), self.get_active_model()
 
     def set_active_provider(self, provider: str) -> None:
-        """Set active provider."""
-        if provider not in self.list_providers():
-            raise ValueError(f"Unknown provider: {provider}")
-        self._global_config["active_provider"] = provider
-        self._invalidate_client_cache()
-        self._save()
+        """Set active provider with validation."""
+        if not self.validate_provider(provider):
+            available = ", ".join(self.list_providers())
+            raise ValueError(f"Unknown provider: {provider}. Available: {available}")
+        
+        self._user_prefs["active_provider"] = provider
+        
+        # Set default model for this provider
+        info = self.get_provider_info(provider)
+        if info.get("default_model"):
+            self._user_prefs["active_model"] = info["default_model"]
+        
+        self._save_user_preferences()
+        logger.info(f"Switched to provider: {provider}")
 
     def set_active_model(self, model: str) -> None:
         """Set active model."""
-        self._global_config["active_model"] = model
-        self._invalidate_client_cache()
-        self._save()
+        self._user_prefs["active_model"] = model
+        self._save_user_preferences()
+        logger.info(f"Switched to model: {model}")
 
     def switch_model(self, provider: str, model: str) -> None:
-        """
-        Switch to specific provider and model.
-        
-        Args:
-            provider: Target provider
-            model: Target model
-        """
-        if provider not in self.list_providers():
-            raise ValueError(f"Unknown provider: {provider}")
-            
-        global_cfg = self._global_config
-        global_cfg["active_provider"] = provider
-        global_cfg["active_model"] = model
-        self._invalidate_client_cache()
-        self._save()
+        """Switch to specific provider and model."""
+        self.set_active_provider(provider)
+        self.set_active_model(model)
 
     def switch_provider(self, provider: str, model: Optional[str] = None) -> None:
-        """
-        Switch provider, optionally specifying model.
-        
-        Args:
-            provider: Target provider
-            model: Target model (uses provider default if None)
-        """
-        if model is None:
-            model = self.get_default_model(provider)
-        self.switch_model(provider, model)
+        """Switch provider, optionally specifying model."""
+        self.set_active_provider(provider)
+        if model:
+            self.set_active_model(model)
 
     def switch_to_model(self, model: str, provider: Optional[str] = None) -> None:
-        """
-        Switch to specific model, optionally changing provider.
-        
-        Args:
-            model: Target model
-            provider: Target provider (uses current if None)
-        """
-        if provider is None:
-            provider = self.get_active_provider()
-        self.switch_model(provider, model)
+        """Switch to specific model, optionally changing provider."""
+        if provider:
+            self.set_active_provider(provider)
+        self.set_active_model(model)
 
-    # ── Model information ─────────────────────────────────────────────────
+    # ── Delegate everything to chuk-llm ────────────────────────────────────
+    def list_providers(self) -> List[str]:
+        """Get list of available providers."""
+        try:
+            return self.chuk_config.get_all_providers()
+        except Exception as e:
+            logger.error(f"Failed to get providers: {e}")
+            return ["openai"]  # Fallback
+
+    def get_client(self, force_refresh: bool = False) -> Any:
+        """Get LLM client for current active provider/model."""
+        provider = self.get_active_provider()
+        model = self.get_active_model()
+        
+        try:
+            return get_client(provider=provider, model=model)
+        except Exception as e:
+            logger.error(f"Failed to create client for {provider}/{model}: {e}")
+            raise
+
+    def get_client_for_provider(self, provider: str, model: Optional[str] = None) -> Any:
+        """Get client for specific provider/model."""
+        return get_client(provider=provider, model=model)
+
+    def refresh_client(self) -> Any:
+        """Force refresh of current client."""
+        # chuk-llm handles caching internally, so just return a new client
+        return self.get_client()
+
+    def get_provider_info(self, provider: Optional[str] = None) -> Dict[str, Any]:
+        """Get comprehensive provider information."""
+        provider = provider or self.get_active_provider()
+        return get_provider_info(provider) or {}
+
+    def validate_provider_setup(self, provider: Optional[str] = None) -> Dict[str, Any]:
+        """Validate provider setup and configuration."""
+        provider = provider or self.get_active_provider()
+        return validate_provider_setup(provider)
+
+    def list_available_providers(self) -> Dict[str, Dict[str, Any]]:
+        """Get detailed info about all available providers."""
+        return list_available_providers()
+
+    # ── Provider configuration ────────────────────────────────────────────
+    def configure_provider(
+        self, 
+        provider: str, 
+        api_key: Optional[str] = None, 
+        api_base: Optional[str] = None,
+        default_model: Optional[str] = None,
+        **kwargs
+    ) -> None:
+        """
+        Configure provider by creating/updating user's chuk-llm YAML config.
+        
+        This creates a providers.yaml file in ~/.chuk_llm/ that extends
+        chuk-llm's built-in configuration.
+        """
+        import yaml
+        
+        # chuk-llm config directory
+        config_dir = Path.home() / ".chuk_llm"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        
+        # User's provider overrides file
+        user_config_file = config_dir / "providers.yaml"
+        
+        # Load existing user config
+        user_config = {}
+        if user_config_file.exists():
+            with open(user_config_file, 'r') as f:
+                user_config = yaml.safe_load(f) or {}
+        
+        # Ensure provider section exists
+        if provider not in user_config:
+            user_config[provider] = {}
+        
+        # Update configuration
+        if api_base:
+            user_config[provider]["api_base"] = api_base
+        if default_model:
+            user_config[provider]["default_model"] = default_model
+        
+        # Add other configuration options
+        user_config[provider].update(kwargs)
+        
+        # Handle API key separately in .env file for security
+        if api_key:
+            self._set_api_key(provider, api_key)
+        
+        # Save user config
+        with open(user_config_file, 'w') as f:
+            yaml.dump(user_config, f, indent=2)
+        
+        # Force chuk-llm to reload configuration
+        self.chuk_config.reload()
+        
+        logger.info(f"Updated configuration for provider: {provider}")
+
+    def _set_api_key(self, provider: str, api_key: str):
+        """Set API key in environment file."""
+        env_file = Path.home() / ".chuk_llm" / ".env"
+        env_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Determine environment variable name
+        # chuk-llm uses standard patterns like OPENAI_API_KEY, ANTHROPIC_API_KEY
+        env_var_name = f"{provider.upper()}_API_KEY"
+        
+        # Update .env file
+        lines = []
+        if env_file.exists():
+            with open(env_file, 'r') as f:
+                lines = f.readlines()
+        
+        # Update existing key or add new one
+        key_found = False
+        for i, line in enumerate(lines):
+            if line.startswith(f"{env_var_name}="):
+                lines[i] = f"{env_var_name}={api_key}\n"
+                key_found = True
+                break
+        
+        if not key_found:
+            lines.append(f"{env_var_name}={api_key}\n")
+        
+        with open(env_file, 'w') as f:
+            f.writelines(lines)
+        
+        logger.info(f"Updated API key for {provider}")
+
+    # ── Feature and capability queries ────────────────────────────────────
+    def supports_feature(self, feature: str, provider: Optional[str] = None, model: Optional[str] = None) -> bool:
+        """Check if provider/model supports a feature."""
+        provider = provider or self.get_active_provider()
+        model = model or self.get_active_model()
+        
+        info = self.get_provider_info(provider)
+        supports = info.get("supports", {})
+        
+        # If model-specific info is available, use it
+        if model and "model_capabilities" in info:
+            model_caps = info["model_capabilities"]
+            if model in model_caps:
+                model_features = model_caps[model]
+                return feature in model_features
+        
+        # Fall back to provider-level support
+        return supports.get(feature, False)
+
+    def get_available_models(self, provider: Optional[str] = None) -> List[str]:
+        """Get available models for provider."""
+        provider = provider or self.get_active_provider()
+        info = self.get_provider_info(provider)
+        
+        # FIXED: chuk-llm 0.7 uses "models" key, not "available_models"
+        models = info.get("models", [])
+        if not models:
+            # Fallback: try alternative keys just in case
+            models = info.get("available_models", [])
+        
+        return models
+
     def get_default_model(self, provider: str) -> str:
-        """Get default model for a provider."""
-        return self.get_provider_config(provider).get("default_model", "")
+        """Get default model for provider."""
+        info = self.get_provider_info(provider)
+        return info.get("default_model", "")
 
     def get_model_for_provider(self, provider: str) -> str:
-        """
-        Get appropriate model for a provider.
-        
-        If provider is currently active, returns active model.
-        Otherwise returns provider's default model.
-        """
+        """Get appropriate model for provider."""
         if provider == self.get_active_provider():
             return self.get_active_model()
         return self.get_default_model(provider)
 
-    # ── LLM Client Management ─────────────────────────────────────────────
-    def get_client(self, force_refresh: bool = False) -> Any:
-        """
-        Get LLM client for current active provider/model.
-        
-        Args:
-            force_refresh: Force creation of new client
-            
-        Returns:
-            LLM client instance
-        """
-        current_provider = self.get_active_provider()
-        current_model = self.get_active_model()
-        
-        # Return cached client if available and unchanged
-        if (not force_refresh and 
-            self._cached_client is not None and 
-            self._cached_provider == current_provider and 
-            self._cached_model == current_model):
-            return self._cached_client
-        
-        # Create new client directly with chuk-llm
-        client = _chuk_get_llm_client(
-            provider=current_provider,
-            model=current_model,
-            config=self  # ModelManager implements same interface as ProviderConfig
-        )
-        
-        # Cache the client
-        self._cached_client = client
-        self._cached_provider = current_provider
-        self._cached_model = current_model
-        
-        return client
-
-    def get_client_for_provider(self, provider: str, model: Optional[str] = None) -> Any:
-        """
-        Get LLM client for specific provider/model without changing active selection.
-        
-        Args:
-            provider: Target provider
-            model: Target model (uses provider default if None)
-            
-        Returns:
-            LLM client instance
-        """
-        if model is None:
-            model = self.get_default_model(provider)
-            
-        return _chuk_get_llm_client(
-            provider=provider,
-            model=model,
-            config=self
-        )
-
-    def refresh_client(self) -> Any:
-        """Force refresh of current client and return it."""
-        return self.get_client(force_refresh=True)
-
-    # ── Convenience getters ───────────────────────────────────────────────
-    def get_api_key(self, provider: Optional[str] = None) -> Optional[str]:
-        """Get API key for provider (current provider if None)."""
-        provider = provider or self.get_active_provider()
-        return self.get_provider_config(provider).get("api_key")
-
-    def get_api_base(self, provider: Optional[str] = None) -> Optional[str]:
-        """Get API base for provider (current provider if None)."""
-        provider = provider or self.get_active_provider()
-        return self.get_provider_config(provider).get("api_base")
-
-    # ── Validation ────────────────────────────────────────────────────────
+    # ── Validation methods ────────────────────────────────────────────────
     def validate_provider(self, provider: str) -> bool:
         """Check if provider is known."""
-        try:
-            self.get_provider_config(provider)
-            return True
-        except ValueError:
-            return False
+        return provider in self.list_providers()
 
     def has_api_key(self, provider: Optional[str] = None) -> bool:
         """Check if provider has API key."""
         provider = provider or self.get_active_provider()
-        return bool(self.get_api_key(provider))
+        info = self.get_provider_info(provider)
+        return info.get("has_api_key", False)
 
     def is_provider_configured(self, provider: Optional[str] = None) -> bool:
         """Check if provider is properly configured."""
         provider = provider or self.get_active_provider()
-        return self.validate_provider(provider) and self.has_api_key(provider)
+        validation = self.validate_provider_setup(provider)
+        return validation.get("valid", False)
 
     def is_current_provider_configured(self) -> bool:
         """Check if current active provider is configured."""
         return self.is_provider_configured()
 
-    # ── Context manager ───────────────────────────────────────────────────
+    # ── Global aliases and advanced features ───────────────────────────────
+    def get_global_aliases(self) -> Dict[str, str]:
+        """Get global model aliases from chuk-llm configuration."""
+        return self.chuk_config.get_global_aliases()
+
+    def add_global_alias(self, alias: str, target: str):
+        """Add a global model alias."""
+        self.chuk_config.add_global_alias(alias, target)
+
+    def find_best_provider_for_request(
+        self,
+        required_features: Optional[List[str]] = None,
+        model_pattern: Optional[str] = None,
+        exclude_providers: Optional[List[str]] = None
+    ) -> Optional[str]:
+        """Find best provider for specific requirements."""
+        from chuk_llm.llm.client import find_best_provider_for_request
+        
+        result = find_best_provider_for_request(
+            required_features=required_features,
+            model_pattern=model_pattern,
+            exclude_providers=exclude_providers
+        )
+        
+        return result.get("provider") if result else None
+
+    # ── Context manager and configuration management ─────────────────────────
     def save_config(self) -> None:
-        """Explicitly save configuration."""
-        self._save()
+        """Save user preferences."""
+        self._save_user_preferences()
+
+    def reload_config(self) -> None:
+        """Reload chuk-llm configuration."""
+        self.chuk_config.reload()
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self._save()
+        self.save_config()
+
+    # ── Debugging and status methods ──────────────────────────────────────
+    def get_status_summary(self) -> Dict[str, Any]:
+        """Get comprehensive status summary."""
+        provider = self.get_active_provider()
+        model = self.get_active_model()
+        
+        return {
+            "active_provider": provider,
+            "active_model": model,
+            "provider_configured": self.is_provider_configured(provider),
+            "has_api_key": self.has_api_key(provider),
+            "available_providers": self.list_providers(),
+            "available_models": self.get_available_models(provider),
+            "global_aliases": self.get_global_aliases(),
+            "supports_streaming": self.supports_feature("streaming"),
+            "supports_tools": self.supports_feature("tools"),
+            "supports_vision": self.supports_feature("vision"),
+        }
+
+    def __repr__(self) -> str:
+        return f"ModelManager(provider='{self.get_active_provider()}', model='{self.get_active_model()}')"
+
+    def __str__(self) -> str:
+        provider = self.get_active_provider()
+        model = self.get_active_model()
+        return f"Active: {provider}/{model}"
