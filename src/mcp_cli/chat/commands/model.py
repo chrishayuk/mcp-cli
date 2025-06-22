@@ -8,9 +8,9 @@ chat session.
 
 Shortcuts
 ---------
-* `/model`                 – show current provider & model
-* `/model list`            – list models for the active provider
-* `/model <name>`          – switch to *<name>* (probe-tests first)
+* `/model`                 - show current provider & model
+* `/model list`            - list models for the active provider
+* `/model <name>`          - switch to *<name>* (probe-tests first)
 
 The heavy-lifting is delegated to
 :meth:`mcp_cli.commands.model.model_action_async`, which pings the target model
@@ -34,9 +34,9 @@ async def cmd_model(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D40
     """
     View or change the active LLM model.
 
-    * `/model`          – show current provider & model  
-    * `/model list`     – list available models for the active provider  
-    * `/model <name>`   – attempt to switch to **<name>** (probe first)
+    * `/model`          - show current provider & model  
+    * `/model list`     - list available models for the active provider  
+    * `/model <name>`   - attempt to switch to **<name>** (probe first)
 
     The command passes its arguments verbatim to the shared helper and prints
     any errors in a user-friendly way.
@@ -45,7 +45,7 @@ async def cmd_model(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D40
 
     try:
         await model_action_async(parts[1:], context=ctx)
-    except Exception as exc:  # pragma: no cover  – unexpected
+    except Exception as exc:  # pragma: no cover  - unexpected
         console.print(f"[red]Model command failed:[/red] {exc}")
     return True
 

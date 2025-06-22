@@ -23,7 +23,7 @@ def run_blocking(coro: Awaitable[T]) -> T:
 
     if loop.is_running():
         raise RuntimeError(
-            "run_blocking() called inside a running event-loop – "
+            "run_blocking() called inside a running event-loop - "
             "use the async API instead."
         )
     return loop.run_until_complete(coro)

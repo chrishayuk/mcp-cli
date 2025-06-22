@@ -132,7 +132,7 @@ class ChatCommand(BaseCommand):
             if ctx.invoked_subcommand is None:
                 # Set up signal handlers for graceful shutdown
                 def _sig_handler(sig, _frame):
-                    log.debug("Received signal %s – exiting chat", sig)
+                    log.debug("Received signal %s - exiting chat", sig)
                     from mcp_cli.ui.ui_helpers import restore_terminal
                     restore_terminal()
                     raise typer.Exit()

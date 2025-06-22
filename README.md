@@ -1,93 +1,92 @@
 # MCP CLI - Model Context Protocol Command Line Interface
 
-A powerful, feature-rich command-line interface for interacting with Model Context Protocol servers. This client enables seamless communication with LLMs through integration with the [CHUK-MCP protocol library](https://github.com/chrishayuk/chuk-mcp) which is a pyodide compatible pure python protocol implementation of MCP, supporting tool usage, conversation management, and multiple operational modes.
+A powerful, feature-rich command-line interface for interacting with Model Context Protocol servers. This client enables seamless communication with LLMs through integration with the [CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor) and [CHUK-LLM](https://github.com/chrishayuk/chuk-llm), providing tool usage, conversation management, and multiple operational modes.
 
-## 🔄 Protocol Implementation
+## 🔄 Architecture Overview
 
-The core protocol implementation has been moved to a separate package at:
-**[https://github.com/chrishayuk/chuk-mcp](https://github.com/chrishayuk/chuk-mcp)**
+The MCP CLI is built on a modular architecture with clean separation of concerns:
 
-This CLI is built on top of the protocol library, focusing on providing a rich user experience while the protocol library handles the communication layer.
+- **[CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor)**: Async-native tool execution and MCP server communication
+- **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)**: Unified LLM provider configuration and client management
+- **MCP CLI**: Rich user interface and command orchestration (this project)
 
 ## 🌟 Features
 
-- **Multiple Operational Modes**:
-  - **Chat Mode**: Conversational interface with direct LLM interaction and automated tool usage
-  - **Interactive Mode**: Command-driven interface for direct server operations
-  - **Command Mode**: Unix-friendly mode for scriptable automation and pipelines
-  - **Direct Commands**: Run individual commands without entering interactive mode
+### Multiple Operational Modes
+- **Chat Mode**: Conversational interface with streaming responses and automated tool usage
+- **Interactive Mode**: Command-driven shell interface for direct server operations
+- **Command Mode**: Unix-friendly mode for scriptable automation and pipelines
+- **Direct Commands**: Run individual commands without entering interactive mode
 
-- **Multi-Provider Support**:
-  - OpenAI integration (`gpt-4o-mini`, `gpt-4o`, `gpt-4-turbo`, etc.)
-  - Ollama integration (`llama3.2`, `qwen2.5-coder`, etc.)
-  - Anthropic integration (`claude-3-opus`, `claude-3-sonnet`, etc.)
-  - Extensible architecture for additional providers
+### Advanced Chat Interface
+- **Streaming Responses**: Real-time response generation with live UI updates
+- **Concurrent Tool Execution**: Execute multiple tools simultaneously while preserving conversation order
+- **Smart Interruption**: Interrupt streaming responses or tool execution with Ctrl+C
+- **Performance Metrics**: Response timing, words/second, and execution statistics
+- **Rich Formatting**: Markdown rendering, syntax highlighting, and progress indicators
 
-- **Provider and Model Management**:
-  - Configure multiple LLM providers (API keys, endpoints, default models)
-  - Switch between providers and models during sessions
-  - Command-line arguments for provider/model selection
-  - Interactive commands for provider configuration
+### Comprehensive Provider Support
+- **OpenAI**: GPT models (`gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`, etc.)
+- **Anthropic**: Claude models (`claude-3-opus`, `claude-3-sonnet`, `claude-3-haiku`)
+- **Ollama**: Local models (`llama3.2`, `qwen2.5-coder`, `deepseek-coder`, etc.)
+- **Custom Providers**: Extensible architecture for additional providers
+- **Dynamic Switching**: Change providers and models mid-conversation
 
-- **Robust Tool System**:
-  - Automatic discovery of server-provided tools
-  - Server-aware tool execution
-  - Tool call history tracking and analysis
-  - Support for complex, multi-step tool chains
+### Robust Tool System
+- **Automatic Discovery**: Server-provided tools are automatically detected and catalogued
+- **Provider Adaptation**: Tool names are automatically sanitized for provider compatibility
+- **Concurrent Execution**: Multiple tools can run simultaneously with proper coordination
+- **Rich Progress Display**: Real-time progress indicators and execution timing
+- **Tool History**: Complete audit trail of all tool executions
+- **Streaming Tool Calls**: Support for tools that return streaming data
 
-- **Advanced Conversation Management**:
-  - Complete conversation history tracking
-  - Filtering and viewing specific message ranges
-  - JSON export capabilities for debugging or analysis
-  - Conversation compaction for reduced token usage
+### Advanced Configuration Management
+- **Environment Integration**: API keys and settings via environment variables
+- **File-based Config**: YAML and JSON configuration files
+- **User Preferences**: Persistent settings for active providers and models
+- **Validation & Diagnostics**: Built-in provider health checks and configuration validation
 
-- **Rich User Experience**:
-  - Command completion with context-aware suggestions
-  - Colorful, formatted console output
-  - Progress indicators for long-running operations
-  - Detailed help and documentation
-
-- **Resilient Resource Management**:
-  - Proper cleanup of asyncio resources
-  - Graceful error handling
-  - Clean terminal restoration
-  - Support for multiple simultaneous server connections
+### Enhanced User Experience
+- **Cross-Platform Support**: Windows, macOS, and Linux with platform-specific optimizations
+- **Rich Console Output**: Colorful, formatted output with automatic fallbacks
+- **Command Completion**: Context-aware tab completion for all interfaces
+- **Comprehensive Help**: Detailed help system with examples and usage patterns
+- **Graceful Error Handling**: User-friendly error messages with troubleshooting hints
 
 ## 📋 Prerequisites
 
-- Python 3.11 or higher
-- For OpenAI: Valid API key in `OPENAI_API_KEY` environment variable
-- For Anthropic: Valid API key in `ANTHROPIC_API_KEY` environment variable
-- For Ollama: Local Ollama installation
-- Server configuration file (default: `server_config.json`)
-- [CHUK-MCP](https://github.com/chrishayuk/chuk-mcp) protocol library
+- **Python 3.11 or higher**
+- **API Keys** (as needed):
+  - OpenAI: `OPENAI_API_KEY` environment variable
+  - Anthropic: `ANTHROPIC_API_KEY` environment variable
+  - Custom providers: Provider-specific configuration
+- **Local Services** (as needed):
+  - Ollama: Local installation for Ollama models
+- **MCP Servers**: Server configuration file (default: `server_config.json`)
 
 ## 🚀 Installation
 
 ### Install from Source
 
-1. Clone the repository:
-
+1. **Clone the repository**:
 ```bash
 git clone https://github.com/chrishayuk/mcp-cli
 cd mcp-cli  
 ```
 
-2. Install the package with development dependencies:
-
+2. **Install the package**:
 ```bash
 pip install -e ".[cli,dev]"
 ```
 
-3. Run the CLI:
-
+3. **Verify installation**:
 ```bash
 mcp-cli --help
 ```
 
-### Using UV (Alternative Installation)
+### Using UV (Recommended)
 
-If you prefer using UV for dependency management:
+UV provides faster dependency resolution and better environment management:
 
 ```bash
 # Install UV if not already installed
@@ -96,314 +95,304 @@ pip install uv
 # Install dependencies
 uv sync --reinstall
 
-# Run using UV
+# Run with UV
 uv run mcp-cli --help
 ```
 
-## 🧰 Global Command-line Arguments
+## 🧰 Global Configuration
+
+### Command-line Arguments
 
 Global options available for all modes and commands:
 
-- `--server`: Specify the server(s) to connect to (comma-separated for multiple)
+- `--server`: Specify server(s) to connect to (comma-separated)
 - `--config-file`: Path to server configuration file (default: `server_config.json`)
-- `--provider`: LLM provider to use (`openai`, `anthropic`, `ollama`, default: `openai`)
-- `--model`: Specific model to use (provider-dependent defaults)
-- `--disable-filesystem`: Disable filesystem access (default: true)
+- `--provider`: LLM provider (`openai`, `anthropic`, `ollama`, etc.)
+- `--model`: Specific model to use (provider-dependent)
+- `--disable-filesystem`: Disable filesystem access (default: enabled)
+- `--api-base`: Override API endpoint URL
+- `--api-key`: Override API key
+- `--verbose`: Enable detailed logging
+- `--quiet`: Suppress non-essential output
 
-### CLI Argument Format Issue
+### Environment Variables
 
-You might encounter a "Missing argument 'KWARGS'" error when running various commands. This is due to how the CLI parser is configured. To resolve this, use one of these approaches:
-
-1. Use the equals sign format for all arguments:
-   ```bash
-   mcp-cli tools call --server=sqlite
-   mcp-cli chat --server=sqlite --provider=ollama --model=llama3.2
-   ```
-
-2. Add a double-dash (`--`) after the command and before arguments:
-   ```bash
-   mcp-cli tools call -- --server sqlite
-   mcp-cli chat -- --server sqlite --provider ollama --model llama3.2
-   ```
-
-3. When using uv and multiple extra parameters, follow the 2nd step but add an empty string at the end:
-   ```
-   uv run mcp-cli chat -- --server sqlite --provider ollama --model llama3.2 ""
-   ```
-
-These format issues apply to all commands (chat, interactive, tools, etc.) and are due to how the argument parser interprets positional vs. named arguments.
+```bash
+export LLM_PROVIDER=openai              # Default provider
+export LLM_MODEL=gpt-4o-mini           # Default model
+export OPENAI_API_KEY=sk-...           # OpenAI API key
+export ANTHROPIC_API_KEY=sk-ant-...    # Anthropic API key
+export MCP_TOOL_TIMEOUT=120            # Tool execution timeout (seconds)
+```
 
 ## 🌐 Available Modes
 
-### 1. Chat Mode
+### 1. Chat Mode (Default)
 
-Chat mode provides a natural language interface for interacting with LLMs, where the model can automatically use available tools:
+Provides a natural language interface with streaming responses and automatic tool usage:
 
 ```bash
-# Default (makes chat the default when no other command is specified)
-uv run mcp-cli
+# Default mode (no subcommand needed)
+mcp-cli --server sqlite
 
 # Explicit chat mode
-uv run mcp-cli chat --server sqlite
+mcp-cli chat --server sqlite
 
 # With specific provider and model
-uv run mcp-cli chat --server sqlite --provider openai --model gpt-4o
+mcp-cli chat --server sqlite --provider anthropic --model claude-3-sonnet
+
+# With custom configuration
+mcp-cli chat --server sqlite --provider openai --api-key sk-... --model gpt-4o
 ```
 
 ### 2. Interactive Mode
 
-Interactive mode provides a command-driven shell interface for direct server operations:
+Command-driven shell interface for direct server operations:
 
 ```bash
-uv run mcp-cli interactive --server sqlite
+mcp-cli interactive --server sqlite
+
+# With provider selection
+mcp-cli interactive --server sqlite --provider ollama --model llama3.2
 ```
 
-### 3. Command Mode (Cmd)
+### 3. Command Mode
 
-Command mode provides a Unix-friendly interface for automation and pipeline integration:
+Unix-friendly interface for automation and scripting:
 
 ```bash
-uv run mcp-cli cmd --server sqlite [options]
+# Process text with LLM
+mcp-cli cmd --server sqlite --prompt "Analyze this data" --input data.txt
+
+# Execute tools directly
+mcp-cli cmd --server sqlite --tool list_tables --output tables.json
+
+# Pipeline-friendly processing
+echo "SELECT * FROM users LIMIT 5" | mcp-cli cmd --server sqlite --tool read_query --input -
 ```
 
 ### 4. Direct Commands
 
-Run individual commands without entering an interactive mode:
+Execute individual commands without entering interactive mode:
 
 ```bash
 # List available tools
-uv run mcp-cli tools list {} --server sqlite
+mcp-cli tools --server sqlite
 
-# Call a specific tool
-uv run mcp-cli tools call {} --server sqlite
+# Show provider configuration
+mcp-cli provider list
+
+# Ping servers
+mcp-cli ping --server sqlite
+
+# List resources
+mcp-cli resources --server sqlite
 ```
 
 ## 🤖 Using Chat Mode
 
-Chat mode provides a conversational interface with the LLM, automatically using available tools when needed.
+Chat mode provides the most advanced interface with streaming responses and intelligent tool usage.
 
 ### Starting Chat Mode
 
 ```bash
-# Default with {} for KWARGS
-uv run mcp-cli --server sqlite
+# Simple startup
+mcp-cli --server sqlite
 
-# Explicit chat mode with {}
-uv run mcp-cli chat --server sqlite
+# Multiple servers
+mcp-cli --server sqlite,filesystem
 
-# With specific provider and model
-uv run mcp-cli chat --server sqlite --provider openai --model gpt-4o
+# Specific provider configuration
+mcp-cli --server sqlite --provider anthropic --model claude-3-opus
 ```
 
+### Chat Commands (Slash Commands)
+
+#### Provider & Model Management
 ```bash
-# Note: Be careful with the command syntax
-# Correct format without any KWARGS parameter
-uv run mcp-cli chat --server sqlite --provider ollama --model llama3.2
+/provider                           # Show current configuration
+/provider list                      # List all providers
+/provider config                    # Show detailed configuration
+/provider diagnostic               # Test provider connectivity
+/provider set openai api_key sk-... # Configure provider settings
+/provider anthropic                # Switch to Anthropic
+/provider openai gpt-4o            # Switch provider and model
 
-# Or if you encounter the "Missing argument 'KWARGS'" error, try:
-uv run mcp-cli chat --server=sqlite --provider=ollama --model=llama3.2
+/model                             # Show current model
+/model gpt-4o                      # Switch to specific model
+/models                            # List available models
 ```
 
-### Chat Commands
+#### Tool Management
+```bash
+/tools                             # List available tools
+/tools --all                       # Show detailed tool information
+/tools --raw                       # Show raw JSON definitions
+/tools call                        # Interactive tool execution
 
-In chat mode, use these slash commands:
+/toolhistory                       # Show tool execution history
+/th -n 5                          # Last 5 tool calls
+/th 3                             # Details for call #3
+/th --json                        # Full history as JSON
+```
 
-#### General Commands
-- `/help`: Show available commands
-- `/help <command>`: Show detailed help for a specific command
-- `/quickhelp` or `/qh`: Display a quick reference of common commands
-- `exit` or `quit`: Exit chat mode
+#### Conversation Management
+```bash
+/conversation                      # Show conversation history
+/ch -n 10                         # Last 10 messages
+/ch 5                             # Details for message #5
+/ch --json                        # Full history as JSON
 
-#### Provider and Model Commands
-- `/provider` or `/p`: Display or manage LLM providers
-  - `/provider`: Show current provider and model
-  - `/provider list`: List all configured providers
-  - `/provider config`: Show detailed provider configuration
-  - `/provider set <name> <key> <value>`: Set a provider configuration value
-  - `/provider <name>`: Switch to a different provider
-- `/model` or `/m`: Display or change the current model
-  - `/model`: Show current model
-  - `/model <name>`: Switch to a different model
+/save conversation.json            # Save conversation to file
+/compact                          # Summarize conversation
+/clear                            # Clear conversation history
+/cls                              # Clear screen only
+```
 
-#### Tool Commands
-- `/tools`: Display all available tools with their server information
-  - `/tools --all`: Show detailed tool information including parameters
-  - `/tools --raw`: Show raw tool definitions
-- `/toolhistory` or `/th`: Show history of tool calls in the current session
-  - `/th <N>`: Show details for a specific tool call
-  - `/th -n 5`: Show only the last 5 tool calls
-  - `/th --json`: Show tool calls in JSON format
+#### Session Control
+```bash
+/verbose                          # Toggle verbose/compact display
+/interrupt                        # Stop running operations
+/servers                          # List connected servers
+/help                            # Show all commands
+/help tools                       # Help for specific command
+/exit                            # Exit chat mode
+```
 
-#### Conversation Commands
-- `/conversation` or `/ch`: Show the conversation history
-  - `/ch <N>`: Show a specific message from history
-  - `/ch -n 5`: Show only the last 5 messages
-  - `/ch <N> --json`: Show a specific message in JSON format
-  - `/ch --json`: View the entire conversation history in raw JSON format
-- `/save <filename>`: Save conversation history to a JSON file
-- `/compact`: Condense conversation history into a summary
+### Chat Features
 
-#### Display Commands
-- `/cls`: Clear the screen while keeping conversation history
-- `/clear`: Clear both the screen and conversation history
-- `/verbose` or `/v`: Toggle between verbose and compact tool display modes
+#### Streaming Responses
+- Real-time text generation with live updates
+- Performance metrics (words/second, response time)
+- Graceful interruption with Ctrl+C
+- Progressive markdown rendering
 
-#### Control Commands
-- `/interrupt`, `/stop`, or `/cancel`: Interrupt running tool execution
-- `/servers`: List connected servers and their status
+#### Tool Execution
+- Automatic tool discovery and usage
+- Concurrent execution with progress indicators
+- Verbose and compact display modes
+- Complete execution history and timing
+
+#### Provider Integration
+- Seamless switching between providers
+- Model-specific optimizations
+- API key and endpoint management
+- Health monitoring and diagnostics
 
 ## 🖥️ Using Interactive Mode
 
-Interactive mode provides a command-driven shell interface for direct server interaction.
+Interactive mode provides a command shell for direct server interaction.
 
 ### Starting Interactive Mode
 
 ```bash
-# Using {} to satisfy KWARGS requirement
-mcp-cli interactive {} --server sqlite
+mcp-cli interactive --server sqlite
 ```
 
 ### Interactive Commands
 
-In interactive mode, use these commands:
-
-- `help`: Show available commands
-- `exit` or `quit` or `q`: Exit interactive mode
-- `clear` or `cls`: Clear the terminal screen
-- `servers` or `srv`: List connected servers with their status
-- `provider` or `p`: Manage LLM providers
-  - `provider`: Show current provider and model
-  - `provider list`: List all configured providers
-  - `provider config`: Show detailed provider configuration
-  - `provider set <name> <key> <value>`: Set a provider configuration value
-  - `provider <name>`: Switch to a different provider
-- `model` or `m`: Display or change the current model
-  - `model`: Show current model
-  - `model <name>`: Switch to a different model
-- `tools` or `t`: List available tools or call one interactively
-  - `tools --all`: Show detailed tool information
-  - `tools --raw`: Show raw JSON definitions
-  - `tools call`: Launch the interactive tool-call UI
-- `resources` or `res`: List available resources from all servers
-- `prompts` or `p`: List available prompts from all servers
-- `ping`: Ping connected servers (optionally filter by index/name)
-
-## 📄 Using Command Mode (Cmd)
-
-Command mode provides a Unix-friendly interface for automation and pipeline integration.
-
-### Starting Command Mode
-
 ```bash
-# Using {} to satisfy KWARGS requirement
-mcp-cli cmd {} --server sqlite [options]
+help                              # Show available commands
+exit                              # Exit interactive mode
+clear                             # Clear terminal
+
+# Provider management
+provider                          # Show current provider
+provider list                     # List providers
+provider anthropic                # Switch provider
+
+# Tool operations
+tools                             # List tools
+tools --all                       # Detailed tool info
+tools call                        # Interactive tool execution
+
+# Server operations
+servers                           # List servers
+ping                              # Ping all servers
+resources                         # List resources
+prompts                           # List prompts
 ```
+
+## 📄 Using Command Mode
+
+Command mode provides Unix-friendly automation capabilities.
 
 ### Command Mode Options
 
-- `--input`: Input file path (use `-` for stdin)
-- `--output`: Output file path (use `-` for stdout, default)
-- `--prompt`: Prompt template (use `{{input}}` as placeholder for input)
-- `--raw`: Output raw text without formatting
-- `--tool`: Directly call a specific tool
-- `--tool-args`: JSON arguments for tool call
-- `--system-prompt`: Custom system prompt
-- `--verbose`: Enable verbose logging
-- `--provider`: Specify LLM provider
-- `--model`: Specify model to use
-
-### Command Mode Examples
-
-Process content with LLM:
-
 ```bash
-# Summarize a document (with {} for KWARGS)
-uv run mcp-cli cmd --server sqlite --input document.md --prompt "Summarize this: {{input}}" --output summary.md
-
-# Process stdin and output to stdout
-cat document.md | mcp-cli cmd {} --server sqlite --input - --prompt "Extract key points: {{input}}"
-
-# Use a specific provider and model
-uv run mcp-cli cmd {} --server sqlite --input document.md --prompt "Summarize: {{input}}" --provider anthropic --model claude-3-opus
+--input FILE                      # Input file (- for stdin)
+--output FILE                     # Output file (- for stdout)
+--prompt TEXT                     # Prompt template
+--tool TOOL                       # Execute specific tool
+--tool-args JSON                  # Tool arguments as JSON
+--system-prompt TEXT              # Custom system prompt
+--raw                             # Raw output without formatting
+--single-turn                     # Disable multi-turn conversation
+--max-turns N                     # Maximum conversation turns
 ```
 
-Call tools directly:
+### Examples
 
 ```bash
-# List database tables
-uv run mcp-cli cmd {} --server sqlite --tool list_tables --raw
+# Text processing
+echo "Analyze this data" | mcp-cli cmd --server sqlite --input - --output analysis.txt
 
-# Run a SQL query
-uv run mcp-cli cmd {} --server sqlite --tool read_query --tool-args '{"query": "SELECT COUNT(*) FROM users"}'
+# Tool execution
+mcp-cli cmd --server sqlite --tool list_tables --raw
+
+# Complex queries
+mcp-cli cmd --server sqlite --tool read_query --tool-args '{"query": "SELECT COUNT(*) FROM users"}'
+
+# Batch processing with GNU Parallel
+ls *.txt | parallel mcp-cli cmd --server sqlite --input {} --output {}.summary --prompt "Summarize: {{input}}"
 ```
 
-Batch processing:
+## 🔧 Provider Configuration
+
+### Automatic Configuration
+
+The CLI automatically manages provider configurations using the CHUK-LLM library:
 
 ```bash
-# Process multiple files with GNU Parallel
-ls *.md | parallel mcp-cli cmd --server sqlite --input {} --output {}.summary.md --prompt "Summarize: {{input}}"
-```
+# Configure a provider
+mcp-cli provider set openai api_key sk-your-key-here
+mcp-cli provider set anthropic api_base https://api.anthropic.com
 
-## 🔧 Direct CLI Commands
+# Test configuration
+mcp-cli provider diagnostic openai
 
-Run individual commands without entering interactive mode:
-
-### Provider Commands
-
-```bash
-# Show current provider configuration
-mcp-cli provider show
-
-# List all configured providers
+# List available models
 mcp-cli provider list
-
-# Show detailed provider configuration
-mcp-cli provider config
-
-# Set a configuration value
-mcp-cli provider set <provider_name> <key> <value>
-# Example: mcp-cli provider set openai api_key "sk-..."
 ```
 
-### Tools Commands
+### Manual Configuration
 
-```bash
-# List all tools (using {} to satisfy KWARGS requirement)
-uv run mcp-cli tools list {} --server sqlite
+Providers are configured in `~/.chuk_llm/providers.yaml`:
 
-# Show detailed tool information
-uv run mcp-cli tools list {} --server sqlite --all
+```yaml
+openai:
+  api_base: https://api.openai.com/v1
+  default_model: gpt-4o-mini
 
-# Show raw tool definitions
-uv run mcp-cli tools list {} --server sqlite --raw
+anthropic:
+  api_base: https://api.anthropic.com
+  default_model: claude-3-sonnet
 
-# Call a specific tool interactively
-uv run mcp-cli tools call {} --server sqlite
+ollama:
+  api_base: http://localhost:11434
+  default_model: llama3.2
 ```
 
-### Resources and Prompts Commands
+API keys are stored securely in `~/.chuk_llm/.env`:
 
 ```bash
-# List available resources
-uv run mcp-cli resources list {} --server sqlite
-
-# List available prompts
-uv run mcp-cli prompts list {} --server sqlite
-```
-
-### Server Commands
-
-```bash
-# Ping all servers
-uv run mcp-cli ping {} --server sqlite
-
-# Ping specific server(s)
-uv run mcp-cli ping {} --server sqlite,another-server
+OPENAI_API_KEY=sk-your-key-here
+ANTHROPIC_API_KEY=sk-ant-your-key-here
 ```
 
 ## 📂 Server Configuration
 
-Create a `server_config.json` file with your server configurations:
+Create a `server_config.json` file with your MCP server configurations:
 
 ```json
 {
@@ -412,161 +401,192 @@ Create a `server_config.json` file with your server configurations:
       "command": "python",
       "args": ["-m", "mcp_server.sqlite_server"],
       "env": {
-        "DATABASE_PATH": "your_database.db"
+        "DATABASE_PATH": "database.db"
       }
     },
-    "another-server": {
-      "command": "python",
-      "args": ["-m", "another_server_module"],
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/files"],
       "env": {}
+    },
+    "brave-search": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "env": {
+        "BRAVE_API_KEY": "your-brave-api-key"
+      }
     }
-  }
-}
-```
-
-## 🔐 Provider Configuration
-
-Provider configurations are stored with these key settings:
-
-- `api_key`: API key for authentication
-- `api_base`: Base URL for API requests
-- `default_model`: Default model to use with this provider
-- Other provider-specific settings
-
-### Environment Variables
-
-You can also set the default provider and model using environment variables:
-
-```bash
-export LLM_PROVIDER=openai
-export LLM_MODEL=gpt-4o-mini
-```
-
-### Configuration Example
-
-The provider configuration is typically stored in a JSON file and looks like:
-
-```json
-{
-  "openai": {
-    "api_key": "sk-...",
-    "api_base": "https://api.openai.com/v1",
-    "default_model": "gpt-4o-mini"
-  },
-  "anthropic": {
-    "api_key": "sk-...",
-    "api_base": "https://api.anthropic.com",
-    "default_model": "claude-3-opus"
-  },
-  "ollama": {
-    "api_base": "http://localhost:11434",
-    "default_model": "llama3.2"
   }
 }
 ```
 
 ## 📈 Advanced Usage Examples
 
-### Provider and Model Selection
+### Multi-Provider Workflow
 
-You can change providers or models during a session:
+```bash
+# Start with OpenAI
+mcp-cli chat --server sqlite --provider openai --model gpt-4o
 
-```
-# In chat mode
-> /provider
-Current provider: openai
-Current model: gpt-4o-mini
-To change provider: /provider <provider_name>
+# In chat, switch to Anthropic for reasoning tasks
+> /provider anthropic claude-3-opus
 
-> /provider list
-Available Providers
-┏━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Provider  ┃ Default Model  ┃ API Base                        ┃
-┡━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ openai    │ gpt-4o-mini    │ https://api.openai.com/v1       │
-│ anthropic │ claude-3-opus  │ https://api.anthropic.com       │
-│ ollama    │ llama3.2       │ http://localhost:11434          │
-└───────────┴────────────────┴─────────────────────────────────┘
+# Switch to Ollama for local processing
+> /provider ollama llama3.2
 
-> /provider anthropic
-Switched to provider: anthropic with model: claude-3-opus
-LLM client updated successfully
-
-> /model claude-3-sonnet
-Switched to model: claude-3-sonnet
+# Compare responses across providers
+> /provider openai
+> What's the capital of France?
+> /provider anthropic  
+> What's the capital of France?
 ```
 
-### Working with Tools in Chat Mode
+### Complex Tool Workflows
 
-In chat mode, simply ask questions that require tool usage, and the LLM will automatically call the appropriate tools:
+```bash
+# Database analysis workflow
+> List all tables in the database
+[Tool: list_tables] → products, customers, orders
 
+> Show me the schema for the products table
+[Tool: describe_table] → id, name, price, category, stock
+
+> Find the top 10 most expensive products
+[Tool: read_query] → SELECT name, price FROM products ORDER BY price DESC LIMIT 10
+
+> Export this data to a CSV file
+[Tool: write_file] → Saved to expensive_products.csv
 ```
-You: What tables are available in the database?
-[Tool Call: list_tables]
-Assistant: There's one table in the database named products. How would you like to proceed?
 
-You: Select top 10 products ordered by price in descending order
-[Tool Call: read_query]
-Assistant: Here are the top 10 products ordered by price in descending order:
-  1 Mini Drone - $299.99
-  2 Smart Watch - $199.99
-  3 Portable SSD - $179.99
-  ...
+### Automation and Scripting
+
+```bash
+# Batch data processing
+for file in data/*.csv; do
+  mcp-cli cmd --server sqlite \
+    --tool analyze_data \
+    --tool-args "{\"file_path\": \"$file\"}" \
+    --output "results/$(basename "$file" .csv)_analysis.json"
+done
+
+# Pipeline processing
+cat input.txt | \
+  mcp-cli cmd --server sqlite --prompt "Extract key entities" --input - | \
+  mcp-cli cmd --server sqlite --prompt "Categorize these entities" --input - > output.txt
 ```
 
-### Using Conversation Management
+### Performance Monitoring
 
-The MCP CLI provides powerful conversation history management:
+```bash
+# Enable verbose mode for detailed timing
+> /verbose
 
-```
-> /conversation
-Conversation History (12 messages)
-# | Role      | Content
-1 | system    | You are an intelligent assistant capable of using t...
-2 | user      | What tables are available in the database?
-3 | assistant | Let me check for you.
+# Monitor tool execution times
+> /toolhistory
+Tool Call History (15 calls)
+#  | Tool        | Arguments                    | Time
+1  | list_tables | {}                          | 0.12s
+2  | read_query  | {"query": "SELECT..."}      | 0.45s
 ...
 
-> /save conversation.json
-Conversation saved to conversation.json
-
-> /compact
-Conversation history compacted with summary.
+# Check provider performance
+> /provider diagnostic
+Provider Diagnostics
+Provider   | Status      | Response Time | Features
+openai     | ✅ Ready    | 234ms        | 📡🔧👁️
+anthropic  | ✅ Ready    | 187ms        | 📡🔧
+ollama     | ✅ Ready    | 56ms         | 📡🔧
 ```
 
-## 🛠️ Implementation Details
+## 🔍 Troubleshooting
 
-The provider configuration is managed by the `ProviderConfig` class, which:
-- Loads/saves configuration from a local file
-- Manages active provider and model settings
-- Provides helper methods for retrieving configuration values
+### Common Issues
 
-The LLM client is created using the `get_llm_client` function, which instantiates the appropriate client based on the provider and model settings.
+1. **"Missing argument 'KWARGS'" error**:
+   ```bash
+   # Use equals sign format
+   mcp-cli chat --server=sqlite --provider=openai
+   
+   # Or add double dash
+   mcp-cli chat -- --server sqlite --provider openai
+   ```
+
+2. **Provider not found**:
+   ```bash
+   mcp-cli provider diagnostic
+   mcp-cli provider set <provider> api_key <your-key>
+   ```
+
+3. **Tool execution timeout**:
+   ```bash
+   export MCP_TOOL_TIMEOUT=300  # 5 minutes
+   ```
+
+4. **Connection issues**:
+   ```bash
+   mcp-cli ping --server <server-name>
+   mcp-cli servers
+   ```
+
+### Debug Mode
+
+Enable verbose logging for troubleshooting:
+
+```bash
+mcp-cli --verbose chat --server sqlite
+mcp-cli --log-level DEBUG interactive --server sqlite
+```
+
+## 🔒 Security Considerations
+
+- **API Keys**: Stored securely in environment variables or protected files
+- **File Access**: Filesystem access can be disabled with `--disable-filesystem`
+- **Tool Validation**: All tool calls are validated before execution
+- **Timeout Protection**: Configurable timeouts prevent hanging operations
+- **Server Isolation**: Each server runs in its own process
+
+## 🚀 Performance Features
+
+- **Concurrent Tool Execution**: Multiple tools can run simultaneously
+- **Streaming Responses**: Real-time response generation
+- **Connection Pooling**: Efficient reuse of client connections
+- **Caching**: Tool metadata and provider configurations are cached
+- **Async Architecture**: Non-blocking operations throughout
 
 ## 📦 Dependencies
 
-The CLI is organized with optional dependency groups:
+Core dependencies are organized into feature groups:
 
-- **cli**: Rich terminal UI, command completion, and provider integrations
-- **dev**: Development tools and testing utilities
-- **wasm**: (Reserved for future WebAssembly support)
-- **chuk-mcp**: Protocol implementation library (core dependency)
+- **cli**: Rich terminal UI, command completion, provider integrations
+- **dev**: Development tools, testing utilities, linting
+- **chuk-tool-processor**: Core tool execution and MCP communication
+- **chuk-llm**: Unified LLM provider management
 
-Install with specific extras using:
+Install with specific features:
 ```bash
-pip install "mcp-cli[cli]"     # Basic CLI features
-pip install "mcp-cli[cli,dev]" # CLI with development tools
+pip install "mcp-cli[cli]"        # Basic CLI features
+pip install "mcp-cli[cli,dev]"    # CLI with development tools
 ```
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please follow these steps:
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+### Development Setup
+
+```bash
+git clone https://github.com/chrishayuk/mcp-cli
+cd mcp-cli
+pip install -e ".[cli,dev]"
+pre-commit install
+```
+
+### Running Tests
+
+```bash
+pytest
+pytest --cov=mcp_cli --cov-report=html
+```
 
 ## 📜 License
 
@@ -574,7 +594,15 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- [Rich](https://github.com/Textualize/rich) for beautiful terminal formatting
-- [Typer](https://typer.tiangolo.com/) for CLI argument parsing
-- [Prompt Toolkit](https://github.com/prompt-toolkit/python-prompt-toolkit) for interactive input
-- [CHUK-MCP](https://github.com/chrishayuk/chuk-mcp) for the core protocol implementation
+- **[CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor)** - Async-native tool execution
+- **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)** - Unified LLM provider management
+- **[Rich](https://github.com/Textualize/rich)** - Beautiful terminal formatting
+- **[Typer](https://typer.tiangolo.com/)** - CLI framework
+- **[Prompt Toolkit](https://github.com/prompt-toolkit/python-prompt-toolkit)** - Interactive input
+
+## 🔗 Related Projects
+
+- **[Model Context Protocol](https://modelcontextprotocol.io/)** - Core protocol specification
+- **[MCP Servers](https://github.com/modelcontextprotocol/servers)** - Official MCP server implementations
+- **[CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor)** - Tool execution engine
+- **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)** - LLM provider abstraction

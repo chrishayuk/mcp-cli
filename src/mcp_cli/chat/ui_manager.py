@@ -158,7 +158,7 @@ class ChatUIManager:
                             # First interrupt - try graceful cancel
                             self.interrupt_requested = True
                             print(
-                                "\n[yellow]Interrupt requested – cancelling current "
+                                "\n[yellow]Interrupt requested - cancelling current "
                                 "tool execution…[/yellow]"
                             )
                             

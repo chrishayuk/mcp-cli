@@ -95,7 +95,7 @@ async def display_registry_tools(registry: Any, namespace_filter: Optional[str] 
     
     for ns, name in tools:
         md = await registry.get_metadata(name, ns)
-        print(f"  • {Fore.GREEN}{ns}.{name:<20}{Style.RESET_ALL} – {md.description or '<no description>'}")
+        print(f"  • {Fore.GREEN}{ns}.{name:<20}{Style.RESET_ALL} - {md.description or '<no description>'}")
     print()
     
     return tools

@@ -213,15 +213,15 @@ async def _run_enhanced_chat_loop(ui: ChatUIManager, ctx: ChatContext, convo: Co
         except KeyboardInterrupt:
             # Handle Ctrl+C gracefully
             if ui.is_streaming_response:
-                print("\n[yellow]Streaming interrupted – type 'exit' to quit.[/yellow]")
+                print("\n[yellow]Streaming interrupted - type 'exit' to quit.[/yellow]")
                 ui.interrupt_streaming()
             elif ui.tools_running:
-                print("\n[yellow]Tool execution interrupted – type 'exit' to quit.[/yellow]")
+                print("\n[yellow]Tool execution interrupted - type 'exit' to quit.[/yellow]")
                 ui._interrupt_now()
             else:
-                print("\n[yellow]Interrupted – type 'exit' to quit.[/yellow]")
+                print("\n[yellow]Interrupted - type 'exit' to quit.[/yellow]")
         except EOFError:
-            print(Panel("EOF detected – exiting chat.", style="bold red"))
+            print(Panel("EOF detected - exiting chat.", style="bold red"))
             break
         except Exception as exc:
             logger.exception("Error processing message")

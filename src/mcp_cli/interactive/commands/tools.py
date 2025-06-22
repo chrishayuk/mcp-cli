@@ -27,10 +27,10 @@ class ToolsCommand(InteractiveCommand):
             help_text=(
                 "List available tools or run one interactively.\n\n"
                 "Usage:\n"
-                "  tools              – list tools\n"
-                "  tools --all        – include parameter details\n"
-                "  tools --raw        – dump raw JSON\n"
-                "  tools call         – open interactive call helper"
+                "  tools              - list tools\n"
+                "  tools --all        - include parameter details\n"
+                "  tools --raw        - dump raw JSON\n"
+                "  tools call         - open interactive call helper"
             ),
         )
 

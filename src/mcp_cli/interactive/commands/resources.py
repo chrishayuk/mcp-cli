@@ -40,5 +40,5 @@ class ResourcesCommand(InteractiveCommand):
             log.debug("ResourcesCommand triggered without a ToolManager instance.")
             return
 
-        # currently no extra flags – reserved for future
+        # currently no extra flags - reserved for future
         await resources_action_async(tool_manager)

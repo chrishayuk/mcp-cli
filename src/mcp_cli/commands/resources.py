@@ -53,7 +53,7 @@ async def resources_action_async(tm: ToolManager) -> List[Dict[str, Any]]:
     console = get_console()
 
     # Most MCP servers expose list_resources() as an awaitable, but some
-    # adapters might return a plain list – handle both.
+    # adapters might return a plain list - handle both.
     try:
         maybe = tm.list_resources()
         resources = await maybe if inspect.isawaitable(maybe) else maybe  # type: ignore[arg-type]
@@ -85,7 +85,7 @@ async def resources_action_async(tm: ToolManager) -> List[Dict[str, Any]]:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# sync wrapper – used by non-interactive CLI paths
+# sync wrapper - used by non-interactive CLI paths
 # ════════════════════════════════════════════════════════════════════════
 def resources_action(tm: ToolManager) -> List[Dict[str, Any]]:
     """

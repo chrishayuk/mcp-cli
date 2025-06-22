@@ -59,7 +59,7 @@ async def model_action_async(args: List[str], *, context: Dict[str, Any]) -> Non
         console.print(f"[yellow]Keeping current model:[/yellow] {current_model}")
         return
 
-    # Success – commit the change
+    # Success - commit the change
     model_manager.set_active_model(new_model)
     context["model"]         = new_model
     context["client"]        = result.client

@@ -46,7 +46,7 @@ async def prompts_action_async(tm: ToolManager) -> List[Dict[str, Any]]:
 
     try:
         maybe = tm.list_prompts()
-    except Exception as exc:          # pragma: no cover – network / server errors
+    except Exception as exc:          # pragma: no cover - network / server errors
         console.print(f"[red]Error:[/red] {exc}")
         return []
 
@@ -74,7 +74,7 @@ async def prompts_action_async(tm: ToolManager) -> List[Dict[str, Any]]:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# sync wrapper – used by legacy CLI commands
+# sync wrapper - used by legacy CLI commands
 # ════════════════════════════════════════════════════════════════════════
 def prompts_action(tm: ToolManager) -> List[Dict[str, Any]]:
     """

@@ -103,7 +103,7 @@ async def tools_action_async(                    # noqa: D401
     ]
 
 # ────────────────────────────────────────────────────────────────────────────────
-# sync wrapper – for legacy CLI paths
+# sync wrapper - for legacy CLI paths
 # ────────────────────────────────────────────────────────────────────────────────
 def tools_action(
     tm: ToolManager,

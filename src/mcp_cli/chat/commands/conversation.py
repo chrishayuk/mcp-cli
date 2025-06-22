@@ -36,7 +36,7 @@ from mcp_cli.chat.commands import register_command
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# /cls  – clear screen, keep history
+# /cls  - clear screen, keep history
 # ════════════════════════════════════════════════════════════════════════════
 async def cmd_cls(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
     """Clear the terminal window but *preserve* the conversation history."""
@@ -48,7 +48,7 @@ async def cmd_cls(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# /clear – clear screen *and* history
+# /clear - clear screen *and* history
 # ════════════════════════════════════════════════════════════════════════════
 async def cmd_clear(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
     """Clear the screen *and* reset the in-memory history."""
@@ -67,7 +67,7 @@ async def cmd_clear(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D4
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# /compact – summarise conversation
+# /compact - summarise conversation
 # ════════════════════════════════════════════════════════════════════════════
 async def cmd_compact(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
     """Replace lengthy history with a compact LLM-generated summary."""
@@ -114,7 +114,7 @@ async def cmd_compact(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: 
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# /save  – write history to disk
+# /save  - write history to disk
 # ════════════════════════════════════════════════════════════════════════════
 async def cmd_save(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
     """Persist the conversation history to a JSON file on disk."""

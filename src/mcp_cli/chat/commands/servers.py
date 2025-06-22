@@ -8,12 +8,12 @@ count and health status.
 
 Features
 --------
-* **Cross-platform output** – uses
+* **Cross-platform output** - uses
   :pyfunc:`mcp_cli.utils.rich_helpers.get_console` for automatic fallback to
   plain text on Windows consoles or when piping output to a file.
-* **Read-only** – purely informational; the command never mutates the chat
+* **Read-only** - purely informational; the command never mutates the chat
   context and is safe to hot-reload.
-* **One-liner implementation** – delegates the heavy lifting to the shared
+* **One-liner implementation** - delegates the heavy lifting to the shared
   :pyfunc:`mcp_cli.commands.servers.servers_action_async` helper, ensuring
   a single source of truth between chat and CLI modes.
 

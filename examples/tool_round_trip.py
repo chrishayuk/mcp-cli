@@ -101,7 +101,7 @@ async def round_trip(
     print("\n🔧  Registered tools:")
     for ns, nm in await registry.list_tools():
         meta = await registry.get_metadata(nm, ns)
-        desc = f" – {meta.description}" if meta and meta.description else ""
+        desc = f" - {meta.description}" if meta and meta.description else ""
         print(f"  • {ns}.{nm}{desc}")
     print()
 

@@ -130,7 +130,7 @@ def test_convert_to_openai_tools_conversion():
 
 
 # ----------------------------------------------------------------------------
-# LLM tools helpers – async again
+# LLM tools helpers - async again
 # ----------------------------------------------------------------------------
 
 

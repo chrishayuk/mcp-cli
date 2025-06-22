@@ -18,7 +18,7 @@ Highlights
   Windows terminals and disappear automatically when output is redirected.
 * **Doc-string parsing** - the first non-empty line that *doesn't* start
   with “usage” becomes the one-liner in the command table.
-* **Alias column** - shows “–” when a command has no aliases, keeping the
+* **Alias column** - shows “-” when a command has no aliases, keeping the
   table tidy.
 """
 from __future__ import annotations
@@ -98,7 +98,7 @@ def help_action(
             if ln.strip() and not ln.strip().lower().startswith("usage")
         ]
         desc = lines[0] if lines else "No description"
-        aliases = ", ".join(cmd.aliases) if getattr(cmd, "aliases", None) else "–"
+        aliases = ", ".join(cmd.aliases) if getattr(cmd, "aliases", None) else "-"
         tbl.add_row(name, aliases, desc)
 
     console.print(tbl)

@@ -82,7 +82,7 @@ class ToolProcessor:
         try:
             await asyncio.gather(*self._pending)
         except asyncio.CancelledError:
-            # cancelled by UI (Ctrl-C) – ignore and exit cleanly
+            # cancelled by UI (Ctrl-C) - ignore and exit cleanly
             pass
         finally:
             self._pending.clear()
@@ -99,7 +99,7 @@ class ToolProcessor:
                 log.debug("finish_tool_calls() raised", exc_info=True)
 
     # ------------------------------------------------------------------ #
-    # cancellation hook – called by ChatUIManager on Ctrl-C              #
+    # cancellation hook - called by ChatUIManager on Ctrl-C              #
     # ------------------------------------------------------------------ #
     def cancel_running_tasks(self) -> None:
         """Mark every outstanding tool-task for cancellation."""

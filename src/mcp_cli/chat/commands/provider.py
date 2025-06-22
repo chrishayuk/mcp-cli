@@ -11,6 +11,7 @@ At a glance
 * `/provider`                      - show current provider & model
 * `/provider list`                 - list available providers
 * `/providers`                     - list available providers (shortcut)
+* `/providers`                     - list available providers (shortcut)
 * `/provider config`               - dump full provider configs
 * `/provider diagnostic`           - ping each provider with a tiny prompt
 * `/provider set <prov> <k> <v>`   - change one config value (e.g. API key)

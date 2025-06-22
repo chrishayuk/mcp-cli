@@ -48,7 +48,7 @@ class ClearCommand(InteractiveCommand):
         )
 
     # ------------------------------------------------------------------
-    async def execute(        # noqa: D401 – imperative verb is fine
+    async def execute(        # noqa: D401 - imperative verb is fine
         self,
         args: List[str],
         tool_manager: Any = None,  # unused but kept for signature parity

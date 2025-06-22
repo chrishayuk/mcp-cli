@@ -37,13 +37,13 @@ async def display_registry_tools(
     if namespace:
         tools = [t for t in tools if t.namespace == namespace]
 
-    ns_note = f" – namespace='{namespace}'" if namespace else ""
+    ns_note = f" - namespace='{namespace}'" if namespace else ""
     print(
         Fore.CYAN + f"🔧  Registered MCP tools ({len(tools)}){ns_note}" + Style.RESET_ALL
     )
     for t in tools:
         print(
-            f"  • {Fore.GREEN}{t.namespace}.{t.name:<20}{Style.RESET_ALL} – "
+            f"  • {Fore.GREEN}{t.namespace}.{t.name:<20}{Style.RESET_ALL} - "
             f"{t.description or '<no description>'}"
         )
     print()
