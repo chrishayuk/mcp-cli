@@ -530,9 +530,15 @@ requires-dist = [
     { name = "anthropic", specifier = ">=0.51.0" },
     { name = "asyncio", specifier = ">=3.4.3" },
     { name = "asyncio", marker = "extra == 'dev'", specifier = ">=3.4.3" },
+<<<<<<< HEAD
     { name = "chuk-llm", specifier = ">=0.7" },
     { name = "chuk-mcp", specifier = ">=0.1.7" },
     { name = "chuk-tool-processor", specifier = ">=0.4.1" },
+=======
+    { name = "chuk-llm", specifier = "==0.1.8" },
+    { name = "chuk-mcp", specifier = "==0.1.12" },
+    { name = "chuk-tool-processor", specifier = "==0.4.1" },
+>>>>>>> 5a768b8 (pinned versions pending update)
     { name = "google-genai", specifier = ">=1.15.0" },
     { name = "numpy", marker = "extra == 'dev'", specifier = ">=2.2.3" },
     { name = "prompt-toolkit", specifier = ">=3.0.50" },

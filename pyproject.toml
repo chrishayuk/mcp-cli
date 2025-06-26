@@ -26,6 +26,7 @@ dependencies = [
   "typer>=0.15.2",
 ]
 
+
 [project.scripts]
 mcp-cli = "mcp_cli.main:app"
 mcp-llm = "mcp_cli.llm.__main__:main"
