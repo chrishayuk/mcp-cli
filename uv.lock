@@ -171,19 +171,7 @@ dependencies = [
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/8c/c4/df3072898a9d9cf0b03aab20e19678b271a069d4fe018cbb4ac9694fc6d1/chuk_mcp-0.2.3.tar.gz", hash = "sha256:9a2e45fa88709390c4bd975dc77e6d76564acca395bc2a3ce21b88ef3f044ddc", size = 70054 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/78/27/fecedf02483f1e6cadc8c0edf34940f3162bc45715781d664a7a6ac6c6c4/chuk_mcp-0.2.3-py3-none-any.whl", hash = "sha256:7d39d2db8203810b3e936e740ee318719d321ffe6c43de32767a03f7e574f8f0", size = 90908 },
-]
-
-[[package]]
-name = "chuk-sessions"
-version = "0.4.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pydantic" },
-    { name = "pyyaml" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/69/5b/95d17807944c922671ac8538c03b1f334c8ce7e473d62ccf3d3bf3833c01/chuk_sessions-0.4.2-py3-none-any.whl", hash = "sha256:aaa49cbd59ec0cb22c9fbfaed99fa28f9fbfeac3c9f54d15242f5ec17deed740", size = 11895 },
+    { url = "https://files.pythonhosted.org/packages/0b/00/2836302ea9bebc96497516b27fe518f32a839d8ef17229ec88bab1caddca/chuk_mcp-0.1.12-py3-none-any.whl", hash = "sha256:43dc5acd0fe624c15102d78bda217a02f98752c7ed7cc5222be2aa4793aff4bc", size = 32567 },
 ]
 
 [[package]]
@@ -537,9 +525,9 @@ requires-dist = [
     { name = "anthropic", specifier = ">=0.51.0" },
     { name = "asyncio", specifier = ">=3.4.3" },
     { name = "asyncio", marker = "extra == 'dev'", specifier = ">=3.4.3" },
-    { name = "chuk-llm", specifier = ">=0.7" },
-    { name = "chuk-mcp", specifier = ">=0.2.3" },
-    { name = "chuk-tool-processor", specifier = ">=0.5.2" },
+    { name = "chuk-llm", specifier = ">=0.1.8" },
+    { name = "chuk-mcp", specifier = ">=0.1.7" },
+    { name = "chuk-tool-processor", specifier = ">=0.4" },
     { name = "google-genai", specifier = ">=1.15.0" },
     { name = "numpy", marker = "extra == 'dev'", specifier = ">=2.2.3" },
     { name = "prompt-toolkit", specifier = ">=3.0.50" },
