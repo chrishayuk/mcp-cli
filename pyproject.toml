@@ -16,7 +16,7 @@ license = {text = "MIT"}
 dependencies = [
   "anthropic>=0.51.0",
   "asyncio>=3.4.3",
-  "chuk-llm==0.1.8",
+  "chuk-llm>=0.8",
   "chuk-mcp>=0.2.3",
   "chuk-tool-processor>=0.5.2",
   "google-genai>=1.15.0",
