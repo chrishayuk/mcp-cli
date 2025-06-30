@@ -59,6 +59,10 @@ def process_options(
     os.environ["LLM_PROVIDER"] = provider
     if model:
         os.environ["LLM_MODEL"] = model
+    else:
+        # Set default model for openai provider if none specified
+        if provider == "openai":
+            os.environ["LLM_MODEL"] = "gpt-4o-mini"
     
     if not disable_filesystem:
         os.environ["SOURCE_FILESYSTEMS"] = json.dumps([os.getcwd()])

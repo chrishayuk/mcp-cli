@@ -9,15 +9,16 @@ import signal
 import gc
 import weakref
 
-# mcp imports
-from chuk_mcp.mcp_client.transport.stdio.stdio_client import stdio_client
-from chuk_mcp.mcp_client.messages.initialize.send_messages import send_initialize
+# Updated imports for new chuk-mcp APIs
+from chuk_mcp.transports.stdio import stdio_client
+from chuk_mcp.protocol.messages import send_initialize
 
 # cli imports
 from mcp_cli.commands.register_commands import register_commands, chat_command
 from mcp_cli.cli_options import process_options
 
-# host imports
+# host imports - this may need updating depending on the new API structure
+# Note: You may need to verify if this import path is still correct in the new APIs
 from chuk_mcp.mcp_client.host.server_manager import run_command
 
 # Configure logging

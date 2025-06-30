@@ -153,20 +153,20 @@ wheels = [
 
 [[package]]
 name = "chuk-mcp"
-version = "0.2"
+version = "0.2.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4d/ac/055308a204b6147983ee2773087aa334c6519162267812b758f7f569f6e0/chuk_mcp-0.2.tar.gz", hash = "sha256:a90d786814d7c962e7fb2aef4e1f56ef6e3efcdea8c80137873c4cdee1d31c7f", size = 59184 }
+sdist = { url = "https://files.pythonhosted.org/packages/8c/c4/df3072898a9d9cf0b03aab20e19678b271a069d4fe018cbb4ac9694fc6d1/chuk_mcp-0.2.3.tar.gz", hash = "sha256:9a2e45fa88709390c4bd975dc77e6d76564acca395bc2a3ce21b88ef3f044ddc", size = 70054 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ba/2e/a51c1d3db82d45a8cc75f518b2cd74d43f165033c94c89138efc6e4caa25/chuk_mcp-0.2-py3-none-any.whl", hash = "sha256:eab64f57c6a9d8b81d5c352cd6da02fa0ab48619fa36c591f0616863520c6123", size = 78518 },
+    { url = "https://files.pythonhosted.org/packages/78/27/fecedf02483f1e6cadc8c0edf34940f3162bc45715781d664a7a6ac6c6c4/chuk_mcp-0.2.3-py3-none-any.whl", hash = "sha256:7d39d2db8203810b3e936e740ee318719d321ffe6c43de32767a03f7e574f8f0", size = 90908 },
 ]
 
 [[package]]
 name = "chuk-tool-processor"
-version = "0.5"
+version = "0.5.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "chuk-mcp" },
@@ -174,9 +174,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "uuid" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7e/26/4d667bfdd9c92235592756b80d43c6e2646b77a1d3229be9ec89276a352f/chuk_tool_processor-0.5.tar.gz", hash = "sha256:9ff78acfd4703255eca3492205456877bde792f862a54ea41fd6f723d9e856a9", size = 83409 }
+sdist = { url = "https://files.pythonhosted.org/packages/4b/4a/2b31266eb77552023405ecf1659098f9cfeeff3d3d7f69a514c6c28c1e92/chuk_tool_processor-0.5.2.tar.gz", hash = "sha256:bb51521e33699e151ffb3cd6aa24a706531152d9d1096126eead4dca5932aa10", size = 84667 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f1/49/86e8ce3b08eef24f0fecdb6f5e3ddd45ff0d1a1cd2235db9a5f9c3cfb519/chuk_tool_processor-0.5-py3-none-any.whl", hash = "sha256:225adf437a8d4e40986728ddc3f298d544e3d59e00be45cd90e9e92098eb244f", size = 102472 },
+    { url = "https://files.pythonhosted.org/packages/f0/7b/a0cf94b8472544444b02401a902661275d88133643acf4d83adaf169c5c3/chuk_tool_processor-0.5.2-py3-none-any.whl", hash = "sha256:1112034b3ef7fbf32c54ac2409391f397b1b813ca93c4492f1f2e382305f8545", size = 103765 },
 ]
 
 [[package]]
@@ -504,8 +504,8 @@ requires-dist = [
     { name = "asyncio", specifier = ">=3.4.3" },
     { name = "asyncio", marker = "extra == 'dev'", specifier = ">=3.4.3" },
     { name = "chuk-llm", specifier = "==0.1.8" },
-    { name = "chuk-mcp", specifier = ">=0.2" },
-    { name = "chuk-tool-processor", specifier = ">=0.5" },
+    { name = "chuk-mcp", specifier = ">=0.2.3" },
+    { name = "chuk-tool-processor", specifier = ">=0.5.2" },
     { name = "google-genai", specifier = ">=1.15.0" },
     { name = "groq", specifier = ">=0.24.0" },
     { name = "numpy", marker = "extra == 'dev'", specifier = ">=2.2.3" },
