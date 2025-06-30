@@ -58,6 +58,6 @@ async def cmd_prompts(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: 
 
 
 # ────────────────────────────────────────────────────────────────
-# Registration (no extra alias – keep namespace clean)
+# Registration (no extra alias - keep namespace clean)
 # ────────────────────────────────────────────────────────────────
 register_command("/prompts", cmd_prompts)

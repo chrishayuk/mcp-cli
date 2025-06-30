@@ -17,7 +17,7 @@ from mcp_cli.tools.models import ToolInfo, ServerInfo
 # ---------------------------------------------------------------------------
 # Dummy async ToolManager stub
 # ---------------------------------------------------------------------------
-class DummyToolManager:  # noqa: WPS110 – test helper
+class DummyToolManager:  # noqa: WPS110 - test helper
     """Minimal stand-in that satisfies the methods ChatContext uses."""
 
     def __init__(self) -> None:
@@ -68,10 +68,10 @@ class DummyToolManager:  # noqa: WPS110 – test helper
         ]
 
     # ----- discovery --------------------------------------------------
-    async def get_unique_tools(self):  # noqa: D401 – match signature
+    async def get_unique_tools(self):  # noqa: D401 - match signature
         return self._tools
 
-    async def get_server_info(self):  # noqa: D401 – match signature
+    async def get_server_info(self):  # noqa: D401 - match signature
         return self._servers
 
     async def get_adapted_tools_for_llm(self, provider: str = "openai"):

@@ -30,7 +30,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
-from rich import box, print  # noqa: T201 – used deliberately
+from rich import box, print  # noqa: T201 - used deliberately
 
 from mcp_cli.chat.commands import register_command
 
@@ -56,7 +56,7 @@ async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) ->
     if args and args[0].isdigit():
         single_row = int(args[0])
         if not (1 <= single_row <= len(history)):
-            console.print(f"[red]Invalid row. Must be 1–{len(history)}[/red]")
+            console.print(f"[red]Invalid row. Must be 1-{len(history)}[/red]")
             return True
 
     # -n limit?

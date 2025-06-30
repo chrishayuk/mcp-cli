@@ -54,7 +54,7 @@ async def servers_action_async(tm: ToolManager) -> List:  # noqa: D401
 
 
 # ════════════════════════════════════════════════════════════════════════
-# sync helper – kept for non-async CLI paths
+# sync helper - kept for non-async CLI paths
 # ════════════════════════════════════════════════════════════════════════
 def servers_action(tm: ToolManager) -> List:
     """Blocking wrapper around :pyfunc:`servers_action_async`."""

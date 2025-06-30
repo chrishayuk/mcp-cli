@@ -42,7 +42,7 @@ class ToolCallResult:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# NEW – resource-related models
+# NEW - resource-related models
 # ──────────────────────────────────────────────────────────────────────────────
 @dataclass
 class ResourceInfo:
@@ -78,5 +78,5 @@ class ResourceInfo:
             known = {k: raw.get(k) for k in ("id", "name", "type")}
             extra = {k: v for k, v in raw.items() if k not in known}
             return cls(**known, extra=extra)
-        # primitive – wrap it
+        # primitive - wrap it
         return cls(extra={"value": raw})

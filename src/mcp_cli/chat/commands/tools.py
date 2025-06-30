@@ -26,11 +26,11 @@ async def tools_command(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa:
 
     Usage
     -----
-    /tools              – list tools  
-    /tools --all        – include parameter schemas  
-    /tools --raw        – dump raw JSON definitions  
-    /tools call         – interactive “call tool” helper  
-    /t                  – short alias
+    /tools              - list tools  
+    /tools --all        - include parameter schemas  
+    /tools --raw        - dump raw JSON definitions  
+    /tools call         - interactive “call tool” helper  
+    /t                  - short alias
     """
     console = get_console()
 

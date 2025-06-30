@@ -7,11 +7,11 @@ function or tool invocation the assistant has issued so far.
 
 Key Features
 ------------
-* **Tabular overview** – default view lists call-number, tool‐name, and the
+* **Tabular overview** - default view lists call-number, tool‐name, and the
   (truncated) argument JSON.
-* **Row drill-down**  – pass a *row-number* to see the full JSON payload for
+* **Row drill-down**  - pass a *row-number* to see the full JSON payload for
   that specific call.
-* **Quick filters**    – `-n N` limits output to the last *N* entries,
+* **Quick filters**    - `-n N` limits output to the last *N* entries,
   `--json` emits a machine-readable dump of the whole list.
 
 Examples
@@ -23,10 +23,10 @@ Examples
 
 Usage
 -----
-  /toolhistory              – show all calls in a table  
-  /toolhistory -n 10        – last ten calls only  
-  /toolhistory <row>        – detailed view of one call  
-  /toolhistory --json       – JSON dump of all calls
+  /toolhistory              - show all calls in a table  
+  /toolhistory -n 10        - last ten calls only  
+  /toolhistory <row>        - detailed view of one call  
+  /toolhistory --json       - JSON dump of all calls
 """
 from __future__ import annotations
 
@@ -90,7 +90,7 @@ async def tool_history_command(cmd_parts: List[str], ctx: Dict[str, Any]) -> boo
                 )
             )
         else:
-            console.print(f"[red]Invalid index – choose 1–{len(tool_calls)}[/red]")
+            console.print(f"[red]Invalid index - choose 1-{len(tool_calls)}[/red]")
         return True
 
     # 2️⃣  full JSON dump

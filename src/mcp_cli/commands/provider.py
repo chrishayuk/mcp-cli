@@ -1,56 +1,66 @@
-# src/mcp_cli/commands/provider.py
+# mcp_cli/commands/provider.py
 """
-Manage LLM *providers* - list, switch, configure, or run diagnostics.
+Fixed provider command implementation for chuk-llm 0.7 migration.
 
-Enhancements
-------------
-* **/provider diagnostic [<provider>]** - quick ✓ / ✗ health-check that
-  runs a tiny probe prompt against every provider.
-* **Safe switching** - validates the chosen provider/model pair with an
-  LLM probe before committing the change.
-* Automatically stays in sync with :pyclass:`mcp_cli.model_manager.ModelManager`.
+Usage Examples:
+    CLI Mode:
+        mcp-cli provider                      # Show current provider status
+        mcp-cli provider list                 # List all providers with model counts
+        mcp-cli provider config               # Show detailed configuration
+        mcp-cli provider diagnostic           # Run diagnostics on all providers
+        mcp-cli provider diagnostic openai    # Run diagnostics on specific provider
+        mcp-cli provider anthropic            # Switch to Anthropic (default model)
+        mcp-cli provider openai gpt-4o        # Switch to OpenAI with specific model
+        mcp-cli provider set openai api_key sk-your-key-here
+        mcp-cli provider set anthropic api_base https://api.anthropic.com
+        mcp-cli provider set groq default_model llama-3.3-70b-versatile
+
+    Chat Mode:
+        /provider                         # Show current provider status
+        /provider list                    # See all providers with model counts
+        /provider anthropic              # Switch to Anthropic
+        /provider openai gpt-4o          # Switch to OpenAI with specific model
+        /provider diagnostic gemini      # Check Gemini setup
+        /provider set deepseek api_key sk-... # Configure API key
+        /provider config                 # Show detailed configuration
 """
 from __future__ import annotations
 from typing import Dict, List, Tuple
 from rich.table import Table
 
-# mcp cli
 from mcp_cli.model_manager import ModelManager
-from mcp_cli.utils.llm_probe import LLMProbe
 from mcp_cli.utils.rich_helpers import get_console
 
-# One console for the whole module (Windows-safe, honours piping, etc.)
 console = get_console()
 
-DiagRow = Tuple[str, str | None]  # (provider, default_model)
 
-
-# ════════════════════════════════════════════════════════════════════════
-# entry-point used by both CLI and chat layers
-# ════════════════════════════════════════════════════════════════════════
 async def provider_action_async(
     args: List[str],
     *,
     context: Dict,
 ) -> None:
-    """
-    Handle all */provider …* sub-commands.
-
-    Accepted sub-commands
-    ---------------------
-    * *no arg*        – show current provider / model
-    * **list**        – list every configured provider
-    * **config**      – dump provider configs (API bases, keys masked)
-    * **diagnostic**  – run health-check across providers
-    * **set <p> k v** – mutate a config key (e.g. API base, key, model)
-    * **<provider> [model]** – switch provider (validates first)
-    """
+    """Handle all provider sub-commands using chuk-llm's unified configuration."""
     model_manager: ModelManager = context.get("model_manager") or ModelManager()
     context.setdefault("model_manager", model_manager)
 
     def _show_status() -> None:
-        console.print(f"[cyan]Current provider:[/cyan] {model_manager.get_active_provider()}")
-        console.print(f"[cyan]Current model   :[/cyan] {model_manager.get_active_model()}")
+        provider, model = model_manager.get_active_provider_and_model()
+        status = model_manager.get_status_summary()
+        
+        console.print(f"[cyan]Current provider:[/cyan] {provider}")
+        console.print(f"[cyan]Current model   :[/cyan] {model}")
+        console.print(f"[cyan]Configured      :[/cyan] {'✅' if status['provider_configured'] else '❌'}")
+        console.print(f"[cyan]Features        :[/cyan] {_format_features(status)}")
+
+    def _format_features(status: Dict) -> str:
+        features = []
+        if status.get('supports_streaming'):
+            features.append("📡 streaming")
+        if status.get('supports_tools'):
+            features.append("🔧 tools")
+        if status.get('supports_vision'):
+            features.append("👁️ vision")
+        return " ".join(features) or "text only"
 
     # ── dispatch ────────────────────────────────────────────────────────
     if not args:
@@ -83,130 +93,294 @@ async def provider_action_async(
     await _switch_provider(model_manager, new_prov, maybe_model, context)
 
 
-# ════════════════════════════════════════════════════════════════════════
-# diagnostics helper
-# ════════════════════════════════════════════════════════════════════════
 async def _diagnose(model_manager: ModelManager, target: str | None) -> None:
-    """Probe providers with a tiny prompt and show a ✓ / ✗ table."""
-    rows: List[DiagRow] = (
-        [(target, model_manager.get_default_model(target))]
-        if target
-        else [(p, model_manager.get_default_model(p)) for p in model_manager.list_providers()]
-    )
-
-    if target and target not in model_manager.list_providers():
-        console.print(f"[red]Unknown provider:[/red] {target}")
-        return
+    """Probe providers using chuk-llm's validation system."""
+    if target:
+        providers_to_test = [target] if model_manager.validate_provider(target) else []
+        if not providers_to_test:
+            console.print(f"[red]Unknown provider:[/red] {target}")
+            return
+    else:
+        providers_to_test = model_manager.list_providers()
 
     tbl = Table(title="Provider diagnostics")
     tbl.add_column("Provider", style="green")
-    tbl.add_column("Model",    style="cyan")
-    tbl.add_column("Status")
-    tbl.add_column("Response Time", style="dim")
+    tbl.add_column("Status", style="cyan")
+    tbl.add_column("Features", style="yellow")
+    tbl.add_column("Default Model", style="blue")
 
-    async with LLMProbe(model_manager, suppress_logging=True) as probe:
-        import time
-        for prov, model in rows:
-            start = time.perf_counter()
-            try:
-                res = await probe.test_provider_model(prov, model, "ping")
-                elapsed = f"{time.perf_counter() - start:.2f}s"
-                status  = "[green]✓ OK[/green]" if res.success else f"[red]✗ {res.error_message or 'error'}[/red]"
-                if not res.success:
-                    elapsed = "-"
-            except Exception as exc:  # noqa: BLE001
-                status, elapsed = f"[red]✗ {type(exc).__name__}[/red]", "-"
+    # Get provider data using same source as working functions
+    try:
+        all_providers_data = model_manager.list_available_providers()
+    except Exception as e:
+        console.print(f"[red]Error getting provider data:[/red] {e}")
+        return
 
-            tbl.add_row(prov, model or "-", status, elapsed)
+    for provider in providers_to_test:
+        try:
+            validation = model_manager.validate_provider_setup(provider)
+            info = all_providers_data.get(provider, {})
+            
+            # Skip if provider has errors
+            if "error" in info:
+                tbl.add_row(provider, f"[red]✗ Error[/red]", "-", info["error"][:20] + "...")
+                continue
+            
+            # Status
+            if validation.get("valid"):
+                status = "[green]✅ Ready[/green]"
+            elif validation.get("has_api_key") or info.get("has_api_key"):
+                status = "[yellow]⚠️ Issues[/yellow]"
+            else:
+                status = "[red]❌ No API Key[/red]"
+            
+            # Features - check baseline_features for chuk-llm 0.7 compatibility
+            baseline_features = info.get("baseline_features", [])
+            supports = info.get("supports", {})  # fallback to legacy format
+            
+            features = []
+            if "streaming" in baseline_features or supports.get("streaming"):
+                features.append("📡")
+            if "tools" in baseline_features or supports.get("tools"):
+                features.append("🔧")
+            if "vision" in baseline_features or supports.get("vision"):
+                features.append("👁️")
+            feature_str = "".join(features) or "📝"
+            
+            # FIXED: Default model - use same data source as working functions
+            default_model = info.get("default_model", "unknown")
+            
+            tbl.add_row(provider, status, feature_str, default_model)
+            
+        except Exception as exc:
+            tbl.add_row(provider, f"[red]✗ Error[/red]", "-", str(exc)[:30] + "...")
 
     console.print(tbl)
 
 
-# ════════════════════════════════════════════════════════════════════════
-# presentation helpers
-# ════════════════════════════════════════════════════════════════════════
 def _render_list(model_manager: ModelManager) -> None:
+    """List all available providers with comprehensive info."""
     tbl = Table(title="Available Providers")
-    tbl.add_column("Provider",       style="green")
-    tbl.add_column("Default Model",  style="cyan")
-    tbl.add_column("API Base",       style="yellow")
+    tbl.add_column("Provider", style="green")
+    tbl.add_column("Status", style="cyan")
+    tbl.add_column("Default Model", style="yellow")
+    tbl.add_column("Models Available", style="blue")
+    tbl.add_column("Features", style="magenta")
 
     current = model_manager.get_active_provider()
-    for name in model_manager.list_providers():
-        cfg = model_manager.get_provider_config(name)
-        label = f"[bold]{name}[/bold]" if name == current else name
-        tbl.add_row(label,
-                    cfg.get("default_model", "-"),
-                    cfg.get("api_base", "-"))
+    
+    try:
+        all_providers_info = model_manager.list_available_providers()
+    except Exception as e:
+        console.print(f"[red]Error getting provider list:[/red] {e}")
+        return
+
+    for name, info in all_providers_info.items():
+        if "error" in info:
+            tbl.add_row(name, "[red]Error[/red]", "-", "-", info["error"][:30] + "...")
+            continue
+        
+        # Mark current provider
+        provider_name = f"[bold]{name}[/bold]" if name == current else name
+        
+        # Status
+        configured = info.get("has_api_key", False)
+        status = "[green]✅[/green]" if configured else "[red]❌[/red]"
+        
+        # FIXED: Models count - chuk-llm 0.7 uses "models" key
+        models = info.get("models", [])
+        if not models:
+            models = info.get("available_models", [])  # fallback for older versions
+        model_count = len(models)
+        models_str = f"{model_count} models" if model_count > 0 else "No models found"
+        
+        # Features summary
+        baseline_features = info.get("baseline_features", [])
+        feature_icons = []
+        if "streaming" in baseline_features:
+            feature_icons.append("📡")
+        if "tools" in baseline_features:
+            feature_icons.append("🔧")
+        if "vision" in baseline_features:
+            feature_icons.append("👁️")
+        features_str = "".join(feature_icons) or "📝"
+        
+        tbl.add_row(
+            provider_name,
+            status,
+            info.get("default_model", "-"),
+            models_str,
+            features_str
+        )
+
     console.print(tbl)
 
 
 def _render_config(model_manager: ModelManager) -> None:
+    """Show detailed configuration for all providers."""
     tbl = Table(title="Provider Configurations")
     tbl.add_column("Provider", style="green")
-    tbl.add_column("Setting",  style="cyan")
-    tbl.add_column("Value",    style="yellow")
+    tbl.add_column("Setting", style="cyan")
+    tbl.add_column("Value", style="yellow")
 
-    for pname in model_manager.list_providers():
-        cfg = model_manager.get_provider_config(pname)
-        for i, (k, v) in enumerate(cfg.items()):
-            display = "********" if k == "api_key" and v else str(v)
-            tbl.add_row(pname if i == 0 else "", k, display)
+    try:
+        all_providers_info = model_manager.list_available_providers()
+    except Exception as e:
+        console.print(f"[red]Error getting provider configuration:[/red] {e}")
+        return
+    
+    for provider_name, info in all_providers_info.items():
+        if "error" in info:
+            tbl.add_row(provider_name, "error", info["error"][:50] + "...")
+            continue
+        
+        # FIXED: Get model count using correct key
+        models = info.get("models", info.get("available_models", []))
+        model_count = len(models)
+        
+        settings = [
+            ("api_base", info.get("api_base") or "default"),
+            ("has_api_key", "✅" if info.get("has_api_key") else "❌"),
+            ("default_model", info.get("default_model", "-")),
+            ("model_count", str(model_count)),
+            ("discovery_enabled", "✅" if info.get("discovery_enabled") else "❌"),
+        ]
+        
+        for i, (setting, value) in enumerate(settings):
+            provider_display = provider_name if i == 0 else ""
+            tbl.add_row(provider_display, setting, str(value))
+
     console.print(tbl)
 
 
 def _mutate(model_manager: ModelManager, prov: str, key: str, val: str) -> None:
-    val = None if val.lower() in {"none", "null"} else val
+    """
+    Update provider configuration.
+    
+    Examples:
+        CLI Mode:
+            mcp-cli provider set openai api_key sk-your-key-here
+            mcp-cli provider set anthropic api_base https://api.anthropic.com  
+            mcp-cli provider set groq default_model llama-3.3-70b-versatile
+            mcp-cli provider set mistral api_key null  # Remove API key
+        
+        Chat Mode:
+            /provider set openai api_key sk-your-key-here
+            /provider set anthropic api_base https://api.anthropic.com
+            /provider set groq default_model llama-3.3-70b-versatile
+            /provider set mistral api_key null  # Remove API key
+    
+    Supported keys:
+        - api_key: Provider API key
+        - api_base: Custom API endpoint URL
+        - default_model: Default model for the provider
+        - Any other provider-specific configuration
+    """
+    val_processed = None if val.lower() in {"none", "null"} else val
+    
     try:
-        model_manager.set_provider_config(prov, {key: val})
+        # Use configure_provider for known settings
+        if key == "api_key":
+            model_manager.configure_provider(prov, api_key=val_processed)
+        elif key == "api_base":
+            model_manager.configure_provider(prov, api_base=val_processed)
+        elif key == "default_model":
+            model_manager.configure_provider(prov, default_model=val_processed)
+        else:
+            # Generic setting update
+            model_manager.configure_provider(prov, **{key: val_processed})
+        
         console.print(f"[green]Updated {prov}.{key}[/green]")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         console.print(f"[red]Error:[/red] {exc}")
 
 
-# ════════════════════════════════════════════════════════════════════════
-# enhanced provider switcher with probe validation
-# ════════════════════════════════════════════════════════════════════════
 async def _switch_provider(
     model_manager: ModelManager,
     prov: str,
     model: str | None,
     ctx: Dict,
 ) -> None:
-    """Switch provider *after* a successful probe validation."""
+    """
+    Switch provider with validation.
+    
+    Examples:
+        CLI Mode:
+            mcp-cli provider anthropic                    # Switch to Anthropic (default model)
+            mcp-cli provider openai gpt-4o               # Switch to OpenAI with specific model  
+            mcp-cli provider groq llama-3.3-70b-versatile # Switch to Groq with specific model
+        
+        Chat Mode:
+            /provider anthropic                       # Switch to Anthropic (default model)
+            /provider openai gpt-4o                  # Switch to OpenAI with specific model
+            /provider groq llama-3.3-70b-versatile   # Switch to Groq with specific model
+        
+    The function will:
+    1. Validate the provider exists
+    2. Check provider configuration (API keys, etc.)
+    3. Switch to the provider and model
+    4. Update the chat/CLI context
+    """
     if not model_manager.validate_provider(prov):
+        available = ", ".join(model_manager.list_providers())
         console.print(f"[red]Unknown provider:[/red] {prov}")
+        console.print(f"[yellow]Available:[/yellow] {available}")
         return
 
-    current_prov, current_model = model_manager.get_active_provider(), model_manager.get_active_model()
-    target_model = model or model_manager.get_default_model(prov)
-
+    # Get target model
+    if model:
+        target_model = model
+    else:
+        # Get default model for provider
+        try:
+            target_model = model_manager.get_default_model(prov)
+            if not target_model:
+                # Fallback - get any available model
+                available_models = model_manager.get_available_models(prov)
+                target_model = available_models[0] if available_models else "unknown"
+        except Exception:
+            target_model = "unknown"
+    
     console.print(f"[dim]Switching to provider '{prov}' (model '{target_model}')…[/dim]")
 
-    async with LLMProbe(model_manager, suppress_logging=True) as probe:
-        result = await probe.test_provider_model(prov, target_model)
+    # Validate provider setup
+    try:
+        validation = model_manager.validate_provider_setup(prov)
+        if not validation.get("valid"):
+            issues = validation.get("issues", ["Unknown validation error"])
+            console.print(f"[red]Provider setup issues:[/red]")
+            for issue in issues:
+                console.print(f"  - {issue}")
+            
+            if not validation.get("has_api_key"):
+                console.print(f"[yellow]Tip:[/yellow] Set API key with: mcp-cli provider set {prov} api_key YOUR_KEY")
+            return
+    except Exception as e:
+        console.print(f"[yellow]Warning:[/yellow] Could not validate provider setup: {e}")
 
-    if not result.success:
-        console.print(f"[red]Provider switch failed:[/red] {result.error_message or 'unknown error'}")
-        console.print(f"[yellow]Keeping current provider:[/yellow] {current_prov}")
+    # Switch
+    try:
+        model_manager.switch_model(prov, target_model)
+    except Exception as e:
+        console.print(f"[red]Failed to switch provider:[/red] {e}")
         return
 
-    model_manager.switch_model(prov, target_model)
-
-    # sync context
-    ctx.update({
-        "provider":      prov,
-        "model":         target_model,
-        "client":        result.client,
-        "model_manager": model_manager,
-    })
+    # Update context
+    try:
+        ctx.update({
+            "provider": prov,
+            "model": target_model,
+            "client": model_manager.get_client(),
+            "model_manager": model_manager,
+        })
+    except Exception as e:
+        console.print(f"[yellow]Warning:[/yellow] Could not update client: {e}")
+    
     console.print(f"[green]Switched to {prov}[/green] (model: {target_model})")
 
 
-# ════════════════════════════════════════════════════════════════════════
-# synchronous wrapper for legacy CLI paths
-# ════════════════════════════════════════════════════════════════════════
+# Sync wrapper for legacy CLI paths
 def provider_action(args: List[str], *, context: Dict) -> None:
-    """Blocking facade around :pyfunc:`provider_action_async`."""
+    """Blocking facade around provider_action_async."""
     from mcp_cli.utils.async_utils import run_blocking
     run_blocking(provider_action_async(args, context=context))

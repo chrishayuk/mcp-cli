@@ -20,7 +20,7 @@ class DummyToolManager:
     """Minimal stand-in that satisfies ping_action_async."""
 
     def __init__(self):
-        # Two mock (read, write) stream pairs – the concrete objects are never
+        # Two mock (read, write) stream pairs - the concrete objects are never
         # touched because we monkey-patch _ping_one.
         self._streams = [(None, None), (None, None)]
         self._server_info = [_DummyServerInfo("ServerA"), _DummyServerInfo("ServerB")]

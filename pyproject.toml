@@ -9,7 +9,7 @@ description = "A cli for the Model Context Provider"
 requires-python = ">=3.11"
 readme = "README.md"
 authors = [
-  { name = "Chris Hay", email = "chrishayuk@younknowwhere.com" }
+  { name = "Chris Hay", email = "chrishayuk@somejunkmailbox.com" }
 ]
 keywords = ["llm", "openai", "claude", "mcp", "cli"]
 license = {text = "MIT"}
@@ -20,9 +20,6 @@ dependencies = [
   "chuk-mcp>=0.2.3",
   "chuk-tool-processor>=0.5.2",
   "google-genai>=1.15.0",
-  "groq>=0.24.0",
-  "ollama>=0.4.2",
-  "openai>=1.55.3",
   "prompt-toolkit>=3.0.50",
   "python-dotenv>=1.0.1",
   "rich>=13.9.4",

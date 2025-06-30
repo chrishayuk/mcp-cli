@@ -79,7 +79,7 @@ async def run_command(
     """
     Initialise the ToolManager, then call *async_command(tool_manager, …)*.
 
-    The *async_command* may itself be `async` **or** synchronous – both work.
+    The *async_command* may itself be `async` **or** synchronous - both work.
     The ToolManager is always closed, even when the callable raises.
     """
     tm = None
@@ -234,6 +234,6 @@ def cli_entry(
 
     try:
         asyncio.run(_inner())
-    except Exception as exc:        # noqa: BLE001 – show nicely then exit
+    except Exception as exc:        # noqa: BLE001 - show nicely then exit
         console.print(Panel(str(exc), title="Fatal Error", style="bold red"))
         sys.exit(1)

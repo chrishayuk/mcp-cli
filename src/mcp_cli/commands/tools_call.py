@@ -35,7 +35,7 @@ async def tools_call_action(tm: ToolManager) -> None:  # noqa: D401
     """
     Launch the mini-wizard, execute the chosen tool, show the result.
 
-    This function is designed for *interactive* use only – it blocks on
+    This function is designed for *interactive* use only - it blocks on
     `input()` twice (tool selection & JSON args).
     """
     console = get_console()
@@ -53,7 +53,7 @@ async def tools_call_action(tm: ToolManager) -> None:  # noqa: D401
     cprint("[green]Available tools:[/green]")
     for idx, tool in enumerate(all_tools, 1):
         desc = tool.description or "No description"
-        cprint(f"  {idx}. {tool.name} (from {tool.namespace}) – {desc}")
+        cprint(f"  {idx}. {tool.name} (from {tool.namespace}) - {desc}")
 
     # ── user selection ────────────────────────────────────────────────
     sel_raw = await asyncio.to_thread(input, "\nEnter tool number to call: ")
@@ -79,7 +79,7 @@ async def tools_call_action(tm: ToolManager) -> None:  # noqa: D401
             try:
                 args = json.loads(args_raw)
             except json.JSONDecodeError:
-                cprint("[red]Invalid JSON – aborting.[/red]")
+                cprint("[red]Invalid JSON - aborting.[/red]")
                 return
     else:
         cprint("[dim]Tool takes no arguments.[/dim]")

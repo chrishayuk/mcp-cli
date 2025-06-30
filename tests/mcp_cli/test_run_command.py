@@ -7,7 +7,7 @@ The new implementation:
 * constructs a ToolManager internally (imported from
   ``mcp_cli.tools.manager``),
 * injects it into the command when the parameter is present,
-* always calls ``ToolManager.close()`` – even on exceptions,
+* always calls ``ToolManager.close()`` - even on exceptions,
 * has the signatures::
 
     await run_command(target, *, config_file, servers, extra_params)
@@ -37,7 +37,7 @@ _ALL_TM: List["DummyToolManagerBase"] = []  # collect created instances
 class DummyToolManagerBase:
     """Base with common helpers to prove close() is always called."""
 
-    def __init__(self, *args, **kwargs):  # noqa: D401 – signature irrelevant
+    def __init__(self, *args, **kwargs):  # noqa: D401 - signature irrelevant
         self.args = args
         self.kwargs = kwargs
         self.initialized = False

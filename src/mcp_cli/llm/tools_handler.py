@@ -214,7 +214,7 @@ def convert_to_openai_tools(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     Convert a list of MCP-style tool metadata dictionaries into the
     OpenAI “function call” JSON schema.
 
-    ⚠️  **Deprecated** – new code should call `ToolManager.get_tools_for_llm()`.
+    ⚠️  **Deprecated** - new code should call `ToolManager.get_tools_for_llm()`.
     This helper remains for older tests / scripts.
     """
     # Already-converted? → return unchanged

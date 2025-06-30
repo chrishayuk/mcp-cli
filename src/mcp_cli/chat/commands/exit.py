@@ -6,7 +6,7 @@ Chat-mode “/exit” and “/quit” commands for MCP-CLI
 Both commands perform a single task: **politely end the current chat
 session**.
 
-* They set ``context["exit_requested"] = True`` – the main chat loop checks
+* They set ``context["exit_requested"] = True`` - the main chat loop checks
   this flag and breaks.
 * A red confirmation panel is printed so the user knows the request was
   acknowledged.

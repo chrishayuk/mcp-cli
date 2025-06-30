@@ -72,7 +72,7 @@ class CommandRegistry:
                 continue
 
             # ------------------------------------------------------------------
-            # Wrapper factory – binds variables at definition time to avoid the
+            # Wrapper factory - binds variables at definition time to avoid the
             # classic late-binding-in-a-loop bug.
             # ------------------------------------------------------------------
             # create wrapper with variables bound at *definition* time

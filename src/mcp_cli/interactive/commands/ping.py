@@ -47,7 +47,7 @@ class PingCommand(InteractiveCommand):
         console = get_console()
 
         if tool_manager is None:
-            log.debug("PingCommand executed without ToolManager – aborting.")
+            log.debug("PingCommand executed without ToolManager - aborting.")
             console.print("[red]Error:[/red] ToolManager not available.")
             return
 

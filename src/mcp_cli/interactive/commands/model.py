@@ -48,7 +48,7 @@ class ModelCommand(InteractiveCommand):
 
         # Basic sanity-check: the shared helper expects a ModelManager
         if "model_manager" not in ctx:
-            log.debug("No model_manager in context – model command may misbehave.")
+            log.debug("No model_manager in context - model command may misbehave.")
             console.print(
                 "[yellow]Warning:[/yellow] internal ModelManager missing; "
                 "results may be incomplete."

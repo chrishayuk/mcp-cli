@@ -67,8 +67,8 @@ def display_welcome_banner(ctx: Dict[str, Any]) -> None:
     ----------
     ctx
         A dict that *at least* contains the keys::
-            provider   – e.g. "openai"
-            model      – e.g. "gpt-4o-mini"
+            provider   - e.g. "openai"
+            model      - e.g. "gpt-4o-mini"
     """
     provider = ctx.get("provider") or "-"
     model    = ctx.get("model")    or "gpt-4o-mini"
