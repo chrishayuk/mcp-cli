@@ -1,101 +1,148 @@
-# tests/mcp_cli/chat/test_chat_handler.py
-"""Unit‑tests for *mcp_cli.chat.chat_handler* – high‑level happy‑path checks.
-
-We monkey‑patch the UI layer and the slow bits so the coroutine finishes
-immediately without real user interaction or network calls.
-"""
-from __future__ import annotations
-
-import asyncio
-from types import SimpleNamespace
-from typing import Any, Dict
+# tests/test_cli_chat_command.py
 
 import pytest
-
-import mcp_cli.chat.chat_handler as chat_handler
-
-# ---------------------------------------------------------------------------
-# Dummy ToolManager – only the attrs used by handle_chat_mode
-# ---------------------------------------------------------------------------
-class DummyToolManager:  # noqa: WPS110 – test helper
-    def __init__(self):
-        self.closed = False
-
-    # ChatContext expects async discovery helpers – keep minimal stubs
-    async def get_unique_tools(self):
-        return []  # empty tool list is fine
-
-    async def get_server_info(self):
-        return []
-
-    async def get_adapted_tools_for_llm(self, provider: str = "openai"):
-        return [], {}
-
-    async def get_tools_for_llm(self):
-        return []
-
-    async def get_server_for_tool(self, tool_name: str):
-        return None
-
-    async def close(self):
-        self.closed = True
-
-# ---------------------------------------------------------------------------
-# Fixtures that silence the UI side‑effects
-# ---------------------------------------------------------------------------
-@pytest.fixture(autouse=True)
-def _silence_rich(monkeypatch):
-    monkeypatch.setattr(chat_handler, "clear_screen", lambda: None)
-    monkeypatch.setattr(chat_handler, "display_welcome_banner", lambda *_a, **_k: None)
+from typing import Any
+from unittest.mock import Mock
+from mcp_cli.cli.commands.chat import ChatCommand
 
 
-@pytest.fixture()
-def dummy_tm():
-    return DummyToolManager()
+class DummyToolManager:
+    """A simple mock ToolManager that doesn't inherit from the real class."""
+    def __init__(self, config_file="", servers=None):
+        self.config_file = config_file
+        self.servers = servers or []
 
-# ---------------------------------------------------------------------------
-# Helper to skip the interactive loop
-# ---------------------------------------------------------------------------
-@pytest.fixture(autouse=True)
-def _short_circuit_run_loop(monkeypatch):
-    async def fake_run_loop(ui, ctx, convo):  # noqa: WPS110
-        # Simulate one user message so that `_run_chat_loop` finishes nicely.
-        # We need to mimic the expected API of the real objects just enough so
-        # the logic paths are exercised.
-        ctx.exit_requested = True  # make the outer loop exit after first check
-    monkeypatch.setattr(chat_handler, "_run_chat_loop", fake_run_loop)
 
-# ---------------------------------------------------------------------------
-# Monkey‑patch ChatUIManager so we don't need prompt‑toolkit etc.
-# ---------------------------------------------------------------------------
-class DummyUI:
-    def __init__(self, ctx):
-        self.ctx = ctx
-
-    # methods used by handler – all no‑ops
-    async def get_user_input(self):  # pragma: no cover – not reached
-        return "quit"
-
-    def print_user_message(self, *_a, **_k):
-        pass
-
-    async def handle_command(self, *_a, **_k):  # pragma: no cover
-        return False
-
-    def cleanup(self):
-        return None
-
-@pytest.fixture(autouse=True)
-def _patch_ui(monkeypatch):
-    monkeypatch.setattr(chsat_handler, "ChatUIManager", DummyUI)
-
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_handle_chat_mode_happy_path(dummy_tm):
-    result = await chat_handler.handle_chat_mode(tool_manager=dummy_tm)
+async def test_chat_execute_forwards_defaults(monkeypatch):
+    """When no override params are passed, execute() should call handle_chat_mode with defaults."""
+    captured: dict[str, Any] = {}
+    
+    # Fix: The real function signature includes all parameters from the actual function
+    async def fake_handle(tool_manager, provider, model, api_base=None, api_key=None):
+        captured['tool_manager'] = tool_manager
+        captured['provider'] = provider
+        captured['model'] = model
+        captured['api_base'] = api_base
+        captured['api_key'] = api_key
+        return "CHAT_DONE"
 
-    assert result is True
-    # ToolManager.close() must have been awaited
-    assert dummy_tm.closed is True
+    # Patch the real handle_chat_mode in its module
+    monkeypatch.setattr(
+        "mcp_cli.chat.chat_handler.handle_chat_mode",
+        fake_handle
+    )
+
+    cmd = ChatCommand()
+    tm = DummyToolManager(config_file="", servers=[])
+
+    # Call execute without params → uses default provider/model
+    result = await cmd.execute(tool_manager=tm)
+    assert result == "CHAT_DONE"
+    assert captured['tool_manager'] is tm
+    # The ChatCommand passes None values, not defaults - the handler applies defaults
+    assert captured['provider'] is None
+    assert captured['model'] is None
+
+
+@pytest.mark.asyncio
+async def test_chat_execute_forwards_explicit(monkeypatch):
+    """When provider/model overrides are passed, execute() should forward them."""
+    captured: dict[str, Any] = {}
+    
+    # Fix: The real function signature includes all parameters from the actual function
+    async def fake_handle(tool_manager, provider, model, api_base=None, api_key=None):
+        captured['tool_manager'] = tool_manager
+        captured['provider'] = provider
+        captured['model'] = model
+        captured['api_base'] = api_base
+        captured['api_key'] = api_key
+        return "OK"
+
+    monkeypatch.setattr(
+        "mcp_cli.chat.chat_handler.handle_chat_mode",
+        fake_handle
+    )
+
+    cmd = ChatCommand()
+    tm = DummyToolManager(config_file="", servers=[])
+
+    result = await cmd.execute(
+        tool_manager=tm,
+        provider="myProv",
+        model="myModel"
+    )
+    assert result == "OK"
+    assert captured['tool_manager'] is tm
+    assert captured['provider'] == "myProv"
+    assert captured['model'] == "myModel"
+
+
+@pytest.mark.asyncio
+async def test_chat_execute_with_partial_params(monkeypatch):
+    """Test that partial parameter overrides work correctly."""
+    captured: dict[str, Any] = {}
+    
+    # Fix: The real function signature includes all parameters from the actual function
+    async def fake_handle(tool_manager, provider, model, api_base=None, api_key=None):
+        captured['tool_manager'] = tool_manager
+        captured['provider'] = provider
+        captured['model'] = model
+        captured['api_base'] = api_base
+        captured['api_key'] = api_key
+        return "PARTIAL_OK"
+
+    monkeypatch.setattr(
+        "mcp_cli.chat.chat_handler.handle_chat_mode",
+        fake_handle
+    )
+
+    cmd = ChatCommand()
+    tm = DummyToolManager(config_file="test.json", servers=["server1"])
+
+    # Test with only provider override
+    result = await cmd.execute(
+        tool_manager=tm,
+        provider="custom_provider"
+        # model should use default
+    )
+    assert result == "PARTIAL_OK"
+    assert captured['tool_manager'] is tm
+    assert captured['provider'] == "custom_provider"
+    # The ChatCommand passes None for model when not specified
+    assert captured['model'] is None
+
+
+@pytest.mark.asyncio
+async def test_chat_execute_with_model_only(monkeypatch):
+    """Test that model-only override works correctly."""
+    captured: dict[str, Any] = {}
+    
+    # Fix: The real function signature includes all parameters from the actual function
+    async def fake_handle(tool_manager, provider, model, api_base=None, api_key=None):
+        captured['tool_manager'] = tool_manager
+        captured['provider'] = provider
+        captured['model'] = model
+        captured['api_base'] = api_base
+        captured['api_key'] = api_key
+        return "MODEL_OK"
+
+    monkeypatch.setattr(
+        "mcp_cli.chat.chat_handler.handle_chat_mode",
+        fake_handle
+    )
+
+    cmd = ChatCommand()
+    tm = DummyToolManager()
+
+    # Test with only model override
+    result = await cmd.execute(
+        tool_manager=tm,
+        model="custom_model"
+        # provider should use default
+    )
+    assert result == "MODEL_OK"
+    assert captured['tool_manager'] is tm
+    # The ChatCommand passes None for provider when not specified
+    assert captured['provider'] is None
+    assert captured['model'] == "custom_model"

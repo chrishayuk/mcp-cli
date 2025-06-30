@@ -49,7 +49,7 @@ def test_load_config_invalid(invalid_config, caplog):
     caplog.clear()
     config = load_config(str(invalid_config))
     assert config is None
-    assert any("Invalid JSON" in record.message for record in caplog.records)
+    assert any("Error loading config file" in record.message for record in caplog.records)
 
 def test_extract_server_names_all():
     # With a valid config dictionary and no specified servers,

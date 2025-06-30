@@ -1,11 +1,14 @@
-# mcp_cli/config.py
+# mcp_cli/async_config.py
+"""
+Async configuration loading for MCP servers using new chuk-mcp APIs.
+"""
 import json
 import logging
 
 # Updated imports for new chuk-mcp APIs
 from chuk_mcp.transports.stdio.parameters import StdioParameters
 
-async def load_config(config_path: str, server_name: str) -> StdioParameters:
+async def load_server_config(config_path: str, server_name: str) -> StdioParameters:
     """Load the server configuration from a JSON file using new chuk-mcp APIs."""
     try:
         # debug

@@ -16,9 +16,15 @@ license = {text = "MIT"}
 dependencies = [
   "anthropic>=0.51.0",
   "asyncio>=3.4.3",
+<<<<<<< HEAD
   "chuk-llm>=0.7",
   "chuk-mcp>=0.1.7",
   "chuk-tool-processor>=0.4.1",
+=======
+  "chuk-llm==0.1.8",
+  "chuk-mcp>=0.2.3",
+  "chuk-tool-processor>=0.5.2",
+>>>>>>> 7e9c37a (updated to use latest tool processor and chuk-mcp)
   "google-genai>=1.15.0",
   "prompt-toolkit>=3.0.50",
   "python-dotenv>=1.0.1",

@@ -11,16 +11,31 @@ import os
 # Add the source directory to Python path
 sys.path.insert(0, 'src')
 
-async def test_individual_server(server_name: str):
+async def test_individual_server():
     """Test a single server safely."""
+    # Try to load config and skip if not available
+    try:
+        from mcp_cli.cli_options import load_config
+        config = load_config("server_config.json")
+        
+        if not config or "mcpServers" not in config or not config["mcpServers"]:
+            pytest.skip("No servers configured in server_config.json")
+        
+        # Use the first available server
+        server_name = list(config["mcpServers"].keys())[0]
+        
+    except Exception as e:
+        pytest.skip(f"Could not load server configuration: {e}")
+
+    # Original test logic with the server_name
     from mcp_cli.tools.manager import ToolManager
     import logging
-    
+
     logger = logging.getLogger(__name__)
-    
+
     print(f"\n🧪 Testing server: {server_name}")
     print("-" * 40)
-    
+
     tm = None
     try:
         tm = ToolManager(
@@ -28,29 +43,29 @@ async def test_individual_server(server_name: str):
             servers=[server_name],
             tool_timeout=30.0
         )
-        
+
         # Set a timeout for initialization
         success = await asyncio.wait_for(tm.initialize(), timeout=10.0)
-        
+
         if not success:
             print(f"❌ {server_name}: Failed to initialize")
             return False
-        
+
         print(f"✅ {server_name}: Initialized successfully")
-        
+
         # Get tools
         tools = await tm.get_all_tools()
         print(f"🛠️ {server_name}: {len(tools)} tools available")
-        
+
         # Show first few tools
         for i, tool in enumerate(tools[:3]):
             print(f"   {i+1}. {tool.namespace}.{tool.name}")
-        
+
         if len(tools) > 3:
             print(f"   ... and {len(tools) - 3} more tools")
-        
+
         return True
-        
+
     except asyncio.TimeoutError:
         print(f"⏰ {server_name}: Initialization timeout")
         return False
@@ -63,7 +78,7 @@ async def test_individual_server(server_name: str):
                 await asyncio.wait_for(tm.close(), timeout=5.0)
             except:
                 pass  # Ignore cleanup errors
-
+            
 async def find_working_servers():
     """Find which servers work and which don't."""
     
