@@ -14,14 +14,26 @@ from typing import Optional
 import typer
 
 # ──────────────────────────────────────────────────────────────────────────────
-# local imports
+# CRITICAL: Set up silent environment IMMEDIATELY before any other imports
+# This prevents MCP server noise from appearing during module imports
+# ──────────────────────────────────────────────────────────────────────────────
+from mcp_cli.logging_config import setup_logging, get_logger, setup_silent_mcp_environment
+
+# FIRST: Set environment variables to silence MCP servers before they start
+setup_silent_mcp_environment()
+
+# THEN: Set up default clean logging immediately
+# This will be overridden later if user specifies different options
+setup_logging(level="ERROR", quiet=False, verbose=False)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Now safe to import components that might start MCP servers
 # ──────────────────────────────────────────────────────────────────────────────
 from mcp_cli.cli.commands import register_all_commands
 from mcp_cli.cli.registry import CommandRegistry
 from mcp_cli.run_command import run_command_sync
 from mcp_cli.ui.ui_helpers import restore_terminal
 from mcp_cli.cli_options import process_options
-from mcp_cli.logging_config import setup_logging, get_logger
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Module logger
@@ -53,7 +65,7 @@ def main_callback(
 ) -> None:
     """MCP CLI - If no subcommand is given, start chat mode."""
     
-    # FIRST: Set up logging before anything else happens
+    # Re-configure logging based on user options (this overrides the default ERROR level)
     setup_logging(level=log_level, quiet=quiet, verbose=verbose)
     
     # If a subcommand was invoked, let it handle things
@@ -123,7 +135,7 @@ def main_callback(
         logger.debug(f"Using active configuration: {effective_provider}/{effective_model}")
     
     servers, _, server_names = process_options(
-        server, disable_filesystem, effective_provider, effective_model, config_file
+        server, disable_filesystem, effective_provider, effective_model, config_file, quiet=quiet
     )
 
     from mcp_cli.chat.chat_handler import handle_chat_mode
@@ -183,7 +195,7 @@ def _interactive_command(
     log_level: str = typer.Option("WARNING", "--log-level", help="Set log level"),
 ) -> None:
     """Start interactive command mode."""
-    # Set up logging first
+    # Re-configure logging based on user options
     setup_logging(level=log_level, quiet=quiet, verbose=verbose)
     
     logger.debug("Starting interactive command mode")
@@ -218,7 +230,7 @@ def _interactive_command(
         logger.debug(f"Using active configuration: {effective_provider}/{effective_model}")
     
     servers, _, server_names = process_options(
-        server, disable_filesystem, effective_provider, effective_model, config_file
+        server, disable_filesystem, effective_provider, effective_model, config_file, quiet=quiet
     )
 
     from mcp_cli.interactive.shell import interactive_mode
@@ -276,6 +288,11 @@ def _run_provider_command(args, log_prefix="Provider command"):
         print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
 
+# Function to configure logging for individual commands
+def _setup_command_logging(quiet: bool, verbose: bool, log_level: str):
+    """Set up logging for individual commands."""
+    setup_logging(level=log_level, quiet=quiet, verbose=verbose)
+
 # Provider command - FIXED to handle arguments properly
 @app.command("provider", help="Manage LLM providers")
 def provider_command(
@@ -292,8 +309,8 @@ def provider_command(
     log_level: str = typer.Option("WARNING", "--log-level", help="Set log level"),
 ) -> None:
     """Manage LLM providers."""
-    # Set up logging
-    setup_logging(level=log_level, quiet=quiet, verbose=verbose)
+    # Configure logging for this command
+    _setup_command_logging(quiet, verbose, log_level)
     
     # Build arguments list for the provider action
     args = []
@@ -344,8 +361,8 @@ def providers_command(
     log_level: str = typer.Option("WARNING", "--log-level", help="Set log level"),
 ) -> None:
     """List LLM providers (plural form defaults to 'list' command)."""
-    # Set up logging
-    setup_logging(level=log_level, quiet=quiet, verbose=verbose)
+    # Configure logging for this command
+    _setup_command_logging(quiet, verbose, log_level)
     
     # Build arguments list for the provider action
     args = []
@@ -395,12 +412,12 @@ def tools_command(
     log_level: str = typer.Option("WARNING", "--log-level", help="Set log level"),
 ) -> None:
     """List unique tools across all connected servers."""
-    # Set up logging
-    setup_logging(level=log_level, quiet=quiet, verbose=verbose)
+    # Configure logging for this command
+    _setup_command_logging(quiet, verbose, log_level)
     
     # Process options
     servers, _, server_names = process_options(
-        server, disable_filesystem, provider, model, config_file
+        server, disable_filesystem, provider, model, config_file, quiet=quiet
     )
     
     # Import and use the tools action - USE ASYNC VERSION
@@ -436,10 +453,11 @@ def servers_command(
     log_level: str = typer.Option("WARNING", "--log-level", help="Set log level"),
 ) -> None:
     """Show connected servers with status & tool counts."""
-    setup_logging(level=log_level, quiet=quiet, verbose=verbose)
+    # Configure logging for this command
+    _setup_command_logging(quiet, verbose, log_level)
     
     servers, _, server_names = process_options(
-        server, disable_filesystem, provider, model, config_file
+        server, disable_filesystem, provider, model, config_file, quiet=quiet
     )
     
     from mcp_cli.commands.servers import servers_action_async
@@ -469,7 +487,8 @@ def resources_command(
     log_level: str = typer.Option("WARNING", "--log-level", help="Set log level"),
 ) -> None:
     """Show all recorded resources."""
-    setup_logging(level=log_level, quiet=quiet, verbose=verbose)
+    # Configure logging for this command
+    _setup_command_logging(quiet, verbose, log_level)
     
     servers, _, server_names = process_options(
         server, disable_filesystem, provider, model, config_file
@@ -502,7 +521,8 @@ def prompts_command(
     log_level: str = typer.Option("WARNING", "--log-level", help="Set log level"),
 ) -> None:
     """Show all prompt templates."""
-    setup_logging(level=log_level, quiet=quiet, verbose=verbose)
+    # Configure logging for this command
+    _setup_command_logging(quiet, verbose, log_level)
     
     servers, _, server_names = process_options(
         server, disable_filesystem, provider, model, config_file
@@ -531,7 +551,8 @@ def models_command(
     log_level: str = typer.Option("WARNING", "--log-level", help="Set log level"),
 ) -> None:
     """List available models for a provider."""
-    setup_logging(level=log_level, quiet=quiet, verbose=verbose)
+    # Configure logging for this command
+    _setup_command_logging(quiet, verbose, log_level)
     
     from mcp_cli.model_manager import ModelManager
     from mcp_cli.utils.rich_helpers import get_console

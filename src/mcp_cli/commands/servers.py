@@ -27,6 +27,9 @@ async def servers_action_async(tm: ToolManager) -> List:  # noqa: D401
     Retrieve server metadata from *tm* and render a Rich table.
 
     Returns the raw list so callers may re-use the data programmatically.
+    
+    Note: Logging noise is controlled by the centralized logging configuration
+    in mcp_cli.logging_config.setup_logging().
     """
     console = get_console()
     server_info = await tm.get_server_info()
