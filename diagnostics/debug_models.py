@@ -1,9 +1,10 @@
 # Debug script to diagnose model discovery issues
-# Save as: debug_models.py
+# diagnostics/debug_models.py
 
 import os
 import sys
 from pathlib import Path
+from typing import Optional
 
 def check_chuk_llm_version():
     """Check which version of chuk-llm is installed."""
@@ -31,13 +32,6 @@ def check_chuk_llm_version():
         except ImportError as e:
             print(f"  ❌ unified_config not available: {e}")
             print("  🔄 This suggests chuk-llm < 0.6")
-        
-        # Check for legacy features
-        try:
-            from chuk_llm.llm.llm_client import get_llm_client
-            print("  ✅ legacy llm_client available")
-        except ImportError:
-            print("  ❌ legacy llm_client not available")
             
     except ImportError as e:
         print(f"❌ chuk-llm not installed: {e}")
@@ -107,7 +101,8 @@ def test_client_creation():
             if "error" in info:
                 print(f"    ❌ {name}: {info['error']}")
             else:
-                model_count = len(info.get("available_models", []))
+                # FIXED: Use "models" key instead of "available_models" for chuk-llm 0.7
+                model_count = len(info.get("models", info.get("available_models", [])))
                 has_key = info.get("has_api_key", False)
                 print(f"    {'✅' if has_key else '❌'} {name}: {model_count} models, API key: {has_key}")
         
@@ -143,7 +138,7 @@ def suggest_fixes():
     # Check chuk-llm version
     try:
         from chuk_llm.configuration.unified_config import get_config
-        print("1. ✅ chuk-llm 0.6 features available")
+        print("1. ✅ chuk-llm 0.6+ features available")
         
         # Check if models are actually empty
         config = get_config()
@@ -163,7 +158,8 @@ def suggest_fixes():
                 print("   💡 Try: config.reload() or check YAML configuration")
             else:
                 print(f"2. ✅ Found {total_models} total models in configuration")
-                print("   🤔 Issue might be in MCP CLI's provider info retrieval")
+                print("   🎯 ISSUE IDENTIFIED: MCP CLI looking for wrong key!")
+                print("   💡 chuk-llm 0.7 uses 'models' key, not 'available_models'")
         
     except ImportError:
         print("1. ❌ chuk-llm 0.6 not available")
@@ -186,6 +182,32 @@ def suggest_fixes():
     else:
         print("4. ✅ ~/.chuk_llm directory exists")
 
+def debug_model_key_structure():
+    """Debug exactly what keys chuk-llm 0.7 uses for models."""
+    print("\n🔍 Key Structure Analysis:")
+    
+    try:
+        from chuk_llm.llm.client import list_available_providers
+        
+        providers_info = list_available_providers()
+        
+        for name, info in list(providers_info.items())[:3]:  # Just first 3
+            print(f"\n{name}:")
+            print(f"  All keys: {list(info.keys())}")
+            
+            # Check each possible model key
+            for key in ["models", "available_models", "model_list", "supported_models"]:
+                if key in info:
+                    models = info[key]
+                    print(f"  ✅ {key}: {type(models)} with {len(models)} items")
+                    if isinstance(models, list) and models:
+                        print(f"    First few: {models[:3]}")
+                else:
+                    print(f"  ❌ {key}: not found")
+                
+    except Exception as e:
+        print(f"❌ Error in key structure analysis: {e}")
+
 def main():
     print("🔍 MCP CLI Model Discovery Diagnostic")
     print("=" * 50)
@@ -194,121 +216,7 @@ def main():
     check_api_keys()
     check_configuration_files()
     test_client_creation()
-    suggest_fixes()
-    
-    print("\n" + "=" * 50)
-    print("📋 Summary:")
-    print("If you see '0 models' but chuk-llm 0.6 is installed,")
-    print("the issue is likely in how MCP CLI is calling list_available_providers()")
-    print("\nNext steps:")
-    print("1. Check if chuk-llm 0.6 is actually installed")
-    print("2. Verify API keys are set")
-    print("3. Test chuk-llm directly outside of MCP CLI")
+    debug_model_key_structure()
 
 if __name__ == "__main__":
     main()
-
-
-# Quick fix for the immediate "0 models" issue
-# Add this to your ModelManager or provider command:
-
-def debug_model_count_issue():
-    """Debug why model count shows as 0."""
-    print("\n🔍 Debugging model count issue...")
-    
-    try:
-        from chuk_llm.llm.client import list_available_providers
-        
-        providers_info = list_available_providers()
-        
-        for name, info in providers_info.items():
-            print(f"\nProvider: {name}")
-            print(f"  Raw info keys: {list(info.keys())}")
-            
-            if "available_models" in info:
-                models = info["available_models"]
-                print(f"  available_models: {type(models)} with {len(models)} items")
-                if models:
-                    print(f"  First few models: {models[:3]}")
-            else:
-                print("  ❌ No 'available_models' key found")
-            
-            if "models" in info:
-                models = info["models"] 
-                print(f"  models: {type(models)} with {len(models)} items")
-                if models:
-                    print(f"  First few models: {models[:3]}")
-            else:
-                print("  ❌ No 'models' key found")
-                
-    except Exception as e:
-        print(f"❌ Error in debug: {e}")
-
-# Potential fix for the provider list command:
-def fixed_render_list(model_manager):
-    """Fixed version that handles missing model data better."""
-    from rich.table import Table
-    from mcp_cli.utils.rich_helpers import get_console
-    
-    console = get_console()
-    
-    tbl = Table(title="Available Providers")
-    tbl.add_column("Provider", style="green")
-    tbl.add_column("Status", style="cyan") 
-    tbl.add_column("Default Model", style="yellow")
-    tbl.add_column("Models Available", style="blue")
-    tbl.add_column("Features", style="magenta")
-
-    current = model_manager.get_active_provider()
-    
-    try:
-        all_providers_info = model_manager.list_available_providers()
-    except Exception as e:
-        console.print(f"[red]Error getting provider list:[/red] {e}")
-        return
-
-    for name, info in all_providers_info.items():
-        if "error" in info:
-            tbl.add_row(name, "[red]Error[/red]", "-", "-", info["error"][:30] + "...")
-            continue
-        
-        # Mark current provider
-        provider_name = f"[bold]{name}[/bold]" if name == current else name
-        
-        # Status
-        configured = info.get("has_api_key", False)
-        status = "[green]✅[/green]" if configured else "[red]❌[/red]"
-        
-        # Models count - try multiple possible keys
-        model_count = 0
-        for key in ["available_models", "models", "model_list"]:
-            if key in info and isinstance(info[key], list):
-                model_count = len(info[key])
-                break
-        
-        # Debug: print what we actually got
-        if model_count == 0:
-            print(f"Debug: {name} info keys: {list(info.keys())}")
-        
-        models_str = f"{model_count} models" if model_count > 0 else "No models found"
-        
-        # Features summary
-        baseline_features = info.get("baseline_features", [])
-        feature_icons = []
-        if "streaming" in baseline_features:
-            feature_icons.append("📡")
-        if "tools" in baseline_features:
-            feature_icons.append("🔧")
-        if "vision" in baseline_features:
-            feature_icons.append("👁️")
-        features_str = "".join(feature_icons) or "📝"
-        
-        tbl.add_row(
-            provider_name,
-            status,
-            info.get("default_model", "-"),
-            models_str,
-            features_str
-        )
-
-    console.print(tbl)

@@ -25,6 +25,7 @@ Usage Examples:
         /provider config                 # Show detailed configuration
 """
 from __future__ import annotations
+import subprocess
 from typing import Dict, List, Tuple
 from rich.table import Table
 
@@ -32,6 +33,40 @@ from mcp_cli.model_manager import ModelManager
 from mcp_cli.utils.rich_helpers import get_console
 
 console = get_console()
+
+
+def _check_ollama_running() -> bool:
+    """Check if Ollama is running locally."""
+    try:
+        result = subprocess.run(['ollama', 'list'], 
+                              capture_output=True, 
+                              text=True, 
+                              timeout=5)
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+        return False
+
+
+def _get_provider_status(provider_name: str, info: Dict) -> tuple[str, str]:
+    """
+    Get proper status for a provider based on its type and configuration.
+    
+    Returns:
+        tuple[str, str]: (status_icon, status_reason)
+    """
+    # Handle Ollama specially - it doesn't need API keys
+    if provider_name == "ollama":
+        if _check_ollama_running():
+            return "✅", "Ollama running"
+        else:
+            return "❌", "Ollama not running"
+    
+    # For API-based providers, check if they have API keys
+    has_api_key = info.get("has_api_key", False)
+    if has_api_key:
+        return "✅", "API key configured"
+    else:
+        return "❌", "No API key"
 
 
 async def provider_action_async(
@@ -126,28 +161,26 @@ async def _diagnose(model_manager: ModelManager, target: str | None) -> None:
                 tbl.add_row(provider, f"[red]✗ Error[/red]", "-", info["error"][:20] + "...")
                 continue
             
-            # Status
-            if validation.get("valid"):
-                status = "[green]✅ Ready[/green]"
-            elif validation.get("has_api_key") or info.get("has_api_key"):
-                status = "[yellow]⚠️ Issues[/yellow]"
+            # FIXED: Use proper status logic
+            status_icon, status_reason = _get_provider_status(provider, info)
+            
+            if status_icon == "✅":
+                status = f"[green]{status_icon} Ready[/green]"
             else:
-                status = "[red]❌ No API Key[/red]"
+                status = f"[red]{status_icon} {status_reason}[/red]"
             
             # Features - check baseline_features for chuk-llm 0.7 compatibility
             baseline_features = info.get("baseline_features", [])
-            supports = info.get("supports", {})  # fallback to legacy format
-            
             features = []
-            if "streaming" in baseline_features or supports.get("streaming"):
+            if "streaming" in baseline_features:
                 features.append("📡")
-            if "tools" in baseline_features or supports.get("tools"):
+            if "tools" in baseline_features:
                 features.append("🔧")
-            if "vision" in baseline_features or supports.get("vision"):
+            if "vision" in baseline_features:
                 features.append("👁️")
             feature_str = "".join(features) or "📝"
             
-            # FIXED: Default model - use same data source as working functions
+            # Default model - use same data source as working functions
             default_model = info.get("default_model", "unknown")
             
             tbl.add_row(provider, status, feature_str, default_model)
@@ -183,9 +216,8 @@ def _render_list(model_manager: ModelManager) -> None:
         # Mark current provider
         provider_name = f"[bold]{name}[/bold]" if name == current else name
         
-        # Status
-        configured = info.get("has_api_key", False)
-        status = "[green]✅[/green]" if configured else "[red]❌[/red]"
+        # FIXED: Use proper status logic instead of just checking has_api_key
+        status_icon, status_reason = _get_provider_status(name, info)
         
         # FIXED: Models count - chuk-llm 0.7 uses "models" key
         models = info.get("models", [])
@@ -207,7 +239,7 @@ def _render_list(model_manager: ModelManager) -> None:
         
         tbl.add_row(
             provider_name,
-            status,
+            status_icon,
             info.get("default_model", "-"),
             models_str,
             features_str
@@ -238,9 +270,12 @@ def _render_config(model_manager: ModelManager) -> None:
         models = info.get("models", info.get("available_models", []))
         model_count = len(models)
         
+        # FIXED: Use proper status logic for configuration display
+        status_icon, status_reason = _get_provider_status(provider_name, info)
+        
         settings = [
             ("api_base", info.get("api_base") or "default"),
-            ("has_api_key", "✅" if info.get("has_api_key") else "❌"),
+            ("status", f"{status_icon} ({status_reason})"),
             ("default_model", info.get("default_model", "-")),
             ("model_count", str(model_count)),
             ("discovery_enabled", "✅" if info.get("discovery_enabled") else "❌"),
@@ -343,18 +378,23 @@ async def _switch_provider(
     
     console.print(f"[dim]Switching to provider '{prov}' (model '{target_model}')…[/dim]")
 
-    # Validate provider setup
+    # FIXED: Validate provider setup with proper status checking
     try:
-        validation = model_manager.validate_provider_setup(prov)
-        if not validation.get("valid"):
-            issues = validation.get("issues", ["Unknown validation error"])
-            console.print(f"[red]Provider setup issues:[/red]")
-            for issue in issues:
-                console.print(f"  - {issue}")
+        all_providers_info = model_manager.list_available_providers()
+        provider_info = all_providers_info.get(prov, {})
+        
+        # Use our enhanced status logic
+        status_icon, status_reason = _get_provider_status(prov, provider_info)
+        
+        if status_icon == "❌":
+            console.print(f"[red]Provider setup issues:[/red] {status_reason}")
             
-            if not validation.get("has_api_key"):
+            if prov == "ollama":
+                console.print(f"[yellow]Tip:[/yellow] Make sure Ollama is running: ollama serve")
+            elif "No API key" in status_reason:
                 console.print(f"[yellow]Tip:[/yellow] Set API key with: mcp-cli provider set {prov} api_key YOUR_KEY")
             return
+            
     except Exception as e:
         console.print(f"[yellow]Warning:[/yellow] Could not validate provider setup: {e}")
 

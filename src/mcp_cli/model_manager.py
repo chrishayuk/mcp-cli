@@ -1,6 +1,6 @@
 # mcp_cli/model_manager.py
 """
-Clean ModelManager that fully delegates to chuk-llm 0.7's unified configuration.
+Clean ModelManager that fully delegates to chuk-llm 0.8's unified configuration.
 """
 from __future__ import annotations
 
@@ -122,7 +122,7 @@ class ModelManager:
             return self.chuk_config.get_all_providers()
         except Exception as e:
             logger.error(f"Failed to get providers: {e}")
-            return ["openai"]  # Fallback
+            return []
 
     def get_client(self, force_refresh: bool = False) -> Any:
         """Get LLM client for current active provider/model."""
@@ -155,8 +155,12 @@ class ModelManager:
         return validate_provider_setup(provider)
 
     def list_available_providers(self) -> Dict[str, Dict[str, Any]]:
-        """Get detailed info about all available providers."""
-        return list_available_providers()
+        """Get detailed info about all available providers with improved error handling."""
+        try:
+            return list_available_providers()
+        except Exception as e:
+            logger.error(f"list_available_providers failed: {e}")
+            return {}
 
     # ── Provider configuration ────────────────────────────────────────────
     def configure_provider(
@@ -264,18 +268,80 @@ class ModelManager:
         # Fall back to provider-level support
         return supports.get(feature, False)
 
+    def debug_provider_models(self):
+        """Debug method to see what list_available_providers actually returns."""
+        try:
+            providers_info = list_available_providers()
+            
+            print("🔍 Debug: list_available_providers() output:")
+            for name, info in providers_info.items():
+                print(f"\n  Provider: {name}")
+                print(f"    All keys: {list(info.keys())}")
+                
+                # Check all possible model keys
+                for key in ["models", "available_models", "model_list", "supported_models"]:
+                    if key in info:
+                        value = info[key]
+                        print(f"    {key}: {type(value)} - {len(value) if isinstance(value, list) else 'not a list'}")
+                        if isinstance(value, list) and value:
+                            print(f"      First few: {value[:3]}")
+                
+                # Check if it's an error or configuration issue
+                if "error" in info:
+                    print(f"    ❌ Error: {info['error']}")
+                
+                # Check configuration status
+                if "has_api_key" in info:
+                    print(f"    🔑 Has API key: {info['has_api_key']}")
+                    
+        except Exception as e:
+            print(f"❌ Debug failed: {e}")
+
     def get_available_models(self, provider: Optional[str] = None) -> List[str]:
-        """Get available models for provider."""
+        """Get available models for provider with improved discovery."""
         provider = provider or self.get_active_provider()
+        
+        # First try the standard provider info approach
         info = self.get_provider_info(provider)
         
-        # FIXED: chuk-llm 0.7 uses "models" key, not "available_models"
-        models = info.get("models", [])
-        if not models:
-            # Fallback: try alternative keys just in case
-            models = info.get("available_models", [])
+        # Try multiple possible keys for models (chuk-llm 0.8 might use different keys)
+        for key in ["models", "available_models", "model_list", "supported_models"]:
+            models = info.get(key, [])
+            if models and isinstance(models, list):
+                logger.debug(f"Found {len(models)} models for {provider} via key '{key}'")
+                return models
         
-        return models
+        # If that fails, try to get models directly from chuk-llm config
+        try:
+            provider_config = self.chuk_config.get_provider(provider)
+            if provider_config and hasattr(provider_config, 'models'):
+                models = provider_config.models
+                logger.debug(f"Found {len(models)} models for {provider} via direct config access")
+                return models
+                
+        except Exception as e:
+            logger.debug(f"Direct config access failed for {provider}: {e}")
+        
+        # Try alternative approach via list_available_providers with debug
+        try:
+            all_providers = self.list_available_providers()
+            if provider in all_providers:
+                provider_info = all_providers[provider]
+                
+                # Try different model keys from the list_available_providers output
+                for key in ["models", "available_models", "model_list", "supported_models"]:
+                    if key in provider_info:
+                        models = provider_info[key]
+                        if isinstance(models, list) and models:
+                            logger.debug(f"Found {len(models)} models for {provider} via list_available_providers['{key}']")
+                            return models
+                            
+        except Exception as e:
+            logger.debug(f"list_available_providers fallback failed for {provider}: {e}")
+        
+        # Return empty list if all methods fail
+        logger.warning(f"Could not retrieve models for provider {provider}")
+        return []
 
     def get_default_model(self, provider: str) -> str:
         """Get default model for provider."""
@@ -312,11 +378,18 @@ class ModelManager:
     # ── Global aliases and advanced features ───────────────────────────────
     def get_global_aliases(self) -> Dict[str, str]:
         """Get global model aliases from chuk-llm configuration."""
-        return self.chuk_config.get_global_aliases()
+        try:
+            return self.chuk_config.get_global_aliases()
+        except Exception as e:
+            logger.debug(f"Failed to get global aliases: {e}")
+            return {}
 
     def add_global_alias(self, alias: str, target: str):
         """Add a global model alias."""
-        self.chuk_config.add_global_alias(alias, target)
+        try:
+            self.chuk_config.add_global_alias(alias, target)
+        except Exception as e:
+            logger.error(f"Failed to add global alias: {e}")
 
     def find_best_provider_for_request(
         self,
@@ -325,15 +398,19 @@ class ModelManager:
         exclude_providers: Optional[List[str]] = None
     ) -> Optional[str]:
         """Find best provider for specific requirements."""
-        from chuk_llm.llm.client import find_best_provider_for_request
-        
-        result = find_best_provider_for_request(
-            required_features=required_features,
-            model_pattern=model_pattern,
-            exclude_providers=exclude_providers
-        )
-        
-        return result.get("provider") if result else None
+        try:
+            from chuk_llm.llm.client import find_best_provider_for_request
+            
+            result = find_best_provider_for_request(
+                required_features=required_features,
+                model_pattern=model_pattern,
+                exclude_providers=exclude_providers
+            )
+            
+            return result.get("provider") if result else None
+        except Exception as e:
+            logger.debug(f"find_best_provider_for_request failed: {e}")
+            return None
 
     # ── Context manager and configuration management ─────────────────────────
     def save_config(self) -> None:
@@ -342,7 +419,10 @@ class ModelManager:
 
     def reload_config(self) -> None:
         """Reload chuk-llm configuration."""
-        self.chuk_config.reload()
+        try:
+            self.chuk_config.reload()
+        except Exception as e:
+            logger.error(f"Failed to reload config: {e}")
 
     def __enter__(self):
         return self
@@ -368,6 +448,36 @@ class ModelManager:
             "supports_tools": self.supports_feature("tools"),
             "supports_vision": self.supports_feature("vision"),
         }
+
+    def test_model_discovery(self):
+        """Test method to verify model discovery is working."""
+        print("🧪 Testing model discovery...")
+        
+        # Debug the raw provider output
+        self.debug_provider_models()
+        
+        # Test getting models for each provider
+        providers = self.list_providers()
+        for provider in providers[:3]:  # Test first 3 providers
+            print(f"\n🔍 Testing {provider}:")
+            try:
+                models = self.get_available_models(provider)
+                print(f"  ✅ Found {len(models)} models")
+                if models:
+                    print(f"  📋 First few: {models[:3]}")
+            except Exception as e:
+                print(f"  ❌ Error: {e}")
+        
+        # Test the status summary
+        print(f"\n📊 Status Summary:")
+        try:
+            status = self.get_status_summary()
+            active_provider = status["active_provider"]
+            model_count = len(status["available_models"])
+            print(f"  Active: {active_provider}")
+            print(f"  Models for {active_provider}: {model_count}")
+        except Exception as e:
+            print(f"  ❌ Status summary error: {e}")
 
     def __repr__(self) -> str:
         return f"ModelManager(provider='{self.get_active_provider()}', model='{self.get_active_model()}')"
