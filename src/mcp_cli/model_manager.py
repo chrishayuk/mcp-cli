@@ -1,6 +1,7 @@
 # mcp_cli/model_manager.py
 """
 Clean ModelManager that fully delegates to chuk-llm 0.8's unified configuration.
+FIXED: Added comprehensive model validation to prevent internal inconsistencies.
 """
 from __future__ import annotations
 
@@ -22,6 +23,7 @@ class ModelManager:
     - Provide MCP CLI interface to chuk-llm configuration
     - Handle user preference persistence (active provider/model only)
     - Bridge between MCP CLI and chuk-llm APIs
+    - FIXED: Comprehensive validation for all model operations
     """
 
     def __init__(self):
@@ -98,22 +100,88 @@ class ModelManager:
         self._save_user_preferences()
         logger.info(f"Switched to model: {model}")
 
+    def validate_model_for_provider(self, provider: str, model: str) -> bool:
+        """
+        FIXED: Validate that a specific model exists for the given provider.
+        Returns True if model is valid, False otherwise.
+        """
+        try:
+            available_models = self.get_available_models(provider)
+            
+            if not available_models:
+                logger.warning(f"No models available for provider {provider}")
+                return False
+            
+            # Check if model exists in available models
+            model_exists = model in available_models
+            
+            if not model_exists:
+                logger.warning(f"Model '{model}' not available for provider '{provider}'. Available: {available_models[:5]}...")
+            
+            return model_exists
+            
+        except Exception as e:
+            logger.error(f"Error validating model {model} for provider {provider}: {e}")
+            return False
+
     def switch_model(self, provider: str, model: str) -> None:
-        """Switch to specific provider and model."""
+        """
+        FIXED: Switch to specific provider and model with comprehensive validation.
+        """
+        # Validate provider first
+        if not self.validate_provider(provider):
+            available = ", ".join(self.list_providers())
+            raise ValueError(f"Unknown provider: {provider}. Available: {available}")
+        
+        # FIXED: Validate model exists for provider
+        if not self.validate_model_for_provider(provider, model):
+            available_models = self.get_available_models(provider)
+            model_list = ", ".join(available_models[:5])
+            if len(available_models) > 5:
+                model_list += f"... ({len(available_models)} total)"
+            raise ValueError(f"Model '{model}' not available for provider '{provider}'. Available: [{model_list}]")
+        
+        # If validation passes, proceed with switch
         self.set_active_provider(provider)
         self.set_active_model(model)
+        
+        logger.info(f"Successfully switched to {provider}/{model}")
 
     def switch_provider(self, provider: str, model: Optional[str] = None) -> None:
-        """Switch provider, optionally specifying model."""
+        """
+        FIXED: Switch provider with optional model validation.
+        """
+        if not self.validate_provider(provider):
+            available = ", ".join(self.list_providers())
+            raise ValueError(f"Unknown provider: {provider}. Available: {available}")
+        
+        # If model is specified, validate it
+        if model:
+            if not self.validate_model_for_provider(provider, model):
+                available_models = self.get_available_models(provider)
+                model_list = ", ".join(available_models[:5])
+                if len(available_models) > 5:
+                    model_list += f"... ({len(available_models)} total)"
+                raise ValueError(f"Model '{model}' not available for provider '{provider}'. Available: [{model_list}]")
+        
         self.set_active_provider(provider)
+        
         if model:
             self.set_active_model(model)
+        else:
+            # Set default model for provider
+            default_model = self.get_default_model(provider)
+            if default_model:
+                self.set_active_model(default_model)
 
     def switch_to_model(self, model: str, provider: Optional[str] = None) -> None:
-        """Switch to specific model, optionally changing provider."""
-        if provider:
-            self.set_active_provider(provider)
-        self.set_active_model(model)
+        """
+        FIXED: Switch to specific model with provider validation.
+        """
+        target_provider = provider or self.get_active_provider()
+        
+        # Use the fixed switch_model method which includes validation
+        self.switch_model(target_provider, model)
 
     # ── Delegate everything to chuk-llm ────────────────────────────────────
     def list_providers(self) -> List[str]:
@@ -125,9 +193,23 @@ class ModelManager:
             return []
 
     def get_client(self, force_refresh: bool = False) -> Any:
-        """Get LLM client for current active provider/model."""
+        """
+        FIXED: Get LLM client with validation before creating client.
+        """
         provider = self.get_active_provider()
         model = self.get_active_model()
+        
+        # Validate current configuration before creating client
+        if not self.validate_provider(provider):
+            available = ", ".join(self.list_providers())
+            raise ValueError(f"Current provider '{provider}' is not valid. Available: {available}")
+        
+        if not self.validate_model_for_provider(provider, model):
+            available_models = self.get_available_models(provider)
+            model_list = ", ".join(available_models[:5])
+            if len(available_models) > 5:
+                model_list += f"... ({len(available_models)} total)"
+            raise ValueError(f"Current model '{model}' not available for provider '{provider}'. Available: [{model_list}]")
         
         try:
             return get_client(provider=provider, model=model)
@@ -136,8 +218,27 @@ class ModelManager:
             raise
 
     def get_client_for_provider(self, provider: str, model: Optional[str] = None) -> Any:
-        """Get client for specific provider/model."""
-        return get_client(provider=provider, model=model)
+        """
+        FIXED: Get client for specific provider/model with validation.
+        """
+        if not self.validate_provider(provider):
+            available = ", ".join(self.list_providers())
+            raise ValueError(f"Provider '{provider}' is not valid. Available: {available}")
+        
+        target_model = model or self.get_default_model(provider)
+        
+        if target_model and not self.validate_model_for_provider(provider, target_model):
+            available_models = self.get_available_models(provider)
+            model_list = ", ".join(available_models[:5])
+            if len(available_models) > 5:
+                model_list += f"... ({len(available_models)} total)"
+            raise ValueError(f"Model '{target_model}' not available for provider '{provider}'. Available: [{model_list}]")
+        
+        try:
+            return get_client(provider=provider, model=target_model)
+        except Exception as e:
+            logger.error(f"Failed to create client for {provider}/{target_model}: {e}")
+            raise
 
     def refresh_client(self) -> Any:
         """Force refresh of current client."""
