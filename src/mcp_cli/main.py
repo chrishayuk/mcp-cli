@@ -441,8 +441,28 @@ def tools_command(
 direct_registered.append("tools")
 
 # Servers command
-@app.command("servers", help="List connected MCP servers")
+@app.command("servers", help="List connected MCP servers with comprehensive information")
 def servers_command(
+    detailed: bool = typer.Option(
+        False, 
+        "--detailed", "-d",
+        help="Show detailed information including capabilities and transport details"
+    ),
+    capabilities: bool = typer.Option(
+        False,
+        "--capabilities", "--caps", "-c",
+        help="Include server capability information in output"
+    ),
+    transport: bool = typer.Option(
+        False,
+        "--transport", "--trans", "-t",
+        help="Include transport/connection details"
+    ),
+    output_format: str = typer.Option(
+        "table",
+        "--format", "-f",
+        help="Output format: table, tree, or json"
+    ),
     config_file: str = typer.Option("server_config.json", help="Configuration file path"),
     server: Optional[str] = typer.Option(None, help="Server to connect to"),
     provider: str = typer.Option("openai", help="LLM provider name"),
@@ -452,9 +472,20 @@ def servers_command(
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Enable verbose logging"),
     log_level: str = typer.Option("WARNING", "--log-level", help="Set log level"),
 ) -> None:
-    """Show connected servers with status & tool counts."""
+    """Show connected servers with comprehensive MCP information."""
     # Configure logging for this command
     _setup_command_logging(quiet, verbose, log_level)
+    
+    # Validate format
+    valid_formats = ["table", "tree", "json"]
+    if output_format.lower() not in valid_formats:
+        typer.echo(f"Error: Invalid format '{output_format}'. Must be one of: {', '.join(valid_formats)}", err=True)
+        raise typer.Exit(code=1)
+    
+    # Auto-enable features for detailed view
+    if detailed:
+        capabilities = True
+        transport = True
     
     servers, _, server_names = process_options(
         server, disable_filesystem, provider, model, config_file, quiet=quiet
@@ -463,15 +494,26 @@ def servers_command(
     from mcp_cli.commands.servers import servers_action_async
     
     async def _servers_wrapper(tool_manager, **params):
-        return await servers_action_async(tool_manager)
+        return await servers_action_async(
+            tool_manager,
+            detailed=params.get('detailed', False),
+            show_capabilities=params.get('capabilities', False),
+            show_transport=params.get('transport', False),
+            output_format=params.get('output_format', 'table')
+        )
     
     run_command_sync(
         _servers_wrapper,
         config_file,
         servers,
-        extra_params={"server_names": server_names},
+        extra_params={
+            "detailed": detailed,
+            "capabilities": capabilities,
+            "transport": transport,
+            "output_format": output_format.lower(),
+            "server_names": server_names
+        },
     )
-
 direct_registered.append("servers")
 
 # Resources command  
