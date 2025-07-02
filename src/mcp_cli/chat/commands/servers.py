@@ -1,57 +1,67 @@
-# mcp_cli/chat/commands/servers.py
-"""
-List all MCP servers currently connected to this session.
-
-The **/servers** slash-command (alias **/srv**) shows every server that the
-active ``ToolManager`` is aware of, together with its friendly name, tool
-count and health status.
-
-Features
---------
-* **Cross-platform output** - uses
-  :pyfunc:`mcp_cli.utils.rich_helpers.get_console` for automatic fallback to
-  plain text on Windows consoles or when piping output to a file.
-* **Read-only** - purely informational; the command never mutates the chat
-  context and is safe to hot-reload.
-* **One-liner implementation** - delegates the heavy lifting to the shared
-  :pyfunc:`mcp_cli.commands.servers.servers_action_async` helper, ensuring
-  a single source of truth between chat and CLI modes.
-
-Examples
---------
-  /servers        → tabular list of every connected server  
-  /srv            → same, using the shorter alias
-"""
 from __future__ import annotations
+
+"""
+Enhanced /servers command with detailed capability and protocol information.
+
+Usage Examples
+--------------
+/servers                    - Basic table view with feature icons
+/servers --detailed         - Full detailed view with panels for each server
+/servers --capabilities     - Include capability details in output
+/servers --transport        - Show transport/connection information  
+/servers --tree             - Display in tree format
+/servers --json             - Raw JSON output for programmatic use
+/srv -d                     - Short alias with detailed flag
+"""
 
 from typing import Any, Dict, List
 
-# Cross-platform Rich console helper
 from mcp_cli.utils.rich_helpers import get_console
-
-# Shared async helper
 from mcp_cli.commands.servers import servers_action_async
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.chat.commands import register_command
 
 
-# ════════════════════════════════════════════════════════════════════════════
-# Command handler
-# ════════════════════════════════════════════════════════════════════════════
-async def servers_command(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
-    """List all MCP servers currently connected to this session."""
+async def servers_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
+    """Enhanced server information display with comprehensive details."""
     console = get_console()
 
     tm: ToolManager | None = ctx.get("tool_manager")
     if tm is None:
         console.print("[red]Error:[/red] ToolManager not available.")
-        return True  # command handled
+        return True
 
-    await servers_action_async(tm)
+    # Parse arguments
+    args = parts[1:]  # Remove command name
+    
+    # Parse flags
+    detailed = any(arg in ["--detailed", "-d", "--detail"] for arg in args)
+    show_capabilities = any(arg in ["--capabilities", "--caps", "-c"] for arg in args)
+    show_transport = any(arg in ["--transport", "--trans", "-t"] for arg in args)
+    
+    # Output format
+    output_format = "table"  # default
+    if "--json" in args:
+        output_format = "json"
+    elif "--tree" in args:
+        output_format = "tree"
+    
+    # If detailed is requested, automatically enable capabilities and transport
+    if detailed:
+        show_capabilities = True
+        show_transport = True
+    
+    await servers_action_async(
+        tm,
+        detailed=detailed,
+        show_capabilities=show_capabilities,
+        show_transport=show_transport,
+        output_format=output_format
+    )
+    
     return True
 
 
-# ════════════════════════════════════════════════════════════════════════════
-# Registration
-# ════════════════════════════════════════════════════════════════════════════
+# Register main command and alias
 register_command("/servers", servers_command)
+register_command("/srv", servers_command)
