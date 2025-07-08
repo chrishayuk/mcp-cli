@@ -6,3 +6,4 @@ dist/
 .pdm-build
 *.egg-info
 .DS_Store
+chris_config.json
