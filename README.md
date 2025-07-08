@@ -66,6 +66,23 @@ The MCP CLI is built on a modular architecture with clean separation of concerns
 
 ## 🚀 Installation
 
+### Using UVX
+To install uxx, use the following instructions:
+
+https://docs.astral.sh/uv/getting-started/installation/
+
+Once installed you can test it works using:
+
+```bash
+uvx mcp-cli --help
+```
+
+or use interactive mode
+
+```bash
+uvx mcp-cli interactive
+```
+
 ### Install from Source
 
 1. **Clone the repository**:
