@@ -35,7 +35,7 @@ class InteractiveCommandRegistry:
     def get_all_commands(cls) -> Dict[str, InteractiveCommand]:
         """Return the mapping of all registered commands."""
         if not isinstance(cls._commands, dict):
-            print("[DEBUG] InteractiveCommandRegistry._commands polluted! Type:", type(cls._commands))
+            #print("[DEBUG] InteractiveCommandRegistry._commands polluted! Type:", type(cls._commands))
             cls._commands = {}
         return cls._commands
 

@@ -620,7 +620,7 @@ class ToolManager:
         llm_tools: List[Dict[str, Any]] = []
         name_mapping: Dict[str, str] = {}
 
-        print(f"[DEBUG] Adapting {len(unique_tools)} tools for provider: {provider}, adapter_needed: {adapter_needed}")
+        #print(f"[DEBUG] Adapting {len(unique_tools)} tools for provider: {provider}, adapter_needed: {adapter_needed}")
 
         for tool in unique_tools:
             original = f"{tool.namespace}.{tool.name}"
@@ -641,11 +641,11 @@ class ToolManager:
                 tool_name = sanitized
                 
                 # Debug logging
-                print(f"[DEBUG] Tool adapted: {original} -> {sanitized}")
+                #print(f"[DEBUG] Tool adapted: {original} -> {sanitized}")
             else:
                 tool_name = original
                 description = tool.description or ""
-                print(f"[DEBUG] Tool not sanitized: {original}")
+                #print(f"[DEBUG] Tool not sanitized: {original}")
 
             llm_tools.append({
                 "type": "function", 
@@ -657,8 +657,8 @@ class ToolManager:
             })
 
         # Print full tools list for debugging
-        print(f"[DEBUG] Adapted tools: {[t['function']['name'] for t in llm_tools]}")
-        print(f"[DEBUG] Name mapping: {name_mapping}")
+        # print(f"[DEBUG] Adapted tools: {[t['function']['name'] for t in llm_tools]}")
+        # print(f"[DEBUG] Name mapping: {name_mapping}")
 
         return llm_tools, name_mapping
 
