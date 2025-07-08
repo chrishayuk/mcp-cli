@@ -18,14 +18,14 @@ import sys
 from typing import Any, Dict, List
 
 # mcp cli imports
-from chuk_llm.llm.llm_client import get_llm_client
+from chuk_llm.llm.client import get_client
 from mcp_cli.llm.system_prompt_generator import SystemPromptGenerator
 
 
 async def run_ollama_diagnostic(model: str, prompt: str) -> None:
     """Send *prompt* to the local Ollama server and print the reply."""
     try:
-        client = get_llm_client(provider="ollama", model=model)
+        client = get_client(provider="ollama", model=model)
     except Exception as exc:
         sys.exit(f"[ERROR] Could not create Ollama client: {exc}")
 
@@ -52,7 +52,7 @@ async def run_ollama_diagnostic(model: str, prompt: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Ollama LLM diagnostic script")
-    parser.add_argument("--model", default="qwen2.5-coder", help="Model name")
+    parser.add_argument("--model", default="qwen3", help="Model name")
     parser.add_argument("--prompt", default="Hello, Ollama!", help="Prompt text")
     args = parser.parse_args()
 

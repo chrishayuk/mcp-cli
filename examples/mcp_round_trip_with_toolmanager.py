@@ -22,7 +22,7 @@ from colorama import Fore, Style, init as colorama_init
 from dotenv import load_dotenv
 
 # ── MCP & LLM helpers ───────────────────────────────────────────────────
-from chuk_llm.llm.llm_client import get_llm_client
+from chuk_llm.llm.client import get_client
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.llm.system_prompt_generator import SystemPromptGenerator
 
@@ -93,7 +93,7 @@ async def main() -> None:
             return
 
         # 3️⃣  Initial LLM call (allow tool usage)
-        client = get_llm_client(provider=args.provider, model=args.model)
+        client = get_client(provider=args.provider, model=args.model)
         sys_prompt = SystemPromptGenerator().generate_prompt({"tools": llm_tools})
         messages: List[Dict[str, str | None]] = [
             {"role": "system", "content": sys_prompt},

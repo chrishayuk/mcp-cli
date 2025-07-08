@@ -27,7 +27,7 @@ from chuk_tool_processor.core.processor import ToolProcessor
 from chuk_tool_processor.models.tool_result import ToolResult
 
 # MCP CLI imports - only using llm_client and system_prompt_generator
-from chuk_llm.llm.llm_client import get_llm_client
+from chuk_llm.llm.client import get_client
 from mcp_cli.llm.system_prompt_generator import SystemPromptGenerator
 
 # Initialize colorama for colored output
@@ -200,7 +200,7 @@ async def main() -> None:
         openai_tools, name_mapping = await prepare_openai_tools(registry, sqlite_tools)
         
         # 5) Send prompt to LLM
-        client = get_llm_client(provider=args.provider, model=args.model)
+        client = get_client(provider=args.provider, model=args.model)
         sys_prompt = SystemPromptGenerator().generate_prompt({"tools": openai_tools})
         messages = [
             {"role": "system", "content": sys_prompt},

@@ -19,7 +19,7 @@ from typing import Any, Dict, List
 from dotenv import load_dotenv
 
 # imports
-from chuk_llm.llm.llm_client import get_llm_client
+from chuk_llm.llm.client import get_client
 from mcp_cli.llm.system_prompt_generator import SystemPromptGenerator
 
 # load environment variables
@@ -32,7 +32,7 @@ async def run_llm_diagnostic(provider: str, model: str, prompt: str) -> None:
         sys.exit("[ERROR] OPENAI_API_KEY environment variable is not set")
 
     # get the client
-    client = get_llm_client(provider=provider, model=model)
+    client = get_client(provider=provider, model=model)
 
     # get the system prompt
     system_prompt = SystemPromptGenerator().generate_prompt({})

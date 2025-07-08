@@ -35,7 +35,7 @@ from chuk_tool_processor.models.tool_call import ToolCall
 from chuk_tool_processor.registry.tool_export import openai_functions
 
 # LLM helpers
-from chuk_llm.llm.llm_client import get_llm_client
+from chuk_llm.llm.client import get_client
 from mcp_cli.llm.system_prompt_generator import SystemPromptGenerator
 
 load_dotenv()
@@ -89,7 +89,7 @@ async def round_trip(
     if provider.lower() == "openai" and not os.getenv("OPENAI_API_KEY"):
         sys.exit("[ERROR] OPENAI_API_KEY not set")
 
-    client = get_llm_client(provider=provider, model=model)
+    client = get_client(provider=provider, model=model)
 
     system_prompt = SystemPromptGenerator().generate_prompt({"tools": tools_schema})
     messages: List[Dict[str, Any]] = [
