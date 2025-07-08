@@ -1,0 +1,106 @@
+{
+  "mcpServers": {
+    "sqlite": {
+      "command": "uvx",
+      "args": ["mcp-server-sqlite", "--db-path", "test.db"]
+    },
+    "telnet": {
+      "command": "uv",
+      "args": ["--directory", "/users/chrishay/chris-source/chuk-mcp-telnet-client", "run", "src/chuk_mcp_telnet_client/main.py"]
+    },
+    "wrapper": {
+      "command": "uv",
+      "args": ["--directory", "/Users/chrishay/chris-source/mcp-advantage/mcpgateway-wrapper/", "run", "src/mcpgateway_wrapper/server.py"]
+    },
+    "s3bucket": {
+      "command": "uv",
+      "args": ["--directory", "/Users/chrishay/chris-source/mcp-advantage/mcp-s3-bucket-manager", "run", "src/mcp_s3_bucket_manager/main.py"]
+    },
+    "vfs": {
+      "command": "uv",
+      "args": ["--directory", "/Users/chrishay/chris-source/mcp-advantage/chuk-mcp-virtual-fs", "run", "src/chuk_mcp_virtual_fs/main.py"]
+    },
+    "playwright": {
+          "command": "npx",
+          "args": [
+            "@playwright/mcp@latest"
+          ]
+    },
+    "container": {
+      "command": "uv",
+      "args": ["--directory", "/Users/chrishay/chris-source/mcp-advantage/mcp-container-runtime", "run", "main.py"]
+    },
+    "openf1":{
+      "command": "uv",
+      "args":["--directory", "/Users/chrishay/chris-source/ferrari-mcp-servers/mcp-openf1-server", "run", "src/mcp_openf1_server/main.py"]
+    },
+    "time":{
+      "command": "uv",
+      "args":["--directory", "/Users/chrishay/chris-source/mcp-advantage/mcp-time-server", "run", "src/mcp_time_server/main.py"]
+    },
+    "echo":{
+      "command": "uv",
+      "args":["--directory", "/Users/chrishay/chris-source/mcp-advantage/mcp-echo-server", "run", "src/mcp_echo_server/main.py"]
+    },
+    "wikipedia":{
+      "command": "uv",
+      "args":["--directory", "/Users/chrishay/chris-source/mcp-advantage/mcp-wikipedia-search", "run", "src/mcp_wikipedia_search/main.py"]
+    },
+    "arxiv":{
+      "command": "uv",
+      "args":["--directory", "/Users/chrishay/chris-source/mcp-advantage/mcp-arxiv-search", "run", "src/mcp_arxiv_search/main.py"]
+    },
+    "ping":{
+      "command": "uv",
+      "args":["--directory", "/Users/chrishay/chris-source/mcp-advantage/mcp-ping-server", "run", "src/mcp_ping_server/main.py"]
+    },
+    "mermaid":{
+      "command": "uv",
+      "args":["--directory", "/Users/chrishay/chris-source/mcp-advantage/mcp-mermaid-renderer", "run", "src/mcp_mermaid_renderer/main.py"]
+    },
+    "duckduckgo":{
+      "command": "uv",
+      "args":["--directory", "/Users/chrishay/chris-source/mcp-advantage/mcp_duckduckgo_search", "run", "src/mcp_duckduckgo_search/main.py"]
+    },
+    "google":{
+      "command": "uv",
+      "args":["--directory", "/Users/chrishay/chris-source/mcp-advantage/mcp_google_search", "run", "src/mcp_google_search/main.py"]
+    },
+    "plantuml":{
+      "command": "uv",
+      "args":["--directory", "/Users/chrishay/chris-source/mcp-advantage/mcp-plantuml-server", "run", "src/mcp_plantuml_server/main.py"]
+    },
+    "fileretriever":{
+      "command": "uv",
+      "args":["--directory", "/Users/chrishay/chris-source/mcp-advantage/mcp_file_retriever", "run", "src/mcp_file_retriever/main.py"]
+    },
+    "testimages":{
+      "command": "uv",
+      "args":["--directory", "/Users/chrishay/chris-source/mcp-advantage/mcp-test-image-generator", "run", "src/mcp_test_image_generator/main.py"]
+    },
+    "chart":{
+      "command": "uv",
+      "args":["--directory", "/Users/chrishay/chris-source/mcp-advantage/mcp-create-chart-server", "run", "src/mcp_create_chart_server/main.py"]
+    },
+    "docbuilder":{
+      "command": "uv",
+      "args":["--directory", "/Users/chrishay/chris-source/mcp-advantage/mcp-docbuilder-server", "run", "src/mcp_docbuilder_server/main.py"]
+    },
+    "perplexity":{
+      "command": "uv",
+      "args":["--directory", "/Users/chrishay/chris-source/mcp-advantage/mcp-perplexity-server", "run", "src/mcp_perplexity_server/main.py"]
+    },
+    "ica":{
+      "command": "uv",
+      "args":["--directory", "/Users/chrishay/chris-source/mcp-advantage/mcp-assistants-server", "run", "src/mcp_assistants_server/main.py"]
+    },
+    "jira":{
+      "command": "npx",
+      "args":["mcp-remote", "https://mcp.atlassian.com/v1/sse", "--transport ", "sse"]
+    },
+    "ios":{
+      "command": "uv",
+      "args":["--directory", "/Users/chrishay/chris-source/mcp-advantage/chuk-mcp-ios-simulator", "run", "chuk-mcp-ios", "mcp"]
+    }
+  }
+}
