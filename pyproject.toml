@@ -16,7 +16,7 @@ license = {text = "MIT"}
 dependencies = [
   "anthropic>=0.51.0",
   "asyncio>=3.4.3",
-  "chuk-llm>=0.8",
+  "chuk-llm>=0.8.2",
   "chuk-mcp>=0.2.3",
   "chuk-tool-processor>=0.5.2",
   "google-genai>=1.15.0",
@@ -41,8 +41,10 @@ dev = [
 
 [tool.setuptools]
 package-dir = { "" = "src" }
-packages = ["mcp_cli"]
 
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["mcp_cli*"]
 [dependency-groups]
 dev = [
   "colorama>=0.4.6",

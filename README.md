@@ -76,7 +76,7 @@ cd mcp-cli
 
 2. **Install the package**:
 ```bash
-pip install -e ".[cli,dev]"
+pip install -e "."
 ```
 
 3. **Verify installation**:
