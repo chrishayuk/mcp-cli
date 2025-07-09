@@ -7,3 +7,4 @@ dist/
 *.egg-info
 .DS_Store
 chris_config.json
+build/

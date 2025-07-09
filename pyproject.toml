@@ -14,12 +14,10 @@ authors = [
 keywords = ["llm", "openai", "claude", "mcp", "cli"]
 license = {text = "MIT"}
 dependencies = [
-  "anthropic>=0.51.0",
   "asyncio>=3.4.3",
   "chuk-llm>=0.8.2",
-  "chuk-mcp>=0.2.3",
-  "chuk-tool-processor>=0.5.2",
-  "google-genai>=1.15.0",
+  "chuk-mcp>=0.2.4",
+  "chuk-tool-processor>=0.5.4",
   "prompt-toolkit>=3.0.50",
   "python-dotenv>=1.0.1",
   "rich>=13.9.4",
