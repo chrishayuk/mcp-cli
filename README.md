@@ -384,7 +384,11 @@ mcp-cli provider list
 
 ### Manual Configuration
 
-Providers are configured in `~/.chuk_llm/providers.yaml`:
+The `chuk_llm` library looks for configuration files in a particular order.
+First a file specified by the `CHUK_LLM_CONFIG` environment variable.
+Then, in the current working directory a file like `chuk_llm.yaml`, `providers.yaml`, `llm_config.yaml` or `config/chuk_llm.yaml`.
+
+But ideally a user wide configuration should be added to `~/.chuk_llm/config.yaml`:
 
 ```yaml
 openai:
