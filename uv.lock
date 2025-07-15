@@ -137,7 +137,7 @@ wheels = [
 
 [[package]]
 name = "chuk-llm"
-version = "0.8.3"
+version = "0.8.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anthropic" },
@@ -153,23 +153,22 @@ dependencies = [
     { name = "pyyaml" },
     { name = "tiktoken" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/52/18/a20f672e245f359b8e319d14d7a94f5ac1bba4e279d831481b4adb8dcea9/chuk_llm-0.8.3.tar.gz", hash = "sha256:506a7c032c939f6ebc5589ebe1f5742d2219361a23612317e34feaef6fbcf81a", size = 165937 }
+sdist = { url = "https://files.pythonhosted.org/packages/6f/68/9d2cc530f3cf59fe75a8ba1a174f428852c3b06eca22c63fd2a7d54ea868/chuk_llm-0.8.4.tar.gz", hash = "sha256:91f1fe7d653aa17f350f38bad71282356c661f7a48720a3e912158266ee555e0", size = 165959 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4b/fb/0271992ae374aa8eb02f03a1e9af8f29425240d0306c35a6d46ae8ac76dc/chuk_llm-0.8.3-py3-none-any.whl", hash = "sha256:5afa9dfda19a5916e891411103f7cfeb77603a25188e033f6aec176c5070edc8", size = 176753 },
+    { url = "https://files.pythonhosted.org/packages/be/45/fd6e0148073c2db477a6bb85bb88e15d5fb1db73379f653f3ebd77522c1a/chuk_llm-0.8.4-py3-none-any.whl", hash = "sha256:442ec22530f902379620588e1f6639c24c525579b146dcffe65c2cbe5589a1c2", size = 176753 },
 ]
 
 [[package]]
 name = "chuk-mcp"
-version = "0.2.4"
+version = "0.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
-    { name = "httpx" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fe/39/edfb61e503b182fc57910a4e528a1541c49a0cba5dea88d736535a012526/chuk_mcp-0.2.4.tar.gz", hash = "sha256:e8ec48acfee5c81e8c5b7953f8f07e3d5d866c17575e7e8260290a13c6ac9395", size = 93955 }
+sdist = { url = "https://files.pythonhosted.org/packages/07/ad/75c7c980a6a409a95ee179d0e83f0a74b5501e94f861bc5f8e97ef8c9d86/chuk_mcp-0.5.tar.gz", hash = "sha256:783f185a5ba43e037c56987ce6b6f852042f8426d1b19adba8e82fb12881cc57", size = 101832 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/eb/f1/0ece3eb257647f589ffb87c0ca44fabaffe3cb9f066d8f67320d8eb398a8/chuk_mcp-0.2.4-py3-none-any.whl", hash = "sha256:93e97b4b4e95dbff385811c749a8918d28c4c4cf23cb0ea36af3c3ce91d8eece", size = 121485 },
+    { url = "https://files.pythonhosted.org/packages/a4/cd/e4028df4beed868969e63009fa0496b28ecbf89e206446755abf9a6ef549/chuk_mcp-0.5-py3-none-any.whl", hash = "sha256:466f1c6f6710127ca165472eea3176fc8cdfd9d020058fddedbdbff5b7cc28c1", size = 126388 },
 ]
 
 [[package]]
@@ -459,8 +458,8 @@ dev = [
 requires-dist = [
     { name = "asyncio", specifier = ">=3.4.3" },
     { name = "asyncio", marker = "extra == 'dev'", specifier = ">=3.4.3" },
-    { name = "chuk-llm", specifier = ">=0.8.3" },
-    { name = "chuk-mcp", specifier = ">=0.2.4" },
+    { name = "chuk-llm", specifier = ">=0.8.4" },
+    { name = "chuk-mcp", specifier = ">=0.5" },
     { name = "chuk-tool-processor", specifier = ">=0.5.4" },
     { name = "numpy", marker = "extra == 'dev'", specifier = ">=2.2.3" },
     { name = "prompt-toolkit", specifier = ">=3.0.50" },
