@@ -11,6 +11,8 @@ order of messages in *conversation_history*.
   ``context.tool_manager``.
 * Unit-tests: fall back to a minimal "stream-manager" stub that exposes
   ``call_tool()`` - no ToolManager required.
+
+UPDATED: Proper tool name mapping handling - no unnecessary sanitization.
 """
 from __future__ import annotations
 
@@ -60,10 +62,10 @@ class ToolProcessor:
 
         Args:
             tool_calls: List of tool call objects from the LLM
-            name_mapping: Optional mapping from LLM tool names to original MCP tool names
+            name_mapping: Optional mapping from sanitized LLM tool names to original MCP tool names
         
         The conversation history is updated in the **original** order
-        produced by the LLM.
+        produced by the LLM, using the tool names exactly as the LLM provided them.
         """
         if not tool_calls:
             rprint("[yellow]Warning: Empty tool_calls list received.[/yellow]")
@@ -114,26 +116,23 @@ class ToolProcessor:
         """Execute one tool call and record the appropriate chat messages."""
         if name_mapping is None:
             name_mapping = {}
-            
-        # Create a reverse mapping to look up OpenAI names from original names if needed
-        reverse_mapping = {v: k for k, v in name_mapping.items()}
                 
         async with self._sem:  # limit concurrency
-            tool_name = "unknown_tool"
+            llm_tool_name = "unknown_tool"  # Name as received from LLM
             raw_arguments: Any = {}
             call_id = f"call_{idx}"
 
             try:
-                # ------ schema-agnostic extraction -------------------
+                # ------ Extract tool call details (schema-agnostic) -------
                 try:
                     if hasattr(tool_call, "function"):
                         fn = tool_call.function
-                        tool_name = getattr(fn, "name", "unknown_tool")
+                        llm_tool_name = getattr(fn, "name", "unknown_tool")
                         raw_arguments = getattr(fn, "arguments", {})
                         call_id = getattr(tool_call, "id", call_id)
                     elif isinstance(tool_call, dict) and "function" in tool_call:
                         fn = tool_call["function"]
-                        tool_name = fn.get("name", "unknown_tool")
+                        llm_tool_name = fn.get("name", "unknown_tool")
                         raw_arguments = fn.get("arguments", {})
                         call_id = tool_call.get("id", call_id)
                     else:
@@ -142,52 +141,54 @@ class ToolProcessor:
                         raise ValueError(f"Unrecognized tool call format: {type(tool_call)}")
                         
                     # Ensure tool_name is not None or empty
-                    if not tool_name or tool_name == "unknown_tool":
+                    if not llm_tool_name or llm_tool_name == "unknown_tool":
                         log.error(f"Tool name is empty or unknown in tool call: {tool_call}")
-                        tool_name = f"unknown_tool_{idx}"
+                        llm_tool_name = f"unknown_tool_{idx}"
                         
                 except Exception as e:
                     # Catch extraction errors separately to provide better diagnostics
                     log.error(f"Error extracting tool details from {tool_call}: {e}")
-                    tool_name = f"unknown_tool_{idx}"
+                    llm_tool_name = f"unknown_tool_{idx}"
                     raw_arguments = {}
 
                 # Validate tool_name is a string and not None
-                if not isinstance(tool_name, str):
-                    log.error(f"Tool name is not a string: {tool_name} (type: {type(tool_name)})")
-                    tool_name = f"unknown_tool_{idx}"
+                if not isinstance(llm_tool_name, str):
+                    log.error(f"Tool name is not a string: {llm_tool_name} (type: {type(llm_tool_name)})")
+                    llm_tool_name = f"unknown_tool_{idx}"
 
-                # Get the original tool name from mapping if available
-                original_tool_name = name_mapping.get(tool_name, tool_name)
-                log.debug(f"Tool call: {tool_name} -> {original_tool_name} (after mapping)")
+                # ------ Determine execution name ----------------------
+                # Use name mapping to get the original MCP tool name for execution
+                execution_tool_name = name_mapping.get(llm_tool_name, llm_tool_name)
                 
-                # If tool_name looks like a sanitized name (has underscore but no dot) and
-                # there's no mapping for it, try to recover the namespace
-                if "_" in tool_name and "." not in tool_name and tool_name not in name_mapping:
-                    # This is likely a sanitized tool name like stdio_list_tables
-                    # Try to extract namespace from the name
-                    parts = tool_name.split("_", 1)
+                log.debug(f"Tool call mapping: LLM='{llm_tool_name}' -> Execution='{execution_tool_name}'")
+                
+                # If no mapping exists and the name looks sanitized, try to reconstruct
+                if llm_tool_name == execution_tool_name and "_" in llm_tool_name and "." not in llm_tool_name:
+                    # This might be a sanitized name like stdio_list_tables -> stdio.list_tables
+                    parts = llm_tool_name.split("_", 1)
                     if len(parts) == 2:
                         namespace, base_name = parts[0], parts[1]
-                        log.debug(f"Extracted namespace '{namespace}' and base name '{base_name}' from '{tool_name}'")
-                        original_tool_name = f"{namespace}.{base_name}"
-                        log.debug(f"Reconstructed original tool name: {original_tool_name}")
-                        
-                # ui feedback
-                display_name = (
-                    self.context.get_display_name_for_tool(original_tool_name)
-                    if hasattr(self.context, "get_display_name_for_tool")
-                    else original_tool_name
-                )
-                log.debug("[%d] Executing tool %s", idx, display_name)
+                        potential_original = f"{namespace}.{base_name}"
+                        log.debug(f"No mapping found, trying to reconstruct: {llm_tool_name} -> {potential_original}")
+                        execution_tool_name = potential_original
                 
+                # Get display name for UI
+                display_name = (
+                    self.context.get_display_name_for_tool(execution_tool_name)
+                    if hasattr(self.context, "get_display_name_for_tool")
+                    else execution_tool_name
+                )
+                
+                log.debug("[%d] Executing tool %s (display: %s)", idx, execution_tool_name, display_name)
+                
+                # ------ UI feedback ------------------------------------
                 try:
                     self.ui_manager.print_tool_call(display_name, raw_arguments)
                 except Exception as ui_exc:
                     # Don't fail the whole tool call if UI display fails
                     log.warning(f"UI display error (non-fatal): {ui_exc}")
 
-                # ------ parse args -----------------------------------
+                # ------ Parse arguments --------------------------------
                 try:
                     if isinstance(raw_arguments, str):
                         try:
@@ -198,7 +199,7 @@ class ToolProcessor:
                                 arguments = json.loads(raw_arguments)
                         except json.JSONDecodeError as json_err:
                             log.warning(f"Invalid JSON in arguments: {json_err}")
-                            # If it's not valid JSON, try to use it as an empty dict
+                            # If it's not valid JSON, use empty dict
                             arguments = {}
                     else:
                         arguments = raw_arguments or {}
@@ -206,7 +207,7 @@ class ToolProcessor:
                     log.error(f"Error parsing arguments: {arg_exc}")
                     arguments = {}  # Use empty dict as fallback
 
-                # ------ execute --------------------------------------
+                # ------ Execute tool -----------------------------------
                 tool_result: Optional[ToolCallResult] = None
                 success = False
                 content: str | Dict[str, Any] = ""
@@ -215,8 +216,8 @@ class ToolProcessor:
                 try:
                     if self.tool_manager is not None:
                         with Console().status("[cyan]Executing tool…[/cyan]", spinner="dots"):
-                            # Use the original (mapped) tool name for execution
-                            tool_result = await self.tool_manager.execute_tool(original_tool_name, arguments)
+                            # Execute using the original/mapped tool name
+                            tool_result = await self.tool_manager.execute_tool(execution_tool_name, arguments)
 
                         success = tool_result.success
                         error_msg = tool_result.error
@@ -224,8 +225,8 @@ class ToolProcessor:
 
                     elif self.stream_manager is not None and hasattr(self.stream_manager, "call_tool"):
                         with Console().status("[cyan]Executing tool…[/cyan]", spinner="dots"):
-                            # Use the original (mapped) tool name for execution
-                            call_res = await self.stream_manager.call_tool(original_tool_name, arguments)
+                            # Execute using the original/mapped tool name
+                            call_res = await self.stream_manager.call_tool(execution_tool_name, arguments)
 
                         if isinstance(call_res, dict):
                             success = not call_res.get("isError", False)
@@ -238,6 +239,7 @@ class ToolProcessor:
                         error_msg = "No StreamManager available for tool execution."
                         content = f"Error: {error_msg}"
                         raise RuntimeError(error_msg)
+                        
                 except asyncio.CancelledError:
                     # Special case - propagate cancellation
                     raise
@@ -247,7 +249,7 @@ class ToolProcessor:
                     content = f"Error: {error_msg}"
                     success = False
 
-                # ------ normalise content ----------------------------
+                # ------ Normalize content ------------------------------
                 try:
                     if not success and not str(content).startswith("Error"):
                         content = f"Error: {content}"
@@ -261,25 +263,17 @@ class ToolProcessor:
                     log.warning(f"Error normalizing content: {norm_exc}")
                     content = f"Error normalizing result: {norm_exc}"
 
-                # ------ ChatML bookkeeping - KEY CHANGE -------------
+                # ------ Update conversation history --------------------
+                # CRITICAL: Use the LLM tool name (as received) for conversation history
+                # This ensures compatibility with the LLM's expectations
                 try:
-                    # IMPORTANT: For conversation history, we use the SAME NAME that was in the original tool call
-                    # The tool_name from the tool_call should be in the right format for OpenAI
-                    
-                    # Double-check it's OpenAI compatible  
-                    import re
-                    if not re.match(r'^[a-zA-Z0-9_-]+$', tool_name):
-                        # If it's not compatible, sanitize it
-                        log.warning(f"Tool name '{tool_name}' is not OpenAI compatible, sanitizing")
-                        tool_name = re.sub(r'[^a-zA-Z0-9_-]', '_', tool_name)
-                    
                     arg_json = (
                         json.dumps(arguments)
                         if isinstance(arguments, dict)
                         else str(arguments)
                     )
                     
-                    # Add the assistant's tool call to history
+                    # Add the assistant's tool call to history using LLM name
                     self.context.conversation_history.append(
                         {
                             "role": "assistant",
@@ -289,7 +283,7 @@ class ToolProcessor:
                                     "id": call_id,
                                     "type": "function",
                                     "function": {
-                                        "name": tool_name,  # Use OpenAI-compatible name
+                                        "name": llm_tool_name,  # Use LLM name for consistency
                                         "arguments": arg_json,
                                     },
                                 }
@@ -297,23 +291,23 @@ class ToolProcessor:
                         }
                     )
                     
-                    # Add the tool's response
+                    # Add the tool's response using LLM name
                     self.context.conversation_history.append(
                         {
                             "role": "tool",
-                            "name": tool_name,  # Use OpenAI-compatible name
+                            "name": llm_tool_name,  # Use LLM name for consistency
                             "content": str(content),
                             "tool_call_id": call_id,
                         }
                     )
                     
-                    log.debug(f"Added to conversation history with tool name: {tool_name}")
+                    log.debug(f"Added to conversation history with LLM tool name: {llm_tool_name}")
                     
                 except Exception as hist_exc:
                     log.error(f"Error updating conversation history: {hist_exc}")
                     # This is serious but we'll continue to try displaying the result
 
-                # pretty-print result for real CLI runs
+                # ------ Display result ---------------------------------
                 try:
                     if tool_result is not None:
                         display_tool_call_result(tool_result)
@@ -330,15 +324,9 @@ class ToolProcessor:
                 
                 try:
                     # Use plain print instead of rprint to avoid potential markup issues
-                    print(f"Error executing tool {tool_name}: {exc}")
+                    print(f"Error executing tool {execution_tool_name}: {exc}")
                     
-                    # Ensure we use a sanitized tool name for the history
-                    import re
-                    sanitized_name = tool_name if isinstance(tool_name, str) else f"unknown_tool_{idx}"
-                    if not re.match(r'^[a-zA-Z0-9_-]+$', sanitized_name):
-                        sanitized_name = re.sub(r'[^a-zA-Z0-9_-]', '_', sanitized_name)
-                    
-                    # Add fallback messages to conversation history
+                    # Add fallback messages to conversation history using LLM name
                     self.context.conversation_history.append(
                         {
                             "role": "assistant",
@@ -348,7 +336,7 @@ class ToolProcessor:
                                     "id": call_id,
                                     "type": "function",
                                     "function": {
-                                        "name": sanitized_name,  # Use sanitized name
+                                        "name": llm_tool_name,  # Use LLM name as received
                                         "arguments": json.dumps(raw_arguments)
                                         if isinstance(raw_arguments, dict)
                                         else str(raw_arguments or {}),
@@ -358,15 +346,16 @@ class ToolProcessor:
                         }
                     )
                     
-                    # Ensure exact match for error format
+                    # Tool response with error using LLM name
                     self.context.conversation_history.append(
                         {
                             "role": "tool",
-                            "name": sanitized_name,  # Use sanitized name
+                            "name": llm_tool_name,  # Use LLM name as received
                             "content": f"Error: Could not execute tool. {exc}",
                             "tool_call_id": call_id,
                         }
                     )
+                    
                 except Exception as recovery_exc:
                     # Last-ditch error handling if even our error recovery fails
                     log.critical(f"Failed to recover from tool error: {recovery_exc}")
