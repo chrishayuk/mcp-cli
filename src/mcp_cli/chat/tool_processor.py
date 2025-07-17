@@ -1,18 +1,14 @@
-# mcp_cli/chat/tool_processor.py
+# mcp_cli/chat/tool_processor.py 
 """
-mcp_cli.chat.tool_processor - concurrent implementation with a
-centralised ToolManager with streaming fixes
-================================================================
+mcp_cli.chat.tool_processor
+======================================================================================
 
+Updated to work with the new OpenAI client's universal tool compatibility system.
 Executes multiple tool calls **concurrently** while keeping the original
 order of messages in *conversation_history*.
 
-* Normal CLI runtime: use the full **ToolManager** available via
-  ``context.tool_manager``.
-* Unit-tests: fall back to a minimal "stream-manager" stub that exposes
-  ``call_tool()`` - no ToolManager required.
-
-UPDATED: Proper tool name mapping handling - no unnecessary sanitization.
+Now properly handles tool name restoration from the universal 
+tool compatibility system without duplicate sanitization.
 """
 from __future__ import annotations
 
@@ -32,7 +28,11 @@ log = logging.getLogger(__name__)
 
 
 class ToolProcessor:
-    """Handle execution of tool calls returned by the LLM."""
+    """
+    Handle execution of tool calls returned by the LLM.
+    
+    FIXED: Now works correctly with the universal tool compatibility system.
+    """
 
     # ------------------------------------------------------------------ #
     # construction                                                       #
@@ -66,6 +66,8 @@ class ToolProcessor:
         
         The conversation history is updated in the **original** order
         produced by the LLM, using the tool names exactly as the LLM provided them.
+        
+        Now fully relies on LLM provider's universal tool compatibility system.
         """
         if not tool_calls:
             rprint("[yellow]Warning: Empty tool_calls list received.[/yellow]")
@@ -113,7 +115,11 @@ class ToolProcessor:
     # internals                                                          #
     # ------------------------------------------------------------------ #
     async def _run_single_call(self, idx: int, tool_call: Any, name_mapping: Dict[str, str] = None) -> None:
-        """Execute one tool call and record the appropriate chat messages."""
+        """
+        Execute one tool call and record the appropriate chat messages.
+        
+        Updated to work with universal tool compatibility system.
+        """
         if name_mapping is None:
             name_mapping = {}
                 
@@ -156,21 +162,11 @@ class ToolProcessor:
                     log.error(f"Tool name is not a string: {llm_tool_name} (type: {type(llm_tool_name)})")
                     llm_tool_name = f"unknown_tool_{idx}"
 
-                # ------ Determine execution name ----------------------
-                # Use name mapping to get the original MCP tool name for execution
+                # ------ Determine execution name (FIXED) ----------------------
+                # CRITICAL FIX: Use name mapping provided by universal tool compatibility system
                 execution_tool_name = name_mapping.get(llm_tool_name, llm_tool_name)
                 
-                log.debug(f"Tool call mapping: LLM='{llm_tool_name}' -> Execution='{execution_tool_name}'")
-                
-                # If no mapping exists and the name looks sanitized, try to reconstruct
-                if llm_tool_name == execution_tool_name and "_" in llm_tool_name and "." not in llm_tool_name:
-                    # This might be a sanitized name like stdio_list_tables -> stdio.list_tables
-                    parts = llm_tool_name.split("_", 1)
-                    if len(parts) == 2:
-                        namespace, base_name = parts[0], parts[1]
-                        potential_original = f"{namespace}.{base_name}"
-                        log.debug(f"No mapping found, trying to reconstruct: {llm_tool_name} -> {potential_original}")
-                        execution_tool_name = potential_original
+                log.debug(f"Tool call execution: LLM='{llm_tool_name}' -> Execution='{execution_tool_name}'")
                 
                 # Get display name for UI
                 display_name = (
@@ -216,7 +212,11 @@ class ToolProcessor:
                 try:
                     if self.tool_manager is not None:
                         with Console().status("[cyan]Executing tool…[/cyan]", spinner="dots"):
-                            # Execute using the original/mapped tool name
+                            # CRITICAL FIX: Use the execution tool name directly
+                            # The universal tool compatibility system has already restored the correct name
+                            log.debug(f"ToolManager execution: {execution_tool_name}")
+                            
+                            # Execute using the restored tool name
                             tool_result = await self.tool_manager.execute_tool(execution_tool_name, arguments)
 
                         success = tool_result.success
@@ -225,7 +225,7 @@ class ToolProcessor:
 
                     elif self.stream_manager is not None and hasattr(self.stream_manager, "call_tool"):
                         with Console().status("[cyan]Executing tool…[/cyan]", spinner="dots"):
-                            # Execute using the original/mapped tool name
+                            # Execute using the execution tool name (restored by LLM provider)
                             call_res = await self.stream_manager.call_tool(execution_tool_name, arguments)
 
                         if isinstance(call_res, dict):
@@ -236,7 +236,7 @@ class ToolProcessor:
                             success = True
                             content = call_res
                     else:
-                        error_msg = "No StreamManager available for tool execution."
+                        error_msg = "No tool manager available for tool execution."
                         content = f"Error: {error_msg}"
                         raise RuntimeError(error_msg)
                         

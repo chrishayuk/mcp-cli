@@ -1,7 +1,7 @@
-# mcp_cli/model_manager.py - Enhanced with all missing methods
+# mcp_cli/model_manager.py
 """
 Enhanced ModelManager that wraps chuk_llm's provider system.
-Provides comprehensive interface with discovery capabilities and prettier displays.
+Now properly handles the updated OpenAI client with universal tool compatibility.
 """
 import logging
 from typing import List, Dict, Optional, Any, Tuple
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class ModelManager:
     """
     Enhanced ModelManager that wraps chuk_llm's provider system.
-    Provides mcp-cli specific interface while using chuk_llm under the hood.
+    FIXED: Updated to work with the new OpenAI client universal tool compatibility.
     """
     
     def __init__(self):
@@ -19,6 +19,7 @@ class ModelManager:
         self._active_provider = None
         self._active_model = None
         self._discovery_triggered = False
+        self._client_cache = {}  # Cache clients to avoid recreation
         self._initialize_chuk_llm()
     
     def _initialize_chuk_llm(self):
@@ -233,6 +234,9 @@ class ModelManager:
         
         self._active_provider = provider
         
+        # Clear client cache when changing provider
+        self._client_cache.clear()
+        
         # Set default model for this provider
         try:
             if self._chuk_config:
@@ -252,22 +256,29 @@ class ModelManager:
         """Set the active model"""
         target_provider = provider or self._active_provider
         
-        # Check if model is available
-        available_models = self.get_available_models(target_provider)
-        # if available_models and model not in available_models:
-        #     logger.warning(f"Model {model} not in available models for {target_provider}")
-        #     # Don't raise error - let chuk_llm handle discovery if needed
-        
         if provider and provider != self._active_provider:
             self.set_active_provider(provider)
         
         self._active_model = model
+        
+        # Clear client cache when changing model
+        self._client_cache.clear()
     
     def switch_model(self, provider: str, model: str):
         """Switch to a specific provider and model"""
         self.set_active_provider(provider)
         self.set_active_model(model, provider)
         logger.info(f"Switched to {provider}:{model}")
+    
+    def switch_provider(self, provider: str):
+        """Switch to a provider with its default model"""
+        self.set_active_provider(provider)
+        logger.info(f"Switched to provider {provider}")
+    
+    def switch_to_model(self, model: str):
+        """Switch to a model with current provider"""
+        self.set_active_model(model)
+        logger.info(f"Switched to model {model}")
     
     def validate_provider(self, provider: str) -> bool:
         """Check if a provider is valid/available"""
@@ -307,17 +318,51 @@ class ModelManager:
         return self.get_available_providers()
     
     def get_client(self, provider: str = None, model: str = None):
-        """Get a chuk_llm client for the specified or active provider/model"""
+        """
+        Get a chuk_llm client for the specified or active provider/model.
+        FIXED: Now uses caching and properly handles the updated OpenAI client.
+        """
         try:
             from chuk_llm.llm.client import get_client
             
             target_provider = provider or self._active_provider
             target_model = model or self._active_model
             
-            return get_client(target_provider, model=target_model)
+            # Use cache key to avoid recreating clients
+            cache_key = f"{target_provider}:{target_model}"
+            
+            if cache_key not in self._client_cache:
+                # Create new client with explicit provider and model
+                client = get_client(provider=target_provider, model=target_model)
+                self._client_cache[cache_key] = client
+                logger.debug(f"Created new client for {cache_key}")
+            
+            return self._client_cache[cache_key]
             
         except Exception as e:
             logger.error(f"Failed to get client for {target_provider}:{target_model}: {e}")
+            raise
+    
+    def get_client_for_provider(self, provider: str, model: str = None):
+        """Get a client for a specific provider (alias for get_client)"""
+        return self.get_client(provider=provider, model=model)
+    
+    def configure_provider(self, provider: str, api_key: str = None, api_base: str = None):
+        """Configure a provider with API settings"""
+        try:
+            if self._chuk_config:
+                # Update provider configuration
+                provider_config = self._chuk_config.get_provider(provider)
+                if api_key:
+                    provider_config.api_key = api_key
+                if api_base:
+                    provider_config.api_base = api_base
+                
+                # Clear cache to force recreation with new settings
+                self._client_cache.clear()
+                logger.info(f"Configured provider {provider}")
+        except Exception as e:
+            logger.error(f"Failed to configure provider {provider}: {e}")
             raise
     
     def test_model_access(self, provider: str, model: str) -> bool:
@@ -359,7 +404,8 @@ class ModelManager:
             "provider_model_counts": {
                 provider: len(self.get_available_models(provider))
                 for provider in self.get_available_providers()
-            }
+            },
+            "cached_clients": len(self._client_cache)
         }
     
     def get_status_summary(self) -> Dict[str, Any]:
@@ -401,4 +447,4 @@ class ModelManager:
         return f"ModelManager(provider={self._active_provider}, model={self._active_model})"
     
     def __repr__(self):
-        return f"ModelManager(provider='{self._active_provider}', model='{self._active_model}', discovery={self._discovery_triggered})"
+        return f"ModelManager(provider='{self._active_provider}', model='{self._active_model}', discovery={self._discovery_triggered}, cached_clients={len(self._client_cache)})"

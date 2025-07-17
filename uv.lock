@@ -137,7 +137,7 @@ wheels = [
 
 [[package]]
 name = "chuk-llm"
-version = "0.8.3"
+version = "0.8.11"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anthropic" },
@@ -146,6 +146,7 @@ dependencies = [
     { name = "google-genai" },
     { name = "groq" },
     { name = "httpx" },
+    { name = "ibm-watsonx-ai" },
     { name = "mistralai" },
     { name = "ollama" },
     { name = "openai" },
@@ -153,9 +154,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "tiktoken" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/52/18/a20f672e245f359b8e319d14d7a94f5ac1bba4e279d831481b4adb8dcea9/chuk_llm-0.8.3.tar.gz", hash = "sha256:506a7c032c939f6ebc5589ebe1f5742d2219361a23612317e34feaef6fbcf81a", size = 165937 }
+sdist = { url = "https://files.pythonhosted.org/packages/b2/ba/10fc81fdbf3e8937dc0ce07685e1bf9ce79e8f394bbf17642a354b5ca77f/chuk_llm-0.8.11.tar.gz", hash = "sha256:d1c434064d8cce92ea2c2d424783907dc39327eec0d03d434bd466bdd41dc3f0", size = 194082 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4b/fb/0271992ae374aa8eb02f03a1e9af8f29425240d0306c35a6d46ae8ac76dc/chuk_llm-0.8.3-py3-none-any.whl", hash = "sha256:5afa9dfda19a5916e891411103f7cfeb77603a25188e033f6aec176c5070edc8", size = 176753 },
+    { url = "https://files.pythonhosted.org/packages/df/b1/7ca1a345c7d8d6784c3d620cc447c0f036d865e77f4e729760d9144f49b8/chuk_llm-0.8.11-py3-none-any.whl", hash = "sha256:d9c2fbcc26256af82c6b5745712b1544d48357d457282e3a3740c3a6a6f818c1", size = 200905 },
 ]
 
 [[package]]
@@ -501,7 +502,7 @@ wheels = [
 
 [[package]]
 name = "mcp-cli"
-version = "0.4"
+version = "0.5"
 source = { editable = "." }
 dependencies = [
     { name = "asyncio" },
@@ -533,7 +534,7 @@ dev = [
 requires-dist = [
     { name = "asyncio", specifier = ">=3.4.3" },
     { name = "asyncio", marker = "extra == 'dev'", specifier = ">=3.4.3" },
-    { name = "chuk-llm", specifier = "==0.8.3" },
+    { name = "chuk-llm", specifier = ">=0.8.11" },
     { name = "chuk-mcp", specifier = ">=0.5" },
     { name = "chuk-tool-processor", specifier = ">=0.5.4" },
     { name = "ibm-watsonx-ai", specifier = ">=1.3.31" },

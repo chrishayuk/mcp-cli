@@ -1,17 +1,22 @@
-# mcp_cli/tools/manager.py
+# mcp_cli/tools/manager.py - COMPLETE FIXED VERSION
 """
 Centralized tool management using CHUK Tool Processor.
 
 This module provides a unified interface for all tool-related operations in MCP CLI,
 leveraging the async-native capabilities of CHUK Tool Processor.
+
+FIXED: Enhanced with performance improvements, better timeout handling, and universal
+tool compatibility support for the OpenAI client integration.
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
+import os
 import uuid
 from typing import Any, Dict, List, Optional, Tuple, Union, AsyncIterator
+from concurrent.futures import TimeoutError as FutureTimeoutError
 
 from chuk_tool_processor.mcp.setup_mcp_stdio import setup_mcp_stdio
 from chuk_tool_processor.core.processor import ToolProcessor
@@ -37,6 +42,9 @@ class ToolManager:
     - Tool execution with streaming support
     - Server management
     - LLM-compatible tool conversion
+    
+    ENHANCED: Now includes performance improvements and timeout handling
+    for better support of many MCP servers.
     """
 
     # ------------------------------------------------------------------ #
@@ -49,18 +57,22 @@ class ToolManager:
         server_names: Optional[Dict[int, str]] = None,
         tool_timeout: Optional[float] = None,  # Make this optional for smart defaults
         max_concurrency: int = 4,
+        initialization_timeout: float = 120.0,  # Enhanced: Configurable init timeout
+        server_connection_timeout: float = 30.0,  # Enhanced: Per-server timeout
     ):
         self.config_file = config_file
         self.servers = servers
         self.server_names = server_names or {}
         
-        # Smart timeout configuration with priority:
+        # Enhanced timeout configuration with priority:
         # 1. Explicit parameter
         # 2. Environment variable MCP_TOOL_TIMEOUT
         # 3. Environment variable CHUK_TOOL_TIMEOUT
         # 4. Default (120 seconds)
         self.tool_timeout = self._determine_timeout(tool_timeout)
         self.max_concurrency = max_concurrency
+        self.initialization_timeout = initialization_timeout
+        self.server_connection_timeout = server_connection_timeout
 
         # CHUK components
         self.processor: Optional[ToolProcessor] = None
@@ -70,13 +82,15 @@ class ToolManager:
         self._registry = None
         self._executor: Optional[ToolExecutor] = None
         self._metadata_cache: Dict[Tuple[str, str], Any] = {}
+        
+        # Performance tracking
+        self._connection_stats = {}
+        self._failed_servers = set()
 
     def _determine_timeout(self, explicit_timeout: Optional[float]) -> float:
         """
         Determine timeout with smart defaults and environment variable support.
         """
-        import os
-        
         if explicit_timeout is not None:
             logger.info(f"Using explicit timeout: {explicit_timeout}s")
             return explicit_timeout
@@ -91,32 +105,56 @@ class ToolManager:
             except ValueError:
                 logger.warning(f"Invalid timeout in environment: {env_timeout}")
         
+        # Check CLI-specific environment variables
+        cli_timeout = os.getenv("MCP_CLI_INIT_TIMEOUT")
+        if cli_timeout:
+            try:
+                timeout = float(cli_timeout)
+                logger.info(f"Using CLI timeout: {timeout}s")
+                return timeout
+            except ValueError:
+                logger.warning(f"Invalid CLI timeout: {cli_timeout}")
+        
         # Default
         default_timeout = 120.0  # 2 minutes
         logger.info(f"Using default timeout: {default_timeout}s")
         return default_timeout
+
     async def initialize(self, namespace: str = "stdio") -> bool:
-        """Connect to the MCP servers and populate the tool registry."""
+        """
+        Connect to the MCP servers and populate the tool registry.
+        
+        Enhanced with better timeout handling and partial failure support.
+        """
         try:
-            # Set up CHUK Tool Processor
-            self.processor, self.stream_manager = await setup_mcp_stdio(
-                config_file=str(self.config_file),
-                servers=self.servers,
-                server_names=self.server_names,
-                namespace=namespace,
-                enable_caching=True,
-                enable_retries=True,
-                max_retries=3,
+            logger.info(f"Initializing ToolManager with {len(self.servers)} servers")
+            logger.info(f"Timeouts: init={self.initialization_timeout}s, connection={self.server_connection_timeout}s")
+            
+            # Set up CHUK Tool Processor with enhanced timeouts
+            self.processor, self.stream_manager = await asyncio.wait_for(
+                setup_mcp_stdio(
+                    config_file=str(self.config_file),
+                    servers=self.servers,
+                    server_names=self.server_names,
+                    namespace=namespace,
+                    enable_caching=True,
+                    enable_retries=True,
+                    max_retries=2,  # Reduced retries for faster failure
+                ),
+                timeout=self.initialization_timeout
             )
             
-            # Get the registry
-            self._registry = await ToolRegistryProvider.get_registry()
+            # Get the registry with timeout
+            self._registry = await asyncio.wait_for(
+                ToolRegistryProvider.get_registry(),
+                timeout=30.0
+            )
             
             # Initialize the executor with configurable timeout
             strategy = InProcessStrategy(
                 self._registry,
                 max_concurrency=self.max_concurrency,
-                default_timeout=self.tool_timeout  # Use the configurable timeout
+                default_timeout=self.tool_timeout
             )
             
             self._executor = ToolExecutor(
@@ -127,6 +165,11 @@ class ToolManager:
             
             logger.info(f"ToolManager initialized successfully with {self.tool_timeout}s timeout")
             return True
+            
+        except asyncio.TimeoutError:
+            logger.error(f"ToolManager initialization timed out after {self.initialization_timeout}s")
+            logger.error(f"Consider reducing the number of servers or increasing timeout with --timeout")
+            return False
         except Exception as exc:
             logger.error(f"Error initializing tool manager: {exc}")
             return False
@@ -164,48 +207,81 @@ class ToolManager:
         return self.tool_timeout
 
     # ------------------------------------------------------------------ #
-    # Tool discovery methods                                             #
+    # Enhanced tool discovery methods                                    #
     # ------------------------------------------------------------------ #
     async def get_all_tools(self) -> List[ToolInfo]:
-        """Return all tools including duplicates."""
+        """
+        Return all tools including duplicates.
+        
+        Enhanced with timeout handling and partial failure support.
+        """
         if not self._registry:
             return []
             
         tools: List[ToolInfo] = []
-        registry_items = await self._registry.list_tools()
+        failed_tools = []
         
-        for ns, name in registry_items:
-            metadata = await self._registry.get_metadata(name, ns)
-            if metadata:
-                # Cache metadata for future use
-                self._metadata_cache[(ns, name)] = metadata
+        try:
+            # Get registry items with timeout
+            registry_items = await asyncio.wait_for(
+                self._registry.list_tools(),
+                timeout=30.0
+            )
+            
+            for ns, name in registry_items:
+                try:
+                    # Get metadata with per-tool timeout
+                    metadata = await asyncio.wait_for(
+                        self._registry.get_metadata(name, ns),
+                        timeout=5.0
+                    )
+                    
+                    if metadata:
+                        # Cache metadata for future use
+                        self._metadata_cache[(ns, name)] = metadata
+                        
+                        # Extract tool properties
+                        supports_streaming = getattr(metadata, "supports_streaming", False)
+                        tools.append(
+                            ToolInfo(
+                                name=name,
+                                namespace=ns,
+                                description=metadata.description,
+                                parameters=metadata.argument_schema,
+                                is_async=metadata.is_async,
+                                tags=list(metadata.tags),
+                                supports_streaming=supports_streaming
+                            )
+                        )
+                    else:
+                        # Include tools even without metadata
+                        tools.append(
+                            ToolInfo(
+                                name=name,
+                                namespace=ns,
+                                description="",
+                                parameters={},
+                                is_async=False,
+                                tags=[],
+                                supports_streaming=False
+                            )
+                        )
+                        
+                except asyncio.TimeoutError:
+                    failed_tools.append(f"{ns}.{name}")
+                    logger.warning(f"Tool metadata timeout: {ns}.{name}")
+                except Exception as e:
+                    failed_tools.append(f"{ns}.{name}")
+                    logger.warning(f"Tool metadata error for {ns}.{name}: {e}")
+            
+            if failed_tools:
+                logger.warning(f"Failed to get metadata for {len(failed_tools)} tools")
                 
-                # Extract tool properties
-                supports_streaming = getattr(metadata, "supports_streaming", False)
-                tools.append(
-                    ToolInfo(
-                        name=name,
-                        namespace=ns,
-                        description=metadata.description,
-                        parameters=metadata.argument_schema,
-                        is_async=metadata.is_async,
-                        tags=list(metadata.tags),
-                        supports_streaming=supports_streaming
-                    )
-                )
-            else:
-                # Include tools even without metadata
-                tools.append(
-                    ToolInfo(
-                        name=name,
-                        namespace=ns,
-                        description="",
-                        parameters={},
-                        is_async=False,
-                        tags=[],
-                        supports_streaming=False
-                    )
-                )
+        except asyncio.TimeoutError:
+            logger.error("Tool discovery timed out completely")
+        except Exception as exc:
+            logger.error(f"Error discovering tools: {exc}")
+            
         return tools
 
     async def get_unique_tools(self) -> List[ToolInfo]:
@@ -228,29 +304,42 @@ class ToolManager:
             return None
 
         if namespace:  # explicit ns
-            metadata = await self._registry.get_metadata(tool_name, namespace)
-            if metadata:
-                supports_streaming = getattr(metadata, "supports_streaming", False)
-                return ToolInfo(
-                    name=tool_name,
-                    namespace=namespace,
-                    description=metadata.description,
-                    parameters=metadata.argument_schema,
-                    is_async=metadata.is_async,
-                    tags=list(metadata.tags),
-                    supports_streaming=supports_streaming
+            try:
+                metadata = await asyncio.wait_for(
+                    self._registry.get_metadata(tool_name, namespace),
+                    timeout=5.0
                 )
+                if metadata:
+                    supports_streaming = getattr(metadata, "supports_streaming", False)
+                    return ToolInfo(
+                        name=tool_name,
+                        namespace=namespace,
+                        description=metadata.description,
+                        parameters=metadata.argument_schema,
+                        is_async=metadata.is_async,
+                        tags=list(metadata.tags),
+                        supports_streaming=supports_streaming
+                    )
+            except asyncio.TimeoutError:
+                logger.warning(f"Timeout getting metadata for {namespace}.{tool_name}")
+                return None
 
         # otherwise search all non-default namespaces
-        registry_items = await self._registry.list_tools()
-        for ns, name in registry_items:
-            if name == tool_name and ns != "default":
-                return await self.get_tool_by_name(name, ns)
+        try:
+            registry_items = await asyncio.wait_for(
+                self._registry.list_tools(),
+                timeout=10.0
+            )
+            for ns, name in registry_items:
+                if name == tool_name and ns != "default":
+                    return await self.get_tool_by_name(name, ns)
+        except asyncio.TimeoutError:
+            logger.warning(f"Timeout searching for tool {tool_name}")
                 
         return None
 
     # ------------------------------------------------------------------ #
-    # Tool execution methods                                             #
+    # Enhanced tool execution methods                                    #
     # ------------------------------------------------------------------ #
     async def execute_tool(self, tool_name: str, arguments: Dict[str, Any], timeout: Optional[float] = None) -> ToolCallResult:
         """
@@ -263,7 +352,17 @@ class ToolManager:
 
         Returns:
             ToolCallResult with success status and result/error
+            
+        Enhanced with better argument validation and error handling.
         """
+        # Enhanced argument validation
+        if not isinstance(arguments, dict):
+            logger.error(f"Arguments must be a dict, got {type(arguments)}: {arguments}")
+            return ToolCallResult(tool_name, False, error="Invalid arguments type")
+        
+        # Log the execution for debugging
+        logger.debug(f"Executing tool {tool_name} with arguments: {arguments}")
+        
         # Get namespace if needed
         namespace = None
         original_name = tool_name
@@ -273,6 +372,12 @@ class ToolManager:
         else:
             base_name = tool_name
             namespace = await self.get_server_for_tool(tool_name)
+        
+        # Enhanced argument validation for known tools
+        validation_result = self._validate_tool_arguments(base_name, arguments)
+        if not validation_result["valid"]:
+            logger.error(f"Argument validation failed for {tool_name}: {validation_result['error']}")
+            return ToolCallResult(tool_name, False, error=validation_result["error"])
         
         # Create a CHUK ToolCall with optional timeout override
         call = ToolCall(
@@ -304,6 +409,49 @@ class ToolManager:
         except Exception as exc:
             logger.error(f"Error executing tool {original_name}: {exc}")
             return ToolCallResult(original_name, False, error=str(exc))
+
+    def _validate_tool_arguments(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Validate tool arguments for known tools.
+        
+        This helps catch the "Input validation error: 'query' is a required property" issue.
+        """
+        # Known tool validation rules
+        validation_rules = {
+            "read_query": {"required": ["query"], "types": {"query": str}},
+            "write_query": {"required": ["query"], "types": {"query": str}},
+            "describe_table": {"required": ["table_name"], "types": {"table_name": str}},
+            "create_table": {"required": ["query"], "types": {"query": str}},
+        }
+        
+        if tool_name not in validation_rules:
+            return {"valid": True}  # No validation rules for this tool
+        
+        rules = validation_rules[tool_name]
+        
+        # Check required parameters
+        for required_param in rules.get("required", []):
+            if required_param not in arguments:
+                return {
+                    "valid": False,
+                    "error": f"Missing required parameter '{required_param}' for tool '{tool_name}'"
+                }
+            
+            if not arguments[required_param]:
+                return {
+                    "valid": False,
+                    "error": f"Parameter '{required_param}' cannot be empty for tool '{tool_name}'"
+                }
+        
+        # Check parameter types
+        for param, expected_type in rules.get("types", {}).items():
+            if param in arguments and not isinstance(arguments[param], expected_type):
+                return {
+                    "valid": False,
+                    "error": f"Parameter '{param}' must be of type {expected_type.__name__} for tool '{tool_name}'"
+                }
+        
+        return {"valid": True}
 
     async def stream_execute_tool(self, tool_name: str, arguments: Dict[str, Any], timeout: Optional[float] = None) -> AsyncIterator[ToolResult]:
         """
@@ -369,9 +517,17 @@ class ToolManager:
             # Convert tool name if needed
             original_name = name_mapping.get(openai_name, openai_name)
             
-            # Parse arguments
+            # Parse arguments with enhanced error handling
             args_str = tc["function"].get("arguments", "{}")
-            args_dict = json.loads(args_str) if isinstance(args_str, str) else args_str
+            try:
+                if isinstance(args_str, str):
+                    args_dict = json.loads(args_str) if args_str.strip() else {}
+                else:
+                    args_dict = args_str or {}
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse tool arguments for {openai_name}: {e}")
+                logger.error(f"Raw arguments: {repr(args_str)}")
+                args_dict = {}
             
             # Get namespace and base name
             namespace = None
@@ -472,7 +628,14 @@ class ToolManager:
             
             # Parse arguments
             args_str = tc["function"].get("arguments", "{}")
-            args_dict = json.loads(args_str) if isinstance(args_str, str) else args_str
+            try:
+                if isinstance(args_str, str):
+                    args_dict = json.loads(args_str) if args_str.strip() else {}
+                else:
+                    args_dict = args_str or {}
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse tool arguments for {openai_name}: {e}")
+                args_dict = {}
             
             # Get namespace and base name
             namespace = None
@@ -545,29 +708,57 @@ class ToolManager:
                 conversation_history.append(response)
 
     # ------------------------------------------------------------------ #
-    # Server helpers                                                     #
+    # Enhanced server helpers                                            #
     # ------------------------------------------------------------------ #
     def _extract_namespace(self, server_name: str) -> str:
         """Extract namespace from a server name."""
         return server_name.split("_", 1)[0] if "_" in server_name else server_name
 
     async def get_server_info(self) -> List[ServerInfo]:
-        """Get information about all connected servers."""
+        """
+        Get information about all connected servers.
+        
+        Enhanced with timeout handling and partial failure support.
+        """
         if not self.stream_manager:
             return []
             
-        infos: List[ServerInfo] = []
-        for raw in self.stream_manager.get_server_info():
-            infos.append(
-                ServerInfo(
-                    id=raw.get("id", 0),
-                    name=raw.get("name", "Unknown"),
-                    status=raw.get("status", "Unknown"),
-                    tool_count=raw.get("tools", 0),
-                    namespace=self._extract_namespace(raw.get("name", "")),
-                )
+        try:
+            # Try to get server info with timeout
+            raw_infos = await asyncio.wait_for(
+                self.stream_manager.get_server_info(),
+                timeout=10.0
             )
-        return infos
+            
+            infos = []
+            for raw in raw_infos:
+                infos.append(
+                    ServerInfo(
+                        id=raw.get("id", 0),
+                        name=raw.get("name", "Unknown"),
+                        status=raw.get("status", "Unknown"),
+                        tool_count=raw.get("tools", 0),
+                        namespace=self._extract_namespace(raw.get("name", "")),
+                    )
+                )
+            return infos
+            
+        except asyncio.TimeoutError:
+            logger.warning("Server info retrieval timed out, returning partial information")
+            # Return basic info for configured servers
+            return [
+                ServerInfo(
+                    id=i,
+                    name=server,
+                    status="Timeout",
+                    tool_count=0,
+                    namespace=self._extract_namespace(server),
+                )
+                for i, server in enumerate(self.servers)
+            ]
+        except Exception as exc:
+            logger.error(f"Error getting server info: {exc}")
+            return []
 
     async def get_server_for_tool(self, tool_name: str) -> Optional[str]:
         """Get the server name for a tool."""
@@ -576,15 +767,24 @@ class ToolManager:
             
         # Look up via registry
         if self._registry:
-            registry_items = await self._registry.list_tools()
-            for ns, name in registry_items:
-                if name == tool_name and ns != "default":
-                    return ns
+            try:
+                registry_items = await asyncio.wait_for(
+                    self._registry.list_tools(),
+                    timeout=5.0
+                )
+                for ns, name in registry_items:
+                    if name == tool_name and ns != "default":
+                        return ns
+            except asyncio.TimeoutError:
+                logger.warning(f"Timeout looking up server for tool {tool_name}")
                 
         # Fallback to stream-manager map
         if self.stream_manager:
-            return self.stream_manager.get_server_for_tool(tool_name)
-            
+            try:
+                return self.stream_manager.get_server_for_tool(tool_name)
+            except Exception as e:
+                logger.warning(f"Error getting server for tool {tool_name}: {e}")
+                
         return None
 
     # ------------------------------------------------------------------ #
@@ -613,6 +813,8 @@ class ToolManager:
         Get tools in a format compatible with the specified LLM provider.
         
         For OpenAI, ensure tool names follow the required pattern: ^[a-zA-Z0-9_-]+$
+        
+        Enhanced with better debugging and validation.
         """
         unique_tools = await self.get_unique_tools()
         adapter_needed = provider.lower() == "openai"
@@ -620,7 +822,7 @@ class ToolManager:
         llm_tools: List[Dict[str, Any]] = []
         name_mapping: Dict[str, str] = {}
 
-        #print(f"[DEBUG] Adapting {len(unique_tools)} tools for provider: {provider}, adapter_needed: {adapter_needed}")
+        logger.debug(f"Adapting {len(unique_tools)} tools for provider: {provider}, adapter_needed: {adapter_needed}")
 
         for tool in unique_tools:
             original = f"{tool.namespace}.{tool.name}"
@@ -640,12 +842,11 @@ class ToolManager:
                 description = f"{tool.description or ''}"
                 tool_name = sanitized
                 
-                # Debug logging
-                #print(f"[DEBUG] Tool adapted: {original} -> {sanitized}")
+                logger.debug(f"Tool adapted: {original} -> {sanitized}")
             else:
                 tool_name = original
                 description = tool.description or ""
-                #print(f"[DEBUG] Tool not sanitized: {original}")
+                logger.debug(f"Tool not sanitized: {original}")
 
             llm_tools.append({
                 "type": "function", 
@@ -656,9 +857,8 @@ class ToolManager:
                 }
             })
 
-        # Print full tools list for debugging
-        # print(f"[DEBUG] Adapted tools: {[t['function']['name'] for t in llm_tools]}")
-        # print(f"[DEBUG] Name mapping: {name_mapping}")
+        logger.debug(f"Adapted tools: {[t['function']['name'] for t in llm_tools]}")
+        logger.debug(f"Name mapping: {name_mapping}")
 
         return llm_tools, name_mapping
 
@@ -730,7 +930,14 @@ class ToolManager:
         Return all prompts recorded on each server.
         """
         if self.stream_manager and hasattr(self.stream_manager, "list_prompts"):
-            return await self.stream_manager.list_prompts()
+            try:
+                return await asyncio.wait_for(
+                    self.stream_manager.list_prompts(),
+                    timeout=10.0
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Timeout listing prompts")
+                return []
         return []
 
     async def list_resources(self) -> List[Dict[str, Any]]:
@@ -738,7 +945,14 @@ class ToolManager:
         Return all resources (URI, size, MIME-type) on each server.
         """
         if self.stream_manager and hasattr(self.stream_manager, "list_resources"):
-            return await self.stream_manager.list_resources()
+            try:
+                return await asyncio.wait_for(
+                    self.stream_manager.list_resources(),
+                    timeout=10.0
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Timeout listing resources")
+                return []
         return []
         
     def get_streams(self):

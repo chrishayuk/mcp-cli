@@ -1,4 +1,7 @@
-# mcp_cli/chat/conversation.py
+# mcp_cli/chat/conversation.py - FIXED VERSION
+"""
+FIXED: Updated to work with the new OpenAI client universal tool compatibility system.
+"""
 import time
 import asyncio
 import logging
@@ -10,7 +13,11 @@ from mcp_cli.chat.tool_processor import ToolProcessor
 log = logging.getLogger(__name__)
 
 class ConversationProcessor:
-    """Class to handle LLM conversation processing with streaming support."""
+    """
+    Class to handle LLM conversation processing with streaming support.
+    
+    Updated to work with universal tool compatibility system.
+    """
 
     def __init__(self, context, ui_manager):
         self.context = context
@@ -38,8 +45,8 @@ class ConversationProcessor:
                     if not getattr(self.context, "openai_tools", None):
                         await self._load_tools()
                     
-                    # Sanitize conversation history before making API call
-                    self._sanitize_conversation_history()
+                    # REMOVED: Sanitization logic - now handled by universal tool compatibility
+                    # The OpenAI client automatically handles tool name sanitization and restoration
 
                     # Check if client supports streaming
                     client = self.context.client
@@ -83,6 +90,7 @@ class ConversationProcessor:
                         for i, tc in enumerate(tool_calls):
                             log.debug(f"Tool call {i}: {tc}")
                         
+                        # FIXED: Get name mapping from universal tool compatibility system
                         name_mapping = getattr(self.context, "tool_name_mapping", {})
                         log.debug(f"Using name mapping: {name_mapping}")
                         
@@ -272,7 +280,11 @@ class ConversationProcessor:
             return None
 
     async def _load_tools(self):
-        """Load and adapt tools for the current provider."""
+        """
+        Load and adapt tools for the current provider.
+        
+        FIXED: Updated to use universal tool compatibility system.
+        """
         try:
             if hasattr(self.context.tool_manager, "get_adapted_tools_for_llm"):
                 # EXPLICITLY specify provider for proper adaptation
@@ -282,59 +294,10 @@ class ConversationProcessor:
                 self.context.tool_name_mapping = tools_and_mapping[1]
                 log.debug(f"Loaded {len(self.context.openai_tools)} adapted tools for {provider}")
                 
-                # Validate all tool names
-                import re
-                has_invalid = False
-                for i, tool in enumerate(self.context.openai_tools):
-                    name = tool["function"]["name"]
-                    is_valid = re.match(r'^[a-zA-Z0-9_-]+$', name) is not None
-                    log.debug(f"Tool {i}: '{name}' valid = {is_valid}")
-                    if not is_valid:
-                        has_invalid = True
+                # FIXED: No longer validate tool names here since universal compatibility handles it
+                log.debug(f"Universal tool compatibility enabled for {provider}")
                 
-                if has_invalid:
-                    log.critical("Found invalid tool names that will cause API errors!")
-                else:
-                    log.debug("All tool names are valid for the provider")
         except Exception as exc:
             log.error(f"Error loading tools: {exc}")
             self.context.openai_tools = []
             self.context.tool_name_mapping = {}
-    
-    def _sanitize_conversation_history(self):
-        """Ensure all tool names in conversation history follow provider's pattern."""
-        import re
-        
-        # Only process if we have history
-        if not self.context.conversation_history:
-            return
-        
-        sanitized_count = 0
-        
-        # Go through all messages in history
-        for msg in self.context.conversation_history:
-            # Fix tool calls in assistant messages
-            if msg.get("role") == "assistant" and msg.get("tool_calls"):
-                for tc in msg.get("tool_calls", []):
-                    if tc.get("function") and "name" in tc["function"]:
-                        name = tc["function"]["name"]
-                        # If name contains a dot or doesn't match pattern, sanitize it
-                        if '.' in name or not re.match(r'^[a-zA-Z0-9_-]+$', name):
-                            # This name has dots or other invalid chars, sanitize it
-                            sanitized = re.sub(r'[^a-zA-Z0-9_-]', '_', name)
-                            log.debug(f"Sanitizing tool name in history: {name} -> {sanitized}")
-                            tc["function"]["name"] = sanitized
-                            sanitized_count += 1
-            
-            # Fix tool messages
-            if msg.get("role") == "tool" and "name" in msg:
-                name = msg["name"]
-                if '.' in name or not re.match(r'^[a-zA-Z0-9_-]+$', name):
-                    # Sanitize
-                    sanitized = re.sub(r'[^a-zA-Z0-9_-]', '_', name)
-                    log.debug(f"Sanitizing tool message name in history: {name} -> {sanitized}")
-                    msg["name"] = sanitized
-                    sanitized_count += 1
-        
-        if sanitized_count > 0:
-            log.debug(f"Sanitized {sanitized_count} tool name(s) in conversation history")
