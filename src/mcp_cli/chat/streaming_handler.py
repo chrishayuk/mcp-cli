@@ -435,7 +435,7 @@ class StreamingResponseHandler:
                 # Accumulate function name
                 if "name" in func_data and func_data["name"] is not None:
                     new_name = str(func_data["name"])
-                    if new_name:
+                    if new_name and not existing_func["name"]:
                         existing_func["name"] += new_name
                         existing_tc["_streaming_state"]["name_complete"] = True
                         logger.debug(f"Accumulated name: '{existing_func['name']}'")
