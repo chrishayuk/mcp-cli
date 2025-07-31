@@ -76,10 +76,9 @@ def display_welcome_banner(ctx: Dict[str, Any]) -> None:
     _console.print(
         Panel(
             Markdown(
-                f"# Welcome to MCP CLI Chat!\n\n"
-                f"**Provider:** {provider}"
-                f"  |  **Model:** {model}\n\n"
-                "Type **`exit`** to quit."
+                f"Provider: **{provider}**"
+                f"  |  Model: **{model}**\n\n"
+                "Enter a **prompt** and hit RETURN. Type **`exit`** to quit or **`/help`** for assistance."
             ),
             title="Welcome to MCP CLI Chat",
             border_style="yellow",

@@ -65,7 +65,9 @@ async def handle_chat_mode(
                 return False
 
         # Welcome banner
-        clear_screen()
+        if not logger.debug:
+            clear_screen()
+
         display_welcome_banner({
             "provider": ctx.provider,
             "model": ctx.model,
