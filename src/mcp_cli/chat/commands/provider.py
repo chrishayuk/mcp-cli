@@ -144,7 +144,7 @@ async def cmd_model(parts: List[str], ctx: Dict[str, Any]) -> bool:
                         console.print("Do you want to list more models? (yes)")
                         should_continue = input().strip().lower()  
                         if not ( should_continue == "yes" or should_continue == "y" or should_continue == ""):
-                            break
+                            break 
                     marker = "→ " if model == current_model else "   "
                     console.print(f"  {marker}{model}")
                     index += 1
