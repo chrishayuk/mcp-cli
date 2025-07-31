@@ -137,11 +137,19 @@ async def cmd_model(parts: List[str], ctx: Dict[str, Any]) -> bool:
             models = mm.get_available_models(current_provider)
             if models:
                 console.print(f"[cyan]Available models for {current_provider}:[/cyan]")
-                for model in models[:10]:  # Show first 10
+                index = 0
+                for model in models:  # Show first 10
+                    if index == 10:
+                        console.print(f"  ... and {len(models) - index} more")
+                        console.print("Do you want to list more models? (yes)")
+                        should_continue = input().strip().lower()  
+                        if not ( should_continue == "yes" or should_continue == "y" or should_continue == ""):
+                            break
                     marker = "→ " if model == current_model else "   "
                     console.print(f"  {marker}{model}")
-                if len(models) > 10:
-                    console.print(f"  ... and {len(models) - 10} more")
+                    index += 1
+            else:
+                console.print(f"[cyan]No models found for provider {current_provider}[/cyan]")
         except Exception as e:
             console.print(f"[yellow]Could not list models:[/yellow] {e}")
         
