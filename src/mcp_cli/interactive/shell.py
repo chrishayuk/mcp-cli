@@ -63,7 +63,7 @@ async def interactive_mode(
     # Intro panel
     print(Panel(
         Markdown(
-            "# Interactive Mode\n\n"
+            #"# Interactive Mode\n\n"
             "Type commands to interact with the system.\n"
             "Type 'help' to see available commands.\n"
             "Type 'exit' or 'quit' to exit.\n"

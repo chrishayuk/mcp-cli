@@ -19,6 +19,8 @@ import os
 import signal
 import time
 import logging
+import re
+
 from types import FrameType
 from typing import Any, Dict, List, Optional, Callable
 
@@ -47,10 +49,11 @@ class ChatUIManager:
         self.context = context
         self.console = Console()
 
-        self.verbose_mode = False
+        self.verbose_mode = True
         self.tools_running = False
         self.interrupt_requested = False
-        
+        self.confirm_tool_execution = True  # Whether to confirm tool execution
+
         # Streaming response state
         self.is_streaming_response = False
         self.streaming_handler: Optional[Any] = None
@@ -102,7 +105,39 @@ class ChatUIManager:
         """Signal that a streaming response is starting."""
         self.is_streaming_response = True
         log.debug("Started streaming response")
-        
+    
+    def do_confirm_tool_execution(self) -> bool:
+        """Prompt user to confirm tool execution with rich text and clear default."""
+        try:
+            from rich.prompt import Prompt
+            # Use rich to display the prompt, fallback to input() if needed
+            prompt_text = "[bold white]Do you want to execute the tool?[/bold white]"
+            try:
+                # Use rich Prompt if available
+                response = Prompt.ask(prompt_text, case_sensitive=False, choices=["Y", "N"], default="y")
+                response = response.strip().lower()
+            except Exception:
+                # Fallback to input()
+                print(prompt_text, end="")
+                response = input().strip().lower()
+            if response in ["y", ""]:
+                return True
+            else:
+                self.interrupt_requested = True
+                self.interrupt_streaming()
+                self.stop_tool_calls()
+                log.info("Tool execution cancelled by user.")
+                print("Tool execution cancelled.")
+                return False
+        except KeyboardInterrupt:
+            log.info("Tool execution cancelled by user via Ctrl-C.")
+            print("\nTool execution cancelled.")
+            return False
+        except Exception as e:
+            log.error(f"Error during tool confirmation: {e}")
+            print("Tool execution cancelled due to an error.")
+            return False
+
     def stop_streaming_response(self):
         """Signal that streaming response is complete."""
         if self.is_streaming_response:
@@ -318,11 +353,7 @@ class ChatUIManager:
 
     def print_tool_call(self, tool_name: str, raw_args):
         """Display a tool call in the UI, with improved error handling."""
-        try:
-            # Don't show tool calls if we're streaming a response
-            if self.is_streaming_response:
-                return
-                
+        try:                
             # Start timing if this is the first tool call
             if not self.tool_start_time:
                 self.tool_start_time = time.time()
@@ -359,16 +390,23 @@ class ChatUIManager:
                 return
 
             # Display according to current mode
-            if self.verbose_mode:
+            if self.verbose_mode or self.confirm_tool_execution:
                 try:
                     # Format arguments safely
                     try:
                         args_json = json.dumps(processed_args, indent=2)
                     except Exception:
                         args_json = str(processed_args)
-                        
                     md = f"**Tool Call:** {tool_name}\n\n```json\n{args_json}\n```"
-                    
+
+                    # Get tool description in verbose mode
+                    if self.verbose_mode:    
+                        tool_description = ""
+                        for obj in self.context.tools:
+                            if obj.get("name") == tool_name.split('.', 1)[-1]:
+                                tool_description = obj.get("description", "")
+                                md = f"Tool Call: **{tool_name}**\n\n*{tool_description}*\n```json\n{args_json}\n```"
+                     
                     # Use a safe approach to display markdown
                     try:
                         markdown_content = Markdown(md)
@@ -400,7 +438,7 @@ class ChatUIManager:
             # Create live display if it doesn't exist
             if self.live_display is None:
                 try:
-                    self.live_display = Live("", refresh_per_second=4, console=self.console)
+                    self.live_display = Live("", transient=True, refresh_per_second=4, console=self.console)
                     self.live_display.start()
                     print(
                         "[dim italic]Press Ctrl+C to interrupt tool execution[/dim italic]",
@@ -489,7 +527,7 @@ class ChatUIManager:
                 return
                 
             # Clean up tool display if needed
-            if not self.verbose_mode and self.live_display:
+            if self.live_display:
                 try:
                     self.live_display.stop()
                     self.live_display = None
@@ -542,6 +580,7 @@ class ChatUIManager:
                 if needs_text_object:
                     # Use Text object to prevent markup parsing issues
                     response_content = Text(content or "[No Response]")
+                    #response_content = Text(text=(content or "[No Response]"), overflow="fold")
                 else:
                     # Otherwise use Markdown as normal
                     try:
@@ -550,7 +589,16 @@ class ChatUIManager:
                         # Fallback to Text if Markdown parsing fails
                         log.warning(f"Markdown parsing failed, using Text object: {md_exc}")
                         response_content = Text(content or "[No Response]")
-                    
+
+                def remove_think_tags(text):
+                    print(f"Removing thinking tags from content: {text}")
+                    return re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+
+                suppress_thinking = True  # Example flag to control thinking suppression
+                # If suppress_thinking flag and the final answer contains text between <think> and </think>, remove it
+                if suppress_thinking:
+                    response_content = remove_think_tags(response_content)
+            
                 print(
                     Panel(
                         response_content,
@@ -587,6 +635,8 @@ class ChatUIManager:
                 ctx_dict['tool_manager'] = self.context.tool_manager
             except Exception as ctx_exc:
                 log.warning(f"Error adding tool_manager to context: {ctx_exc}")
+
+            ctx_dict['ui_manager'] = self  # Add self for commands that perform UI operations 
 
             # Call command handler
             try:

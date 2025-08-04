@@ -37,6 +37,7 @@ from typing import Any, Dict, List
 
 # Cross-platform Rich console helper
 from mcp_cli.utils.rich_helpers import get_console
+from rich.prompt import Prompt
 
 # Shared implementation
 from mcp_cli.commands.provider import provider_action_async
@@ -141,10 +142,18 @@ async def cmd_model(parts: List[str], ctx: Dict[str, Any]) -> bool:
                 for model in models:  # Show first 10
                     if index == 10:
                         console.print(f"  ... and {len(models) - index} more")
-                        console.print("Do you want to list more models? (yes)")
-                        should_continue = input().strip().lower()  
-                        if not ( should_continue == "yes" or should_continue == "y" or should_continue == ""):
-                            break 
+                        # Use rich to display the prompt, fallback to input() if needed
+                        prompt_text = "[bold white]Do you want to list more models?[/bold white]"
+                        try:
+                            # Use rich Prompt if available
+                            response = Prompt.ask(prompt_text, case_sensitive=False, choices=["y", "n"], default="y")
+                            response = response.strip().lower()
+                        except Exception:
+                            # Fallback to input()
+                            print(prompt_text, end="")
+                            response = input().strip().lower()
+                        if not response in ["y", ""]:
+                            break
                     marker = "→ " if model == current_model else "   "
                     console.print(f"  {marker}{model}")
                     index += 1

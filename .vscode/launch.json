@@ -1,0 +1,45 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: uv-managed script",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "mcp_cli/main.py",
+            "justMyCode": false,
+            "console": "integratedTerminal",
+            "args": [
+                "--config-file",
+                "server_config.json",
+                "--provider",
+                "openai",
+                "--model",
+                "gpt-4o-mini"
+            ],
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "cwd": "${workspaceFolder}/src"
+        },
+        {
+            "name": "Python Debugger: uv-managed script - DEBUG OUTPUT",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "mcp_cli/main.py",
+            "justMyCode": false,
+            "console": "integratedTerminal",
+            "args": [
+                "--config-file",
+                "server_config.json",
+                "--provider",
+                "openai",
+                "--model",
+                "gpt-4o-mini",
+                "--log-level",
+                "DEBUG"            ],
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "cwd": "${workspaceFolder}/src"
+        }
+    ]
+}

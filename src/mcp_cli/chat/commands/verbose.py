@@ -40,7 +40,6 @@ from mcp_cli.utils.rich_helpers import get_console
 # Chat-command registry
 from mcp_cli.chat.commands import register_command
 
-
 # ════════════════════════════════════════════════════════════════════════════
 # Command handler
 # ════════════════════════════════════════════════════════════════════════════

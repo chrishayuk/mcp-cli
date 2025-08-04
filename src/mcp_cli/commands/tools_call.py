@@ -90,7 +90,7 @@ async def tools_call_action(tm: ToolManager) -> None:  # noqa: D401
 
     try:
         result: ToolCallResult = await tm.execute_tool(fq_name, args)
-        display_tool_call_result(result, console)
+        display_tool_call_result(None, result, console)
     except Exception as exc:  # noqa: BLE001
         logger.exception("Error executing tool")
         cprint(f"[red]Error: {exc}[/red]")

@@ -47,6 +47,15 @@ wheels = [
 ]
 
 [[package]]
+name = "async-timeout"
+version = "5.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a5/ae/136395dfbfe00dfc94da3f3e136d0b13f394cba8f4841120e34226265780/async_timeout-5.0.1.tar.gz", hash = "sha256:d9321a7a3d5a6a5e187e824d2fa0793ce379a202935782d555d6e9d2735677d3", size = 9274 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fe/ba/e2081de779ca30d473f21f5b30e0e737c438205440784c7dfc81efc2b029/async_timeout-5.0.1-py3-none-any.whl", hash = "sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c", size = 6233 },
+]
+
+[[package]]
 name = "asyncio"
 version = "3.4.3"
 source = { registry = "https://pypi.org/simple" }
@@ -135,6 +144,12 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/bf/c9/cf472a0e4225d3f4104d1e78f91d307399dc8d29d56d46a9ccab256053dc/chuk_ai_session_manager-0.7.1-py3-none-any.whl", hash = "sha256:2df9396b45855835771bc18c6b6ad1e38dc21ef651a837c4822a902aecf61af7", size = 43326 },
 ]
 
+[package.optional-dependencies]
+redis = [
+    { name = "chuk-sessions", extra = ["redis"] },
+    { name = "redis" },
+]
+
 [[package]]
 name = "chuk-llm"
 version = "0.8.13"
@@ -161,6 +176,12 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/30/12/cf767198fbb0c3e2b96460e7c1680a154b715c0eddcc9e4628a39f0ab059/chuk_llm-0.8.13-py3-none-any.whl", hash = "sha256:dfe914c9b353bf0034a390493bf3ee458ad6b94dd5a27890e7138044419cc4d4", size = 204495 },
 ]
 
+[package.optional-dependencies]
+all = [
+    { name = "chuk-ai-session-manager", extra = ["redis"] },
+    { name = "rich" },
+]
+
 [[package]]
 name = "chuk-mcp"
 version = "0.5"
@@ -174,6 +195,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/a4/cd/e4028df4beed868969e63009fa0496b28ecbf89e206446755abf9a6ef549/chuk_mcp-0.5-py3-none-any.whl", hash = "sha256:466f1c6f6710127ca165472eea3176fc8cdfd9d020058fddedbdbff5b7cc28c1", size = 126388 },
 ]
 
+[package.optional-dependencies]
+full = [
+    { name = "httpx" },
+    { name = "pydantic" },
+]
+pydantic = [
+    { name = "pydantic" },
+]
+
 [[package]]
 name = "chuk-sessions"
 version = "0.4.2"
@@ -184,6 +214,11 @@ dependencies = [
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/69/5b/95d17807944c922671ac8538c03b1f334c8ce7e473d62ccf3d3bf3833c01/chuk_sessions-0.4.2-py3-none-any.whl", hash = "sha256:aaa49cbd59ec0cb22c9fbfaed99fa28f9fbfeac3c9f54d15242f5ec17deed740", size = 11895 },
+]
+
+[package.optional-dependencies]
+redis = [
+    { name = "redis" },
 ]
 
 [[package]]
@@ -206,7 +241,7 @@ name = "click"
 version = "8.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "platform_system == 'Windows'" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/60/6c/8ca2efa64cf75a977a0d7fac081354553ebe483345c734fb6b6515d96bbc/click-8.2.1.tar.gz", hash = "sha256:27c491cc05d968d271d5a1db13e3b5a184636d9d930f148c50b038f0d0646202", size = 286342 }
 wheels = [
@@ -620,8 +655,8 @@ version = "0.5.1"
 source = { editable = "." }
 dependencies = [
     { name = "asyncio" },
-    { name = "chuk-llm" },
-    { name = "chuk-mcp" },
+    { name = "chuk-llm", extra = ["all"] },
+    { name = "chuk-mcp", extra = ["full", "pydantic"] },
     { name = "chuk-tool-processor" },
     { name = "ibm-watsonx-ai" },
     { name = "prompt-toolkit" },
@@ -648,8 +683,8 @@ dev = [
 requires-dist = [
     { name = "asyncio", specifier = ">=3.4.3" },
     { name = "asyncio", marker = "extra == 'dev'", specifier = ">=3.4.3" },
-    { name = "chuk-llm", specifier = ">=0.8.13" },
-    { name = "chuk-mcp", specifier = ">=0.5" },
+    { name = "chuk-llm", extras = ["all"], specifier = ">=0.8.13" },
+    { name = "chuk-mcp", extras = ["full", "pydantic", "ui-manager"], specifier = ">=0.5" },
     { name = "chuk-tool-processor", specifier = ">=0.5.4" },
     { name = "ibm-watsonx-ai", specifier = ">=1.3.31" },
     { name = "numpy", marker = "extra == 'dev'", specifier = ">=2.2.3" },
@@ -1057,6 +1092,18 @@ wheels = [
 ]
 
 [[package]]
+name = "redis"
+version = "6.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "async-timeout", marker = "python_full_version < '3.11.3'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ea/9a/0551e01ba52b944f97480721656578c8a7c46b51b99d66814f85fe3a4f3e/redis-6.2.0.tar.gz", hash = "sha256:e821f129b75dde6cb99dd35e5c76e8c49512a5a0d8dfdc560b2fbd44b85ca977", size = 4639129 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/13/67/e60968d3b0e077495a8fee89cf3f2373db98e528288a48f1ee44967f6e8c/redis-6.2.0-py3-none-any.whl", hash = "sha256:c8ddf316ee0aab65f04a11229e94a64b2618451dab7a67cb2f77eb799d872d5e", size = 278659 },
+]
+
+[[package]]
 name = "regex"
 version = "2024.11.6"
 source = { registry = "https://pypi.org/simple" }
@@ -1276,7 +1323,7 @@ name = "tqdm"
 version = "4.67.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "platform_system == 'Windows'" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a8/4b/29b4ef32e036bb34e4ab51796dd745cdba7ed47ad142a9f4a1eb8e0c744d/tqdm-4.67.1.tar.gz", hash = "sha256:f8aef9c52c08c13a65f30ea34f4e5aac3fd1a34959879d7e59e63027286627f2", size = 169737 }
 wheels = [

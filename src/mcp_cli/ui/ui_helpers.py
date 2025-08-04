@@ -13,8 +13,14 @@ import sys
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
+from rich.text import TextType,Text
+from rich.style import StyleType
+from rich.align import AlignMethod
+from rich.box import Box, ROUNDED
+from rich.padding import PaddingDimensions
+from rich.console import RenderableType
 from typing import Dict, Any
-
+from mcp_cli.utils.rich_helpers import get_console
 
 # --------------------------------------------------------------------------- #
 # generic helpers                                                             #
@@ -85,3 +91,70 @@ def display_welcome_banner(ctx: Dict[str, Any]) -> None:
             expand=True,
         )
     )
+
+def panel_print(ctx: Dict[str, Any], 
+                renderable: RenderableType | str,
+                box: Box = ROUNDED,
+                *,
+                title: TextType | None = None,
+                title_align: AlignMethod = "center",
+                subtitle: TextType | None = None,
+                subtitle_align: AlignMethod = "center",
+                safe_box: bool | None = None,
+                expand: bool = True,
+                style: StyleType = "none",
+                border_style: StyleType = "none",
+                width: int | None = None,
+                height: int | None = None,
+                padding: PaddingDimensions = (0, 1),
+                highlight: bool = False) -> None:
+    """Handle border mode printing for panels."""
+    
+    console = get_console()
+    display_borders = True  # Default to True unless ctx is None
+    if not ctx:
+        display_borders = False
+    else:
+        # Get UI manager from context
+        ui_manager = ctx.get("ui_manager")
+        if not ui_manager:
+            # Fallback: look for context object that might have UI manager
+            context_obj = ctx.get("context")
+            if context_obj and hasattr(context_obj, "ui_manager"):
+                ui_manager = context_obj.ui_manager
+        if not ui_manager:
+            console.print("[red]Error:[/red] UI manager not available.")
+            display_borders = False
+        else:  
+            display_borders = getattr(ui_manager, "border_mode")  
+
+    
+    if display_borders is True:
+        console.print(
+            Panel(
+                renderable=renderable,
+                box=box,
+                style=style,
+                title=title,
+                title_align=title_align,
+                subtitle=subtitle,
+                subtitle_align=subtitle_align,
+                safe_box=safe_box,
+                border_style=border_style,
+                expand=expand,
+                padding=padding,
+                width=width,
+                height=height,
+                highlight=highlight
+            )
+        )
+    else:
+        # Use console.rule for title and subtitle, then print content
+        if title:
+            console.print(f"[bold]{title}[/bold]", style=style, align=title_align)
+        if isinstance(renderable, (Text, Markdown)):
+            console.print(renderable)
+        else:
+            console.print(Text(str(renderable)))
+        if subtitle:
+            console.print(f"[dim]{subtitle}[/dim]", style=style, align=subtitle_align)

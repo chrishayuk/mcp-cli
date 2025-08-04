@@ -181,7 +181,7 @@ async def _run_enhanced_chat_loop(ui: ChatUIManager, ctx: ChatContext, convo: Co
 
             # Handle exit commands
             if user_msg.lower() in ("exit", "quit"):
-                print(Panel("Exiting chat mode.", style="bold red"))
+                print(ctx, Panel("Exiting chat mode.", style="bold red"))
                 break
 
             # Handle slash commands
@@ -206,7 +206,8 @@ async def _run_enhanced_chat_loop(ui: ChatUIManager, ctx: ChatContext, convo: Co
                     continue
 
             # Normal conversation turn with streaming support
-            ui.print_user_message(user_msg)
+            if ui.verbose_mode:
+                ui.print_user_message(user_msg)
             ctx.add_user_message(user_msg)
             
             # Use the enhanced conversation processor that handles streaming

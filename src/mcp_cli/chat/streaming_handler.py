@@ -83,9 +83,14 @@ class StreamingResponseHandler:
             if self.live_display:
                 # Show final response if not already shown
                 if not self._response_complete:
+                    # Stop live display and show final response.  If not done in this order, the live display 
+                    # transient removal can cause issues with overwriting the final response.
+                    self.live_display.stop()
+                    self.live_display = None
                     self._show_final_response()
-                self.live_display.stop()
-                self.live_display = None
+                else:
+                    self.live_display.stop()
+                    self.live_display = None
     
     def interrupt_streaming(self):
         """Interrupt the current streaming operation."""
@@ -127,7 +132,7 @@ class StreamingResponseHandler:
                 content,
                 title="Assistant",
                 subtitle=subtitle,
-                style="bold blue",
+                #style="bold blue",
                 padding=(0, 1)
             )
         )
@@ -261,7 +266,8 @@ class StreamingResponseHandler:
             self.live_display = Live(
                 self._create_display_content(),
                 console=self.console,
-                refresh_per_second=10,  # 10 FPS for smooth updates
+                transient=True,
+                refresh_per_second=4,  # 10 FPS for smooth updates
                 vertical_overflow="visible"
             )
             self.live_display.start()
@@ -691,7 +697,7 @@ class StreamingResponseHandler:
                 display_text = self.current_response
                 if not self._interrupted:
                     display_text += " ▌"  # Add typing cursor
-                response_content = Markdown(display_text)
+                response_content = Markdown(markup = display_text)
             except Exception as e:
                 # Fallback to plain text if markdown fails
                 logger.debug(f"Markdown rendering failed: {e}")
