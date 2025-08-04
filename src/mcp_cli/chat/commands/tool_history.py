@@ -84,9 +84,9 @@ async def tool_history_command(cmd_parts: List[str], ctx: Dict[str, Any]) -> boo
             entry = tool_calls[row - 1]
             console.print(
                 Panel(
-                    Syntax(json.dumps(entry, indent=2, ensure_ascii=False), "json", line_numbers=True),
+                    Syntax(json.dumps(entry, indent=2, ensure_ascii=False), "json", line_numbers=False),
                     title=f"Tool Call #{row} Details",
-                    style="cyan",
+                    style="cyan"
                 )
             )
         else:
@@ -95,7 +95,7 @@ async def tool_history_command(cmd_parts: List[str], ctx: Dict[str, Any]) -> boo
 
     # 2️⃣  full JSON dump
     if "--json" in args:
-        console.print(Syntax(json.dumps(tool_calls, indent=2, ensure_ascii=False), "json", line_numbers=True))
+        console.print(Syntax(json.dumps(tool_calls, indent=2, ensure_ascii=False), "json", line_numbers=False))
         return True
 
     # 3️⃣  -n limit
