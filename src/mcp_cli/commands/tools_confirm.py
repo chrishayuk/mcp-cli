@@ -77,10 +77,10 @@ async def tools_action_async(                    # noqa: D401
             }
             for t in all_tools
         ]
-        # Use `console.print_json` for better formatting without line numbers. 
-        # Cleaner output for devs working with MCP JSON schemas.
-        console.print_json(json.dumps(payload, indent=2, ensure_ascii=False))
-        
+        console.print(
+            Syntax(json.dumps(payload, indent=2, ensure_ascii=False),
+                   "json", line_numbers=True)
+        )
         return payload
 
     # ── Rich table mode ─────────────────────────────────────────────────

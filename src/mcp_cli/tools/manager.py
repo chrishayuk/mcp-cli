@@ -717,32 +717,29 @@ class ToolManager:
     async def get_server_info(self) -> List[ServerInfo]:
         """
         Get information about all connected servers.
-        
         Enhanced with timeout handling and partial failure support.
         """
         if not self.stream_manager:
             return []
-            
+
         try:
-            # Try to get server info with timeout
+            # Properly await the coroutine with timeout
             raw_infos = await asyncio.wait_for(
-                self.stream_manager.get_server_info(),
+                asyncio.to_thread(self.stream_manager.get_server_info),
                 timeout=10.0
             )
-            
-            infos = []
-            for raw in raw_infos:
-                infos.append(
-                    ServerInfo(
-                        id=raw.get("id", 0),
-                        name=raw.get("name", "Unknown"),
-                        status=raw.get("status", "Unknown"),
-                        tool_count=raw.get("tools", 0),
-                        namespace=self._extract_namespace(raw.get("name", "")),
-                    )
+
+            return [
+                ServerInfo(
+                    id=raw.get("id", 0),
+                    name=raw.get("name", "Unknown"),
+                    status=raw.get("status", "Unknown"),
+                    tool_count=raw.get("tools", 0),
+                    namespace=self._extract_namespace(raw.get("name", "")),
                 )
-            return infos
-            
+                for raw in raw_infos
+            ]
+
         except asyncio.TimeoutError:
             logger.warning("Server info retrieval timed out, returning partial information")
             # Return basic info for configured servers

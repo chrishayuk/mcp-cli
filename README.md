@@ -268,7 +268,8 @@ mcp-cli --server sqlite --provider anthropic --model claude-3-opus
 
 #### Session Control
 ```bash
-/verbose                          # Toggle verbose/compact display
+/verbose                          # Toggle verbose/compact display (Default: Enabled)
+/confirm                          # Toggle tool call confirmation (Default: Enabled)
 /interrupt                        # Stop running operations
 /servers                          # List connected servers
 /help                            # Show all commands

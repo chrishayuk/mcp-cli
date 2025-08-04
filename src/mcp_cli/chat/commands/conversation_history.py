@@ -147,7 +147,7 @@ async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) ->
         table.add_row(str(idx), label, content)
 
     console.print(table)
-    console.print("\nType [green]/conversation &lt;row&gt;[/green] for full message details.")
+    console.print("\nType [green]/conversation <row>[/green] for full message details.")
     return True
 
 

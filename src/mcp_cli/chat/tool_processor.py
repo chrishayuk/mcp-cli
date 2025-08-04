@@ -76,12 +76,13 @@ class ToolProcessor:
         # Use empty mapping if none provided
         if name_mapping is None:
             name_mapping = {}
-
+        log.debug(f"Processing {len(tool_calls)} tool calls...")
         for idx, call in enumerate(tool_calls):
             if getattr(self.ui_manager, "interrupt_requested", False):
                 break                          # user hit Ctrl-C
             task = asyncio.create_task(self._run_single_call(idx, call, name_mapping))
             self._pending.append(task)
+        log.debug(f"Processing {len(tool_calls)} tool calls remain...")
 
         try:
             await asyncio.gather(*self._pending)
@@ -184,6 +185,50 @@ class ToolProcessor:
                     # Don't fail the whole tool call if UI display fails
                     log.warning(f"UI display error (non-fatal): {ui_exc}")
 
+                # If the UI manager has a confirmation method, use it
+                if hasattr(self.ui_manager, "confirm_tool_execution") and self.ui_manager.confirm_tool_execution:
+                    confirmed = self.ui_manager.do_confirm_tool_execution()
+                    if not confirmed:
+                        setattr(self.ui_manager, "interrupt_requested", True)
+                        success = True
+                        content = f"User requested cancellation of {display_name} tool execution."
+                        log.info(f"Tool execution for {display_name} was cancelled by user.")
+                        self.context.conversation_history.append(
+                            {
+                                "role": "user",
+                                "content": f"Cancel {llm_tool_name} tool execution.",
+                            }
+                        )
+                        # Add fallback messages to conversation history using LLM name
+                        self.context.conversation_history.append(
+                            {
+                                "role": "assistant",
+                                "content": "User cancelled tool execution.",
+                                "tool_calls": [
+                                    {
+                                        "id": call_id,
+                                        "type": "function",
+                                        "function": {
+                                            "name": llm_tool_name,  # Use LLM name as received
+                                            "arguments": json.dumps(raw_arguments)
+                                            if isinstance(raw_arguments, dict)
+                                            else str(raw_arguments or {}),
+                                        },
+                                    }
+                                ],
+                            }
+                        )
+                        # Tool response with error using LLM name
+                        self.context.conversation_history.append(
+                            {
+                                "role": "tool",
+                                "name": llm_tool_name,  # Use LLM name as received
+                                "content": f"Tool execution cancelled by user.",
+                                "tool_call_id": call_id,
+                            }
+                        )
+                        return  # User cancelled the tool execution
+                
                 # ------ Parse arguments --------------------------------
                 try:
                     if isinstance(raw_arguments, str):
@@ -309,8 +354,10 @@ class ToolProcessor:
 
                 # ------ Display result ---------------------------------
                 try:
-                    if tool_result is not None:
-                        display_tool_call_result(tool_result)
+                    if tool_result is not None and hasattr(self.ui_manager, "verbose_mode"):
+                        if self.ui_manager.verbose_mode:
+                            display_tool_call_result(tool_result, self.ui_manager.console)
+         
                 except Exception as display_exc:
                     log.error(f"Error displaying tool result: {display_exc}")
                     # Don't re-raise - we've already added to conversation history
