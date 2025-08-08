@@ -1,5 +1,7 @@
 # MCP CLI - Model Context Protocol Command Line Interface
 
+[![Trust Score](https://archestra.ai/mcp-catalog/api/badge/quality/chrishayuk/mcp-cli)](https://archestra.ai/mcp-catalog/chrishayuk__mcp-cli)
+
 A powerful, feature-rich command-line interface for interacting with Model Context Protocol servers. This client enables seamless communication with LLMs through integration with the [CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor) and [CHUK-LLM](https://github.com/chrishayuk/chuk-llm), providing tool usage, conversation management, and multiple operational modes.
 
 ## 🔄 Architecture Overview
