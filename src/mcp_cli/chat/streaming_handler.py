@@ -568,7 +568,7 @@ class StreamingResponseHandler:
             
         except json.JSONDecodeError:
             # Still invalid - return as-is and let validation handle it
-            logger.warning(f"Could not fix concatenated JSON: {json_str}")
+            logger.debug(f"Could not fix concatenated JSON: {json_str}")
             return json_str
     
     async def _finalize_streaming_tool_calls(self, tool_calls: List[Dict[str, Any]]):

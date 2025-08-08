@@ -152,7 +152,7 @@ redis = [
 
 [[package]]
 name = "chuk-llm"
-version = "0.8.13"
+version = "0.9.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anthropic" },
@@ -171,9 +171,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "transformers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/24/fa/322c0faeaac5b65db285abbc346ae6d988f54afdbf96ee3fd23db68875dd/chuk_llm-0.8.13.tar.gz", hash = "sha256:42c302c06bc6f58c2c1120c0237e51fbbe01a226fb0f7f1179d52993dcec3282", size = 198060 }
+sdist = { url = "https://files.pythonhosted.org/packages/16/84/bab680f897e5fadf86183e30fc97a85389453f75b559cd1cbe913bcb212d/chuk_llm-0.9.1.tar.gz", hash = "sha256:8d815c67807af0c31881b29833dbd2526372e2fb25af0bf9e2ecf362d00ddd5a", size = 228519 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/30/12/cf767198fbb0c3e2b96460e7c1680a154b715c0eddcc9e4628a39f0ab059/chuk_llm-0.8.13-py3-none-any.whl", hash = "sha256:dfe914c9b353bf0034a390493bf3ee458ad6b94dd5a27890e7138044419cc4d4", size = 204495 },
+    { url = "https://files.pythonhosted.org/packages/1c/28/dadc2121e7e425fe848a891ab1a2a92b46d60f8ea8d08a7aa4b7f0982e01/chuk_llm-0.9.1-py3-none-any.whl", hash = "sha256:2364245fbfbd8dba8788c103e870f43a1d50be4e33296cf3cc8ba0cd659bb2c4", size = 239978 },
 ]
 
 [package.optional-dependencies]
@@ -241,7 +241,7 @@ name = "click"
 version = "8.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "colorama", marker = "platform_system == 'Windows'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/60/6c/8ca2efa64cf75a977a0d7fac081354553ebe483345c734fb6b6515d96bbc/click-8.2.1.tar.gz", hash = "sha256:27c491cc05d968d271d5a1db13e3b5a184636d9d930f148c50b038f0d0646202", size = 286342 }
 wheels = [
@@ -651,7 +651,7 @@ wheels = [
 
 [[package]]
 name = "mcp-cli"
-version = "0.5.1"
+version = "0.6"
 source = { editable = "." }
 dependencies = [
     { name = "asyncio" },
@@ -683,7 +683,7 @@ dev = [
 requires-dist = [
     { name = "asyncio", specifier = ">=3.4.3" },
     { name = "asyncio", marker = "extra == 'dev'", specifier = ">=3.4.3" },
-    { name = "chuk-llm", extras = ["all"], specifier = ">=0.8.13" },
+    { name = "chuk-llm", extras = ["all"], specifier = ">=0.9.1" },
     { name = "chuk-mcp", extras = ["full", "pydantic", "ui-manager"], specifier = ">=0.5" },
     { name = "chuk-tool-processor", specifier = ">=0.5.4" },
     { name = "ibm-watsonx-ai", specifier = ">=1.3.31" },
@@ -1323,7 +1323,7 @@ name = "tqdm"
 version = "4.67.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "colorama", marker = "platform_system == 'Windows'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a8/4b/29b4ef32e036bb34e4ab51796dd745cdba7ed47ad142a9f4a1eb8e0c744d/tqdm-4.67.1.tar.gz", hash = "sha256:f8aef9c52c08c13a65f30ea34f4e5aac3fd1a34959879d7e59e63027286627f2", size = 169737 }
 wheels = [
