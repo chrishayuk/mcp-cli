@@ -31,20 +31,25 @@ class ModelManager:
             # TRIGGER DISCOVERY IMMEDIATELY to get all available models
             self._trigger_discovery()
             
-            # Set default provider to ollama if available
+            # CHANGED: Default to ollama with gpt-oss model
             available_providers = self.get_available_providers()
             if 'ollama' in available_providers:
                 self._active_provider = 'ollama'
-                # Get default model for ollama
-                try:
-                    ollama_provider = self._chuk_config.get_provider('ollama')
-                    self._active_model = ollama_provider.default_model
-                except Exception:
-                    # Fallback if no default model configured
-                    available_models = self.get_available_models('ollama')
-                    self._active_model = available_models[0] if available_models else 'llama3.3'
+                # Check if gpt-oss is available, otherwise try other defaults
+                available_models = self.get_available_models('ollama')
+                if 'gpt-oss' in available_models:
+                    self._active_model = 'gpt-oss'
+                elif 'llama3.3' in available_models:
+                    self._active_model = 'llama3.3'
+                elif available_models:
+                    # Use first available model
+                    self._active_model = available_models[0]
+                else:
+                    # Fallback to gpt-oss even if not discovered yet
+                    self._active_model = 'gpt-oss'
+                    logger.info("Defaulting to gpt-oss model (may need to be pulled)")
             elif available_providers:
-                # Use first available provider
+                # Fallback: Use first available provider if ollama not available
                 self._active_provider = available_providers[0]
                 try:
                     provider_config = self._chuk_config.get_provider(self._active_provider)
@@ -53,15 +58,20 @@ class ModelManager:
                     # Fallback if no default model
                     available_models = self.get_available_models(self._active_provider)
                     self._active_model = available_models[0] if available_models else 'default'
+            else:
+                # Hard fallback to ollama/gpt-oss if nothing is configured
+                self._active_provider = 'ollama'
+                self._active_model = 'gpt-oss'
+                logger.warning("No providers found, defaulting to ollama/gpt-oss")
             
             logger.debug(f"Initialized with provider: {self._active_provider}, model: {self._active_model}")
             
         except Exception as e:
             logger.error(f"Failed to initialize chuk_llm: {e}")
-            # Fallback to empty state
+            # CHANGED: Fallback to ollama/gpt-oss instead of llama3.3
             self._chuk_config = None
-            self._active_provider = 'ollama'  # Safe fallback
-            self._active_model = 'llama3.3'   # Safe fallback
+            self._active_provider = 'ollama'
+            self._active_model = 'gpt-oss'
     
     def _trigger_discovery(self):
         """Trigger discovery to ensure all models are available"""
@@ -118,7 +128,7 @@ class ModelManager:
             # Get all configured providers
             all_providers = self._chuk_config.get_all_providers()
             
-            # Filter to commonly used providers
+            # CHANGED: Put ollama first in the preferred order
             preferred_order = ['ollama', 'openai', 'anthropic', 'gemini', 'groq', 'mistral']
             available = []
             
@@ -141,6 +151,19 @@ class ModelManager:
     def get_available_models(self, provider: str = None) -> List[str]:
         """Get available models for a provider (including discovered ones)"""
         if not self._chuk_config:
+            # Return default models even without config
+            if provider == 'ollama':
+                return ['gpt-oss', 'llama3.3', 'llama3.2', 'qwen3', 'qwen2.5-coder', 'granite3.3', 'mistral', 'gemma3', 'deepseek-coder', 'phi3', 'codellama']
+            elif provider == 'openai':
+                return ['gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'gpt-5-chat', 'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o3', 'o3-mini']
+            elif provider == 'anthropic':
+                return ['claude-4-1-opus', 'claude-4-sonnet', 'claude-3-5-sonnet', 'claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku']
+            elif provider == 'azure_openai':
+                return ['gpt-5', 'gpt-5-mini', 'gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo']
+            elif provider == 'gemini':
+                return ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash']
+            elif provider == 'groq':
+                return ['llama-3.1-70b', 'llama-3.1-8b', 'mixtral-8x7b']
             return []
         
         target_provider = provider or self._active_provider
@@ -156,6 +179,9 @@ class ModelManager:
             
             if 'error' in provider_info:
                 logger.warning(f"Provider {target_provider} error: {provider_info['error']}")
+                # Return default models for ollama
+                if target_provider == 'ollama':
+                    return ['gpt-oss', 'llama3.3', 'qwen3', 'granite3.3', 'mistral', 'gemma3']
                 return []
             
             # Return all available models (should include discovered ones)
@@ -163,9 +189,17 @@ class ModelManager:
             
             # Sort models for better UX
             if models:
-                # Put common models first for Ollama
+                # CHANGED: Put gpt-oss first for Ollama, extensive model list
                 if target_provider == 'ollama':
-                    priority_models = ['llama3.3', 'qwen3', 'granite3.3', 'mistral', 'gemma3']
+                    priority_models = ['gpt-oss', 'llama3.3', 'llama3.2', 'qwen3', 'qwen2.5-coder', 'granite3.3', 'mistral', 'gemma3', 'deepseek-coder']
+                    sorted_models = []
+                elif target_provider == 'openai':
+                    # GPT-5 models first, then GPT-4, then reasoning models
+                    priority_models = ['gpt-5', 'gpt-5-mini', 'gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo', 'o3', 'o3-mini']
+                    sorted_models = []
+                elif target_provider == 'anthropic':
+                    # Claude 4 models first
+                    priority_models = ['claude-4-1-opus', 'claude-4-sonnet', 'claude-3-5-sonnet', 'claude-3-opus']
                     sorted_models = []
                     
                     # Add priority models first (if they exist)
@@ -182,10 +216,25 @@ class ModelManager:
                 else:
                     return sorted(models)
             
+            # CHANGED: Return default models for each provider if no models found
+            if target_provider == 'ollama':
+                return ['gpt-oss', 'llama3.3', 'llama3.2', 'qwen3', 'qwen2.5-coder', 'granite3.3', 'mistral', 'gemma3', 'deepseek-coder']
+            elif target_provider == 'openai':
+                return ['gpt-5', 'gpt-5-mini', 'gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo', 'o3', 'o3-mini']
+            elif target_provider == 'anthropic':
+                return ['claude-4-1-opus', 'claude-4-sonnet', 'claude-3-5-sonnet', 'claude-3-opus']
+            
             return models
             
         except Exception as e:
             logger.error(f"Failed to get models for {target_provider}: {e}")
+            # Return defaults for each provider
+            if target_provider == 'ollama':
+                return ['gpt-oss', 'llama3.3', 'llama3.2', 'qwen3', 'qwen2.5-coder', 'granite3.3', 'mistral', 'gemma3', 'deepseek-coder']
+            elif target_provider == 'openai':
+                return ['gpt-5', 'gpt-5-mini', 'gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo', 'o3', 'o3-mini']
+            elif target_provider == 'anthropic':
+                return ['claude-4-1-opus', 'claude-4-sonnet', 'claude-3-5-sonnet', 'claude-3-opus']
             return []
     
     def list_available_providers(self) -> Dict[str, Any]:
@@ -202,12 +251,15 @@ class ModelManager:
                     models = self.get_available_models(provider)
                     has_api_key = self._chuk_config.get_api_key(provider) is not None if self._chuk_config else False
                     
+                    # CHANGED: Set gpt-oss as default for ollama
+                    default_model = 'gpt-oss' if provider == 'ollama' else (models[0] if models else None)
+                    
                     basic_info[provider] = {
                         "models": models,
                         "model_count": len(models),
                         "has_api_key": has_api_key,
                         "baseline_features": ["text"],  # Safe default
-                        "default_model": models[0] if models else None
+                        "default_model": default_model
                     }
                 except Exception:
                     basic_info[provider] = {"error": "Could not get provider info"}
@@ -220,7 +272,7 @@ class ModelManager:
     
     def get_active_model(self) -> str:
         """Get current active model"""
-        return self._active_model or "llama3.3"
+        return self._active_model or "gpt-oss"
     
     def get_active_provider_and_model(self) -> Tuple[str, str]:
         """Get current active provider and model as tuple"""
@@ -239,7 +291,16 @@ class ModelManager:
         
         # Set default model for this provider
         try:
-            if self._chuk_config:
+            if provider == 'ollama':
+                # CHANGED: Prefer gpt-oss for ollama
+                available_models = self.get_available_models(provider)
+                if 'gpt-oss' in available_models:
+                    self._active_model = 'gpt-oss'
+                elif available_models:
+                    self._active_model = available_models[0]
+                else:
+                    self._active_model = 'gpt-oss'
+            elif self._chuk_config:
                 provider_config = self._chuk_config.get_provider(provider)
                 self._active_model = provider_config.default_model
             else:
@@ -297,6 +358,16 @@ class ModelManager:
     def get_default_model(self, provider: str) -> str:
         """Get the default model for a provider"""
         try:
+            # CHANGED: Special handling for ollama
+            if provider == 'ollama':
+                available_models = self.get_available_models(provider)
+                if 'gpt-oss' in available_models:
+                    return 'gpt-oss'
+                elif available_models:
+                    return available_models[0]
+                else:
+                    return 'gpt-oss'  # Default even if not pulled
+            
             if self._chuk_config:
                 provider_config = self._chuk_config.get_provider(provider)
                 default = provider_config.default_model
@@ -309,6 +380,9 @@ class ModelManager:
             
         except Exception as e:
             logger.warning(f"Could not get default model for {provider}: {e}")
+            # CHANGED: Special fallback for ollama
+            if provider == 'ollama':
+                return 'gpt-oss'
             # Fallback: get first available model
             available_models = self.get_available_models(provider)
             return available_models[0] if available_models else 'default'

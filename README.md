@@ -2,35 +2,47 @@
 
 A powerful, feature-rich command-line interface for interacting with Model Context Protocol servers. This client enables seamless communication with LLMs through integration with the [CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor) and [CHUK-LLM](https://github.com/chrishayuk/chuk-llm), providing tool usage, conversation management, and multiple operational modes.
 
+**Default Configuration**: MCP CLI defaults to using Ollama with the `gpt-oss` reasoning model for local, privacy-focused operation without requiring API keys.
+
 ## 🔄 Architecture Overview
 
 The MCP CLI is built on a modular architecture with clean separation of concerns:
 
 - **[CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor)**: Async-native tool execution and MCP server communication
-- **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)**: Unified LLM provider configuration and client management
+- **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)**: Unified LLM provider configuration and client management with 200+ auto-generated functions
 - **MCP CLI**: Rich user interface and command orchestration (this project)
 
 ## 🌟 Features
 
 ### Multiple Operational Modes
-- **Chat Mode**: Conversational interface with streaming responses and automated tool usage
+- **Chat Mode**: Conversational interface with streaming responses and automated tool usage (default: Ollama/gpt-oss)
 - **Interactive Mode**: Command-driven shell interface for direct server operations
 - **Command Mode**: Unix-friendly mode for scriptable automation and pipelines
 - **Direct Commands**: Run individual commands without entering interactive mode
 
 ### Advanced Chat Interface
 - **Streaming Responses**: Real-time response generation with live UI updates
+- **Reasoning Visibility**: See AI's thinking process with reasoning models (gpt-oss, GPT-5, Claude 4)
 - **Concurrent Tool Execution**: Execute multiple tools simultaneously while preserving conversation order
 - **Smart Interruption**: Interrupt streaming responses or tool execution with Ctrl+C
 - **Performance Metrics**: Response timing, words/second, and execution statistics
 - **Rich Formatting**: Markdown rendering, syntax highlighting, and progress indicators
 
 ### Comprehensive Provider Support
-- **OpenAI**: GPT models (`gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`, etc.)
-- **Anthropic**: Claude models (`claude-3-opus`, `claude-3-sonnet`, `claude-3-haiku`)
-- **Ollama**: Local models (`llama3.2`, `qwen2.5-coder`, `deepseek-coder`, etc.)
-- **Custom Providers**: Extensible architecture for additional providers
-- **Dynamic Switching**: Change providers and models mid-conversation
+
+MCP CLI supports all providers and models from CHUK-LLM, including cutting-edge reasoning models:
+
+| Provider | Key Models | Special Features |
+|----------|------------|------------------|
+| **Ollama** (Default) | 🧠 gpt-oss, llama3.3, llama3.2, qwen3, qwen2.5-coder, deepseek-coder, granite3.3, mistral, gemma3, phi3, codellama | Local reasoning models, privacy-focused, no API key required |
+| **OpenAI** | 🚀 GPT-5 family (gpt-5, gpt-5-mini, gpt-5-nano), GPT-4o family, O3 series (o3, o3-mini) | Advanced reasoning, function calling, vision |
+| **Anthropic** | 🧠 Claude 4 family (claude-4-1-opus, claude-4-sonnet), Claude 3.5 Sonnet | Enhanced reasoning, long context |
+| **Azure OpenAI** 🏢 | Enterprise GPT-5, GPT-4 models | Private endpoints, compliance, audit logs |
+| **Google Gemini** | Gemini 2.0 Flash, Gemini 1.5 Pro | Multimodal, fast inference |
+| **Groq** ⚡ | Llama 3.1 models, Mixtral | Ultra-fast inference (500+ tokens/sec) |
+| **Perplexity** 🌐 | Sonar models | Real-time web search with citations |
+| **IBM watsonx** 🏢 | Granite, Llama models | Enterprise compliance |
+| **Mistral AI** 🇪🇺 | Mistral Large, Medium | European, efficient models |
 
 ### Robust Tool System
 - **Automatic Discovery**: Server-provided tools are automatically detected and catalogued
@@ -56,67 +68,96 @@ The MCP CLI is built on a modular architecture with clean separation of concerns
 ## 📋 Prerequisites
 
 - **Python 3.11 or higher**
-- **API Keys** (as needed):
-  - OpenAI: `OPENAI_API_KEY` environment variable
-  - Anthropic: `ANTHROPIC_API_KEY` environment variable
+- **For Local Operation (Default)**:
+  - Ollama: Install from [ollama.ai](https://ollama.ai)
+  - Pull the default reasoning model: `ollama pull gpt-oss`
+- **For Cloud Providers** (Optional):
+  - OpenAI: `OPENAI_API_KEY` environment variable (for GPT-5, GPT-4, O3 models)
+  - Anthropic: `ANTHROPIC_API_KEY` environment variable (for Claude 4, Claude 3.5)
+  - Azure: `AZURE_OPENAI_API_KEY` and `AZURE_OPENAI_ENDPOINT` (for enterprise GPT-5)
+  - Google: `GEMINI_API_KEY` (for Gemini models)
+  - Groq: `GROQ_API_KEY` (for fast Llama models)
   - Custom providers: Provider-specific configuration
-- **Local Services** (as needed):
-  - Ollama: Local installation for Ollama models
 - **MCP Servers**: Server configuration file (default: `server_config.json`)
 
 ## 🚀 Installation
 
-### Using UVX
-To install uxx, use the following instructions:
+### Quick Start with Ollama (Default)
 
-https://docs.astral.sh/uv/getting-started/installation/
-
-Once installed you can test it works using:
-
+1. **Install Ollama** (if not already installed):
 ```bash
+# macOS/Linux
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Or visit https://ollama.ai for other installation methods
+```
+
+2. **Pull the default reasoning model**:
+```bash
+ollama pull gpt-oss  # Open-source reasoning model with thinking visibility
+```
+
+3. **Install and run MCP CLI**:
+```bash
+# Using uvx (recommended)
 uvx mcp-cli --help
-```
 
-or use interactive mode
-
-```bash
-uvx mcp-cli interactive
-```
-
-### Install from Source
-
-1. **Clone the repository**:
-```bash
+# Or install from source
 git clone https://github.com/chrishayuk/mcp-cli
-cd mcp-cli  
-```
-
-2. **Install the package**:
-```bash
+cd mcp-cli
 pip install -e "."
-```
-
-3. **Verify installation**:
-```bash
 mcp-cli --help
 ```
 
-### Using UV (Recommended)
-
-UV provides faster dependency resolution and better environment management:
+### Using Different Models
 
 ```bash
-# Install UV if not already installed
-pip install uv
+# === LOCAL MODELS (No API Key Required) ===
 
-# Install dependencies
-uv sync --reinstall
+# Use default reasoning model (gpt-oss)
+mcp-cli --server sqlite
 
-# Run with UV
-uv run mcp-cli --help
+# Use other Ollama models
+mcp-cli --model llama3.3              # Latest Llama
+mcp-cli --model qwen2.5-coder         # Coding-focused
+mcp-cli --model deepseek-coder        # Another coding model
+mcp-cli --model granite3.3            # IBM Granite
+
+# === CLOUD PROVIDERS (API Keys Required) ===
+
+# GPT-5 Family (requires OpenAI API key)
+mcp-cli --provider openai --model gpt-5          # Full GPT-5 with reasoning
+mcp-cli --provider openai --model gpt-5-mini     # Efficient GPT-5 variant
+mcp-cli --provider openai --model gpt-5-nano     # Ultra-lightweight GPT-5
+
+# GPT-4 Family
+mcp-cli --provider openai --model gpt-4o         # GPT-4 Optimized
+mcp-cli --provider openai --model gpt-4o-mini    # Smaller GPT-4
+
+# O3 Reasoning Models
+mcp-cli --provider openai --model o3             # O3 reasoning
+mcp-cli --provider openai --model o3-mini        # Efficient O3
+
+# Claude 4 Family (requires Anthropic API key)
+mcp-cli --provider anthropic --model claude-4-1-opus    # Most advanced Claude
+mcp-cli --provider anthropic --model claude-4-sonnet    # Balanced Claude 4
+mcp-cli --provider anthropic --model claude-3-5-sonnet  # Claude 3.5
+
+# Enterprise Azure (requires Azure configuration)
+mcp-cli --provider azure_openai --model gpt-5    # Enterprise GPT-5
+
+# Other Providers
+mcp-cli --provider gemini --model gemini-2.0-flash      # Google Gemini
+mcp-cli --provider groq --model llama-3.1-70b          # Fast Llama via Groq
 ```
 
 ## 🧰 Global Configuration
+
+### Default Configuration
+
+MCP CLI defaults to:
+- **Provider**: `ollama` (local, no API key required)
+- **Model**: `gpt-oss` (open-source reasoning model with thinking visibility)
 
 ### Command-line Arguments
 
@@ -124,21 +165,30 @@ Global options available for all modes and commands:
 
 - `--server`: Specify server(s) to connect to (comma-separated)
 - `--config-file`: Path to server configuration file (default: `server_config.json`)
-- `--provider`: LLM provider (`openai`, `anthropic`, `ollama`, etc.)
-- `--model`: Specific model to use (provider-dependent)
+- `--provider`: LLM provider (default: `ollama`)
+- `--model`: Specific model to use (default: `gpt-oss` for Ollama)
 - `--disable-filesystem`: Disable filesystem access (default: enabled)
 - `--api-base`: Override API endpoint URL
-- `--api-key`: Override API key
+- `--api-key`: Override API key (not needed for Ollama)
 - `--verbose`: Enable detailed logging
 - `--quiet`: Suppress non-essential output
 
 ### Environment Variables
 
 ```bash
-export LLM_PROVIDER=openai              # Default provider
-export LLM_MODEL=gpt-4o-mini           # Default model
-export OPENAI_API_KEY=sk-...           # OpenAI API key
-export ANTHROPIC_API_KEY=sk-ant-...    # Anthropic API key
+# Override defaults
+export LLM_PROVIDER=ollama              # Default provider (already the default)
+export LLM_MODEL=gpt-oss                # Default model (already the default)
+
+# For cloud providers (optional)
+export OPENAI_API_KEY=sk-...           # For GPT-5, GPT-4, O3 models
+export ANTHROPIC_API_KEY=sk-ant-...    # For Claude 4, Claude 3.5
+export AZURE_OPENAI_API_KEY=sk-...     # For enterprise GPT-5
+export AZURE_OPENAI_ENDPOINT=https://...
+export GEMINI_API_KEY=...              # For Gemini models
+export GROQ_API_KEY=...                # For Groq fast inference
+
+# Tool configuration
 export MCP_TOOL_TIMEOUT=120            # Tool execution timeout (seconds)
 ```
 
@@ -149,17 +199,21 @@ export MCP_TOOL_TIMEOUT=120            # Tool execution timeout (seconds)
 Provides a natural language interface with streaming responses and automatic tool usage:
 
 ```bash
-# Default mode (no subcommand needed)
+# Default mode with Ollama/gpt-oss reasoning model (no API key needed)
 mcp-cli --server sqlite
 
-# Explicit chat mode
-mcp-cli chat --server sqlite
+# See the AI's thinking process with reasoning models
+mcp-cli --server sqlite --model gpt-oss     # Open-source reasoning
+mcp-cli --server sqlite --provider openai --model gpt-5  # GPT-5 reasoning
+mcp-cli --server sqlite --provider anthropic --model claude-4-1-opus  # Claude 4 reasoning
 
-# With specific provider and model
-mcp-cli chat --server sqlite --provider anthropic --model claude-3-sonnet
+# Use different local models
+mcp-cli --server sqlite --model llama3.3
+mcp-cli --server sqlite --model qwen2.5-coder
 
-# With custom configuration
-mcp-cli chat --server sqlite --provider openai --api-key sk-... --model gpt-4o
+# Switch to cloud providers (requires API keys)
+mcp-cli chat --server sqlite --provider openai --model gpt-5
+mcp-cli chat --server sqlite --provider anthropic --model claude-4-sonnet
 ```
 
 ### 2. Interactive Mode
@@ -169,8 +223,9 @@ Command-driven shell interface for direct server operations:
 ```bash
 mcp-cli interactive --server sqlite
 
-# With provider selection
-mcp-cli interactive --server sqlite --provider ollama --model llama3.2
+# With specific models
+mcp-cli interactive --server sqlite --model gpt-oss       # Local reasoning
+mcp-cli interactive --server sqlite --provider openai --model gpt-5  # Cloud GPT-5
 ```
 
 ### 3. Command Mode
@@ -178,8 +233,11 @@ mcp-cli interactive --server sqlite --provider ollama --model llama3.2
 Unix-friendly interface for automation and scripting:
 
 ```bash
-# Process text with LLM
-mcp-cli cmd --server sqlite --prompt "Analyze this data" --input data.txt
+# Process text with reasoning models
+mcp-cli cmd --server sqlite --model gpt-oss --prompt "Think through this step by step" --input data.txt
+
+# Use GPT-5 for complex reasoning
+mcp-cli cmd --server sqlite --provider openai --model gpt-5 --prompt "Analyze this data" --input data.txt
 
 # Execute tools directly
 mcp-cli cmd --server sqlite --tool list_tables --output tables.json
@@ -199,6 +257,14 @@ mcp-cli tools --server sqlite
 # Show provider configuration
 mcp-cli provider list
 
+# Show available models for current provider
+mcp-cli models
+
+# Show models for specific provider
+mcp-cli models openai    # Shows GPT-5, GPT-4, O3 models
+mcp-cli models anthropic # Shows Claude 4, Claude 3.5 models
+mcp-cli models ollama    # Shows gpt-oss, llama3.3, etc.
+
 # Ping servers
 mcp-cli ping --server sqlite
 
@@ -213,31 +279,35 @@ Chat mode provides the most advanced interface with streaming responses and inte
 ### Starting Chat Mode
 
 ```bash
-# Simple startup
+# Simple startup with default reasoning model (gpt-oss)
 mcp-cli --server sqlite
 
 # Multiple servers
 mcp-cli --server sqlite,filesystem
 
-# Specific provider configuration
-mcp-cli --server sqlite --provider anthropic --model claude-3-opus
+# With advanced reasoning models
+mcp-cli --server sqlite --provider openai --model gpt-5
+mcp-cli --server sqlite --provider anthropic --model claude-4-1-opus
 ```
 
 ### Chat Commands (Slash Commands)
 
 #### Provider & Model Management
 ```bash
-/provider                           # Show current configuration
+/provider                           # Show current configuration (default: ollama)
 /provider list                      # List all providers
 /provider config                    # Show detailed configuration
 /provider diagnostic               # Test provider connectivity
-/provider set openai api_key sk-... # Configure provider settings
-/provider anthropic                # Switch to Anthropic
-/provider openai gpt-4o            # Switch provider and model
+/provider set ollama api_base http://localhost:11434  # Configure Ollama endpoint
+/provider openai                   # Switch to OpenAI (requires API key)
+/provider anthropic                # Switch to Anthropic (requires API key)
+/provider openai gpt-5             # Switch to OpenAI GPT-5
 
-/model                             # Show current model
-/model gpt-4o                      # Switch to specific model
-/models                            # List available models
+/model                             # Show current model (default: gpt-oss)
+/model llama3.3                    # Switch to different Ollama model
+/model gpt-5                       # Switch to GPT-5 (if using OpenAI)
+/model claude-4-1-opus             # Switch to Claude 4 (if using Anthropic)
+/models                            # List available models for current provider
 ```
 
 #### Tool Management
@@ -279,11 +349,12 @@ mcp-cli --server sqlite --provider anthropic --model claude-3-opus
 
 ### Chat Features
 
-#### Streaming Responses
-- Real-time text generation with live updates
-- Performance metrics (words/second, response time)
-- Graceful interruption with Ctrl+C
-- Progressive markdown rendering
+#### Streaming Responses with Reasoning Visibility
+- **🧠 Reasoning Models**: See the AI's thinking process with gpt-oss, GPT-5, Claude 4
+- **Real-time Generation**: Watch text appear token by token
+- **Performance Metrics**: Words/second, response time
+- **Graceful Interruption**: Ctrl+C to stop streaming
+- **Progressive Rendering**: Markdown formatted as it streams
 
 #### Tool Execution
 - Automatic tool discovery and usage
@@ -318,6 +389,13 @@ clear                             # Clear terminal
 provider                          # Show current provider
 provider list                     # List providers
 provider anthropic                # Switch provider
+provider openai gpt-5             # Switch to GPT-5
+
+# Model management
+model                             # Show current model
+model gpt-oss                     # Switch to reasoning model
+model claude-4-1-opus             # Switch to Claude 4
+models                            # List available models
 
 # Tool operations
 tools                             # List tools
@@ -352,8 +430,11 @@ Command mode provides Unix-friendly automation capabilities.
 ### Examples
 
 ```bash
-# Text processing
-echo "Analyze this data" | mcp-cli cmd --server sqlite --input - --output analysis.txt
+# Text processing with reasoning models
+echo "Analyze this data" | mcp-cli cmd --server sqlite --model gpt-oss --input - --output analysis.txt
+
+# Use GPT-5 for complex analysis
+mcp-cli cmd --server sqlite --provider openai --model gpt-5 --prompt "Provide strategic analysis" --input report.txt
 
 # Tool execution
 mcp-cli cmd --server sqlite --tool list_tables --raw
@@ -367,49 +448,93 @@ ls *.txt | parallel mcp-cli cmd --server sqlite --input {} --output {}.summary -
 
 ## 🔧 Provider Configuration
 
-### Automatic Configuration
+### Ollama Configuration (Default)
 
-The CLI automatically manages provider configurations using the CHUK-LLM library:
+Ollama runs locally by default on `http://localhost:11434`. To use reasoning and other models:
 
 ```bash
-# Configure a provider
+# Pull reasoning and other models for Ollama
+ollama pull gpt-oss          # Default reasoning model
+ollama pull llama3.3         # Latest Llama
+ollama pull llama3.2         # Llama 3.2
+ollama pull qwen3            # Qwen 3
+ollama pull qwen2.5-coder    # Coding-focused
+ollama pull deepseek-coder   # DeepSeek coder
+ollama pull granite3.3       # IBM Granite
+ollama pull mistral          # Mistral
+ollama pull gemma3           # Google Gemma
+ollama pull phi3             # Microsoft Phi
+ollama pull codellama        # Code Llama
+
+# List available Ollama models
+ollama list
+
+# Configure remote Ollama server
+mcp-cli provider set ollama api_base http://remote-server:11434
+```
+
+### Cloud Provider Configuration
+
+To use cloud providers with advanced models, configure API keys:
+
+```bash
+# Configure OpenAI (for GPT-5, GPT-4, O3 models)
 mcp-cli provider set openai api_key sk-your-key-here
-mcp-cli provider set anthropic api_base https://api.anthropic.com
+
+# Configure Anthropic (for Claude 4, Claude 3.5)
+mcp-cli provider set anthropic api_key sk-ant-your-key-here
+
+# Configure Azure OpenAI (for enterprise GPT-5)
+mcp-cli provider set azure_openai api_key sk-your-key-here
+mcp-cli provider set azure_openai api_base https://your-resource.openai.azure.com
+
+# Configure other providers
+mcp-cli provider set gemini api_key your-gemini-key
+mcp-cli provider set groq api_key your-groq-key
 
 # Test configuration
 mcp-cli provider diagnostic openai
-
-# List available models
-mcp-cli provider list
+mcp-cli provider diagnostic anthropic
 ```
 
 ### Manual Configuration
 
-The `chuk_llm` library looks for configuration files in a particular order.
-First a file specified by the `CHUK_LLM_CONFIG` environment variable.
-Then, in the current working directory a file like `chuk_llm.yaml`, `providers.yaml`, `llm_config.yaml` or `config/chuk_llm.yaml`.
-
-But ideally a user wide configuration should be added to `~/.chuk_llm/config.yaml`:
+The `chuk_llm` library configuration in `~/.chuk_llm/config.yaml`:
 
 ```yaml
+ollama:
+  api_base: http://localhost:11434
+  default_model: gpt-oss
+
 openai:
   api_base: https://api.openai.com/v1
-  default_model: gpt-4o-mini
+  default_model: gpt-5
 
 anthropic:
   api_base: https://api.anthropic.com
-  default_model: claude-3-sonnet
+  default_model: claude-4-1-opus
 
-ollama:
-  api_base: http://localhost:11434
-  default_model: llama3.2
+azure_openai:
+  api_base: https://your-resource.openai.azure.com
+  default_model: gpt-5
+
+gemini:
+  api_base: https://generativelanguage.googleapis.com
+  default_model: gemini-2.0-flash
+
+groq:
+  api_base: https://api.groq.com
+  default_model: llama-3.1-70b
 ```
 
-API keys are stored securely in `~/.chuk_llm/.env`:
+API keys (if using cloud providers) in `~/.chuk_llm/.env`:
 
 ```bash
 OPENAI_API_KEY=sk-your-key-here
 ANTHROPIC_API_KEY=sk-ant-your-key-here
+AZURE_OPENAI_API_KEY=sk-your-azure-key-here
+GEMINI_API_KEY=your-gemini-key
+GROQ_API_KEY=your-groq-key
 ```
 
 ## 📂 Server Configuration
@@ -444,110 +569,209 @@ Create a `server_config.json` file with your MCP server configurations:
 
 ## 📈 Advanced Usage Examples
 
+### Reasoning Model Comparison
+
+```bash
+# Compare reasoning across different models
+> /provider ollama
+> /model gpt-oss
+> Think through this problem step by step: If a train leaves New York at 3 PM...
+[See the complete thinking process with gpt-oss]
+
+> /provider openai
+> /model gpt-5
+> Think through this problem step by step: If a train leaves New York at 3 PM...
+[See GPT-5's reasoning approach]
+
+> /provider anthropic
+> /model claude-4-1-opus
+> Think through this problem step by step: If a train leaves New York at 3 PM...
+[See Claude 4's analytical process]
+```
+
+### Local-First Workflow with Reasoning
+
+```bash
+# Start with default Ollama/gpt-oss (no API key needed)
+mcp-cli chat --server sqlite
+
+# Use reasoning model for complex problems
+> Think through this database optimization problem step by step
+[gpt-oss shows its complete thinking process before answering]
+
+# Try different local models for different tasks
+> /model llama3.3              # General purpose
+> /model qwen2.5-coder         # For coding tasks
+> /model deepseek-coder        # Alternative coding model
+> /model granite3.3            # IBM's model
+> /model gpt-oss               # Back to reasoning model
+
+# Switch to cloud when needed (requires API keys)
+> /provider openai
+> /model gpt-5
+> Complex enterprise architecture design...
+
+> /provider anthropic
+> /model claude-4-1-opus
+> Detailed strategic analysis...
+
+> /provider ollama
+> /model gpt-oss
+> Continue with local processing...
+```
+
 ### Multi-Provider Workflow
 
 ```bash
-# Start with OpenAI
-mcp-cli chat --server sqlite --provider openai --model gpt-4o
-
-# In chat, switch to Anthropic for reasoning tasks
-> /provider anthropic claude-3-opus
-
-# Switch to Ollama for local processing
-> /provider ollama llama3.2
+# Start with local reasoning (default, no API key)
+mcp-cli chat --server sqlite
 
 # Compare responses across providers
-> /provider openai
-> What's the capital of France?
-> /provider anthropic  
-> What's the capital of France?
+> /provider ollama
+> What's the best way to optimize this SQL query?
+
+> /provider openai gpt-5        # Requires API key
+> What's the best way to optimize this SQL query?
+
+> /provider anthropic claude-4-sonnet  # Requires API key
+> What's the best way to optimize this SQL query?
+
+# Use each provider's strengths
+> /provider ollama gpt-oss      # Local reasoning, privacy
+> /provider openai gpt-5        # Advanced reasoning
+> /provider anthropic claude-4-1-opus  # Deep analysis
+> /provider groq llama-3.1-70b  # Ultra-fast responses
 ```
 
-### Complex Tool Workflows
+### Complex Tool Workflows with Reasoning
 
 ```bash
-# Database analysis workflow
-> List all tables in the database
+# Use reasoning model for complex database tasks
+> /model gpt-oss
+> I need to analyze our database performance. Think through what we should check first.
+[gpt-oss shows thinking: "First, I should check the table structure, then indexes, then query patterns..."]
 [Tool: list_tables] → products, customers, orders
 
-> Show me the schema for the products table
-[Tool: describe_table] → id, name, price, category, stock
+> Now analyze the indexes and suggest optimizations
+[gpt-oss thinks through index analysis]
+[Tool: describe_table] → Shows current indexes
+[Tool: read_query] → Analyzes query patterns
 
-> Find the top 10 most expensive products
-[Tool: read_query] → SELECT name, price FROM products ORDER BY price DESC LIMIT 10
-
-> Export this data to a CSV file
-[Tool: write_file] → Saved to expensive_products.csv
+> Create an optimization plan based on your analysis
+[Complete reasoning process followed by specific recommendations]
 ```
 
 ### Automation and Scripting
 
 ```bash
-# Batch data processing
+# Batch processing with different models
 for file in data/*.csv; do
+  # Use reasoning model for analysis
   mcp-cli cmd --server sqlite \
-    --tool analyze_data \
-    --tool-args "{\"file_path\": \"$file\"}" \
-    --output "results/$(basename "$file" .csv)_analysis.json"
+    --model gpt-oss \
+    --prompt "Analyze this data and think through patterns" \
+    --input "$file" \
+    --output "analysis/$(basename "$file" .csv)_reasoning.txt"
+  
+  # Use coding model for generating scripts
+  mcp-cli cmd --server sqlite \
+    --model qwen2.5-coder \
+    --prompt "Generate Python code to process this data" \
+    --input "$file" \
+    --output "scripts/$(basename "$file" .csv)_script.py"
 done
 
-# Pipeline processing
-cat input.txt | \
-  mcp-cli cmd --server sqlite --prompt "Extract key entities" --input - | \
-  mcp-cli cmd --server sqlite --prompt "Categorize these entities" --input - > output.txt
+# Pipeline with reasoning
+cat complex_problem.txt | \
+  mcp-cli cmd --model gpt-oss --prompt "Think through this step by step" --input - | \
+  mcp-cli cmd --model llama3.3 --prompt "Summarize the key points" --input - > solution.txt
 ```
 
 ### Performance Monitoring
 
 ```bash
-# Enable verbose mode for detailed timing
-> /verbose
-
-# Monitor tool execution times
-> /toolhistory
-Tool Call History (15 calls)
-#  | Tool        | Arguments                    | Time
-1  | list_tables | {}                          | 0.12s
-2  | read_query  | {"query": "SELECT..."}      | 0.45s
-...
-
-# Check provider performance
+# Check provider and model performance
 > /provider diagnostic
 Provider Diagnostics
-Provider   | Status      | Response Time | Features
-openai     | ✅ Ready    | 234ms        | 📡🔧👁️
-anthropic  | ✅ Ready    | 187ms        | 📡🔧
-ollama     | ✅ Ready    | 56ms         | 📡🔧
+Provider      | Status      | Response Time | Features      | Models
+ollama        | ✅ Ready    | 56ms         | 📡🔧         | gpt-oss, llama3.3, qwen3, ...
+openai        | ✅ Ready    | 234ms        | 📡🔧👁️      | gpt-5, gpt-4o, o3, ...
+anthropic     | ✅ Ready    | 187ms        | 📡🔧         | claude-4-1-opus, claude-4-sonnet, ...
+azure_openai  | ✅ Ready    | 198ms        | 📡🔧👁️      | gpt-5, gpt-4o, ...
+gemini        | ✅ Ready    | 156ms        | 📡🔧👁️      | gemini-2.0-flash, ...
+groq          | ✅ Ready    | 45ms         | 📡🔧         | llama-3.1-70b, ...
+
+# Check available models
+> /models
+Models for ollama (Current Provider)
+Model                | Status
+gpt-oss             | Current & Default (Reasoning)
+llama3.3            | Available
+llama3.2            | Available
+qwen2.5-coder       | Available
+deepseek-coder      | Available
+granite3.3          | Available
+... and 6 more
+
+# Monitor tool execution with reasoning
+> /verbose
+> /model gpt-oss
+> Analyze the database and optimize the slowest queries
+[Shows complete thinking process]
+[Tool execution with timing]
 ```
 
 ## 🔍 Troubleshooting
 
 ### Common Issues
 
-1. **"Missing argument 'KWARGS'" error**:
+1. **Ollama not running** (default provider):
    ```bash
-   # Use equals sign format
-   mcp-cli chat --server=sqlite --provider=openai
+   # Start Ollama service
+   ollama serve
    
-   # Or add double dash
-   mcp-cli chat -- --server sqlite --provider openai
+   # Or check if it's running
+   curl http://localhost:11434/api/tags
    ```
 
-2. **Provider not found**:
+2. **Model not found**:
    ```bash
-   mcp-cli provider diagnostic
-   mcp-cli provider set <provider> api_key <your-key>
+   # For Ollama (default), pull the model first
+   ollama pull gpt-oss      # Reasoning model
+   ollama pull llama3.3     # Latest Llama
+   ollama pull qwen2.5-coder # Coding model
+   
+   # List available models
+   ollama list
+   
+   # For cloud providers, check supported models
+   mcp-cli models openai     # Shows GPT-5, GPT-4, O3 models
+   mcp-cli models anthropic  # Shows Claude 4, Claude 3.5 models
    ```
 
-3. **Tool execution timeout**:
+3. **Provider not found or API key missing**:
    ```bash
-   export MCP_TOOL_TIMEOUT=300  # 5 minutes
+   # Check available providers
+   mcp-cli provider list
+   
+   # For cloud providers, set API keys
+   mcp-cli provider set openai api_key sk-your-key
+   mcp-cli provider set anthropic api_key sk-ant-your-key
+   
+   # Test connection
+   mcp-cli provider diagnostic openai
    ```
 
-4. **Connection issues**:
+4. **Connection issues with Ollama**:
    ```bash
-   mcp-cli ping --server <server-name>
-   mcp-cli servers
+   # Check Ollama is running
+   ollama list
+   
+   # Test connection
+   mcp-cli provider diagnostic ollama
+   
+   # Configure custom endpoint if needed
+   mcp-cli provider set ollama api_base http://localhost:11434
    ```
 
 ### Debug Mode
@@ -561,7 +785,8 @@ mcp-cli --log-level DEBUG interactive --server sqlite
 
 ## 🔒 Security Considerations
 
-- **API Keys**: Stored securely in environment variables or protected files
+- **Local by Default**: Ollama with gpt-oss runs locally, keeping your data private
+- **API Keys**: Only needed for cloud providers (OpenAI, Anthropic, etc.), stored securely
 - **File Access**: Filesystem access can be disabled with `--disable-filesystem`
 - **Tool Validation**: All tool calls are validated before execution
 - **Timeout Protection**: Configurable timeouts prevent hanging operations
@@ -569,6 +794,8 @@ mcp-cli --log-level DEBUG interactive --server sqlite
 
 ## 🚀 Performance Features
 
+- **Local Processing**: Default Ollama provider minimizes latency
+- **Reasoning Visibility**: See AI thinking process with gpt-oss, GPT-5, Claude 4
 - **Concurrent Tool Execution**: Multiple tools can run simultaneously
 - **Streaming Responses**: Real-time response generation
 - **Connection Pooling**: Efficient reuse of client connections
@@ -582,7 +809,7 @@ Core dependencies are organized into feature groups:
 - **cli**: Rich terminal UI, command completion, provider integrations
 - **dev**: Development tools, testing utilities, linting
 - **chuk-tool-processor**: Core tool execution and MCP communication
-- **chuk-llm**: Unified LLM provider management
+- **chuk-llm**: Unified LLM provider management with 200+ auto-generated functions
 
 Install with specific features:
 ```bash
@@ -617,7 +844,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 - **[CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor)** - Async-native tool execution
-- **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)** - Unified LLM provider management
+- **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)** - Unified LLM provider management with GPT-5, Claude 4, and reasoning model support
 - **[Rich](https://github.com/Textualize/rich)** - Beautiful terminal formatting
 - **[Typer](https://typer.tiangolo.com/)** - CLI framework
 - **[Prompt Toolkit](https://github.com/prompt-toolkit/python-prompt-toolkit)** - Interactive input
@@ -627,4 +854,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **[Model Context Protocol](https://modelcontextprotocol.io/)** - Core protocol specification
 - **[MCP Servers](https://github.com/modelcontextprotocol/servers)** - Official MCP server implementations
 - **[CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor)** - Tool execution engine
-- **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)** - LLM provider abstraction
+- **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)** - LLM provider abstraction with GPT-5, Claude 4, O3 series support
