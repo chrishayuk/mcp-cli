@@ -1,4 +1,4 @@
-# mcp_cli/run_command.py
+# mcp_cli/run_command.py - COMPLETE FIXED VERSION
 """
 Main entry-point helpers for all CLI sub-commands.
 
@@ -7,6 +7,8 @@ These helpers encapsulate
 * construction / cleanup of the shared **ToolManager**
 * hand-off to individual command modules
 * a thin synchronous wrapper so `uv run mcp-cli …` works
+
+ENHANCED: Now properly handles namespace selection for HTTP vs STDIO servers.
 """
 from __future__ import annotations
 
@@ -38,12 +40,17 @@ async def _init_tool_manager(
 ):
     """
     Dynamically import **ToolManager** (so monkey-patching works) and create it.
+    ENHANCED: Automatically selects appropriate namespace based on server type.
     """
     tm_mod = importlib.import_module("mcp_cli.tools.manager")
     ToolManager = getattr(tm_mod, "ToolManager")           # patched in tests
 
     tm = ToolManager(config_file, servers, server_names)   # type: ignore[call-arg]
-    ok = await tm.initialize(namespace="stdio")
+    
+    # ENHANCED: Let ToolManager automatically select the namespace
+    # It will use the server name for HTTP servers, "stdio" for STDIO servers
+    ok = await tm.initialize()  # Remove the hardcoded namespace parameter
+    
     if not ok:
         # record it for the tests
         _ALL_TM.append(tm)
@@ -92,7 +99,7 @@ async def run_command(
         tm = await _init_tool_manager(config_file, servers, server_names)
 
         # ------------------------------------------------------------------
-        # special-case: interactive “app” object
+        # special-case: interactive "app" object
         # ------------------------------------------------------------------
         name = getattr(async_command, "__name__", "")
         module = getattr(async_command, "__module__", "")
