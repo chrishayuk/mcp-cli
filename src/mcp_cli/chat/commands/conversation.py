@@ -23,13 +23,12 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List
 
-# Rich helpers
-from mcp_cli.utils.rich_helpers import get_console
-from rich.panel import Panel
-from rich.markdown import Markdown
-
-# Shared UI helpers
-from mcp_cli.ui.ui_helpers import display_welcome_banner, clear_screen
+# NEW: Use the new UI module instead of rich directly
+from mcp_cli.ui import (
+    output,
+    clear_screen,
+    display_chat_banner,
+)
 
 # Chat registry
 from mcp_cli.chat.commands import register_command
@@ -38,21 +37,25 @@ from mcp_cli.chat.commands import register_command
 # ════════════════════════════════════════════════════════════════════════════
 # /cls  - clear screen, keep history
 # ════════════════════════════════════════════════════════════════════════════
-async def cmd_cls(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
+async def cmd_cls(_parts: List[str], ctx: Dict[str, Any]) -> bool:
     """Clear the terminal window but *preserve* the conversation history."""
-    console = get_console()
     clear_screen()
-    display_welcome_banner(ctx)
-    console.print("[green]Screen cleared. Conversation history preserved.[/green]")
+    
+    # Re-display the chat banner
+    display_chat_banner(
+        provider=ctx.get("provider", "unknown"),
+        model=ctx.get("model", "unknown")
+    )
+    
+    output.success("Screen cleared. Conversation history preserved.")
     return True
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # /clear - clear screen *and* history
 # ════════════════════════════════════════════════════════════════════════════
-async def cmd_clear(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
+async def cmd_clear(_parts: List[str], ctx: Dict[str, Any]) -> bool:
     """Clear the screen *and* reset the in-memory history."""
-    console = get_console()
     clear_screen()
 
     history = ctx.get("conversation_history", [])
@@ -61,21 +64,25 @@ async def cmd_clear(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D4
         history.clear()
         history.append({"role": "system", "content": system_prompt})
 
-    display_welcome_banner(ctx)
-    console.print("[green]Screen cleared and conversation history reset.[/green]")
+    # Re-display the chat banner
+    display_chat_banner(
+        provider=ctx.get("provider", "unknown"),
+        model=ctx.get("model", "unknown")
+    )
+    
+    output.success("Screen cleared and conversation history reset.")
     return True
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # /compact - summarise conversation
 # ════════════════════════════════════════════════════════════════════════════
-async def cmd_compact(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
+async def cmd_compact(_parts: List[str], ctx: Dict[str, Any]) -> bool:
     """Replace lengthy history with a compact LLM-generated summary."""
-    console = get_console()
     history = ctx.get("conversation_history", [])
 
     if len(history) <= 1:
-        console.print("[yellow]Nothing to compact.[/yellow]")
+        output.warning("Nothing to compact.")
         return True
 
     system_prompt = history[0]["content"]
@@ -84,14 +91,14 @@ async def cmd_compact(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: 
         "content": "Please summarise our conversation so far, concisely.",
     }
 
-    with console.status("[cyan]Generating summary…[/cyan]", spinner="dots"):
+    with output.loading("Generating summary..."):
         try:
             result = await ctx["client"].create_completion(
                 messages=history + [summary_prompt]
             )
             summary = result.get("response", "No summary available.")
-        except Exception as exc:  # pragma: no cover
-            console.print(f"[red]Error summarising conversation: {exc}[/red]")
+        except Exception as exc:
+            output.error(f"Error summarising conversation: {exc}")
             summary = "Failed to generate summary."
 
     # Reset history
@@ -101,27 +108,31 @@ async def cmd_compact(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: 
         {"role": "assistant", "content": f"**Summary:**\n\n{summary}"},
     ]
 
-    display_welcome_banner(ctx)
-    console.print("[green]Conversation compacted.[/green]")
-    console.print(
-        Panel(
-            Markdown(f"**Summary:**\n\n{summary}"),
-            title="Conversation Summary",
-            style="cyan",
-        )
+    # Re-display the chat banner
+    display_chat_banner(
+        provider=ctx.get("provider", "unknown"),
+        model=ctx.get("model", "unknown")
     )
+    
+    output.success("Conversation compacted.")
+    
+    # Display the summary in a panel
+    output.panel(
+        f"**Summary:**\n\n{summary}",
+        title="Conversation Summary",
+        style="cyan"
+    )
+    
     return True
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # /save  - write history to disk
 # ════════════════════════════════════════════════════════════════════════════
-async def cmd_save(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
+async def cmd_save(parts: List[str], ctx: Dict[str, Any]) -> bool:
     """Persist the conversation history to a JSON file on disk."""
-    console = get_console()
-
     if len(parts) < 2:
-        console.print("[yellow]Usage: /save <filename>[/yellow]")
+        output.warning("Usage: /save <filename>")
         return True
 
     filename = parts[1]
@@ -132,9 +143,10 @@ async def cmd_save(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
     try:
         with open(filename, "w", encoding="utf-8") as fp:
             json.dump(history, fp, indent=2, ensure_ascii=False)
-        console.print(f"[green]Conversation saved to {filename}[/green]")
-    except Exception as exc:  # pragma: no cover
-        console.print(f"[red]Failed to save conversation: {exc}[/red]")
+        output.success(f"Conversation saved to {filename}")
+    except Exception as exc:
+        output.error(f"Failed to save conversation: {exc}")
+    
     return True
 
 

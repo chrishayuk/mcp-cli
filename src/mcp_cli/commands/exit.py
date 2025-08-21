@@ -10,12 +10,14 @@ caller (interactive) or exits the process (one-shot mode).
 from __future__ import annotations
 import sys
 
-# mcp cli
-from mcp_cli.ui.ui_helpers import restore_terminal
-from mcp_cli.utils.rich_helpers import get_console
+# NEW: Import from the new UI module
+from mcp_cli.ui import (
+    output,
+    restore_terminal,
+)
 
 
-def exit_action(interactive: bool = True) -> bool:  # noqa: D401
+def exit_action(interactive: bool = True) -> bool:
     """
     Cleanly close the current MCP-CLI session.
 
@@ -29,16 +31,18 @@ def exit_action(interactive: bool = True) -> bool:  # noqa: D401
     -------
     bool
         Always ``True`` so interactive callers can treat it as a
-        “please-stop” flag.  (When *interactive* is ``False`` the function
+        "please-stop" flag.  (When *interactive* is ``False`` the function
         never returns because the process terminates.)
     """
-    console = get_console()          # unified Rich/plain console
-    console.print("[yellow]Exiting… Goodbye![/yellow]")
+    # Use the UI output for the goodbye message
+    output.info("Exiting… Goodbye!")
 
+    # restore the terminal
     restore_terminal()
 
+    # exit
     if not interactive:
         sys.exit(0)
 
+    # exited
     return True
-
