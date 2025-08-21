@@ -233,7 +233,7 @@ redis = [
 
 [[package]]
 name = "chuk-tool-processor"
-version = "0.6.11"
+version = "0.6.12"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "chuk-mcp" },
@@ -242,9 +242,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "uuid" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ee/7d/6e5adc40acec60c7754d19772573a7094b21477f16d6a6a08cc6517049d4/chuk_tool_processor-0.6.11.tar.gz", hash = "sha256:fd70b9a50a2f1a00fcf99318cf8d79508c9bd8b1ae861519470ad277bab3d6d4", size = 96827 }
+sdist = { url = "https://files.pythonhosted.org/packages/25/b3/9c4e6415c6510c789d681656c1aa3e65ba704689837d2dce660aed849016/chuk_tool_processor-0.6.12.tar.gz", hash = "sha256:b3300c803fc8947e5343850e7ea73bde90ef1a6c0b213111217515ab38e208fd", size = 97835 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/28/3d/1d90597f26f2c24949bcd01a87d19b7ad3aa2bf1a6d484b35cefe623c43b/chuk_tool_processor-0.6.11-py3-none-any.whl", hash = "sha256:cd89c041964c47e04133d256220ea4cc17f59c72c70933de0c6ed728fa207026", size = 120502 },
+    { url = "https://files.pythonhosted.org/packages/bb/1a/ff54a57bd80b55067cb27cd370d6429a451a912fe022d3edb407b5979297/chuk_tool_processor-0.6.12-py3-none-any.whl", hash = "sha256:3c63182f6b2edb21de78a32b17a3774af333ef37b68f81a7bc0b428c6f9702ce", size = 121617 },
 ]
 
 [[package]]
@@ -723,7 +723,7 @@ requires-dist = [
     { name = "asyncio", marker = "extra == 'dev'", specifier = ">=3.4.3" },
     { name = "chuk-llm", extras = ["all"], specifier = ">=0.9.8" },
     { name = "chuk-mcp", extras = ["full", "pydantic", "ui-manager"], specifier = ">=0.5" },
-    { name = "chuk-tool-processor", specifier = ">=0.6.11" },
+    { name = "chuk-tool-processor", specifier = ">=0.6.12" },
     { name = "jsonschema", specifier = ">=4.25.1" },
     { name = "numpy", marker = "extra == 'dev'", specifier = ">=2.2.3" },
     { name = "prompt-toolkit", specifier = ">=3.0.50" },
