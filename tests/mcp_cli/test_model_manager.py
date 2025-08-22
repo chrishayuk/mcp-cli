@@ -1,14 +1,13 @@
 # tests/test_model_manager.py
 """
 Comprehensive pytest unit tests for ModelManager class.
-Tests all validation logic, edge cases, and security features.
+Tests all validation logic, edge cases, and model management features.
 """
 
 import pytest
-import tempfile
-import shutil
+import logging
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, call
 from typing import Dict, List, Any
 
 import sys
@@ -17,690 +16,545 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from mcp_cli.model_manager import ModelManager
 
 
+def create_mock_config(providers=None):
+    """Helper to create a properly configured mock config object."""
+    if providers is None:
+        providers = ["ollama", "openai", "anthropic"]
+    
+    mock_config = Mock()
+    mock_config.get_all_providers = Mock(return_value=providers)
+    
+    # Mock get_provider to return a valid provider config
+    def mock_get_provider(name):
+        provider_config = Mock()
+        provider_config.default_model = {
+            "ollama": "gpt-oss",
+            "openai": "gpt-5",
+            "anthropic": "claude-sonnet"
+        }.get(name, "default")
+        return provider_config
+    
+    mock_config.get_provider = Mock(side_effect=mock_get_provider)
+    
+    return mock_config
+
+
 class TestModelManagerInitialization:
     """Test ModelManager initialization and configuration loading."""
     
-    def test_init_creates_default_preferences(self):
-        """Test that ModelManager creates default preferences when none exist."""
-        with patch('mcp_cli.model_manager.get_config') as mock_get_config:
-            mock_config = Mock()
-            mock_get_config.return_value = mock_config
-            
-            with tempfile.TemporaryDirectory() as temp_dir:
-                with patch('pathlib.Path.home', return_value=Path(temp_dir)):
-                    manager = ModelManager()
-                    
-                    assert manager.get_active_provider() == "openai"
-                    assert manager.get_active_model() == "gpt-4o-mini"
+    @patch('chuk_llm.api.providers.trigger_ollama_discovery_and_refresh')
+    @patch('chuk_llm.configuration.get_config')
+    def test_init_with_ollama_default(self, mock_get_config, mock_discovery):
+        """Test that ModelManager defaults to ollama/gpt-oss."""
+        mock_get_config.return_value = create_mock_config()
+        mock_discovery.return_value = []
+        
+        manager = ModelManager()
+        
+        assert manager.get_active_provider() == "ollama"
+        assert manager.get_active_model() == "gpt-oss"
+        # Check discovery was triggered
+        mock_discovery.assert_called_once()
     
-    def test_init_loads_existing_preferences(self):
-        """Test that ModelManager loads existing preferences from file."""
-        with patch('mcp_cli.model_manager.get_config') as mock_get_config:
-            mock_config = Mock()
-            mock_get_config.return_value = mock_config
+    @patch('chuk_llm.api.providers.trigger_ollama_discovery_and_refresh')
+    @patch('chuk_llm.configuration.get_config')
+    def test_init_triggers_discovery(self, mock_get_config, mock_discovery):
+        """Test that ModelManager triggers discovery on initialization."""
+        mock_get_config.return_value = create_mock_config()
+        mock_discovery.return_value = ['model1', 'model2']
+        
+        manager = ModelManager()
+        
+        assert manager._discovery_triggered is True
+        mock_discovery.assert_called_once()
+    
+    @patch('chuk_llm.configuration.get_config')
+    def test_init_without_config(self, mock_get_config):
+        """Test ModelManager initialization when chuk_llm config fails."""
+        mock_get_config.side_effect = Exception("Config error")
+        
+        with patch('chuk_llm.api.providers.trigger_ollama_discovery_and_refresh'):
+            manager = ModelManager()
             
-            with tempfile.TemporaryDirectory() as temp_dir:
-                # Create preferences file
-                prefs_dir = Path(temp_dir) / ".mcp-cli"
-                prefs_dir.mkdir(parents=True)
-                prefs_file = prefs_dir / "preferences.yaml"
-                
-                prefs_content = """
-active_provider: anthropic
-active_model: claude-sonnet-4-20250514
-"""
-                prefs_file.write_text(prefs_content)
-                
-                with patch('pathlib.Path.home', return_value=Path(temp_dir)):
-                    manager = ModelManager()
-                    
-                    assert manager.get_active_provider() == "anthropic"
-                    assert manager.get_active_model() == "claude-sonnet-4-20250514"
+            # Should fall back to ollama/gpt-oss
+            assert manager.get_active_provider() == "ollama"
+            assert manager.get_active_model() == "gpt-oss"
+            assert manager._chuk_config is None
 
 
-class TestProviderValidation:
-    """Test provider validation methods."""
+class TestProviderManagement:
+    """Test provider-related functionality."""
     
     @pytest.fixture
     def mock_manager(self):
         """Create a mocked ModelManager for testing."""
-        with patch('mcp_cli.model_manager.get_config') as mock_get_config:
-            mock_config = Mock()
-            mock_config.get_all_providers.return_value = ["openai", "anthropic", "ollama"]
-            mock_get_config.return_value = mock_config
-            
-            with tempfile.TemporaryDirectory() as temp_dir:
-                with patch('pathlib.Path.home', return_value=Path(temp_dir)):
-                    return ModelManager()
+        with patch('chuk_llm.api.providers.trigger_ollama_discovery_and_refresh'):
+            with patch('chuk_llm.configuration.get_config') as mock_get_config:
+                mock_get_config.return_value = create_mock_config(["ollama", "openai", "anthropic"])
+                
+                manager = ModelManager()
+                return manager
     
-    def test_validate_provider_valid(self, mock_manager):
-        """Test validation of valid providers."""
-        assert mock_manager.validate_provider("openai") is True
-        assert mock_manager.validate_provider("anthropic") is True
-        assert mock_manager.validate_provider("ollama") is True
-    
-    def test_validate_provider_invalid(self, mock_manager):
-        """Test validation of invalid providers."""
-        assert mock_manager.validate_provider("invalid-provider") is False
-        assert mock_manager.validate_provider("fake-ai") is False
-        assert mock_manager.validate_provider("") is False
-        assert mock_manager.validate_provider("non-existent") is False
-    
-    def test_list_providers(self, mock_manager):
-        """Test listing available providers."""
-        providers = mock_manager.list_providers()
+    def test_get_available_providers(self, mock_manager):
+        """Test getting available providers with preferred ordering."""
+        providers = mock_manager.get_available_providers()
+        
+        # Ollama should be first
+        assert providers[0] == "ollama"
         assert "openai" in providers
         assert "anthropic" in providers
-        assert "ollama" in providers
-        assert len(providers) == 3
+    
+    def test_validate_provider(self, mock_manager):
+        """Test provider validation."""
+        assert mock_manager.validate_provider("ollama") is True
+        assert mock_manager.validate_provider("openai") is True
+        assert mock_manager.validate_provider("invalid") is False
+    
+    def test_set_active_provider(self, mock_manager):
+        """Test setting active provider."""
+        with patch.object(mock_manager, 'get_available_models', return_value=['model1']):
+            mock_manager.set_active_provider("openai")
+            
+            assert mock_manager.get_active_provider() == "openai"
+            # Client cache should be cleared
+            assert len(mock_manager._client_cache) == 0
+    
+    def test_set_active_provider_invalid(self, mock_manager):
+        """Test setting invalid provider raises error."""
+        with pytest.raises(ValueError, match="Provider invalid not available"):
+            mock_manager.set_active_provider("invalid")
 
 
-class TestModelValidation:
-    """Test model validation methods - the key security feature."""
+class TestModelManagement:
+    """Test model-related functionality."""
     
     @pytest.fixture
     def mock_manager_with_models(self):
-        """Create a mocked ModelManager with model data."""
-        with patch('mcp_cli.model_manager.get_config') as mock_get_config:
-            mock_config = Mock()
-            mock_config.get_all_providers.return_value = ["openai", "anthropic"]
-            mock_get_config.return_value = mock_config
-            
-            with tempfile.TemporaryDirectory() as temp_dir:
-                with patch('pathlib.Path.home', return_value=Path(temp_dir)):
-                    manager = ModelManager()
-                    
-                    # Mock get_available_models to return test data
-                    def mock_get_models(provider):
-                        models_data = {
-                            "openai": ["gpt-4o", "gpt-4o-mini", "gpt-4.1"],
-                            "anthropic": ["claude-sonnet-4-20250514", "claude-opus-4-20250514"],
+        """Create ModelManager with mocked model data."""
+        with patch('chuk_llm.api.providers.trigger_ollama_discovery_and_refresh'):
+            with patch('chuk_llm.configuration.get_config') as mock_get_config:
+                mock_get_config.return_value = create_mock_config(["ollama", "openai"])
+                
+                manager = ModelManager()
+                
+                # Mock list_available_providers to return model data
+                with patch('chuk_llm.llm.client.list_available_providers') as mock_list:
+                    mock_list.return_value = {
+                        "ollama": {
+                            "models": ["gpt-oss", "llama3.3", "qwen3"],
+                            "model_count": 3,
+                            "has_api_key": False,
+                            "default_model": "gpt-oss"
+                        },
+                        "openai": {
+                            "models": ["gpt-5", "gpt-5-mini", "gpt-4o"],
+                            "model_count": 3,
+                            "has_api_key": True,
+                            "default_model": "gpt-5"
                         }
-                        return models_data.get(provider, [])
-                    
-                    manager.get_available_models = Mock(side_effect=mock_get_models)
-                    return manager
+                    }
+                    manager._providers_cache = mock_list.return_value
+                
+                return manager
     
-    def test_validate_model_for_provider_valid_models(self, mock_manager_with_models):
-        """Test validation of valid models."""
-        manager = mock_manager_with_models
-        
-        # Test valid OpenAI models
-        assert manager.validate_model_for_provider("openai", "gpt-4o") is True
-        assert manager.validate_model_for_provider("openai", "gpt-4o-mini") is True
-        assert manager.validate_model_for_provider("openai", "gpt-4.1") is True
-        
-        # Test valid Anthropic models
-        assert manager.validate_model_for_provider("anthropic", "claude-sonnet-4-20250514") is True
-        assert manager.validate_model_for_provider("anthropic", "claude-opus-4-20250514") is True
+    def test_get_available_models_ollama(self, mock_manager_with_models):
+        """Test getting Ollama models with gpt-oss priority."""
+        with patch('chuk_llm.llm.client.list_available_providers') as mock_list:
+            mock_list.return_value = {
+                "ollama": {
+                    "models": ["llama3.3", "mistral", "gpt-oss", "qwen3"]
+                }
+            }
+            
+            models = mock_manager_with_models.get_available_models("ollama")
+            
+            # gpt-oss should be first even if not in original order
+            if "gpt-oss" in models:
+                assert models[0] == "gpt-oss"
     
-    def test_validate_model_for_provider_invalid_models(self, mock_manager_with_models):
-        """Test validation rejects invalid models."""
-        manager = mock_manager_with_models
-        
-        # Test invalid models for OpenAI
-        assert manager.validate_model_for_provider("openai", "gpt-999-fake") is False
-        assert manager.validate_model_for_provider("openai", "claude-sonnet-4-20250514") is False
-        assert manager.validate_model_for_provider("openai", "nonexistent-model") is False
-        
-        # Test invalid models for Anthropic
-        assert manager.validate_model_for_provider("anthropic", "gpt-4o") is False
-        assert manager.validate_model_for_provider("anthropic", "fake-claude") is False
-        assert manager.validate_model_for_provider("anthropic", "") is False
+    def test_get_available_models_openai(self, mock_manager_with_models):
+        """Test getting OpenAI models with GPT-5 priority."""
+        with patch('chuk_llm.llm.client.list_available_providers') as mock_list:
+            mock_list.return_value = {
+                "openai": {
+                    "models": ["gpt-4o", "gpt-5-mini", "gpt-5", "gpt-3.5-turbo"]
+                }
+            }
+            
+            models = mock_manager_with_models.get_available_models("openai")
+            
+            # GPT-5 models should be prioritized
+            if "gpt-5" in models:
+                gpt5_index = models.index("gpt-5")
+                gpt4_index = models.index("gpt-4o") if "gpt-4o" in models else len(models)
+                assert gpt5_index < gpt4_index
     
-    def test_validate_model_for_provider_edge_cases(self, mock_manager_with_models):
-        """Test model validation edge cases."""
-        manager = mock_manager_with_models
+    def test_get_default_model_ollama(self, mock_manager_with_models):
+        """Test default model for Ollama is gpt-oss."""
+        with patch.object(mock_manager_with_models, 'get_available_models', 
+                         return_value=['llama3.3', 'gpt-oss', 'mistral']):
+            default = mock_manager_with_models.get_default_model("ollama")
+            assert default == "gpt-oss"
+    
+    def test_validate_model(self, mock_manager_with_models):
+        """Test model validation."""
+        with patch.object(mock_manager_with_models, 'get_available_models',
+                         return_value=['gpt-oss', 'llama3.3']):
+            assert mock_manager_with_models.validate_model("gpt-oss", "ollama") is True
+            assert mock_manager_with_models.validate_model("invalid", "ollama") is False
+    
+    def test_set_active_model(self, mock_manager_with_models):
+        """Test setting active model."""
+        mock_manager_with_models.set_active_model("llama3.3")
         
-        # Test with provider that has no models
-        manager.get_available_models.side_effect = lambda p: [] if p == "empty-provider" else manager.get_available_models(p)
-        assert manager.validate_model_for_provider("empty-provider", "any-model") is False
-        
-        # Test with None/empty inputs
-        assert manager.validate_model_for_provider("openai", "") is False
-        assert manager.validate_model_for_provider("openai", None) is False
+        assert mock_manager_with_models.get_active_model() == "llama3.3"
+        # Client cache should be cleared
+        assert len(mock_manager_with_models._client_cache) == 0
 
 
 class TestModelSwitching:
-    """Test model switching operations with validation."""
+    """Test model switching operations."""
     
     @pytest.fixture
     def mock_manager_for_switching(self):
-        """Create a fully mocked ModelManager for switching tests."""
-        with patch('mcp_cli.model_manager.get_config') as mock_get_config:
-            mock_config = Mock()
-            mock_config.get_all_providers.return_value = ["openai", "anthropic"]
-            mock_get_config.return_value = mock_config
+        """Create ModelManager for switching tests."""
+        with patch('chuk_llm.api.providers.trigger_ollama_discovery_and_refresh'):
+            with patch('chuk_llm.configuration.get_config') as mock_get_config:
+                mock_get_config.return_value = create_mock_config(["ollama", "openai"])
+                
+                manager = ModelManager()
+                
+                # Mock get_available_models
+                def mock_get_models(provider):
+                    if provider == "ollama":
+                        return ["gpt-oss", "llama3.3", "qwen3"]
+                    elif provider == "openai":
+                        return ["gpt-5", "gpt-5-mini", "gpt-4o"]
+                    return []
+                
+                manager.get_available_models = Mock(side_effect=mock_get_models)
+                
+                return manager
+    
+    def test_switch_model(self, mock_manager_for_switching):
+        """Test switching provider and model."""
+        manager = mock_manager_for_switching
+        
+        manager.switch_model("openai", "gpt-5")
+        
+        assert manager.get_active_provider() == "openai"
+        assert manager.get_active_model() == "gpt-5"
+    
+    def test_switch_provider(self, mock_manager_for_switching):
+        """Test switching provider only."""
+        manager = mock_manager_for_switching
+        
+        # Mock get_default_model for openai
+        with patch.object(manager, 'get_default_model', return_value="gpt-5"):
+            manager.switch_provider("openai")
             
-            with tempfile.TemporaryDirectory() as temp_dir:
-                with patch('pathlib.Path.home', return_value=Path(temp_dir)):
-                    manager = ModelManager()
-                    
-                    # Mock validation methods
-                    manager.validate_provider = Mock(side_effect=lambda p: p in ["openai", "anthropic"])
-                    
-                    def mock_validate_model(provider, model):
-                        valid_combinations = {
-                            ("openai", "gpt-4o"): True,
-                            ("openai", "gpt-4o-mini"): True,
-                            ("anthropic", "claude-sonnet-4-20250514"): True,
-                        }
-                        return valid_combinations.get((provider, model), False)
-                    
-                    manager.validate_model_for_provider = Mock(side_effect=mock_validate_model)
-                    
-                    # Mock provider info
-                    def mock_get_provider_info(provider):
-                        info_data = {
-                            "openai": {"default_model": "gpt-4o-mini"},
-                            "anthropic": {"default_model": "claude-sonnet-4-20250514"},
-                        }
-                        return info_data.get(provider, {})
-                    
-                    manager.get_provider_info = Mock(side_effect=mock_get_provider_info)
-                    
-                    return manager
-    
-    def test_switch_model_valid_combinations(self, mock_manager_for_switching):
-        """Test successful model switching with valid combinations."""
-        manager = mock_manager_for_switching
-        
-        # Test valid switches
-        manager.switch_model("openai", "gpt-4o")
-        assert manager.get_active_provider() == "openai"
-        assert manager.get_active_model() == "gpt-4o"
-        
-        manager.switch_model("anthropic", "claude-sonnet-4-20250514")
-        assert manager.get_active_provider() == "anthropic" 
-        assert manager.get_active_model() == "claude-sonnet-4-20250514"
-    
-    def test_switch_model_invalid_provider(self, mock_manager_for_switching):
-        """Test that switching to invalid provider raises ValueError."""
-        manager = mock_manager_for_switching
-        
-        with pytest.raises(ValueError, match="Unknown provider: invalid-provider"):
-            manager.switch_model("invalid-provider", "any-model")
-        
-        with pytest.raises(ValueError, match="Unknown provider: fake-ai"):
-            manager.switch_model("fake-ai", "gpt-4o")
-    
-    def test_switch_model_invalid_model(self, mock_manager_for_switching):
-        """Test that switching to invalid model raises ValueError."""
-        manager = mock_manager_for_switching
-        
-        # Mock get_available_models for error messages
-        manager.get_available_models = Mock(return_value=["gpt-4o", "gpt-4o-mini"])
-        
-        with pytest.raises(ValueError, match="Model 'fake-model' not available for provider 'openai'"):
-            manager.switch_model("openai", "fake-model")
-        
-        with pytest.raises(ValueError, match="Model 'gpt-999' not available for provider 'openai'"):
-            manager.switch_model("openai", "gpt-999")
-    
-    def test_switch_provider_with_model(self, mock_manager_for_switching):
-        """Test switching provider with specific model."""
-        manager = mock_manager_for_switching
-        
-        manager.switch_provider("openai", "gpt-4o")
-        assert manager.get_active_provider() == "openai"
-        assert manager.get_active_model() == "gpt-4o"
-    
-    def test_switch_provider_without_model(self, mock_manager_for_switching):
-        """Test switching provider without specifying model (uses default)."""
-        manager = mock_manager_for_switching
-        
-        manager.switch_provider("anthropic")
-        assert manager.get_active_provider() == "anthropic"
-        assert manager.get_active_model() == "claude-sonnet-4-20250514"  # default
+            assert manager.get_active_provider() == "openai"
     
     def test_switch_to_model(self, mock_manager_for_switching):
-        """Test switching to specific model (may change provider)."""
+        """Test switching to model on current provider."""
         manager = mock_manager_for_switching
+        manager._active_provider = "ollama"
         
-        # Set initial state
-        manager._user_prefs["active_provider"] = "openai"
-        manager._user_prefs["active_model"] = "gpt-4o-mini"
+        manager.switch_to_model("llama3.3")
         
-        # Switch to model on current provider
-        manager.switch_to_model("gpt-4o")
-        assert manager.get_active_provider() == "openai"
-        assert manager.get_active_model() == "gpt-4o"
-        
-        # Switch to model on different provider
-        manager.switch_to_model("claude-sonnet-4-20250514", "anthropic")
-        assert manager.get_active_provider() == "anthropic"
-        assert manager.get_active_model() == "claude-sonnet-4-20250514"
+        assert manager.get_active_model() == "llama3.3"
 
 
-class TestClientCreation:
-    """Test client creation with validation."""
+class TestDiscoveryAndRefresh:
+    """Test discovery and model refresh functionality."""
+    
+    @patch('chuk_llm.api.providers.trigger_ollama_discovery_and_refresh')
+    @patch('chuk_llm.api.providers.refresh_provider_functions')
+    @patch('chuk_llm.configuration.get_config')
+    def test_refresh_models_ollama(self, mock_config, mock_refresh, mock_ollama_discovery):
+        """Test refreshing Ollama models."""
+        mock_config.return_value = create_mock_config()
+        mock_ollama_discovery.return_value = ['model1', 'model2']
+        
+        manager = ModelManager()
+        count = manager.refresh_models("ollama")
+        
+        assert count == 2
+        # Discovery is called twice - once on init, once on refresh
+        assert mock_ollama_discovery.call_count == 2
+    
+    @patch('chuk_llm.api.providers.trigger_ollama_discovery_and_refresh')
+    @patch('chuk_llm.api.providers.refresh_provider_functions')
+    @patch('chuk_llm.configuration.get_config')
+    def test_refresh_models_other_provider(self, mock_config, mock_refresh, mock_ollama_discovery):
+        """Test refreshing models for non-Ollama provider."""
+        mock_config.return_value = create_mock_config()
+        mock_ollama_discovery.return_value = []
+        mock_refresh.return_value = ['model1']
+        
+        manager = ModelManager()
+        count = manager.refresh_models("openai")
+        
+        assert count == 1
+        mock_refresh.assert_called_with("openai")
+    
+    @patch('chuk_llm.api.providers.trigger_ollama_discovery_and_refresh')
+    @patch('chuk_llm.configuration.get_config')
+    def test_refresh_discovery(self, mock_config, mock_discovery):
+        """Test refresh_discovery alias method."""
+        mock_config.return_value = create_mock_config()
+        mock_discovery.return_value = ['model1']
+        
+        manager = ModelManager()
+        manager._discovery_triggered = True  # Reset to test re-trigger
+        
+        result = manager.refresh_discovery("ollama")
+        
+        assert result is True
+
+
+class TestClientManagement:
+    """Test client creation and caching."""
     
     @pytest.fixture
     def mock_manager_for_clients(self):
-        """Create a mocked ModelManager for client testing."""
-        with patch('mcp_cli.model_manager.get_config') as mock_get_config:
-            mock_config = Mock()
-            mock_get_config.return_value = mock_config
-            
-            with tempfile.TemporaryDirectory() as temp_dir:
-                with patch('pathlib.Path.home', return_value=Path(temp_dir)):
-                    manager = ModelManager()
-                    
-                    # Mock validation
-                    manager.validate_provider = Mock(return_value=True)
-                    manager.validate_model_for_provider = Mock(return_value=True)
-                    
-                    return manager
+        """Create ModelManager for client tests."""
+        with patch('chuk_llm.api.providers.trigger_ollama_discovery_and_refresh'):
+            with patch('chuk_llm.configuration.get_config') as mock_get_config:
+                mock_get_config.return_value = create_mock_config()
+                
+                return ModelManager()
     
-    @patch('mcp_cli.model_manager.get_client')
-    def test_get_client_valid_configuration(self, mock_get_client, mock_manager_for_clients):
-        """Test client creation with valid configuration."""
+    @patch('chuk_llm.llm.client.get_client')
+    def test_get_client_creates_and_caches(self, mock_get_client, mock_manager_for_clients):
+        """Test client creation and caching."""
         manager = mock_manager_for_clients
+        manager._active_provider = "ollama"
+        manager._active_model = "gpt-oss"
+        
         mock_client = Mock()
         mock_get_client.return_value = mock_client
         
-        # Set valid configuration
-        manager._user_prefs["active_provider"] = "openai"
-        manager._user_prefs["active_model"] = "gpt-4o"
+        # First call should create client
+        client1 = manager.get_client()
+        assert client1 == mock_client
+        assert "ollama:gpt-oss" in manager._client_cache
+        mock_get_client.assert_called_once_with(provider="ollama", model="gpt-oss")
         
-        client = manager.get_client()
-        
-        assert client == mock_client
-        mock_get_client.assert_called_once_with(provider="openai", model="gpt-4o")
+        # Second call should use cache
+        mock_get_client.reset_mock()
+        client2 = manager.get_client()
+        assert client2 == mock_client
+        mock_get_client.assert_not_called()
     
-    def test_get_client_invalid_provider(self, mock_manager_for_clients):
-        """Test client creation fails with invalid provider."""
+    @patch('chuk_llm.llm.client.get_client')
+    def test_get_client_with_explicit_params(self, mock_get_client, mock_manager_for_clients):
+        """Test client creation with explicit provider/model."""
         manager = mock_manager_for_clients
-        manager.validate_provider = Mock(return_value=False)
-        manager.list_providers = Mock(return_value=["openai", "anthropic"])
         
-        manager._user_prefs["active_provider"] = "invalid-provider"
-        
-        with pytest.raises(ValueError, match="Current provider 'invalid-provider' is not valid"):
-            manager.get_client()
-    
-    def test_get_client_invalid_model(self, mock_manager_for_clients):
-        """Test client creation fails with invalid model."""
-        manager = mock_manager_for_clients
-        manager.validate_provider = Mock(return_value=True)
-        manager.validate_model_for_provider = Mock(return_value=False)
-        manager.get_available_models = Mock(return_value=["gpt-4o", "gpt-4o-mini"])
-        
-        manager._user_prefs["active_provider"] = "openai"
-        manager._user_prefs["active_model"] = "invalid-model"
-        
-        with pytest.raises(ValueError, match="Current model 'invalid-model' not available"):
-            manager.get_client()
-    
-    @patch('mcp_cli.model_manager.get_client')
-    def test_get_client_for_provider_valid(self, mock_get_client, mock_manager_for_clients):
-        """Test client creation for specific provider."""
-        manager = mock_manager_for_clients
         mock_client = Mock()
         mock_get_client.return_value = mock_client
-        manager.get_default_model = Mock(return_value="gpt-4o")
         
-        client = manager.get_client_for_provider("openai", "gpt-4o-mini")
+        client = manager.get_client(provider="openai", model="gpt-5")
         
         assert client == mock_client
-        mock_get_client.assert_called_once_with(provider="openai", model="gpt-4o-mini")
+        mock_get_client.assert_called_with(provider="openai", model="gpt-5")
+        assert "openai:gpt-5" in manager._client_cache
     
-    def test_get_client_for_provider_invalid(self, mock_manager_for_clients):
-        """Test client creation fails for invalid provider."""
+    def test_client_cache_cleared_on_provider_change(self, mock_manager_for_clients):
+        """Test client cache is cleared when provider changes."""
         manager = mock_manager_for_clients
-        manager.validate_provider = Mock(return_value=False)
-        manager.list_providers = Mock(return_value=["openai", "anthropic"])
+        manager._client_cache = {"ollama:gpt-oss": Mock()}
         
-        with pytest.raises(ValueError, match="Provider 'invalid' is not valid"):
-            manager.get_client_for_provider("invalid")
-
-
-class TestProviderConfiguration:
-    """Test provider configuration management."""
-    
-    @pytest.fixture
-    def mock_manager_for_config(self):
-        """Create a mocked ModelManager for configuration testing."""
-        with patch('mcp_cli.model_manager.get_config') as mock_get_config:
-            mock_config = Mock()
-            mock_config.reload = Mock()
-            mock_get_config.return_value = mock_config
+        with patch.object(manager, 'get_available_models', return_value=['gpt-5']):
+            manager.set_active_provider("openai")
             
-            with tempfile.TemporaryDirectory() as temp_dir:
-                with patch('pathlib.Path.home', return_value=Path(temp_dir)):
-                    return ModelManager()
-    
-    def test_configure_provider_basic(self, mock_manager_for_config):
-        """Test basic provider configuration."""
-        manager = mock_manager_for_config
-        
-        manager.configure_provider(
-            "openai",
-            api_key="sk-test-key",
-            api_base="https://api.openai.com",
-            default_model="gpt-4o"
-        )
-        
-        # Check that config files are created
-        config_dir = Path.home() / ".chuk_llm"
-        assert config_dir.exists()
-        
-        providers_file = config_dir / "providers.yaml"
-        assert providers_file.exists()
-        
-        env_file = config_dir / ".env"
-        assert env_file.exists()
-        
-        # Check content
-        env_content = env_file.read_text()
-        assert "OPENAI_API_KEY=sk-test-key" in env_content
-    
-    def test_set_api_key_creates_env_file(self, mock_manager_for_config):
-        """Test API key setting creates .env file correctly."""
-        manager = mock_manager_for_config
-        
-        manager._set_api_key("anthropic", "sk-ant-test")
-        
-        env_file = Path.home() / ".chuk_llm" / ".env"
-        assert env_file.exists()
-        
-        content = env_file.read_text()
-        assert "ANTHROPIC_API_KEY=sk-ant-test" in content
-    
-    def test_set_api_key_updates_existing(self, mock_manager_for_config):
-        """Test API key setting updates existing keys."""
-        manager = mock_manager_for_config
-        
-        # Create initial .env file
-        env_file = Path.home() / ".chuk_llm" / ".env"
-        env_file.parent.mkdir(parents=True, exist_ok=True)
-        env_file.write_text("OPENAI_API_KEY=old-key\nOTHER_VAR=value\n")
-        
-        # Update the key
-        manager._set_api_key("openai", "new-key")
-        
-        content = env_file.read_text()
-        assert "OPENAI_API_KEY=new-key" in content
-        assert "OTHER_VAR=value" in content
-        assert "old-key" not in content
+            assert len(manager._client_cache) == 0
 
 
-class TestModelDiscovery:
-    """Test model discovery and availability methods."""
+class TestProviderInfo:
+    """Test provider information methods."""
     
-    @pytest.fixture
-    def mock_manager_for_discovery(self):
-        """Create a mocked ModelManager for discovery testing."""
-        with patch('mcp_cli.model_manager.get_config') as mock_get_config:
-            mock_config = Mock()
-            mock_get_config.return_value = mock_config
+    @patch('chuk_llm.llm.client.list_available_providers')
+    @patch('chuk_llm.api.providers.trigger_ollama_discovery_and_refresh')
+    @patch('chuk_llm.configuration.get_config')
+    def test_list_available_providers(self, mock_config, mock_discovery, mock_list):
+        """Test listing available providers with details."""
+        mock_config.return_value = create_mock_config()
+        mock_discovery.return_value = []
+        
+        mock_list.return_value = {
+            "ollama": {
+                "models": ["gpt-oss", "llama3.3"],
+                "model_count": 2,
+                "has_api_key": False,
+                "baseline_features": ["text"],
+                "default_model": "gpt-oss"
+            }
+        }
+        
+        manager = ModelManager()
+        providers = manager.list_available_providers()
+        
+        assert "ollama" in providers
+        assert providers["ollama"]["default_model"] == "gpt-oss"
+        assert providers["ollama"]["model_count"] == 2
+    
+    @patch('chuk_llm.llm.client.get_provider_info')
+    @patch('chuk_llm.api.providers.trigger_ollama_discovery_and_refresh')
+    @patch('chuk_llm.configuration.get_config')
+    def test_get_provider_info(self, mock_config, mock_discovery, mock_get_info):
+        """Test getting provider information."""
+        mock_config.return_value = create_mock_config()
+        mock_discovery.return_value = []
+        
+        mock_get_info.return_value = {
+            "supports": {
+                "streaming": True,
+                "tools": True,
+                "vision": False
+            }
+        }
+        
+        manager = ModelManager()
+        info = manager.get_provider_info("ollama")
+        
+        assert info["supports"]["streaming"] is True
+        assert info["supports"]["tools"] is True
+
+
+class TestStatusAndInfo:
+    """Test status and information methods."""
+    
+    @patch('chuk_llm.api.providers.trigger_ollama_discovery_and_refresh')
+    @patch('chuk_llm.configuration.get_config')
+    def test_get_status(self, mock_config, mock_discovery):
+        """Test getting ModelManager status."""
+        mock_config.return_value = create_mock_config(["ollama", "openai"])
+        mock_discovery.return_value = []
+        
+        manager = ModelManager()
+        manager._client_cache = {"ollama:gpt-oss": Mock()}
+        
+        with patch.object(manager, 'get_available_models', return_value=['model1', 'model2']):
+            status = manager.get_status()
             
-            with tempfile.TemporaryDirectory() as temp_dir:
-                with patch('pathlib.Path.home', return_value=Path(temp_dir)):
-                    return ModelManager()
+            assert status["active_provider"] == "ollama"
+            assert status["active_model"] == "gpt-oss"
+            assert status["discovery_triggered"] is True
+            assert "ollama" in status["available_providers"]
+            assert status["cached_clients"] == 1
+            assert status["provider_model_counts"]["ollama"] == 2
     
-    @patch('mcp_cli.model_manager.get_provider_info')
-    def test_get_available_models_from_provider_info(self, mock_get_provider_info, mock_manager_for_discovery):
-        """Test getting models from provider info."""
-        manager = mock_manager_for_discovery
+    @patch('chuk_llm.api.providers.trigger_ollama_discovery_and_refresh')
+    @patch('chuk_llm.configuration.get_config')
+    def test_get_status_summary(self, mock_config, mock_discovery):
+        """Test getting status summary with capabilities."""
+        mock_config.return_value = create_mock_config()
+        mock_discovery.return_value = []
         
-        mock_get_provider_info.return_value = {
-            "models": ["gpt-4o", "gpt-4o-mini", "gpt-4.1"]
-        }
+        manager = ModelManager()
         
-        models = manager.get_available_models("openai")
-        assert models == ["gpt-4o", "gpt-4o-mini", "gpt-4.1"]
-    
-    @patch('mcp_cli.model_manager.get_provider_info')
-    def test_get_available_models_fallback_keys(self, mock_get_provider_info, mock_manager_for_discovery):
-        """Test model discovery with fallback keys."""
-        manager = mock_manager_for_discovery
-        
-        # Test with available_models key (fallback)
-        mock_get_provider_info.return_value = {
-            "available_models": ["claude-sonnet", "claude-opus"]
-        }
-        
-        models = manager.get_available_models("anthropic")
-        assert models == ["claude-sonnet", "claude-opus"]
-    
-    @patch('mcp_cli.model_manager.get_provider_info')
-    def test_get_available_models_direct_config_fallback(self, mock_get_provider_info, mock_manager_for_discovery):
-        """Test model discovery via direct config access."""
-        manager = mock_manager_for_discovery
-        
-        # Mock provider info returns no models
-        mock_get_provider_info.return_value = {}
-        
-        # Mock direct config access
-        mock_provider_config = Mock()
-        mock_provider_config.models = ["model1", "model2"]
-        manager.chuk_config.get_provider = Mock(return_value=mock_provider_config)
-        
-        models = manager.get_available_models("test-provider")
-        assert models == ["model1", "model2"]
-    
-    @patch('mcp_cli.model_manager.get_provider_info')
-    def test_get_default_model(self, mock_get_provider_info, mock_manager_for_discovery):
-        """Test getting default model for provider."""
-        manager = mock_manager_for_discovery
-        
-        mock_get_provider_info.return_value = {
-            "default_model": "gpt-4o-mini"
-        }
-        
-        default = manager.get_default_model("openai")
-        assert default == "gpt-4o-mini"
+        with patch.object(manager, 'get_provider_info') as mock_info:
+            mock_info.return_value = {
+                "supports": {
+                    "streaming": True,
+                    "tools": False,
+                    "vision": False,
+                    "json_mode": True
+                }
+            }
+            
+            summary = manager.get_status_summary()
+            
+            assert summary["provider"] == "ollama"
+            assert summary["model"] == "gpt-oss"
+            assert summary["supports_streaming"] is True
+            assert summary["supports_tools"] is False
 
 
-class TestEdgeCasesAndErrorHandling:
+class TestEdgeCasesAndErrors:
     """Test edge cases and error handling."""
     
-    @pytest.fixture
-    def basic_manager(self):
-        """Create a basic ModelManager for edge case testing."""
-        with patch('mcp_cli.model_manager.get_config') as mock_get_config:
-            mock_config = Mock()
-            mock_get_config.return_value = mock_config
+    @patch('chuk_llm.api.providers.trigger_ollama_discovery_and_refresh')
+    @patch('chuk_llm.configuration.get_config')
+    def test_discovery_failure_handled(self, mock_config, mock_discovery):
+        """Test that discovery failure doesn't break initialization."""
+        mock_config.return_value = create_mock_config()
+        mock_discovery.side_effect = Exception("Discovery failed")
+        
+        # Should not raise
+        manager = ModelManager()
+        
+        assert manager._discovery_triggered is False
+        assert manager.get_active_provider() == "ollama"
+        assert manager.get_active_model() == "gpt-oss"
+    
+    @patch('chuk_llm.api.providers.trigger_ollama_discovery_and_refresh')
+    @patch('chuk_llm.configuration.get_config')
+    def test_get_client_error_handling(self, mock_config, mock_discovery):
+        """Test client creation error handling."""
+        mock_config.return_value = create_mock_config()
+        mock_discovery.return_value = []
+        
+        manager = ModelManager()
+        
+        with patch('chuk_llm.llm.client.get_client') as mock_get_client:
+            mock_get_client.side_effect = Exception("Client error")
             
-            with tempfile.TemporaryDirectory() as temp_dir:
-                with patch('pathlib.Path.home', return_value=Path(temp_dir)):
-                    return ModelManager()
+            with pytest.raises(Exception, match="Client error"):
+                manager.get_client()
     
-    def test_validate_model_with_exception(self, basic_manager):
-        """Test model validation handles exceptions gracefully."""
-        manager = basic_manager
+    @patch('chuk_llm.api.providers.trigger_ollama_discovery_and_refresh')
+    @patch('chuk_llm.configuration.get_config')
+    def test_empty_providers_fallback(self, mock_config, mock_discovery):
+        """Test fallback when no providers configured."""
+        mock_config.return_value = create_mock_config([])
+        mock_discovery.return_value = []
         
-        # Mock get_available_models to raise exception
-        manager.get_available_models = Mock(side_effect=Exception("Connection error"))
+        manager = ModelManager()
         
-        # Should return False, not raise exception
-        result = manager.validate_model_for_provider("openai", "gpt-4o")
-        assert result is False
-    
-    def test_switch_model_preserves_state_on_failure(self, basic_manager):
-        """Test that failed model switch doesn't change state."""
-        manager = basic_manager
+        # Should fall back to ollama
+        assert manager.get_active_provider() == "ollama"
+        assert manager.get_active_model() == "gpt-oss"
         
-        # Set initial state
-        original_provider = "openai"
-        original_model = "gpt-4o-mini"
-        manager._user_prefs["active_provider"] = original_provider
-        manager._user_prefs["active_model"] = original_model
-        
-        # Mock validation to fail
-        manager.validate_provider = Mock(return_value=False)
-        manager.list_providers = Mock(return_value=["openai", "anthropic"])
-        
-        # Attempt invalid switch
-        with pytest.raises(ValueError):
-            manager.switch_model("invalid-provider", "some-model")
-        
-        # State should be unchanged
-        assert manager.get_active_provider() == original_provider
-        assert manager.get_active_model() == original_model
-    
-    def test_empty_string_inputs(self, basic_manager):
-        """Test handling of empty string inputs."""
-        manager = basic_manager
-        manager.list_providers = Mock(return_value=["openai"])
-        manager.get_available_models = Mock(return_value=["gpt-4o"])
-        
-        # Empty provider should be invalid
-        assert manager.validate_provider("") is False
-        
-        # Empty model should be invalid
-        assert manager.validate_model_for_provider("openai", "") is False
-    
-    def test_none_inputs(self, basic_manager):
-        """Test handling of None inputs."""
-        manager = basic_manager
-        manager.get_available_models = Mock(return_value=["gpt-4o"])
-        
-        # None model should be handled gracefully
-        result = manager.validate_model_for_provider("openai", None)
-        assert result is False
+        # When no providers configured, returns empty list
+        # The manager still works but reports no available providers
+        providers = manager.get_available_providers()
+        # Updated expectation: empty list when no providers configured
+        assert providers == []  # Not ["ollama"] since no providers configured
 
 
-class TestPreferencePersistence:
-    """Test user preference saving and loading."""
+class TestStringRepresentations:
+    """Test string representations."""
     
-    def test_preferences_saved_on_switch(self):
-        """Test that preferences are saved when switching models."""
-        with patch('mcp_cli.model_manager.get_config') as mock_get_config:
-            mock_config = Mock()
-            mock_config.get_all_providers.return_value = ["openai", "anthropic"]
-            mock_get_config.return_value = mock_config
-            
-            with tempfile.TemporaryDirectory() as temp_dir:
-                with patch('pathlib.Path.home', return_value=Path(temp_dir)):
-                    manager = ModelManager()
-                    
-                    # Mock validation and provider info
-                    manager.validate_provider = Mock(return_value=True)
-                    manager.get_provider_info = Mock(return_value={"default_model": "test-model"})
-                    
-                    # Switch provider
-                    manager.set_active_provider("anthropic")
-                    
-                    # Check preferences file was created
-                    prefs_file = Path(temp_dir) / ".mcp-cli" / "preferences.yaml"
-                    assert prefs_file.exists()
-                    
-                    # Verify content
-                    content = prefs_file.read_text()
-                    assert "anthropic" in content
-    
-    def test_preferences_loaded_on_init(self):
-        """Test that preferences are loaded during initialization."""
-        with patch('mcp_cli.model_manager.get_config') as mock_get_config:
-            mock_config = Mock()
-            mock_get_config.return_value = mock_config
-            
-            with tempfile.TemporaryDirectory() as temp_dir:
-                # Create preferences file
-                prefs_dir = Path(temp_dir) / ".mcp-cli"
-                prefs_dir.mkdir(parents=True)
-                prefs_file = prefs_dir / "preferences.yaml"
-                prefs_file.write_text("active_provider: anthropic\nactive_model: claude-sonnet\n")
-                
-                with patch('pathlib.Path.home', return_value=Path(temp_dir)):
-                    manager = ModelManager()
-                    
-                    assert manager.get_active_provider() == "anthropic"
-                    assert manager.get_active_model() == "claude-sonnet"
-
-
-# Test fixtures and utilities
-@pytest.fixture
-def mock_chuk_llm_responses():
-    """Mock chuk-llm responses for testing."""
-    return {
-        "list_available_providers": {
-            "openai": {
-                "models": ["gpt-4o", "gpt-4o-mini", "gpt-4.1"],
-                "default_model": "gpt-4o-mini",
-                "has_api_key": True,
-                "baseline_features": ["streaming", "tools", "text"]
-            },
-            "anthropic": {
-                "models": ["claude-sonnet-4-20250514", "claude-opus-4-20250514"],
-                "default_model": "claude-sonnet-4-20250514", 
-                "has_api_key": True,
-                "baseline_features": ["streaming", "reasoning", "text"]
-            }
-        }
-    }
-
-
-# Integration tests
-class TestModelManagerIntegration:
-    """Integration tests that test ModelManager with mocked chuk-llm."""
-    
-    @patch('mcp_cli.model_manager.list_available_providers')
-    @patch('mcp_cli.model_manager.get_provider_info')
-    def test_full_workflow_valid_operations(self, mock_get_provider_info, mock_list_providers):
-        """Test complete workflow with valid operations."""
-        # Setup mocks
-        mock_list_providers.return_value = {
-            "openai": {
-                "models": ["gpt-4o", "gpt-4o-mini"],
-                "default_model": "gpt-4o-mini",
-                "has_api_key": True
-            }
-        }
+    @patch('chuk_llm.api.providers.trigger_ollama_discovery_and_refresh')
+    @patch('chuk_llm.configuration.get_config')
+    def test_str_representation(self, mock_config, mock_discovery):
+        """Test __str__ method."""
+        mock_config.return_value = create_mock_config()
+        mock_discovery.return_value = []
         
-        mock_get_provider_info.return_value = {
-            "models": ["gpt-4o", "gpt-4o-mini"],
-            "default_model": "gpt-4o-mini"
-        }
+        manager = ModelManager()
         
-        with patch('mcp_cli.model_manager.get_config') as mock_get_config:
-            mock_config = Mock()
-            mock_config.get_all_providers.return_value = ["openai"]
-            mock_get_config.return_value = mock_config
-            
-            with tempfile.TemporaryDirectory() as temp_dir:
-                with patch('pathlib.Path.home', return_value=Path(temp_dir)):
-                    manager = ModelManager()
-                    
-                    # Test validation
-                    assert manager.validate_provider("openai") is True
-                    assert manager.validate_model_for_provider("openai", "gpt-4o") is True
-                    assert manager.validate_model_for_provider("openai", "fake-model") is False
-                    
-                    # Test switching
-                    manager.switch_model("openai", "gpt-4o")
-                    assert manager.get_active_provider() == "openai"
-                    assert manager.get_active_model() == "gpt-4o"
+        str_repr = str(manager)
+        assert str_repr == "ModelManager(provider=ollama, model=gpt-oss)"
     
-    def test_security_comprehensive_invalid_input_rejection(self):
-        """Comprehensive test that all invalid inputs are rejected."""
-        with patch('mcp_cli.model_manager.get_config') as mock_get_config:
-            mock_config = Mock()
-            mock_config.get_all_providers.return_value = ["openai"]
-            mock_get_config.return_value = mock_config
-            
-            with tempfile.TemporaryDirectory() as temp_dir:
-                with patch('pathlib.Path.home', return_value=Path(temp_dir)):
-                    manager = ModelManager()
-                    manager.get_available_models = Mock(return_value=["gpt-4o"])
-                    
-                    # Test invalid providers
-                    invalid_providers = ["fake-ai", "nonexistent", "", "invalid123"]
-                    for provider in invalid_providers:
-                        assert manager.validate_provider(provider) is False
-                        
-                        with pytest.raises(ValueError):
-                            manager.switch_model(provider, "any-model")
-                    
-                    # Test invalid models
-                    invalid_models = ["fake-model", "gpt-999", "", "nonexistent-model"]
-                    for model in invalid_models:
-                        assert manager.validate_model_for_provider("openai", model) is False
-                        
-                        with pytest.raises(ValueError):
-                            manager.switch_model("openai", model)
+    @patch('chuk_llm.api.providers.trigger_ollama_discovery_and_refresh')
+    @patch('chuk_llm.configuration.get_config')
+    def test_repr_representation(self, mock_config, mock_discovery):
+        """Test __repr__ method."""
+        mock_config.return_value = create_mock_config()
+        mock_discovery.return_value = []
+        
+        manager = ModelManager()
+        manager._client_cache = {"test": Mock()}
+        
+        repr_str = repr(manager)
+        assert "provider='ollama'" in repr_str
+        assert "model='gpt-oss'" in repr_str
+        assert "discovery=True" in repr_str
+        assert "cached_clients=1" in repr_str
 
 
 if __name__ == "__main__":

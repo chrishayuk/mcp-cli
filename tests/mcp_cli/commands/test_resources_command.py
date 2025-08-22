@@ -1,4 +1,4 @@
-# commands/test_resources.py
+# commands/test_resources_command.py
 import pytest
 from rich.console import Console
 from rich.table import Table

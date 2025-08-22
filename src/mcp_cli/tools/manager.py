@@ -1,3 +1,4 @@
+# mcp_cli/tools/manager.py
 """
 Centralized tool management using CHUK Tool Processor.
 

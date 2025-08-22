@@ -1,4 +1,4 @@
-# tests/commands/test_ping.py
+# tests/commands/test_ping_command.py
 import pytest
 
 # Component under test

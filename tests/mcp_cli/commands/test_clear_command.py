@@ -1,4 +1,4 @@
-# tests/commands/test_clear.py
+# tests/commands/test_clear_command.py
 import pytest
 
 from mcp_cli.interactive.commands.clear import ClearCommand

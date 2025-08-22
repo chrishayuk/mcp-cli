@@ -1,8 +1,11 @@
+# tests/mcp_cli/chat/test_tool_processor.py
 import asyncio
 import json
 import pytest
+from unittest.mock import Mock, AsyncMock
 
 from mcp_cli.chat.tool_processor import ToolProcessor
+from mcp_cli.tools.models import ToolCallResult
 
 # ---------------------------
 # Dummy classes for testing
@@ -30,11 +33,42 @@ class DummyStreamManager:
             raise Exception("Simulated call_tool exception")
         return self.return_result
 
+class DummyToolManager:
+    """Mock tool manager with execute_tool method that returns ToolCallResult."""
+    def __init__(self, return_result=None, raise_exception=False):
+        self.return_result = return_result or {"isError": False, "content": "Tool executed successfully"}
+        self.raise_exception = raise_exception
+        self.executed_tool = None
+        self.executed_args = None
+    
+    async def execute_tool(self, tool_name, arguments):
+        self.executed_tool = tool_name
+        self.executed_args = arguments
+        if self.raise_exception:
+            raise Exception("Simulated execute_tool exception")
+        
+        # Return a ToolCallResult object, not a dict
+        if self.return_result.get("isError"):
+            return ToolCallResult(
+                tool_name=tool_name,
+                success=False,
+                result=None,
+                error=self.return_result.get("error", "Simulated error")
+            )
+        else:
+            return ToolCallResult(
+                tool_name=tool_name,
+                success=True,
+                result=self.return_result.get("content"),
+                error=None
+            )
+
 class DummyContext:
-    """A dummy context object with conversation_history and a stream_manager."""
-    def __init__(self, stream_manager=None):
+    """A dummy context object with conversation_history and managers."""
+    def __init__(self, stream_manager=None, tool_manager=None):
         self.conversation_history = []
         self.stream_manager = stream_manager
+        self.tool_manager = tool_manager
 
 # ---------------------------
 # Tests for ToolProcessor
@@ -43,7 +77,8 @@ class DummyContext:
 @pytest.mark.asyncio
 async def test_process_tool_calls_empty_list(capfd):
     # Test that an empty list of tool_calls prints a warning and does nothing.
-    context = DummyContext(stream_manager=DummyStreamManager())
+    tool_manager = DummyToolManager()
+    context = DummyContext(stream_manager=DummyStreamManager(), tool_manager=tool_manager)
     ui_manager = DummyUIManager()
     processor = ToolProcessor(context, ui_manager)
 
@@ -60,7 +95,8 @@ async def test_process_tool_calls_successful_tool():
     # Test a successful tool call.
     result_dict = {"isError": False, "content": "Tool executed successfully"}
     stream_manager = DummyStreamManager(return_result=result_dict)
-    context = DummyContext(stream_manager=stream_manager)
+    tool_manager = DummyToolManager(return_result=result_dict)
+    context = DummyContext(stream_manager=stream_manager, tool_manager=tool_manager)
     ui_manager = DummyUIManager()
     processor = ToolProcessor(context, ui_manager)
 
@@ -94,7 +130,8 @@ async def test_process_tool_calls_with_argument_parsing():
     # Test that raw arguments given as a JSON string are parsed into a dict.
     result_dict = {"isError": False, "content": {"parsed": True}}
     stream_manager = DummyStreamManager(return_result=result_dict)
-    context = DummyContext(stream_manager=stream_manager)
+    tool_manager = DummyToolManager(return_result=result_dict)
+    context = DummyContext(stream_manager=stream_manager, tool_manager=tool_manager)
     ui_manager = DummyUIManager()
     processor = ToolProcessor(context, ui_manager)
 
@@ -104,9 +141,9 @@ async def test_process_tool_calls_with_argument_parsing():
     }
     await processor.process_tool_calls([tool_call])
 
-    # Check that call_tool was given parsed arguments (a dict).
-    assert isinstance(stream_manager.called_args, dict)
-    assert stream_manager.called_args.get("num") == 123
+    # Check that execute_tool was given parsed arguments (a dict).
+    assert isinstance(tool_manager.executed_args, dict)
+    assert tool_manager.executed_args.get("num") == 123
 
     # Check that the response record content is formatted as a JSON string.
     response_record = context.conversation_history[1]
@@ -118,7 +155,8 @@ async def test_process_tool_calls_tool_call_error():
     # Test a tool call that returns an error result.
     error_result = {"isError": True, "error": "Simulated error", "content": "Error: Simulated error"}
     stream_manager = DummyStreamManager(return_result=error_result)
-    context = DummyContext(stream_manager=stream_manager)
+    tool_manager = DummyToolManager(return_result=error_result)
+    context = DummyContext(stream_manager=stream_manager, tool_manager=tool_manager)
     ui_manager = DummyUIManager()
     processor = ToolProcessor(context, ui_manager)
 
@@ -133,34 +171,32 @@ async def test_process_tool_calls_tool_call_error():
     assert response_record["role"] == "tool"
     assert "Error: Simulated error" in response_record["content"]
 
-# tests/mcp_cli/chat/test_tool_processor.py
-
-# For test_process_tool_calls_no_stream_manager:
 @pytest.mark.asyncio
 async def test_process_tool_calls_no_stream_manager(capfd):
     # Test when no stream manager is available.
-    context = DummyContext(stream_manager=None)
+    context = DummyContext(stream_manager=None, tool_manager=None)
     ui_manager = DummyUIManager()
     processor = ToolProcessor(context, ui_manager)
-    # Supply a dummy tool call
-    tool_calls = [{
+    
+    # Supply a dummy tool call - pass as individual dict, not wrapped in list
+    tool_call = {
         "function": {"name": "dummy_tool", "arguments": '{"key": "value"}'},
         "id": "test1"
-    }]
-    await processor.process_tool_calls(tool_calls)
+    }
     
-    # MODIFIED TEST: Look for any error message about StreamManager
-    # since the actual message is "Error: No StreamManager available for tool execution."
+    # Pass as a list to process_tool_calls
+    await processor.process_tool_calls([tool_call])
+    
+    # The actual error message is "No tool manager available for tool execution"
     error_msgs = [entry.get("content", "") for entry in context.conversation_history if entry.get("content") is not None]
-    assert any("No StreamManager available" in msg for msg in error_msgs)
-    # This will pass with the text "Error: No StreamManager available for tool execution."
+    assert any("No tool manager available" in msg for msg in error_msgs)
 
-# For test_process_tool_calls_exception_in_call:
 @pytest.mark.asyncio
 async def test_process_tool_calls_exception_in_call():
-    # Test that an exception raised during call_tool is caught and an error is recorded.
-    stream_manager = DummyStreamManager(raise_exception=True)
-    context = DummyContext(stream_manager=stream_manager)
+    # Test that an exception raised during execute_tool is caught and an error is recorded.
+    stream_manager = DummyStreamManager()
+    tool_manager = DummyToolManager(raise_exception=True)
+    context = DummyContext(stream_manager=stream_manager, tool_manager=tool_manager)
     ui_manager = DummyUIManager()
     processor = ToolProcessor(context, ui_manager)
 
@@ -170,12 +206,11 @@ async def test_process_tool_calls_exception_in_call():
     }
     await processor.process_tool_calls([tool_call])
 
-    # MODIFIED TEST: Look for an error entry with the exception message
-    # since the actual message format is: "Error: Execution failed: Simulated call_tool exception"
+    # Look for an error entry
     error_entries = [
         entry for entry in context.conversation_history 
         if entry.get("role") == "tool" and "Error:" in entry.get("content", "")
     ]
     assert len(error_entries) >= 1
-    # Just check that it contains the exception message anywhere
-    assert any("Simulated call_tool exception" in e["content"] for e in error_entries)
+    # The error should contain the exception message
+    assert any("Simulated execute_tool exception" in e["content"] for e in error_entries)

@@ -1,4 +1,4 @@
-# commands/test_tools_call.py
+# commands/test_tools_call_command.py
 import pytest
 from rich.console import Console
 from rich.table import Table

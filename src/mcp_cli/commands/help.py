@@ -5,7 +5,7 @@ Help command for MCP CLI.
 Displays help information for commands in both chat and CLI modes.
 """
 from __future__ import annotations
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 
 from mcp_cli.ui import output, format_table
 
@@ -16,13 +16,17 @@ except ImportError:
     from mcp_cli.cli.registry import CommandRegistry as Registry
 
 
-def help_action(command_name: Optional[str] = None) -> None:
+def help_action(command_name: Optional[str] = None, console: Any = None) -> None:
     """
     Display help for a specific command or all commands.
     
     Args:
         command_name: Name of command to get help for. If None, shows all commands.
+        console: Rich console object (optional, for compatibility with interactive mode)
     """
+    # Note: console argument is accepted for backward compatibility but not used
+    # The new implementation uses the UI output module instead
+    
     commands = _get_commands()
     
     if command_name:
@@ -35,6 +39,8 @@ def _get_commands() -> Dict[str, object]:
     """Get available commands from the registry."""
     if hasattr(Registry, "get_all_commands"):
         return Registry.get_all_commands()
+    elif hasattr(Registry, "_commands"):
+        return Registry._commands
     return {}
 
 
@@ -46,18 +52,22 @@ def _show_command_help(command_name: str, commands: Dict[str, object]) -> None:
         output.error(f"Unknown command: {command_name}")
         return
     
+    # Get help text - handle different attribute names
+    help_text = getattr(cmd, 'help', None) or getattr(cmd, 'help_text', None) or "No description provided."
+    
     # Display command details
-    help_text = cmd.help or "No description provided."
+    cmd_name = getattr(cmd, 'name', command_name)
     
     output.panel(
-        f"## {cmd.name}\n\n{help_text}",
+        f"## {cmd_name}\n\n{help_text}",
         title="Command Help",
         style="cyan"
     )
     
     # Show aliases if available
-    if hasattr(cmd, "aliases") and cmd.aliases:
-        output.print(f"\n[dim]Aliases: {', '.join(cmd.aliases)}[/dim]")
+    aliases = getattr(cmd, 'aliases', [])
+    if aliases:
+        output.print(f"\n[dim]Aliases: {', '.join(aliases)}[/dim]")
 
 
 def _show_all_commands(commands: Dict[str, object]) -> None:
@@ -69,13 +79,17 @@ def _show_all_commands(commands: Dict[str, object]) -> None:
     # Build table data
     table_data = []
     for name, cmd in sorted(commands.items()):
+        # Get help text - handle different attribute names
+        help_text = getattr(cmd, 'help', None) or getattr(cmd, 'help_text', None) or ""
+        
         # Extract first meaningful line from help text
-        desc = _extract_description(cmd.help)
+        desc = _extract_description(help_text)
         
         # Get aliases
         aliases = "-"
-        if hasattr(cmd, "aliases") and cmd.aliases:
-            aliases = ", ".join(cmd.aliases)
+        cmd_aliases = getattr(cmd, 'aliases', [])
+        if cmd_aliases:
+            aliases = ", ".join(cmd_aliases)
         
         table_data.append({
             "Command": name,

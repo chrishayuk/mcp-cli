@@ -1,4 +1,4 @@
-# commands/test_prompts.py
+# commands/test_prompts_command.py
 import pytest
 from rich.console import Console
 from rich.table import Table

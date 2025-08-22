@@ -1,10 +1,10 @@
+# tests/mcp_cli/tool/test_tool_processor.py
 import pytest
 import json
 from typing import Any, Dict, List, Tuple
 
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.tools.models import ToolInfo, ToolCallResult, ServerInfo
-from mcp_cli.tools.adapter import ToolNameAdapter
 
 
 class DummyMeta:
@@ -114,19 +114,15 @@ def test_format_tool_response_other():
     assert ToolManager.format_tool_response(123) == "123"
 
 
+# Skip tests for non-existent method
+@pytest.mark.skip(reason="convert_to_openai_tools method no longer exists")
 def test_convert_to_openai_tools_unchanged():
-    orig = [{"type": "function", "function": {"name": "x"}}]
-    out = ToolManager.convert_to_openai_tools(orig)
-    assert out is orig
+    pass
 
 
+@pytest.mark.skip(reason="convert_to_openai_tools method no longer exists")
 def test_convert_to_openai_tools_conversion():
-    tools = [{"name": "n", "description": "d", "parameters": {"p": {}}}]
-    out = ToolManager.convert_to_openai_tools(tools)
-    assert isinstance(out, list)
-    assert out[0]["type"] == "function"
-    fn = out[0]["function"]
-    assert fn["name"] == "n" and fn["description"] == "d" and "parameters" in fn
+    pass
 
 
 # ----------------------------------------------------------------------------
@@ -138,7 +134,8 @@ def test_convert_to_openai_tools_conversion():
 async def test_get_tools_for_llm(manager):
     fn_defs = await manager.get_tools_for_llm()
     names = {f["function"]["name"] for f in fn_defs}
-    assert names == {"ns1.t1", "ns2.t2"}
+    # Tools no longer have namespace prefixes - they use direct names
+    assert names == {"t1", "t2"}
     # Ensure basic structure
     for f in fn_defs:
         assert f["type"] == "function"
@@ -150,32 +147,37 @@ async def test_get_tools_for_llm(manager):
 async def test_get_adapted_tools_for_llm_openai(manager):
     fns, mapping = await manager.get_adapted_tools_for_llm(provider="openai")
 
-    # 1. Mapping should faithfully map adapted -> original dotted name
+    # The new implementation uses identity mapping - no sanitization
+    # Tools are passed through with their original names
     for adapted, original in mapping.items():
         assert mapping[adapted] == original
-        assert "." in original
-        ns, name = original.split(".", 1)
-        assert adapted == ToolNameAdapter.to_openai_compatible(ns, name)
+        # No dots or namespace prefixes expected anymore
+        assert adapted == original  # Identity mapping
 
-    # 2. Returned list should use adapted (OpenAI‑compatible) names
+    # 2. The functions list should have the same names as in the mapping
     fn_names = {f["function"]["name"] for f in fns}
-    assert set(mapping.keys()) == fn_names
+    assert fn_names == set(mapping.keys())
 
     # 3. Each definition must conform to OpenAI function tool format
     for f in fns:
         assert f["type"] == "function"
-        assert "description" in f["function"] and "parameters" in f["function"]
+        assert "description" in f["function"]
+        assert "parameters" in f["function"]
 
 
 @pytest.mark.asyncio
 async def test_get_adapted_tools_for_llm_other_provider(manager):
-    # With a non‑OpenAI provider, no renaming should occur
+    # Non-OpenAI providers now also return identity mapping
     fns, mapping = await manager.get_adapted_tools_for_llm(provider="ollama")
-    assert mapping == {}
+    
+    # Identity mapping for non-OpenAI providers
+    assert mapping == {'t1': 't1', 't2': 't2'}
 
     names = {f["function"]["name"] for f in fns}
-    assert names == {"ns1.t1", "ns2.t2"}
+    # Direct tool names without namespace prefixes
+    assert names == {"t1", "t2"}
 
     for f in fns:
         assert f["type"] == "function"
-        assert "description" in f["function"] and "parameters" in f["function"]
+        assert "description" in f["function"]
+        assert "parameters" in f["function"]
