@@ -10,7 +10,7 @@ from __future__ import annotations
 import builtins
 import re
 import sys
-from typing import Any, Optional
+from typing import Any, Optional, Dict, List
 from enum import Enum
 
 from rich.console import Console
@@ -382,12 +382,42 @@ class Output:
     def print_table(self, table: Any, **kwargs):
         """Print a table."""
         if not self._quiet:
-            if self._theme.is_minimal() or isinstance(table, str):
-                # It's already a plain text table from format_table
+            if isinstance(table, str):
+                # It's already a plain text table
                 self._plain_print(str(table))
+            elif self._theme.is_minimal() or self._theme.name == "terminal":
+                # Convert Rich Table to plain text for minimal/terminal themes
+                from rich.table import Table
+                if isinstance(table, Table):
+                    # Convert table to simple text format
+                    self._print_table_as_text(table)
+                else:
+                    self._plain_print(str(table))
             else:
-                # Rich Table object
+                # Rich Table object for full themes
                 self._console.print(table, **kwargs)
+    
+    def _print_table_as_text(self, table):
+        """Convert a Rich Table to plain text output."""
+        # Extract rows from the table
+        if hasattr(table, '_rows'):
+            for row in table._rows:
+                # Get cell values
+                cells = []
+                for cell in row:
+                    # Extract text from cell
+                    if hasattr(cell, 'plain'):
+                        cells.append(cell.plain)
+                    else:
+                        cells.append(str(cell))
+                
+                # Print as simple text row with better spacing
+                if len(cells) == 2:
+                    # Two-column table: align nicely
+                    self._plain_print(f"  {cells[0]:<10} {cells[1]}")
+                elif cells:
+                    # Multi-column: just space them out
+                    self._plain_print("  " + "  ".join(cells))
     
     # ─────────────────────────── Progress/Loading ───────────────────────
     
@@ -553,6 +583,199 @@ class Output:
                 )
             else:
                 self.info(f"Calling tool: {tool_name}")
+    
+    # ─────────────────────────── Formatted Output ───────────────────────
+    # These methods delegate to specialized formatters for consistency
+    
+    def tree(self, data: Dict, title: Optional[str] = None, **kwargs):
+        """
+        Display hierarchical data as a tree.
+        
+        Delegates to formatters.format_tree for consistent implementation.
+        
+        Args:
+            data: Nested dictionary to display as tree
+            title: Optional title for the tree
+            **kwargs: Additional arguments
+        """
+        if not self._quiet:
+            from mcp_cli.ui.formatters import format_tree
+            result = format_tree(data, title=title, **kwargs)
+            if isinstance(result, str):
+                self._plain_print(result)
+            else:
+                self._console.print(result)
+    
+    # ─────────────────────────── Simple Formatting ──────────────────────
+    # These provide simpler alternatives to complex formatters
+    
+    def list_items(self, items: List[Any], style: str = "bullet", indent: int = 0, **kwargs):
+        """
+        Display a formatted list.
+        
+        Args:
+            items: List of items to display
+            style: List style ('bullet', 'number', 'check', 'arrow')
+            indent: Indentation level
+            **kwargs: Additional formatting options
+        """
+        if not self._quiet:
+            indent_str = "  " * indent
+            
+            if self._theme.is_minimal():
+                # Plain text lists
+                for i, item in enumerate(items):
+                    if style == "number":
+                        prefix = f"{i+1}."
+                    elif style == "check":
+                        if isinstance(item, dict):
+                            prefix = "[x]" if item.get("checked", False) else "[ ]"
+                        else:
+                            prefix = "[ ]"
+                    elif style == "arrow":
+                        prefix = "->"
+                    else:  # bullet
+                        prefix = "*"
+                    
+                    text = item.get("text", str(item)) if isinstance(item, dict) else str(item)
+                    self._plain_print(f"{indent_str}{prefix} {text}")
+            else:
+                # Rich formatted lists
+                for i, item in enumerate(items):
+                    if style == "number":
+                        prefix = f"[cyan]{i+1}.[/cyan]"
+                    elif style == "check":
+                        checked = item.get("checked", False) if isinstance(item, dict) else False
+                        prefix = "[green]✓[/green]" if checked else "[ ]"
+                    elif style == "arrow":
+                        prefix = "[blue]→[/blue]"
+                    else:  # bullet
+                        prefix = "[yellow]•[/yellow]"
+                    
+                    text = item.get("text", str(item)) if isinstance(item, dict) else str(item)
+                    self._console.print(f"{indent_str}{prefix} {text}")
+    
+    def json(self, data: Any, indent: int = 2, syntax_highlight: bool = True, **kwargs):
+        """
+        Display formatted JSON.
+        
+        Delegates to formatters.format_json for consistent implementation.
+        
+        Args:
+            data: Data to display as JSON
+            indent: Indentation level
+            syntax_highlight: Whether to apply syntax highlighting
+            **kwargs: Additional arguments
+        """
+        if not self._quiet:
+            from mcp_cli.ui.formatters import format_json
+            result = format_json(data, syntax_highlight=syntax_highlight, **kwargs)
+            if isinstance(result, str):
+                self._plain_print(result)
+            else:
+                self._console.print(result)
+    
+    def code(self, code: str, language: str = "python", line_numbers: bool = False, **kwargs):
+        """
+        Display syntax-highlighted code.
+        
+        Delegates to code.display_code for consistent implementation.
+        
+        Args:
+            code: Code to display
+            language: Programming language for highlighting
+            line_numbers: Whether to show line numbers
+            **kwargs: Additional arguments
+        """
+        if not self._quiet:
+            from mcp_cli.ui.code import display_code
+            display_code(code, language, line_numbers=line_numbers, **kwargs)
+    
+    def kvpairs(self, data: Dict[str, Any], align: bool = True, **kwargs):
+        """
+        Display key-value pairs in aligned format.
+        
+        Args:
+            data: Dictionary of key-value pairs
+            align: Whether to align values
+            **kwargs: Additional formatting options
+        """
+        if not self._quiet:
+            if not data:
+                return
+            
+            if align:
+                max_key_len = max(len(str(k)) for k in data.keys())
+            else:
+                max_key_len = 0
+            
+            if self._theme.is_minimal():
+                for key, value in data.items():
+                    if align:
+                        self._plain_print(f"{str(key):<{max_key_len}} : {value}")
+                    else:
+                        self._plain_print(f"{key}: {value}")
+            else:
+                for key, value in data.items():
+                    if align:
+                        self._console.print(f"[cyan]{str(key):<{max_key_len}}[/cyan] : {value}")
+                    else:
+                        self._console.print(f"[cyan]{key}[/cyan]: {value}")
+    
+    def columns(self, data: List[List[str]], headers: Optional[List[str]] = None, **kwargs):
+        """
+        Display data in columns without full table borders.
+        
+        Args:
+            data: List of rows, each row is a list of column values
+            headers: Optional column headers
+            **kwargs: Additional formatting options
+        """
+        if not self._quiet:
+            if not data:
+                return
+            
+            # Calculate column widths
+            num_cols = len(data[0]) if data else 0
+            col_widths = [0] * num_cols
+            
+            if headers:
+                for i, header in enumerate(headers[:num_cols]):
+                    col_widths[i] = len(str(header))
+            
+            for row in data:
+                for i, cell in enumerate(row[:num_cols]):
+                    col_widths[i] = max(col_widths[i], len(str(cell)))
+            
+            if self._theme.is_minimal():
+                # Plain text columns
+                if headers:
+                    header_line = "  ".join(str(h).ljust(w) for h, w in zip(headers, col_widths))
+                    self._plain_print(header_line)
+                    self._plain_print("-" * len(header_line))
+                
+                for row in data:
+                    row_line = "  ".join(str(c).ljust(w) for c, w in zip(row, col_widths))
+                    self._plain_print(row_line)
+            else:
+                # Rich formatted columns
+                from rich.columns import Columns
+                from rich.table import Table
+                
+                # Use a borderless table for better alignment
+                table = Table(show_header=bool(headers), header_style="bold", box=None)
+                
+                if headers:
+                    for header in headers:
+                        table.add_column(header)
+                else:
+                    for i in range(num_cols):
+                        table.add_column()
+                
+                for row in data:
+                    table.add_row(*[str(cell) for cell in row])
+                
+                self._console.print(table)
     
     # ─────────────────────────── Utility Methods ────────────────────────
     

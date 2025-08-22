@@ -49,4 +49,5 @@ dev = [
   "colorama>=0.4.6",
   "pydantic>=2.10.2",
   "pytest-asyncio>=0.25.3",
+  "pytest-cov>=6.2.1",
 ]
