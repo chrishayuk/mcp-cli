@@ -902,6 +902,17 @@ class ToolManager:
             except Exception:
                 pass
         return []
+    
+    def get_streams(self):
+        """
+        Get streams from the stream manager for backward compatibility.
+        
+        Returns:
+            Generator of (read_stream, write_stream) tuples
+        """
+        if self.stream_manager:
+            return self.stream_manager.get_streams()
+        return []
 
 
 # Global singleton

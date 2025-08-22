@@ -46,15 +46,15 @@ def dummy_tm():
 
 @pytest.fixture()
 def ping_spy(monkeypatch):
-    """Replace _ping_one with a deterministic spy recording the calls."""
+    """Replace _ping_server with a deterministic spy recording the calls."""
     calls = []
 
-    async def _dummy_ping(idx, name, _r, _w, *, timeout):  # noqa: WPS430
+    async def _dummy_ping(idx, name, _r, _w, *, timeout=5.0):  # noqa: WPS430
         calls.append((idx, name))
         # Always report success with constant latency for simplicity
         return name, True, 42.0
 
-    monkeypatch.setattr("mcp_cli.commands.ping._ping_one", _dummy_ping)
+    monkeypatch.setattr("mcp_cli.commands.ping._ping_server", _dummy_ping)
     return calls
 
 

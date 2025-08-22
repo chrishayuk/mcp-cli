@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from mcp_cli.commands.model import model_action_async, model_action, _print_status, _print_model_list
+from mcp_cli.commands.model import model_action_async, model_action, _show_status, _list_models
 from mcp_cli.model_manager import ModelManager
 
 
@@ -85,12 +85,12 @@ class TestModelActionAsync:
     @pytest.mark.asyncio
     async def test_no_arguments_shows_status(self, mock_console, base_context):
         """Test that calling with no arguments shows current status."""
-        with patch('mcp_cli.commands.model.get_console', return_value=mock_console):
-            with patch('mcp_cli.commands.model._print_status') as mock_print_status:
+        with patch('mcp_cli.commands.model.output', return_value=mock_console):
+            with patch('mcp_cli.commands.model._show_status') as mock_show_status:
                 await model_action_async([], context=base_context)
                 
-                mock_print_status.assert_called_once_with(
-                    mock_console, 
+                mock_show_status.assert_called_once_with(
+                    base_context["model_manager"],
                     "gpt-4o-mini",  # current model
                     "openai"        # current provider
                 )
@@ -98,14 +98,14 @@ class TestModelActionAsync:
     @pytest.mark.asyncio
     async def test_list_argument_shows_model_list(self, mock_console, base_context):
         """Test that 'list' argument shows model list."""
-        with patch('mcp_cli.commands.model.get_console', return_value=mock_console):
-            with patch('mcp_cli.commands.model._print_model_list') as mock_print_list:
+        with patch('mcp_cli.commands.model.output', return_value=mock_console):
+            with patch('mcp_cli.commands.model._list_models') as mock_list_models:
                 await model_action_async(["list"], context=base_context)
                 
-                mock_print_list.assert_called_once_with(
-                    mock_console,
+                mock_list_models.assert_called_once_with(
                     base_context["model_manager"],
-                    "openai"
+                    "openai",
+                    "gpt-4o-mini"  # current model
                 )
     
     @pytest.mark.asyncio
@@ -114,7 +114,7 @@ class TestModelActionAsync:
         new_model = "gpt-4o"
         mock_client = Mock()
         
-        with patch('mcp_cli.commands.model.get_console', return_value=mock_console):
+        with patch('mcp_cli.commands.model.output', return_value=mock_console):
             with patch('mcp_cli.commands.model.LLMProbe') as mock_probe_class:
                 # Setup mock probe
                 mock_probe = MockLLMProbe(base_context["model_manager"])
@@ -142,7 +142,7 @@ class TestModelActionAsync:
         new_model = "invalid-model"
         error_message = "Model not found"
         
-        with patch('mcp_cli.commands.model.get_console', return_value=mock_console):
+        with patch('mcp_cli.commands.model.output', return_value=mock_console):
             with patch('mcp_cli.commands.model.LLMProbe') as mock_probe_class:
                 # Setup mock probe to fail
                 mock_probe = MockLLMProbe(base_context["model_manager"])
@@ -163,7 +163,7 @@ class TestModelActionAsync:
         """Test failed model switching without specific error message."""
         new_model = "invalid-model"
         
-        with patch('mcp_cli.commands.model.get_console', return_value=mock_console):
+        with patch('mcp_cli.commands.model.output', return_value=mock_console):
             with patch('mcp_cli.commands.model.LLMProbe') as mock_probe_class:
                 # Setup mock probe to fail without error message
                 mock_probe = MockLLMProbe(base_context["model_manager"])
@@ -183,14 +183,14 @@ class TestModelActionAsync:
         """Test that missing ModelManager in context creates a new one."""
         context = {}  # Empty context
         
-        with patch('mcp_cli.commands.model.get_console', return_value=mock_console):
+        with patch('mcp_cli.commands.model.output', return_value=mock_console):
             with patch('mcp_cli.commands.model.ModelManager') as mock_manager_class:
                 mock_manager = Mock()
                 mock_manager.get_active_provider.return_value = "openai"
                 mock_manager.get_active_model.return_value = "gpt-4o-mini"
                 mock_manager_class.return_value = mock_manager
                 
-                with patch('mcp_cli.commands.model._print_status') as mock_print_status:
+                with patch('mcp_cli.commands.model._show_status') as mock_show_status:
                     await model_action_async([], context=context)
                     
                     # Verify ModelManager was created and added to context
@@ -202,7 +202,7 @@ class TestModelActionAsync:
         """Test that with multiple arguments, first one is used as model name."""
         args = ["gpt-4o", "extra", "arguments"]
         
-        with patch('mcp_cli.commands.model.get_console', return_value=mock_console):
+        with patch('mcp_cli.commands.model.output', return_value=mock_console):
             with patch('mcp_cli.commands.model.LLMProbe') as mock_probe_class:
                 mock_probe = MockLLMProbe(base_context["model_manager"])
                 mock_probe.set_test_result("gpt-4o", success=True)
@@ -243,13 +243,13 @@ class TestModelActionSync:
 class TestPrintStatus:
     """Test the status printing helper function."""
     
-    def test_print_status_displays_current_info(self):
+    def test_show_status_displays_current_info(self):
         """Test that print_status displays model and provider info."""
         mock_console = Mock()
         model = "gpt-4o"
         provider = "openai"
         
-        _print_status(mock_console, model, provider)
+        _show_status(mock_console, model, provider)
         
         # Verify all expected print calls
         expected_calls = [
@@ -267,7 +267,7 @@ class TestPrintStatus:
 class TestPrintModelList:
     """Test the model list printing helper function."""
     
-    def test_print_model_list_creates_table(self):
+    def test_list_models_creates_table(self):
         """Test that print_model_list creates and displays a table."""
         mock_console = Mock()
         mock_model_manager = Mock()
@@ -278,7 +278,7 @@ class TestPrintModelList:
             mock_table = Mock()
             mock_table_class.return_value = mock_table
             
-            _print_model_list(mock_console, mock_model_manager, provider)
+            _list_models(mock_console, mock_model_manager, provider)
             
             # Verify table was created with correct title
             mock_table_class.assert_called_once_with(title="Models for provider 'openai'")
@@ -293,7 +293,7 @@ class TestPrintModelList:
             # Verify table was printed
             mock_console.print.assert_called_once_with(mock_table)
     
-    def test_print_model_list_gets_default_model(self):
+    def test_list_models_gets_default_model(self):
         """Test that print_model_list gets default model from manager."""
         mock_console = Mock()
         mock_model_manager = Mock()
@@ -301,7 +301,7 @@ class TestPrintModelList:
         provider = "anthropic"
         
         with patch('mcp_cli.commands.model.Table'):
-            _print_model_list(mock_console, mock_model_manager, provider)
+            _list_models(mock_console, mock_model_manager, provider)
             
             # Verify get_default_model was called with correct provider
             mock_model_manager.get_default_model.assert_called_once_with(provider)
@@ -323,7 +323,7 @@ class TestModelCommandIntegration:
         context = {"model_manager": mock_model_manager}
         new_model = "gpt-4o"
         
-        with patch('mcp_cli.commands.model.get_console', return_value=mock_console):
+        with patch('mcp_cli.commands.model.output', return_value=mock_console):
             with patch('mcp_cli.commands.model.LLMProbe') as mock_probe_class:
                 # Setup successful probe
                 mock_probe = MockLLMProbe(mock_model_manager)
@@ -352,7 +352,7 @@ class TestModelCommandIntegration:
         context = {"model_manager": mock_model_manager}
         invalid_model = "invalid-model"
         
-        with patch('mcp_cli.commands.model.get_console', return_value=mock_console):
+        with patch('mcp_cli.commands.model.output', return_value=mock_console):
             with patch('mcp_cli.commands.model.LLMProbe') as mock_probe_class:
                 # Setup failed probe
                 mock_probe = MockLLMProbe(mock_model_manager)
@@ -384,7 +384,7 @@ class TestModelCommandEdgeCases:
         
         context = {"model_manager": mock_model_manager}
         
-        with patch('mcp_cli.commands.model.get_console', return_value=mock_console):
+        with patch('mcp_cli.commands.model.output', return_value=mock_console):
             with patch('mcp_cli.commands.model.LLMProbe') as mock_probe_class:
                 mock_probe = MockLLMProbe(mock_model_manager)
                 mock_probe.set_test_result("", success=False, error_message="Empty model name")
@@ -406,7 +406,7 @@ class TestModelCommandEdgeCases:
         context = {"model_manager": mock_model_manager}
         whitespace_model = "   "
         
-        with patch('mcp_cli.commands.model.get_console', return_value=mock_console):
+        with patch('mcp_cli.commands.model.output', return_value=mock_console):
             with patch('mcp_cli.commands.model.LLMProbe') as mock_probe_class:
                 mock_probe = MockLLMProbe(mock_model_manager)
                 mock_probe.set_test_result(whitespace_model, success=False)
@@ -425,15 +425,15 @@ class TestModelCommandEdgeCases:
         
         context = {"model_manager": mock_model_manager}
         
-        with patch('mcp_cli.commands.model.get_console', return_value=mock_console):
-            with patch('mcp_cli.commands.model._print_model_list') as mock_print_list:
+        with patch('mcp_cli.commands.model.output', return_value=mock_console):
+            with patch('mcp_cli.commands.model._list_models') as mock_list_models:
                 await model_action_async(["LIST"], context=context)
                 
                 # Should recognize uppercase 'LIST' as list command
-                mock_print_list.assert_called_once_with(
-                    mock_console,
+                mock_list_models.assert_called_once_with(
                     mock_model_manager,
-                    "openai"
+                    "openai",
+                    mock_model_manager.get_active_model.return_value
                 )
     
     @pytest.mark.asyncio
@@ -446,7 +446,7 @@ class TestModelCommandEdgeCases:
         
         context = {"model_manager": mock_model_manager}
         
-        with patch('mcp_cli.commands.model.get_console', return_value=mock_console):
+        with patch('mcp_cli.commands.model.output', return_value=mock_console):
             with patch('mcp_cli.commands.model.LLMProbe') as mock_probe_class:
                 # Setup probe to raise exception
                 mock_probe_class.side_effect = Exception("Probe initialization failed")
@@ -469,7 +469,7 @@ class TestModelCommandPerformance:
         
         context = {"model_manager": mock_model_manager}
         
-        with patch('mcp_cli.commands.model.get_console', return_value=mock_console):
+        with patch('mcp_cli.commands.model.output', return_value=mock_console):
             with patch('mcp_cli.commands.model.LLMProbe') as mock_probe_class:
                 mock_probe = MockLLMProbe(mock_model_manager)
                 mock_probe.set_test_result("gpt-4o", success=True)
@@ -489,8 +489,8 @@ class TestModelCommandPerformance:
         
         context = {"model_manager": existing_manager, "other_data": "preserved"}
         
-        with patch('mcp_cli.commands.model.get_console'):
-            with patch('mcp_cli.commands.model._print_status') as mock_print_status:
+        with patch('mcp_cli.commands.model.output'):
+            with patch('mcp_cli.commands.model._show_status') as mock_show_status:
                 await model_action_async([], context=context)
                 
                 # Verify existing manager was used
