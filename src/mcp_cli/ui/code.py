@@ -11,10 +11,8 @@ import json
 from typing import Any, Dict, List, Optional, Union
 from pathlib import Path
 
-from mcp_cli.ui.output import get_output
-from mcp_cli.ui.theme import get_theme
-
-ui = get_output()
+from chuk_term.ui import output as ui
+from chuk_term.ui.theme import get_theme
 
 
 def display_code(

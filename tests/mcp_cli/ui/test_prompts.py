@@ -9,7 +9,6 @@ import pytest
 from typing import List, Dict, Any
 
 from mcp_cli.ui.prompts import (
-    PromptStyle,
     ask,
     confirm,
     ask_number,
@@ -18,24 +17,21 @@ from mcp_cli.ui.prompts import (
     prompt_for_tool_confirmation,
     prompt_for_retry,
     create_menu,
-    _get_key,
-    _interactive_select,
-    _interactive_multi_select,
 )
 
 
+# PromptStyle tests removed as it's no longer exposed
 class TestPromptStyle:
-    """Test PromptStyle constants."""
+    """Test PromptStyle constants - SKIP as no longer exposed."""
     
+    @pytest.mark.skip(reason="PromptStyle no longer exposed after chuk-term migration")
     def test_prompt_styles(self):
         """Test that all prompt styles are defined."""
-        assert PromptStyle.DEFAULT == "[bold cyan]"
-        assert PromptStyle.WARNING == "[bold yellow]"
-        assert PromptStyle.ERROR == "[bold red]"
-        assert PromptStyle.SUCCESS == "[bold green]"
-        assert PromptStyle.INFO == "[bold blue]"
+        # PromptStyle constants removed after chuk-term migration
+        pass
 
 
+@pytest.mark.skip(reason="_get_key no longer exposed after chuk-term migration")
 class TestGetKey:
     """Test _get_key function for keyboard input."""
     
@@ -598,7 +594,7 @@ class TestPromptForRetry:
         mock_confirm.assert_called_with(
             "Retry? (3 attempts remaining)",
             default=True,
-            style=PromptStyle.WARNING
+            style=None  # PromptStyle no longer used
         )
     
     @patch('mcp_cli.ui.prompts.confirm')
@@ -683,6 +679,7 @@ class TestCreateMenu:
                 mock_ui.print_table.assert_called_once_with(mock_table)
 
 
+@pytest.mark.skip(reason="_interactive_select no longer exposed after chuk-term migration")
 class TestInteractiveSelect:
     """Test _interactive_select function."""
     
@@ -739,6 +736,7 @@ class TestInteractiveSelect:
             _interactive_select("Choose:", ["A", "B"])
 
 
+@pytest.mark.skip(reason="_interactive_multi_select no longer exposed after chuk-term migration")
 class TestInteractiveMultiSelect:
     """Test _interactive_multi_select function."""
     

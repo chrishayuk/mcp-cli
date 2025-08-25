@@ -98,11 +98,14 @@ MCP-CLI uses **`uv`** for all package management. See [Package Management Guide]
 
 ### UI System
 
-MCP CLI features comprehensive UI management:
+MCP CLI features comprehensive UI management powered by the **chuk-term** library:
 
-- **Output Management**: Centralized output system with theme support, Rich integration, and consistent formatting. See [Output Documentation](./docs/ui/output.md) for API reference and examples.
-- **Theme System**: Manages visual appearance across all UI components. Themes are handled internally by UI components, allowing application code to remain theme-agnostic. See [UI Themes Documentation](./docs/ui/themes.md) for details.
-- **Terminal Management**: Cross-platform terminal operations including clearing, resizing, color detection, cursor control, hyperlinks, and asyncio cleanup. See [Terminal Management Documentation](./docs/ui/terminal.md) for usage and examples.
+- **Output Management**: Centralized output system using chuk-term's output module with theme support and consistent formatting across the application.
+- **Theme System**: Leverages chuk-term's built-in themes (default, dark, light, minimal, terminal, monokai, dracula, solarized) with automatic theme adaptation.
+- **Terminal Management**: Cross-platform terminal operations provided by chuk-term including clearing, resizing, color detection, cursor control, and more.
+- **Interactive Prompts**: User input handling through chuk-term's prompt system (ask, confirm, select_from_list, select_multiple).
+
+The UI system has been migrated to use chuk-term (https://github.com/chrishayuk/chuk-term) for improved consistency and maintainability.
 
 #### Demo Scripts
 

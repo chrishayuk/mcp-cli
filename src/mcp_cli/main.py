@@ -38,8 +38,8 @@ from mcp_cli.ui import (
     output,
     restore_terminal,
     set_terminal_title,
+    set_theme,
 )
-from mcp_cli.ui.theme import set_theme
 
 from mcp_cli.cli_options import process_options
 

@@ -17,6 +17,7 @@ dependencies = [
   "asyncio>=3.4.3",
   "chuk-llm[all]>=0.9.8",
   "chuk-mcp[full,pydantic,ui-manager]>=0.5",
+  "chuk-term",
   "chuk-tool-processor>=0.6.12",
   "jsonschema>=4.25.1",
   "prompt-toolkit>=3.0.50",
@@ -44,6 +45,9 @@ package-dir = { "" = "src" }
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["mcp_cli*"]
+
+[tool.uv.sources]
+chuk-term = { git = "https://github.com/chrishayuk/chuk-term.git" }
 [dependency-groups]
 dev = [
   "colorama>=0.4.6",

@@ -12,10 +12,8 @@ from rich.markdown import Markdown
 from rich.table import Table
 from rich.text import Text
 
-from mcp_cli.ui.output import get_output
-from mcp_cli.ui.theme import get_theme
-
-ui = get_output()
+from chuk_term.ui import output as ui
+from chuk_term.ui.theme import get_theme
 
 
 class BannerStyle:

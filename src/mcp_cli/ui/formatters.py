@@ -18,7 +18,7 @@ from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree
 
-from mcp_cli.ui.theme import get_theme
+from chuk_term.ui.theme import get_theme
 
 
 def format_tool_call(
