@@ -7,6 +7,7 @@ Used by both chat-mode (/exit | /quit) **and** the non-interactive CLI's
 `exit` sub-command.  It restores the TTY first, then either returns to the
 caller (interactive) or exits the process (one-shot mode).
 """
+
 from __future__ import annotations
 import sys
 
@@ -24,7 +25,7 @@ def exit_action(interactive: bool = True) -> bool:
     Parameters
     ----------
     interactive
-        • **True**  → just tell the outer loop to break and *return*  
+        • **True**  → just tell the outer loop to break and *return*
         • **False** → restore the TTY **then** call :pyfunc:`sys.exit(0)`
 
     Returns

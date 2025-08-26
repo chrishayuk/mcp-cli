@@ -12,17 +12,17 @@ Key improvements
    print_assistant_response().
 4. Added streaming response coordination.
 """
+
 from __future__ import annotations
 
 import json
-import os
 import signal
 import time
 import logging
 import re
 
 from types import FrameType
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Dict, List, Optional
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
@@ -40,6 +40,7 @@ from mcp_cli.chat.commands import handle_command
 
 # Set up logger
 log = logging.getLogger(__name__)
+
 
 class ChatUIManager:
     """Interactive UI layer with progress display and streaming support."""
@@ -81,12 +82,14 @@ class ChatUIManager:
                 }
             )
 
-            # Before initializing PromptSession
-            history_path = os.path.expanduser("~/.mcp-cli/chat_history")
-            os.makedirs(os.path.dirname(history_path), exist_ok=True)
+            # Before initializing PromptSession - use centralized preferences
+            from mcp_cli.utils.preferences import get_preference_manager
+
+            pref_manager = get_preference_manager()
+            history_path = pref_manager.get_history_file()
 
             self.session = PromptSession(
-                history=FileHistory(os.path.expanduser("~/.mcp-cli/chat_history")),
+                history=FileHistory(str(history_path)),
                 auto_suggest=AutoSuggestFromHistory(),
                 completer=ChatCommandCompleter(context.to_dict()),
                 complete_while_typing=True,
@@ -105,16 +108,19 @@ class ChatUIManager:
         """Signal that a streaming response is starting."""
         self.is_streaming_response = True
         log.debug("Started streaming response")
-    
+
     def do_confirm_tool_execution(self) -> bool:
         """Prompt user to confirm tool execution with rich text and clear default."""
         try:
             from rich.prompt import Prompt
+
             # Use rich to display the prompt, fallback to input() if needed
             prompt_text = "[bold white]Do you want to execute the tool?[/bold white]"
             try:
                 # Use rich Prompt if available
-                response = Prompt.ask(prompt_text, case_sensitive=False, choices=["Y", "N"], default="y")
+                response = Prompt.ask(
+                    prompt_text, case_sensitive=False, choices=["Y", "N"], default="y"
+                )
                 response = response.strip().lower()
             except Exception:
                 # Fallback to input()
@@ -143,11 +149,11 @@ class ChatUIManager:
         if self.is_streaming_response:
             self.is_streaming_response = False
             log.debug("Stopped streaming response")
-    
+
     def interrupt_streaming(self):
         """Interrupt any active streaming response."""
-        if hasattr(self, 'streaming_handler') and self.streaming_handler:
-            if hasattr(self.streaming_handler, 'interrupt_streaming'):
+        if hasattr(self, "streaming_handler") and self.streaming_handler:
+            if hasattr(self.streaming_handler, "interrupt_streaming"):
                 self.streaming_handler.interrupt_streaming()
                 log.debug("Interrupted streaming response via streaming handler")
             else:
@@ -173,20 +179,20 @@ class ChatUIManager:
             def _handler(sig: int, frame: FrameType | None):
                 try:
                     current_time = time.time()
-                    
+
                     # Reset counter if time between interrupts is long enough
                     if current_time - self._last_interrupt_time > 2.0:
                         self._interrupt_count = 0
-                        
+
                     self._last_interrupt_time = current_time
                     self._interrupt_count += 1
-                    
+
                     # Handle streaming response interruption
                     if self.is_streaming_response:
                         print("\n[yellow]Interrupting streaming response...[/yellow]")
                         self.interrupt_streaming()
                         return
-                    
+
                     # Swallow every SIGINT while a batch is active or cancelling
                     if self.tools_running or self.interrupt_requested:
                         if self.tools_running and not self.interrupt_requested:
@@ -196,23 +202,27 @@ class ChatUIManager:
                                 "\n[yellow]Interrupt requested - cancelling current "
                                 "tool execution…[/yellow]"
                             )
-                            
+
                             try:
                                 self._interrupt_now()
                             except Exception as int_exc:
                                 log.error(f"Error during interrupt: {int_exc}")
                                 print(f"[red]Error during interrupt: {int_exc}[/red]")
-                        
+
                         # Second interrupt within 2 seconds - more forceful termination
                         if self.tools_running and self._interrupt_count >= 2:
                             print("\n[red]Force terminating current operation...[/red]")
                             # Try to force cleanup
                             try:
                                 self.stop_tool_calls()
-                                print("[yellow]Tool execution forcefully stopped.[/yellow]")
+                                print(
+                                    "[yellow]Tool execution forcefully stopped.[/yellow]"
+                                )
                             except Exception as force_exc:
-                                log.error(f"Error during forced termination: {force_exc}")
-                        
+                                log.error(
+                                    f"Error during forced termination: {force_exc}"
+                                )
+
                         return  # swallow
 
                     # idle → propagate to default handler
@@ -235,7 +245,9 @@ class ChatUIManager:
                 signal.signal(signal.SIGINT, _handler)
             except Exception as set_err:
                 log.warning(f"Could not set signal handler: {set_err}")
-                print(f"[yellow]Warning: Could not set signal handler: {set_err}[/yellow]")
+                print(
+                    f"[yellow]Warning: Could not set signal handler: {set_err}[/yellow]"
+                )
                 self._prev_sigint_handler = None  # Reset saved handler
         except Exception as exc:
             # Catch-all for any other errors
@@ -268,7 +280,7 @@ class ChatUIManager:
     def _interrupt_now(self) -> None:
         """
         Called on first Ctrl-C or `/interrupt`.
-        
+
         Cancels running asyncio tasks and stops tool calls.
         """
         try:
@@ -279,7 +291,7 @@ class ChatUIManager:
                     tp.cancel_running_tasks()
                 except Exception as tp_exc:
                     log.error(f"Error cancelling tool processor tasks: {tp_exc}")
-            
+
             try:
                 self.stop_tool_calls()
             except Exception as stop_exc:
@@ -316,10 +328,11 @@ class ChatUIManager:
             if self.session is None:
                 # Fallback to basic input if prompt_toolkit not available
                 import asyncio
+
                 user_input = await asyncio.to_thread(input, "> ")
                 self.last_input = user_input.strip()
                 return self.last_input
-                
+
             msg = await self.session.prompt_async()
             self.last_input = msg.strip()
             try:
@@ -331,6 +344,7 @@ class ChatUIManager:
             log.error(f"Error getting user input: {exc}")
             # Last resort fallback
             import asyncio
+
             try:
                 return await asyncio.to_thread(input, "> ")
             except Exception:
@@ -353,7 +367,7 @@ class ChatUIManager:
 
     def print_tool_call(self, tool_name: str, raw_args):
         """Display a tool call in the UI, with improved error handling."""
-        try:                
+        try:
             # Start timing if this is the first tool call
             if not self.tool_start_time:
                 self.tool_start_time = time.time()
@@ -362,7 +376,9 @@ class ChatUIManager:
                     self._install_sigint_handler()
                 except Exception as sig_exc:
                     log.warning(f"Could not install interrupt handler: {sig_exc}")
-                    print(f"[yellow]Warning: Could not install interrupt handler: {sig_exc}[/yellow]")
+                    print(
+                        f"[yellow]Warning: Could not install interrupt handler: {sig_exc}[/yellow]"
+                    )
 
             # Record time for previous tool if applicable
             if self.current_tool_start_time and self.tool_calls:
@@ -380,7 +396,9 @@ class ChatUIManager:
                 except Exception as exc:
                     # Handle any other parsing errors
                     log.warning(f"Error parsing tool arguments: {exc}")
-                    print(f"[yellow]Warning: Error parsing tool arguments: {exc}[/yellow]")
+                    print(
+                        f"[yellow]Warning: Error parsing tool arguments: {exc}[/yellow]"
+                    )
 
             # Add to our tracking list
             self.tool_calls.append({"name": tool_name, "args": processed_args})
@@ -400,22 +418,34 @@ class ChatUIManager:
                     md = f"**Tool Call:** {tool_name}\n\n```json\n{args_json}\n```"
 
                     # Get tool description in verbose mode
-                    if self.verbose_mode:    
+                    if self.verbose_mode:
                         tool_description = ""
                         for obj in self.context.tools:
-                            if obj.get("name") == tool_name.split('.', 1)[-1]:
+                            if obj.get("name") == tool_name.split(".", 1)[-1]:
                                 tool_description = obj.get("description", "")
                                 md = f"Tool Call: **{tool_name}**\n\n*{tool_description}*\n```json\n{args_json}\n```"
-                     
+
                     # Use a safe approach to display markdown
                     try:
                         markdown_content = Markdown(md)
-                        print(Panel(markdown_content, style="bold magenta", title="Tool Invocation"))
-                    except Exception as md_exc:
+                        print(
+                            Panel(
+                                markdown_content,
+                                style="bold magenta",
+                                title="Tool Invocation",
+                            )
+                        )
+                    except Exception:
                         # Fallback if markdown parsing fails
                         message_text = Text(f"Tool Call: {tool_name}\n\n{args_json}")
-                        print(Panel(message_text, style="bold magenta", title="Tool Invocation"))
-                except Exception as format_exc:
+                        print(
+                            Panel(
+                                message_text,
+                                style="bold magenta",
+                                title="Tool Invocation",
+                            )
+                        )
+                except Exception:
                     # Fallback to plain display if formatting fails
                     print(f"[magenta]Tool Call:[/magenta] {tool_name}")
                     print(f"[dim]Arguments:[/dim] {str(processed_args)}")
@@ -438,7 +468,9 @@ class ChatUIManager:
             # Create live display if it doesn't exist
             if self.live_display is None:
                 try:
-                    self.live_display = Live("", transient=True, refresh_per_second=4, console=self.console)
+                    self.live_display = Live(
+                        "", transient=True, refresh_per_second=4, console=self.console
+                    )
                     self.live_display.start()
                     print(
                         "[dim italic]Press Ctrl+C to interrupt tool execution[/dim italic]",
@@ -447,7 +479,9 @@ class ChatUIManager:
                 except Exception as live_exc:
                     log.warning(f"Could not create live display: {live_exc}")
                     # If live display fails, fall back to static output
-                    print(f"[magenta]Running tool:[/magenta] {self.tool_calls[-1]['name']}")
+                    print(
+                        f"[magenta]Running tool:[/magenta] {self.tool_calls[-1]['name']}"
+                    )
                     return
 
             # Calculate elapsed times
@@ -467,25 +501,28 @@ class ChatUIManager:
                 # Show completed tools
                 for i, t in enumerate(self.tool_calls[:-1]):
                     try:
-                        name = t.get('name', 'unknown')
-                        dur = f" ({self.tool_times[i]:.1f}s)" if i < len(self.tool_times) else ""
-                        parts.append(f"[dim green]{i+1}. {name}{dur}[/dim green]")
+                        name = t.get("name", "unknown")
+                        dur = (
+                            f" ({self.tool_times[i]:.1f}s)"
+                            if i < len(self.tool_times)
+                            else ""
+                        )
+                        parts.append(f"[dim green]{i + 1}. {name}{dur}[/dim green]")
                     except Exception as tool_exc:
                         log.warning(f"Error formatting tool entry {i}: {tool_exc}")
-                        parts.append(f"[dim green]{i+1}. (error)[/dim green]")
+                        parts.append(f"[dim green]{i + 1}. (error)[/dim green]")
 
                 # Show current tool
                 idx = len(self.tool_calls) - 1
                 if idx >= 0:
                     try:
-                        name = self.tool_calls[-1].get('name', 'unknown')
+                        name = self.tool_calls[-1].get("name", "unknown")
                         parts.append(
-                            f"[magenta]{idx+1}. {name} ({cur_elapsed}s)"
-                            f"[/magenta]"
+                            f"[magenta]{idx + 1}. {name} ({cur_elapsed}s)[/magenta]"
                         )
                     except Exception as curr_exc:
                         log.warning(f"Error formatting current tool: {curr_exc}")
-                        parts.append(f"[magenta]{idx+1}. (error)[/magenta]")
+                        parts.append(f"[magenta]{idx + 1}. (error)[/magenta]")
             except Exception as parts_exc:
                 log.error(f"Error building parts list: {parts_exc}")
                 # If parts building fails, use minimal display
@@ -495,8 +532,8 @@ class ChatUIManager:
             try:
                 separator = " → "
                 display_text = Text.from_markup(
-                    f"[dim]Calling tools (total: {total_elapsed}s): {spinner}[/dim] " +
-                    separator.join(parts)
+                    f"[dim]Calling tools (total: {total_elapsed}s): {spinner}[/dim] "
+                    + separator.join(parts)
                 )
                 self.live_display.update(display_text)
             except Exception as update_exc:
@@ -506,7 +543,11 @@ class ChatUIManager:
                     self.live_display.stop()
                     self.live_display = None
                     print(f"[yellow]Live display error: {update_exc}[/yellow]")
-                    current_tool = self.tool_calls[-1].get('name', 'unknown') if self.tool_calls else "unknown"
+                    current_tool = (
+                        self.tool_calls[-1].get("name", "unknown")
+                        if self.tool_calls
+                        else "unknown"
+                    )
                     print(f"[magenta]Running tool:[/magenta] {current_tool}")
                 except Exception as fallback_exc:
                     # Last resort
@@ -525,7 +566,7 @@ class ChatUIManager:
             if self.is_streaming_response:
                 self.stop_streaming_response()
                 return
-                
+
             # Clean up tool display if needed
             if self.live_display:
                 try:
@@ -533,15 +574,18 @@ class ChatUIManager:
                     self.live_display = None
                 except Exception as live_exc:
                     log.warning(f"Error stopping live display: {live_exc}")
-                    print(f"[yellow]Warning: Error stopping live display: {live_exc}[/yellow]")
+                    print(
+                        f"[yellow]Warning: Error stopping live display: {live_exc}[/yellow]"
+                    )
 
                 # Record final tool time if needed
                 try:
-                    if (
-                        self.current_tool_start_time
-                        and len(self.tool_times) < len(self.tool_calls)
+                    if self.current_tool_start_time and len(self.tool_times) < len(
+                        self.tool_calls
                     ):
-                        self.tool_times.append(time.time() - self.current_tool_start_time)
+                        self.tool_times.append(
+                            time.time() - self.current_tool_start_time
+                        )
                 except Exception as time_exc:
                     log.warning(f"Error recording final tool time: {time_exc}")
 
@@ -557,48 +601,54 @@ class ChatUIManager:
 
                 # Reset interrupt state
                 self.interrupt_requested = False
-                
+
                 # Stop tool call tracking
                 try:
                     self.stop_tool_calls()
                 except Exception as stop_exc:
                     log.warning(f"Error stopping tool calls: {stop_exc}")
-                    print(f"[yellow]Warning: Error stopping tool calls: {stop_exc}[/yellow]")
-                    
+                    print(
+                        f"[yellow]Warning: Error stopping tool calls: {stop_exc}[/yellow]"
+                    )
+
                 # Restore signal handler
                 try:
                     self._restore_sigint_handler()
                 except Exception as sig_exc:
                     log.warning(f"Error restoring signal handler: {sig_exc}")
-                    print(f"[yellow]Warning: Error restoring signal handler: {sig_exc}[/yellow]")
+                    print(
+                        f"[yellow]Warning: Error restoring signal handler: {sig_exc}[/yellow]"
+                    )
 
             # Display the assistant's response
             try:
                 # Check if content might contain problematic markup characters
                 needs_text_object = "[/" in content or "\\[" in content
-                
+
                 if needs_text_object:
                     # Use Text object to prevent markup parsing issues
                     response_content = Text(content or "[No Response]")
-                    #response_content = Text(text=(content or "[No Response]"), overflow="fold")
+                    # response_content = Text(text=(content or "[No Response]"), overflow="fold")
                 else:
                     # Otherwise use Markdown as normal
                     try:
                         response_content = Markdown(content or "[No Response]")
                     except Exception as md_exc:
                         # Fallback to Text if Markdown parsing fails
-                        log.warning(f"Markdown parsing failed, using Text object: {md_exc}")
+                        log.warning(
+                            f"Markdown parsing failed, using Text object: {md_exc}"
+                        )
                         response_content = Text(content or "[No Response]")
 
                 def remove_think_tags(text):
                     print(f"Removing thinking tags from content: {text}")
-                    return re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+                    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
 
                 suppress_thinking = True  # Example flag to control thinking suppression
                 # If suppress_thinking flag and the final answer contains text between <think> and </think>, remove it
                 if suppress_thinking:
                     response_content = remove_think_tags(response_content)
-            
+
                 print(
                     Panel(
                         response_content,
@@ -613,7 +663,7 @@ class ChatUIManager:
                 print("\n[bold blue]Assistant:[/bold blue]")
                 print(content or "[No Response]")
                 print(f"[dim]Response time: {elapsed:.2f}s[/dim]")
-                
+
         except Exception as exc:
             # Last-resort error handler
             log.error(f"Error displaying assistant response: {exc}")
@@ -629,14 +679,16 @@ class ChatUIManager:
         try:
             # build a dict context including the real ToolManager
             ctx_dict = self.context.to_dict()
-            
+
             # Add tool_manager if available
             try:
-                ctx_dict['tool_manager'] = self.context.tool_manager
+                ctx_dict["tool_manager"] = self.context.tool_manager
             except Exception as ctx_exc:
                 log.warning(f"Error adding tool_manager to context: {ctx_exc}")
 
-            ctx_dict['ui_manager'] = self  # Add self for commands that perform UI operations 
+            ctx_dict["ui_manager"] = (
+                self  # Add self for commands that perform UI operations
+            )
 
             # Call command handler
             try:
@@ -651,7 +703,7 @@ class ChatUIManager:
                 self.context.update_from_dict(ctx_dict)
             except Exception as update_exc:
                 log.warning(f"Error updating context: {update_exc}")
-                
+
             return handled
         except Exception as exc:
             # Last-resort error handling
@@ -667,9 +719,11 @@ class ChatUIManager:
                 try:
                     self.live_display.stop()
                 except Exception as live_exc:
-                    log.warning(f"Error stopping live display during cleanup: {live_exc}")
+                    log.warning(
+                        f"Error stopping live display during cleanup: {live_exc}"
+                    )
                 self.live_display = None
-                
+
             try:
                 self._restore_sigint_handler()
             except Exception as sig_exc:

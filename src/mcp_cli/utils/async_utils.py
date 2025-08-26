@@ -7,6 +7,7 @@ Tiny helper for “run an async coroutine from possibly-sync code”.
 * If called **inside** a running loop → we raise, so callers know to
   switch to the `*_async` variant instead of silently returning junk.
 """
+
 from __future__ import annotations
 
 import asyncio

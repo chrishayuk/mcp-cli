@@ -1,23 +1,22 @@
-# mcp_cli/chat/tool_processor.py 
+# mcp_cli/chat/tool_processor.py
 """
 mcp_cli.chat.tool_processor
 
 Clean tool processor that only uses the working tool_manager execution path.
 Removed the problematic stream_manager path that was causing "unhealthy connection" errors.
 """
+
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
-import uuid
 from typing import Any, Dict, List, Optional
 
 from rich import print as rprint
 from chuk_term.ui import output
 
 from mcp_cli.tools.formatting import display_tool_call_result
-from mcp_cli.tools.models import ToolCallResult
 
 log = logging.getLogger(__name__)
 
@@ -25,7 +24,7 @@ log = logging.getLogger(__name__)
 class ToolProcessor:
     """
     Handle execution of tool calls returned by the LLM.
-    
+
     CLEAN: Only uses tool_manager.execute_tool() which works correctly.
     """
 
@@ -42,7 +41,9 @@ class ToolProcessor:
         # Give the UI a back-pointer for Ctrl-C cancellation
         setattr(self.context, "tool_processor", self)
 
-    async def process_tool_calls(self, tool_calls: List[Any], name_mapping: Optional[Dict[str, str]] = None) -> None:
+    async def process_tool_calls(
+        self, tool_calls: List[Any], name_mapping: Optional[Dict[str, str]] = None
+    ) -> None:
         """
         Execute tool_calls concurrently using the working tool_manager path.
 
@@ -53,12 +54,14 @@ class ToolProcessor:
         if not tool_calls:
             rprint("[yellow]Warning: Empty tool_calls list received.[/yellow]")
             return
-            
+
         if name_mapping is None:
             name_mapping = {}
-            
-        log.info(f"Processing {len(tool_calls)} tool calls with {len(name_mapping)} name mappings")
-        
+
+        log.info(
+            f"Processing {len(tool_calls)} tool calls with {len(name_mapping)} name mappings"
+        )
+
         for idx, call in enumerate(tool_calls):
             if getattr(self.ui_manager, "interrupt_requested", False):
                 break
@@ -73,7 +76,9 @@ class ToolProcessor:
             self._pending.clear()
 
         # Signal UI that tool calls are complete
-        if hasattr(self.ui_manager, "finish_tool_calls") and callable(self.ui_manager.finish_tool_calls):
+        if hasattr(self.ui_manager, "finish_tool_calls") and callable(
+            self.ui_manager.finish_tool_calls
+        ):
             try:
                 if asyncio.iscoroutinefunction(self.ui_manager.finish_tool_calls):
                     await self.ui_manager.finish_tool_calls()
@@ -88,7 +93,9 @@ class ToolProcessor:
             if not task.done():
                 task.cancel()
 
-    async def _run_single_call(self, idx: int, tool_call: Any, name_mapping: Dict[str, str]) -> None:
+    async def _run_single_call(
+        self, idx: int, tool_call: Any, name_mapping: Dict[str, str]
+    ) -> None:
         """
         Execute one tool call using the clean tool_manager path.
         """
@@ -111,11 +118,15 @@ class ToolProcessor:
                     call_id = tool_call.get("id", call_id)
                 else:
                     log.error(f"Unrecognized tool call format: {type(tool_call)}")
-                    raise ValueError(f"Unrecognized tool call format: {type(tool_call)}")
+                    raise ValueError(
+                        f"Unrecognized tool call format: {type(tool_call)}"
+                    )
 
                 # Validate tool name
                 if not llm_tool_name or llm_tool_name == "unknown_tool":
-                    log.error(f"Tool name is empty or unknown in tool call: {tool_call}")
+                    log.error(
+                        f"Tool name is empty or unknown in tool call: {tool_call}"
+                    )
                     llm_tool_name = f"unknown_tool_{idx}"
 
                 if not isinstance(llm_tool_name, str):
@@ -124,13 +135,17 @@ class ToolProcessor:
 
                 # Map LLM tool name to execution tool name
                 execution_tool_name = name_mapping.get(llm_tool_name, llm_tool_name)
-                
-                log.info(f"Tool execution: LLM='{llm_tool_name}' -> Execution='{execution_tool_name}'")
+
+                log.info(
+                    f"Tool execution: LLM='{llm_tool_name}' -> Execution='{execution_tool_name}'"
+                )
 
                 # Get display name for UI
                 display_name = execution_tool_name
                 if hasattr(self.context, "get_display_name_for_tool"):
-                    display_name = self.context.get_display_name_for_tool(execution_tool_name)
+                    display_name = self.context.get_display_name_for_tool(
+                        execution_tool_name
+                    )
 
                 # Show tool call in UI
                 try:
@@ -139,11 +154,16 @@ class ToolProcessor:
                     log.warning(f"UI display error (non-fatal): {ui_exc}")
 
                 # Handle user confirmation if enabled
-                if hasattr(self.ui_manager, "confirm_tool_execution") and self.ui_manager.confirm_tool_execution:
+                if (
+                    hasattr(self.ui_manager, "confirm_tool_execution")
+                    and self.ui_manager.confirm_tool_execution
+                ):
                     confirmed = self.ui_manager.do_confirm_tool_execution()
                     if not confirmed:
                         setattr(self.ui_manager, "interrupt_requested", True)
-                        self._add_cancelled_tool_to_history(llm_tool_name, call_id, raw_arguments)
+                        self._add_cancelled_tool_to_history(
+                            llm_tool_name, call_id, raw_arguments
+                        )
                         return
 
                 # Parse arguments
@@ -154,10 +174,16 @@ class ToolProcessor:
                     raise RuntimeError("No tool manager available for tool execution")
 
                 with output.loading("Executing tool…"):
-                    log.info(f"Executing tool: {execution_tool_name} with args: {arguments}")
-                    tool_result = await self.tool_manager.execute_tool(execution_tool_name, arguments)
+                    log.info(
+                        f"Executing tool: {execution_tool_name} with args: {arguments}"
+                    )
+                    tool_result = await self.tool_manager.execute_tool(
+                        execution_tool_name, arguments
+                    )
 
-                log.info(f"Tool result: success={tool_result.success}, error='{tool_result.error}'")
+                log.info(
+                    f"Tool result: success={tool_result.success}, error='{tool_result.error}'"
+                )
 
                 # Prepare content for conversation history
                 if tool_result.success:
@@ -166,20 +192,28 @@ class ToolProcessor:
                     content = f"Error: {tool_result.error}"
 
                 # Add to conversation history
-                self._add_tool_call_to_history(llm_tool_name, call_id, arguments, content)
+                self._add_tool_call_to_history(
+                    llm_tool_name, call_id, arguments, content
+                )
 
                 # Display result if in verbose mode
-                if tool_result and hasattr(self.ui_manager, "verbose_mode") and self.ui_manager.verbose_mode:
+                if (
+                    tool_result
+                    and hasattr(self.ui_manager, "verbose_mode")
+                    and self.ui_manager.verbose_mode
+                ):
                     display_tool_call_result(tool_result, self.ui_manager.console)
 
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 log.exception(f"Error executing tool call #{idx}")
-                
+
                 # Add error to conversation history
                 error_content = f"Error: Could not execute tool. {exc}"
-                self._add_tool_call_to_history(llm_tool_name, call_id, raw_arguments, error_content)
+                self._add_tool_call_to_history(
+                    llm_tool_name, call_id, raw_arguments, error_content
+                )
 
     def _parse_arguments(self, raw_arguments: Any) -> Dict[str, Any]:
         """Parse raw arguments into a dictionary."""
@@ -207,7 +241,9 @@ class ToolProcessor:
         else:
             return str(result)
 
-    def _add_tool_call_to_history(self, llm_tool_name: str, call_id: str, arguments: Any, content: str) -> None:
+    def _add_tool_call_to_history(
+        self, llm_tool_name: str, call_id: str, arguments: Any, content: str
+    ) -> None:
         """Add tool call and response to conversation history."""
         try:
             # Format arguments for history
@@ -217,64 +253,84 @@ class ToolProcessor:
                 arg_json = str(arguments)
 
             # Add assistant's tool call
-            self.context.conversation_history.append({
-                "role": "assistant",
-                "content": None,
-                "tool_calls": [{
-                    "id": call_id,
-                    "type": "function",
-                    "function": {
-                        "name": llm_tool_name,
-                        "arguments": arg_json,
-                    },
-                }],
-            })
+            self.context.conversation_history.append(
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": call_id,
+                            "type": "function",
+                            "function": {
+                                "name": llm_tool_name,
+                                "arguments": arg_json,
+                            },
+                        }
+                    ],
+                }
+            )
 
             # Add tool's response
-            self.context.conversation_history.append({
-                "role": "tool",
-                "name": llm_tool_name,
-                "content": content,
-                "tool_call_id": call_id,
-            })
+            self.context.conversation_history.append(
+                {
+                    "role": "tool",
+                    "name": llm_tool_name,
+                    "content": content,
+                    "tool_call_id": call_id,
+                }
+            )
 
             log.debug(f"Added tool call to conversation history: {llm_tool_name}")
 
         except Exception as e:
             log.error(f"Error updating conversation history: {e}")
 
-    def _add_cancelled_tool_to_history(self, llm_tool_name: str, call_id: str, raw_arguments: Any) -> None:
+    def _add_cancelled_tool_to_history(
+        self, llm_tool_name: str, call_id: str, raw_arguments: Any
+    ) -> None:
         """Add cancelled tool call to conversation history."""
         try:
             # Add user cancellation
-            self.context.conversation_history.append({
-                "role": "user",
-                "content": f"Cancel {llm_tool_name} tool execution.",
-            })
+            self.context.conversation_history.append(
+                {
+                    "role": "user",
+                    "content": f"Cancel {llm_tool_name} tool execution.",
+                }
+            )
 
             # Add assistant acknowledgment
-            arg_json = json.dumps(raw_arguments) if isinstance(raw_arguments, dict) else str(raw_arguments or {})
-            
-            self.context.conversation_history.append({
-                "role": "assistant",
-                "content": "User cancelled tool execution.",
-                "tool_calls": [{
-                    "id": call_id,
-                    "type": "function",
-                    "function": {
-                        "name": llm_tool_name,
-                        "arguments": arg_json,
-                    },
-                }],
-            })
+            arg_json = (
+                json.dumps(raw_arguments)
+                if isinstance(raw_arguments, dict)
+                else str(raw_arguments or {})
+            )
+
+            self.context.conversation_history.append(
+                {
+                    "role": "assistant",
+                    "content": "User cancelled tool execution.",
+                    "tool_calls": [
+                        {
+                            "id": call_id,
+                            "type": "function",
+                            "function": {
+                                "name": llm_tool_name,
+                                "arguments": arg_json,
+                            },
+                        }
+                    ],
+                }
+            )
 
             # Add tool cancellation response
-            self.context.conversation_history.append({
-                "role": "tool",
-                "name": llm_tool_name,
-                "content": "Tool execution cancelled by user.",
-                "tool_call_id": call_id,
-            })
+            self.context.conversation_history.append(
+                {
+                    "role": "tool",
+                    "name": llm_tool_name,
+                    "content": "Tool execution cancelled by user.",
+                    "tool_call_id": call_id,
+                }
+            )
 
         except Exception as e:
             log.error(f"Error adding cancelled tool to history: {e}")

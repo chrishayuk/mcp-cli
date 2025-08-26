@@ -1,6 +1,7 @@
 # mcp_cli/llm/system_prompt_generator.py
 import json
 
+
 class SystemPromptGenerator:
     """
     A class for generating system prompts dynamically based on tools JSON and user inputs.

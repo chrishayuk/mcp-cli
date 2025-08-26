@@ -12,6 +12,7 @@ It simply calls :pyfunc:`mcp_cli.ui.clear_screen` and, if
 *verbose* is enabled, prints a tiny confirmation so scripts can detect that
 the operation completed.
 """
+
 from __future__ import annotations
 
 # NEW: Import from the new UI module

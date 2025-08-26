@@ -1,16 +1,20 @@
-# mcp_cli/async_config.py - FIXED VERSION  
+# mcp_cli/async_config.py - FIXED VERSION
 """
 Async configuration loading for MCP servers using chuk-tool-processor APIs.
 """
+
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any
 
-async def load_server_config(config_path: str, server_name: str = None) -> Dict[str, Any]:
+
+async def load_server_config(
+    config_path: str, server_name: str = None
+) -> Dict[str, Any]:
     """
     Load the server configuration from a JSON file.
-    
+
     FIXED: Updated to work with chuk-tool-processor instead of old chuk_mcp APIs.
     """
     try:
@@ -21,7 +25,7 @@ async def load_server_config(config_path: str, server_name: str = None) -> Dict[
         config_file_path = Path(config_path)
         if not config_file_path.exists():
             raise FileNotFoundError(f"Configuration file not found: {config_path}")
-            
+
         with open(config_file_path, "r") as config_file:
             config = json.load(config_file)
 
@@ -32,18 +36,18 @@ async def load_server_config(config_path: str, server_name: str = None) -> Dict[
                 error_msg = f"Server '{server_name}' not found in configuration file."
                 logging.error(error_msg)
                 raise ValueError(error_msg)
-            
+
             # Return in format expected by chuk-tool-processor
             return {
                 "command": server_config["command"],
                 "args": server_config.get("args", []),
                 "env": server_config.get("env", {}),
             }
-        
+
         # Return entire config for processing multiple servers
         return config
 
-    except FileNotFoundError as e:
+    except FileNotFoundError:
         logging.error(f"Configuration file not found: {config_path}")
         raise
     except json.JSONDecodeError as e:
@@ -58,13 +62,13 @@ async def load_server_config(config_path: str, server_name: str = None) -> Dict[
 async def load_all_server_configs(config_path: str) -> Dict[str, Dict[str, Any]]:
     """
     Load all server configurations from a JSON file.
-    
+
     Returns:
         Dictionary mapping server names to their configurations
     """
     config = await load_server_config(config_path)
     mcp_servers = config.get("mcpServers", {})
-    
+
     # Transform to expected format
     result = {}
     for server_name, server_config in mcp_servers.items():
@@ -73,5 +77,5 @@ async def load_all_server_configs(config_path: str) -> Dict[str, Dict[str, Any]]
             "args": server_config.get("args", []),
             "env": server_config.get("env", {}),
         }
-    
+
     return result

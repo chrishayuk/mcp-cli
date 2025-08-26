@@ -8,7 +8,6 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, AsyncIterator
 
-from rich import print
 from chuk_term.ui import output
 
 from mcp_cli.chat.system_prompt import generate_system_prompt
@@ -21,12 +20,12 @@ logger = logging.getLogger(__name__)
 class ChatContext:
     """
     Chat context focused on conversation state and tool coordination.
-    
+
     Responsibilities:
     - Conversation history management
     - Tool discovery and adaptation coordination
     - Session state (exit requests, etc.)
-    
+
     Model management is completely delegated to ModelManager.
     """
 
@@ -40,11 +39,11 @@ class ChatContext:
         """
         self.tool_manager = tool_manager
         self.model_manager = model_manager
-        
+
         # Conversation state
         self.exit_requested = False
         self.conversation_history: List[Dict[str, Any]] = []
-        
+
         # Tool state (filled during initialization)
         self.tools: List[Dict[str, Any]] = []
         self.internal_tools: List[Dict[str, Any]] = []
@@ -52,7 +51,7 @@ class ChatContext:
         self.tool_to_server_map: Dict[str, str] = {}
         self.openai_tools: List[Dict[str, Any]] = []
         self.tool_name_mapping: Dict[str, str] = {}
-        
+
         logger.debug(f"ChatContext created with {self.provider}/{self.model}")
 
     @classmethod
@@ -63,26 +62,28 @@ class ChatContext:
         model: str = None,
         api_base: str = None,
         api_key: str = None,
-    ) -> 'ChatContext':
+    ) -> "ChatContext":
         """
         Factory method for convenient creation.
-        
+
         Args:
             tool_manager: Tool management interface
             provider: Provider to switch to (optional)
             model: Model to switch to (optional)
             api_base: API base URL override (optional)
             api_key: API key override (optional)
-            
+
         Returns:
             Configured ChatContext instance
         """
         model_manager = ModelManager()
-        
+
         # Configure provider if API settings provided
         if provider and (api_base or api_key):
-            model_manager.configure_provider(provider, api_key=api_key, api_base=api_base)
-        
+            model_manager.configure_provider(
+                provider, api_key=api_key, api_base=api_base
+            )
+
         # Switch model if requested
         if provider and model:
             model_manager.switch_model(provider, model)
@@ -90,7 +91,7 @@ class ChatContext:
             model_manager.switch_provider(provider)
         elif model:
             model_manager.switch_to_model(model)
-        
+
         return cls(tool_manager, model_manager)
 
     # ── Properties that delegate to ModelManager ──────────────────────────
@@ -115,13 +116,17 @@ class ChatContext:
         try:
             await self._initialize_tools()
             self._initialize_conversation()
-            
-            if not self.tools:
-                output.print("[yellow]No tools available. Chat functionality may be limited.[/yellow]")
 
-            logger.info(f"ChatContext ready: {len(self.tools)} tools, {self.provider}/{self.model}")
+            if not self.tools:
+                output.print(
+                    "[yellow]No tools available. Chat functionality may be limited.[/yellow]"
+                )
+
+            logger.info(
+                f"ChatContext ready: {len(self.tools)} tools, {self.provider}/{self.model}"
+            )
             return True
-            
+
         except Exception as exc:
             logger.exception("Error initializing chat context")
             output.print(f"[red]Error initializing chat context: {exc}[/red]")
@@ -131,7 +136,7 @@ class ChatContext:
         """Initialize tool discovery and adaptation."""
         # Get tools from ToolManager
         tool_infos = await self.tool_manager.get_unique_tools()
-        
+
         self.tools = [
             {
                 "name": t.name,
@@ -142,20 +147,20 @@ class ChatContext:
             }
             for t in tool_infos
         ]
-        
+
         # Get server info
         raw_infos = await self.tool_manager.get_server_info()
         self.server_info = [
             {"id": s.id, "name": s.name, "tools": s.tool_count, "status": s.status}
             for s in raw_infos
         ]
-        
+
         # Build tool-to-server mapping
         self.tool_to_server_map = {t["name"]: t["namespace"] for t in self.tools}
-        
+
         # Adapt tools for current provider
         await self._adapt_tools_for_provider()
-        
+
         # Keep copy for system prompt
         self.internal_tools = list(self.tools)
 
@@ -163,10 +168,14 @@ class ChatContext:
         """Adapt tools for current provider."""
         try:
             if hasattr(self.tool_manager, "get_adapted_tools_for_llm"):
-                tools_and_mapping = await self.tool_manager.get_adapted_tools_for_llm(self.provider)
+                tools_and_mapping = await self.tool_manager.get_adapted_tools_for_llm(
+                    self.provider
+                )
                 self.openai_tools = tools_and_mapping[0]
                 self.tool_name_mapping = tools_and_mapping[1]
-                logger.debug(f"Adapted {len(self.openai_tools)} tools for {self.provider}")
+                logger.debug(
+                    f"Adapted {len(self.openai_tools)} tools for {self.provider}"
+                )
             else:
                 # Fallback to generic tools
                 self.openai_tools = await self.tool_manager.get_tools_for_llm()
@@ -175,6 +184,7 @@ class ChatContext:
             logger.warning(f"Error adapting tools: {exc}")
             # Final fallback - use basic conversion
             from mcp_cli.tools.manager import ToolManager
+
             self.openai_tools = ToolManager.convert_to_openai_tools(self.tools)
             self.tool_name_mapping = {}
 
@@ -187,7 +197,7 @@ class ChatContext:
     async def refresh_after_model_change(self) -> None:
         """
         Refresh context after ModelManager changes the model.
-        
+
         Call this after model_manager.switch_model() to update tools.
         ModelManager handles client refresh automatically.
         """
@@ -198,8 +208,10 @@ class ChatContext:
     async def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
         """Execute a tool."""
         return await self.tool_manager.execute_tool(tool_name, arguments)
-    
-    async def stream_execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> AsyncIterator[Any]:
+
+    async def stream_execute_tool(
+        self, tool_name: str, arguments: Dict[str, Any]
+    ) -> AsyncIterator[Any]:
         """Execute a tool with streaming."""
         async for result in self.tool_manager.stream_execute_tool(tool_name, arguments):
             yield result
@@ -223,7 +235,11 @@ class ChatContext:
 
     def clear_conversation_history(self, keep_system_prompt: bool = True) -> None:
         """Clear conversation history."""
-        if keep_system_prompt and self.conversation_history and self.conversation_history[0].get("role") == "system":
+        if (
+            keep_system_prompt
+            and self.conversation_history
+            and self.conversation_history[0].get("role") == "system"
+        ):
             system_prompt = self.conversation_history[0]
             self.conversation_history = [system_prompt]
         else:
@@ -232,10 +248,15 @@ class ChatContext:
     def regenerate_system_prompt(self) -> None:
         """Regenerate system prompt with current tools."""
         system_prompt = generate_system_prompt(self.internal_tools)
-        if self.conversation_history and self.conversation_history[0].get("role") == "system":
+        if (
+            self.conversation_history
+            and self.conversation_history[0].get("role") == "system"
+        ):
             self.conversation_history[0]["content"] = system_prompt
         else:
-            self.conversation_history.insert(0, {"role": "system", "content": system_prompt})
+            self.conversation_history.insert(
+                0, {"role": "system", "content": system_prompt}
+            )
 
     # ── Simple getters ────────────────────────────────────────────────────
     def get_tool_count(self) -> int:
@@ -283,8 +304,14 @@ class ChatContext:
             self.model_manager = context_dict["model_manager"]
 
         # Tool state updates (for command handlers that modify tools)
-        for key in ["tools", "internal_tools", "server_info", "tool_to_server_map", 
-                   "openai_tools", "tool_name_mapping"]:
+        for key in [
+            "tools",
+            "internal_tools",
+            "server_info",
+            "tool_to_server_map",
+            "openai_tools",
+            "tool_name_mapping",
+        ]:
             if key in context_dict:
                 setattr(self, key, context_dict[key])
 
@@ -313,8 +340,10 @@ class ChatContext:
         }
 
     def __repr__(self) -> str:
-        return (f"ChatContext(provider='{self.provider}', model='{self.model}', "
-                f"tools={len(self.tools)}, messages={self.get_conversation_length()})")
+        return (
+            f"ChatContext(provider='{self.provider}', model='{self.model}', "
+            f"tools={len(self.tools)}, messages={self.get_conversation_length()})"
+        )
 
     def __str__(self) -> str:
         return f"Chat session with {self.provider}/{self.model} ({len(self.tools)} tools, {self.get_conversation_length()} messages)"
@@ -324,24 +353,25 @@ class ChatContext:
 # For testing - separate class to keep main ChatContext clean
 # ═══════════════════════════════════════════════════════════════════════════════════
 
+
 class TestChatContext(ChatContext):
     """
     Test-specific ChatContext that works with stream_manager instead of ToolManager.
-    
+
     Separated from main ChatContext to keep it clean.
     """
-    
+
     def __init__(self, stream_manager: Any, model_manager: ModelManager):
         """Create test context with stream_manager."""
         # Initialize base attributes without calling super().__init__
         self.tool_manager = None  # Tests don't use ToolManager
         self.stream_manager = stream_manager
         self.model_manager = model_manager
-        
+
         # Conversation state
         self.exit_requested = False
         self.conversation_history = []
-        
+
         # Tool state
         self.tools = []
         self.internal_tools = []
@@ -349,7 +379,7 @@ class TestChatContext(ChatContext):
         self.tool_to_server_map = {}
         self.openai_tools = []
         self.tool_name_mapping = {}
-        
+
         logger.debug(f"TestChatContext created with {self.provider}/{self.model}")
 
     @classmethod
@@ -358,17 +388,17 @@ class TestChatContext(ChatContext):
         stream_manager: Any,
         provider: str = None,
         model: str = None,
-    ) -> 'TestChatContext':
+    ) -> "TestChatContext":
         """Factory for test contexts."""
         model_manager = ModelManager()
-        
+
         if provider and model:
             model_manager.switch_model(provider, model)
         elif provider:
             model_manager.switch_provider(provider)
         elif model:
             model_manager.switch_to_model(model)
-        
+
         return cls(stream_manager, model_manager)
 
     async def _initialize_tools(self) -> None:
@@ -381,18 +411,19 @@ class TestChatContext(ChatContext):
 
         # Get server info
         self.server_info = list(self.stream_manager.get_server_info())
-        
+
         # Build mappings
         self.tool_to_server_map = {
             t["name"]: self.stream_manager.get_server_for_tool(t["name"])
             for t in self.tools
         }
-        
+
         # Use basic tool conversion for tests
         from mcp_cli.tools.manager import ToolManager
+
         self.openai_tools = ToolManager.convert_to_openai_tools(self.tools)
         self.tool_name_mapping = {}
-        
+
         # Copy for system prompt
         self.internal_tools = list(self.tools)
 

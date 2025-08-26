@@ -45,7 +45,7 @@ from mcp_cli.chat.commands import register_command
 
 async def cmd_prompts(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
     """List stored prompt templates from all connected servers."""
-    
+
     tm: ToolManager | None = ctx.get("tool_manager")
     if tm is None:
         output.print("[red]Error:[/red] ToolManager not available.")

@@ -1,7 +1,7 @@
 # examples/sample_tools/weather_tool.py
 import time
 
-# imports
+# imports
 from chuk_tool_processor.registry.decorators import register_tool
 from chuk_tool_processor.models.validated_tool import ValidatedTool
 

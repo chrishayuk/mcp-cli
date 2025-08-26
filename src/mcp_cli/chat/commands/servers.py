@@ -32,32 +32,32 @@ async def servers_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
 
     # Parse arguments
     args = parts[1:]  # Remove command name
-    
+
     # Parse flags
     detailed = any(arg in ["--detailed", "-d", "--detail"] for arg in args)
     show_capabilities = any(arg in ["--capabilities", "--caps", "-c"] for arg in args)
     show_transport = any(arg in ["--transport", "--trans", "-t"] for arg in args)
-    
+
     # Output format
     output_format = "table"  # default
     if "--json" in args:
         output_format = "json"
     elif "--tree" in args:
         output_format = "tree"
-    
+
     # If detailed is requested, automatically enable capabilities and transport
     if detailed:
         show_capabilities = True
         show_transport = True
-    
+
     await servers_action_async(
         tm,
         detailed=detailed,
         show_capabilities=show_capabilities,
         show_transport=show_transport,
-        output_format=output_format
+        output_format=output_format,
     )
-    
+
     return True
 
 

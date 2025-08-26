@@ -10,6 +10,7 @@ Usage
   model <provider> <model?>  → switch provider (and optional model)
   m …                   → short alias
 """
+
 from __future__ import annotations
 
 import logging
@@ -36,7 +37,7 @@ class ModelCommand(InteractiveCommand):
     async def execute(  # noqa: D401
         self,
         args: List[str],
-        tool_manager: Any = None,   # unused, kept for signature parity
+        tool_manager: Any = None,  # unused, kept for signature parity
         **ctx: Dict[str, Any],
     ) -> None:
         """
@@ -44,7 +45,7 @@ class ModelCommand(InteractiveCommand):
 
         *args* is everything after the command word.
         """
-        
+
         # Basic sanity-check: the shared helper expects a ModelManager
         if "model_manager" not in ctx:
             log.debug("No model_manager in context - model command may misbehave.")

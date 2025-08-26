@@ -60,7 +60,7 @@ async def cmd_resources(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa
     -----
       /resources      - show resources
     """
-    
+
     tm: ToolManager | None = ctx.get("tool_manager")
     if tm is None:
         output.print("[red]Error:[/red] ToolManager not available.")

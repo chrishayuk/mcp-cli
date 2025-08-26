@@ -1,5 +1,6 @@
 # src/mcp_cli/interactive/shell.py
 """Interactive shell implementation for MCP CLI with slash-menu autocompletion."""
+
 from __future__ import annotations
 import asyncio
 import logging
@@ -28,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 class SlashCompleter(Completer):
     """Provides completions for slash commands based on registered commands."""
+
     def __init__(self, command_names: List[str]):
         self.command_names = command_names
 
@@ -38,9 +40,7 @@ class SlashCompleter(Completer):
         token = text[1:]
         for name in self.command_names:
             if name.startswith(token):
-                yield Completion(
-                    f"/{name}", start_position=-len(text)
-                )
+                yield Completion(f"/{name}", start_position=-len(text))
 
 
 async def interactive_mode(
@@ -49,7 +49,7 @@ async def interactive_mode(
     provider: str = "openai",
     model: str = "gpt-4o-mini",
     server_names: Optional[Dict[int, str]] = None,
-    **kwargs
+    **kwargs,
 ) -> bool:
     """
     Launch the interactive mode CLI with slash-menu autocompletion.
@@ -61,17 +61,19 @@ async def interactive_mode(
     cmd_names = list(InteractiveCommandRegistry.get_all_commands().keys())
 
     # Intro panel
-    print(Panel(
-        Markdown(
-            #"# Interactive Mode\n\n"
-            "Type commands to interact with the system.\n"
-            "Type 'help' to see available commands.\n"
-            "Type 'exit' or 'quit' to exit.\n"
-            "Type '/' to bring up the slash-menu."
-        ),
-        title="MCP Interactive Mode",
-        style="bold cyan"
-    ))
+    print(
+        Panel(
+            Markdown(
+                # "# Interactive Mode\n\n"
+                "Type commands to interact with the system.\n"
+                "Type 'help' to see available commands.\n"
+                "Type 'exit' or 'quit' to exit.\n"
+                "Type '/' to bring up the slash-menu."
+            ),
+            title="MCP Interactive Mode",
+            style="bold cyan",
+        )
+    )
 
     # Initial help listing
     help_cmd = InteractiveCommandRegistry.get_command("help")
@@ -120,7 +122,9 @@ async def interactive_mode(
             # Lookup and execute
             cmd = InteractiveCommandRegistry.get_command(cmd_name)
             if cmd:
-                result = await cmd.execute(args, tool_manager, server_names=server_names, **kwargs)
+                result = await cmd.execute(
+                    args, tool_manager, server_names=server_names, **kwargs
+                )
                 if result is True:
                     return True
             else:

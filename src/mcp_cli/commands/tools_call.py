@@ -12,6 +12,7 @@ Highlights
 * Re-uses :pyfunc:`mcp_cli.tools.formatting.display_tool_call_result`
   for pretty result rendering, so the output looks the same everywhere.
 """
+
 from __future__ import annotations
 import asyncio
 import json
@@ -24,7 +25,7 @@ from mcp_cli.tools.manager import ToolManager
 from mcp_cli.tools.models import ToolCallResult
 from mcp_cli.tools.formatting import display_tool_call_result
 
-# logger
+# logger
 logger = logging.getLogger(__name__)
 
 

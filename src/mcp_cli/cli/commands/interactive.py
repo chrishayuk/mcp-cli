@@ -2,25 +2,28 @@
 from __future__ import annotations
 import asyncio
 import logging
-from typing import Any, Optional, Dict
+from typing import Any, Optional
 import typer
 
 # mcp cli imports
 from mcp_cli.tools.manager import get_tool_manager
 from mcp_cli.cli.commands.base import BaseCommand
 
-# logger
+# logger
 logger = logging.getLogger(__name__)
 
 # ─── Typer sub‐app ───────────────────────────────────────────────────────────
 app = typer.Typer(help="Start interactive command mode")
+
 
 @app.command("run")
 def interactive_run(
     provider: str = typer.Option("openai", help="LLM provider name"),
     model: str = typer.Option("gpt-4o-mini", help="Model identifier"),
     server: Optional[str] = typer.Option(None, help="Comma-separated list of servers"),
-    disable_filesystem: bool = typer.Option(False, help="Disable local filesystem tools"),
+    disable_filesystem: bool = typer.Option(
+        False, help="Disable local filesystem tools"
+    ),
 ) -> None:
     """
     Launch the interactive MCP CLI shell.
@@ -64,15 +67,10 @@ class InteractiveCommand(BaseCommand):
 
     def __init__(self):
         super().__init__(
-            name="interactive",
-            help_text="Start interactive command mode."
+            name="interactive", help_text="Start interactive command mode."
         )
 
-    async def execute(
-        self,
-        tool_manager: Any,
-        **params: Any
-    ) -> Any:
+    async def execute(self, tool_manager: Any, **params: Any) -> Any:
         """
         Execute the interactive shell.
 
@@ -90,12 +88,12 @@ class InteractiveCommand(BaseCommand):
 
         logger.debug(
             "Starting interactive mode via in-process command",
-            extra={"provider": provider, "model": model, "server_names": server_names}
+            extra={"provider": provider, "model": model, "server_names": server_names},
         )
 
         return await interactive_mode(
             tool_manager=tool_manager,
             provider=provider,
             model=model,
-            server_names=server_names
+            server_names=server_names,
         )

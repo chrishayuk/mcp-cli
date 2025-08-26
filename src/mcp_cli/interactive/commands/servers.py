@@ -17,6 +17,7 @@ Usage Examples:
     servers --format json       # JSON output
     srv -d                      # Short alias with detailed flag
 """
+
 from __future__ import annotations
 
 import logging
@@ -65,12 +66,12 @@ class ServersCommand(InteractiveCommand):
     ) -> None:
         """
         Execute the enhanced servers command with full option support.
-        
+
         Args:
             args: Command line arguments to parse
             tool_manager: ToolManager instance
         """
-        
+
         if tool_manager is None:
             output.print("[red]Error:[/red] ToolManager not available.")
             log.debug("ServersCommand executed without a ToolManager instance.")
@@ -78,15 +79,17 @@ class ServersCommand(InteractiveCommand):
 
         # Parse command line arguments
         parsed_options = self._parse_arguments(args)
-        
+
         # Handle help request
         if parsed_options.get("help"):
             self._show_help(console)
             return
-        
+
         # Handle invalid format
         if parsed_options.get("invalid_format"):
-            output.print(f"[red]Error:[/red] Invalid format '{parsed_options['invalid_format']}'. Valid formats: table, tree, json")
+            output.print(
+                f"[red]Error:[/red] Invalid format '{parsed_options['invalid_format']}'. Valid formats: table, tree, json"
+            )
             return
 
         try:
@@ -95,7 +98,7 @@ class ServersCommand(InteractiveCommand):
                 detailed=parsed_options["detailed"],
                 show_capabilities=parsed_options["capabilities"],
                 show_transport=parsed_options["transport"],
-                output_format=parsed_options["format"]
+                output_format=parsed_options["format"],
             )
         except Exception as e:
             output.print(f"[red]Error:[/red] Failed to display server information: {e}")
@@ -104,10 +107,10 @@ class ServersCommand(InteractiveCommand):
     def _parse_arguments(self, args: List[str]) -> dict:
         """
         Parse command line arguments and return options dictionary.
-        
+
         Args:
             args: List of command arguments
-            
+
         Returns:
             Dictionary with parsed options
         """
@@ -118,31 +121,31 @@ class ServersCommand(InteractiveCommand):
             "format": "table",
             "quiet": False,
             "help": False,
-            "invalid_format": None
+            "invalid_format": None,
         }
-        
+
         valid_formats = ["table", "tree", "json"]
-        
+
         i = 0
         while i < len(args):
             arg = args[i].lower()
-            
+
             # Help flags
             if arg in ["--help", "-h", "help"]:
                 options["help"] = True
-                
+
             # Detail flags
             elif arg in ["--detailed", "-d", "--detail"]:
                 options["detailed"] = True
-                
+
             # Capability flags
             elif arg in ["--capabilities", "--caps", "-c"]:
                 options["capabilities"] = True
-                
+
             # Transport flags
             elif arg in ["--transport", "--trans", "-t"]:
                 options["transport"] = True
-                
+
             # Format flag with value
             elif arg in ["--format", "-f"]:
                 if i + 1 < len(args):
@@ -156,11 +159,11 @@ class ServersCommand(InteractiveCommand):
                 else:
                     # Format flag without value - show help
                     options["help"] = True
-                    
+
             # Quiet flag
             elif arg in ["--quiet", "-q"]:
                 options["quiet"] = True
-                
+
             # Format shortcuts
             elif arg == "tree":
                 options["format"] = "tree"
@@ -168,7 +171,7 @@ class ServersCommand(InteractiveCommand):
                 options["format"] = "json"
             elif arg == "table":
                 options["format"] = "table"
-                
+
             # Combined short flags (e.g., -dct)
             elif arg.startswith("-") and len(arg) > 2 and not arg.startswith("--"):
                 for char in arg[1:]:
@@ -182,14 +185,14 @@ class ServersCommand(InteractiveCommand):
                         options["quiet"] = True
                     elif char == "h":
                         options["help"] = True
-            
+
             i += 1
-        
+
         # Auto-enable features for detailed view
         if options["detailed"]:
             options["capabilities"] = True
             options["transport"] = True
-            
+
         return options
 
     def _show_help(self, console) -> None:
@@ -201,10 +204,18 @@ class ServersCommand(InteractiveCommand):
         output.print("  srv [options]                    # Short alias")
         output.print()
         output.print("[bold yellow]Options:[/bold yellow]")
-        output.print("  --detailed, -d                  Show detailed information with panels")
-        output.print("  --capabilities, --caps, -c      Include server capability information")
-        output.print("  --transport, --trans, -t        Include transport/connection details") 
-        output.print("  --format <fmt>, -f <fmt>        Output format: table, tree, json")
+        output.print(
+            "  --detailed, -d                  Show detailed information with panels"
+        )
+        output.print(
+            "  --capabilities, --caps, -c      Include server capability information"
+        )
+        output.print(
+            "  --transport, --trans, -t        Include transport/connection details"
+        )
+        output.print(
+            "  --format <fmt>, -f <fmt>        Output format: table, tree, json"
+        )
         output.print("  --quiet, -q                     Suppress verbose logging")
         output.print("  --help, -h                      Show this help message")
         output.print()
@@ -214,9 +225,11 @@ class ServersCommand(InteractiveCommand):
         output.print("  json                            Raw JSON output")
         output.print()
         output.print("[bold yellow]Examples:[/bold yellow]")
-        output.print("  servers                         # Basic table with feature icons")
+        output.print(
+            "  servers                         # Basic table with feature icons"
+        )
         output.print("  servers --detailed              # Full detailed panels")
-        output.print("  servers -d                      # Same as --detailed") 
+        output.print("  servers -d                      # Same as --detailed")
         output.print("  servers --capabilities          # Include capability info")
         output.print("  servers -c                      # Short for --capabilities")
         output.print("  servers --transport             # Show connection details")
@@ -257,7 +270,7 @@ class ServersCapabilitiesCommand(InteractiveCommand):
         **_: Any,
     ) -> None:
         """Show detailed capability analysis for all servers."""
-        
+
         if tool_manager is None:
             output.print("[red]Error:[/red] ToolManager not available.")
             log.debug("ServersCapabilitiesCommand executed without ToolManager.")
@@ -270,7 +283,7 @@ class ServersCapabilitiesCommand(InteractiveCommand):
                 detailed=True,
                 show_capabilities=True,
                 show_transport=False,
-                output_format="tree"
+                output_format="tree",
             )
         except Exception as e:
             output.print(f"[red]Error:[/red] Failed to analyze capabilities: {e}")
@@ -302,7 +315,7 @@ class ServersStatusCommand(InteractiveCommand):
         **_: Any,
     ) -> None:
         """Show server connection status and health."""
-        
+
         if tool_manager is None:
             output.print("[red]Error:[/red] ToolManager not available.")
             log.debug("ServersStatusCommand executed without ToolManager.")
@@ -315,7 +328,7 @@ class ServersStatusCommand(InteractiveCommand):
                 detailed=False,
                 show_capabilities=False,
                 show_transport=False,
-                output_format="table"
+                output_format="table",
             )
         except Exception as e:
             output.print(f"[red]Error:[/red] Failed to check server status: {e}")
@@ -323,8 +336,4 @@ class ServersStatusCommand(InteractiveCommand):
 
 
 # Export all command classes
-__all__ = [
-    "ServersCommand",
-    "ServersCapabilitiesCommand", 
-    "ServersStatusCommand"
-]
+__all__ = ["ServersCommand", "ServersCapabilitiesCommand", "ServersStatusCommand"]

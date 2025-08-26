@@ -8,13 +8,14 @@ Usage inside the shell
   prompts          → show a table of prompts
   pr               → short alias
 """
+
 from __future__ import annotations
 
 import logging
 from typing import Any, Dict, List
 
-from chuk_term.ui import output           # ← NEW
-from mcp_cli.commands.prompts import prompts_action_cmd       # shared async helper
+from chuk_term.ui import output  # ← NEW
+from mcp_cli.commands.prompts import prompts_action_cmd  # shared async helper
 from mcp_cli.tools.manager import ToolManager
 from .base import InteractiveCommand
 
@@ -41,7 +42,7 @@ class PromptsCommand(InteractiveCommand):
         """
         Delegate to :func:`mcp_cli.commands.prompts.prompts_action_cmd`.
         """
-        
+
         if tool_manager is None:
             log.debug("PromptsCommand executed without ToolManager - aborting.")
             output.print("[red]Error:[/red] ToolManager not available.")

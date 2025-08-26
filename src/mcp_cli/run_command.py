@@ -10,13 +10,13 @@ These helpers encapsulate
 
 ENHANCED: Now properly handles namespace selection for HTTP vs STDIO servers.
 """
+
 from __future__ import annotations
 
 import asyncio
 import importlib
 import sys
-from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable, Coroutine, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import typer
 from rich.panel import Panel
@@ -27,7 +27,7 @@ from mcp_cli.tools.manager import set_tool_manager  # only the setter
 # --------------------------------------------------------------------------- #
 # internal helpers / globals                                                  #
 # --------------------------------------------------------------------------- #
-_ALL_TM: List[Any] = []           # referenced by the unit-tests
+_ALL_TM: List[Any] = []  # referenced by the unit-tests
 
 
 # --------------------------------------------------------------------------- #
@@ -43,14 +43,14 @@ async def _init_tool_manager(
     ENHANCED: Automatically selects appropriate namespace based on server type.
     """
     tm_mod = importlib.import_module("mcp_cli.tools.manager")
-    ToolManager = getattr(tm_mod, "ToolManager")           # patched in tests
+    ToolManager = getattr(tm_mod, "ToolManager")  # patched in tests
 
-    tm = ToolManager(config_file, servers, server_names)   # type: ignore[call-arg]
-    
+    tm = ToolManager(config_file, servers, server_names)  # type: ignore[call-arg]
+
     # ENHANCED: Let ToolManager automatically select the namespace
     # It will use the server name for HTTP servers, "stdio" for STDIO servers
     ok = await tm.initialize()  # Remove the hardcoded namespace parameter
-    
+
     if not ok:
         # record it for the tests
         _ALL_TM.append(tm)
@@ -69,7 +69,7 @@ async def _safe_close(tm) -> None:
     """Close the ToolManager, swallowing any exception during shutdown."""
     try:
         await tm.close()
-    except Exception:        # noqa: BLE001
+    except Exception:  # noqa: BLE001
         pass
 
 
@@ -240,6 +240,6 @@ def cli_entry(
 
     try:
         asyncio.run(_inner())
-    except Exception as exc:        # noqa: BLE001 – show nicely then exit
+    except Exception as exc:  # noqa: BLE001 – show nicely then exit
         output.print(Panel(str(exc), title="Fatal Error", style="bold red"))
         sys.exit(1)

@@ -10,7 +10,8 @@ The MCP CLI is built on a modular architecture with clean separation of concerns
 
 - **[CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor)**: Async-native tool execution and MCP server communication
 - **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)**: Unified LLM provider configuration and client management with 200+ auto-generated functions
-- **MCP CLI**: Rich user interface and command orchestration (this project)
+- **[CHUK-Term](https://github.com/chrishayuk/chuk-term)**: Enhanced terminal UI with themes, cross-platform terminal management, and rich formatting
+- **MCP CLI**: Command orchestration and integration layer (this project)
 
 ## 🌟 Features
 
@@ -59,8 +60,10 @@ MCP CLI supports all providers and models from CHUK-LLM, including cutting-edge 
 - **Validation & Diagnostics**: Built-in provider health checks and configuration validation
 
 ### Enhanced User Experience
-- **Cross-Platform Support**: Windows, macOS, and Linux with platform-specific optimizations
-- **Rich Console Output**: Colorful, formatted output with automatic fallbacks
+- **Cross-Platform Support**: Windows, macOS, and Linux with platform-specific optimizations via chuk-term
+- **Rich Console Output**: Powered by chuk-term with 8 built-in themes (default, dark, light, minimal, terminal, monokai, dracula, solarized)
+- **Advanced Terminal Management**: Cross-platform terminal operations including clearing, resizing, color detection, and cursor control
+- **Interactive UI Components**: User input handling through chuk-term's prompt system (ask, confirm, select_from_list, select_multiple)
 - **Command Completion**: Context-aware tab completion for all interfaces
 - **Comprehensive Help**: Detailed help system with examples and usage patterns
 - **Graceful Error Handling**: User-friendly error messages with troubleshooting hints
@@ -270,6 +273,12 @@ mcp-cli ping --server sqlite
 
 # List resources
 mcp-cli resources --server sqlite
+
+# UI Theme Management
+mcp-cli theme                     # Show current theme and list available
+mcp-cli theme dark                # Switch to dark theme
+mcp-cli theme --select            # Interactive theme selector
+mcp-cli theme --list              # List all available themes
 ```
 
 ## 🤖 Using Chat Mode
@@ -334,6 +343,16 @@ mcp-cli --server sqlite --provider anthropic --model claude-4-1-opus
 /compact                          # Summarize conversation
 /clear                            # Clear conversation history
 /cls                              # Clear screen only
+```
+
+#### UI Customization
+```bash
+/theme                            # Interactive theme selector with preview
+/theme dark                       # Switch to dark theme
+/theme monokai                    # Switch to monokai theme
+
+# Available themes: default, dark, light, minimal, terminal, monokai, dracula, solarized
+# Themes are persisted across sessions
 ```
 
 #### Session Control
@@ -806,10 +825,11 @@ mcp-cli --log-level DEBUG interactive --server sqlite
 
 Core dependencies are organized into feature groups:
 
-- **cli**: Rich terminal UI, command completion, provider integrations
+- **cli**: Terminal UI and command framework (Rich, Typer, chuk-term)
 - **dev**: Development tools, testing utilities, linting
 - **chuk-tool-processor**: Core tool execution and MCP communication
 - **chuk-llm**: Unified LLM provider management with 200+ auto-generated functions
+- **chuk-term**: Enhanced terminal UI with themes, prompts, and cross-platform support
 
 Install with specific features:
 ```bash
@@ -830,6 +850,21 @@ pip install -e ".[cli,dev]"
 pre-commit install
 ```
 
+### UI Demo Scripts
+
+Explore the UI capabilities powered by chuk-term:
+
+```bash
+# Terminal management features
+uv run examples/ui_terminal_demo.py
+
+# Output system with themes
+uv run examples/ui_output_demo.py
+
+# Streaming UI capabilities
+uv run examples/ui_streaming_demo.py
+```
+
 ### Running Tests
 
 ```bash
@@ -845,6 +880,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - **[CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor)** - Async-native tool execution
 - **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)** - Unified LLM provider management with GPT-5, Claude 4, and reasoning model support
+- **[CHUK-Term](https://github.com/chrishayuk/chuk-term)** - Enhanced terminal UI with themes and cross-platform support
 - **[Rich](https://github.com/Textualize/rich)** - Beautiful terminal formatting
 - **[Typer](https://typer.tiangolo.com/)** - CLI framework
 - **[Prompt Toolkit](https://github.com/prompt-toolkit/python-prompt-toolkit)** - Interactive input
@@ -855,3 +891,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **[MCP Servers](https://github.com/modelcontextprotocol/servers)** - Official MCP server implementations
 - **[CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor)** - Tool execution engine
 - **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)** - LLM provider abstraction with GPT-5, Claude 4, O3 series support
+- **[CHUK-Term](https://github.com/chrishayuk/chuk-term)** - Terminal UI library with themes and cross-platform support

@@ -45,10 +45,10 @@ class ExitCommand(InteractiveCommand):
         )
 
     # ------------------------------------------------------------------
-    async def execute(          # noqa: D401 - imperative verb is fine here
+    async def execute(  # noqa: D401 - imperative verb is fine here
         self,
         args: List[str],
-        tool_manager: Any = None,   # unused
+        tool_manager: Any = None,  # unused
         **_: Any,
     ) -> bool:
         """

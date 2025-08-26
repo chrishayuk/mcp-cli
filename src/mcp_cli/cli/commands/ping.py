@@ -2,6 +2,7 @@
 """
 Ping MCP servers (CLI + registry command).
 """
+
 from __future__ import annotations
 
 import logging
@@ -10,8 +11,8 @@ from typing import Any, Dict, List, Optional
 import typer
 
 from mcp_cli.commands.ping import (
-    ping_action,          # sync wrapper (run_blocking)
-    ping_action_async,    # real async implementation
+    ping_action,  # sync wrapper (run_blocking)
+    ping_action_async,  # real async implementation
 )
 from mcp_cli.tools.manager import get_tool_manager
 from mcp_cli.cli.commands.base import BaseCommand
@@ -21,10 +22,13 @@ logger = logging.getLogger(__name__)
 # ── Typer sub-app (plain CLI invocation) ────────────────────────────────────
 app = typer.Typer(help="Ping connected MCP servers")
 
+
 @app.command("run")
 def ping_run(
     name: List[str] = typer.Option(
-        None, "--name", "-n",
+        None,
+        "--name",
+        "-n",
         help="Override server display names (index=name)",
     ),
     targets: List[str] = typer.Argument(

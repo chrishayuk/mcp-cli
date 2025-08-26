@@ -40,10 +40,10 @@ from mcp_cli.ui.theme import set_theme
 
 class CodeUIDemo:
     """Simplified code-focused UI demonstration."""
-    
+
     def __init__(self):
         self.code_samples = self._load_code_samples()
-    
+
     def _load_code_samples(self):
         """Load code samples for demonstration."""
         return {
@@ -53,16 +53,14 @@ class CodeUIDemo:
     if n <= 1:
         return n
     return fibonacci(n - 1) + fibonacci(n - 2)''',
-                
                 "async": '''async def fetch_data(url: str) -> dict:
     """Fetch data from URL."""
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as response:
-            return await response.json()'''
+            return await response.json()''',
             },
-            
             "javascript": {
-                "react": '''const UserProfile = ({ userId }) => {
+                "react": """const UserProfile = ({ userId }) => {
     const [user, setUser] = useState(null);
     
     useEffect(() => {
@@ -70,18 +68,18 @@ class CodeUIDemo:
     }, [userId]);
     
     return user ? <div>{user.name}</div> : <Loading />;
-};''',
-            }
+};""",
+            },
         }
-    
+
     async def run(self):
         """Run the demo."""
         set_terminal_title("MCP CLI Code Demo")
-        
+
         while True:
             clear_screen()
             output.rule("🔧 Code UI Demo", style="bold magenta")
-            
+
             choice = create_menu(
                 "Code UI Demo",
                 {
@@ -94,9 +92,9 @@ class CodeUIDemo:
                     "theme": "Switch Theme",
                 },
                 back_option=False,
-                quit_option=True
+                quit_option=True,
             )
-            
+
             if choice == "quit":
                 break
             elif choice == "syntax":
@@ -113,116 +111,109 @@ class CodeUIDemo:
                 await self.demo_file_tree()
             elif choice == "theme":
                 await self.demo_theme_switch()
-    
+
     async def demo_syntax_highlighting(self):
         """Demonstrate syntax highlighting."""
         clear_screen()
         output.print("\n[bold magenta]Syntax Highlighting[/bold magenta]\n")
-        
+
         language = select_from_list(
-            "Select a language:",
-            list(self.code_samples.keys()),
-            default="python"
+            "Select a language:", list(self.code_samples.keys()), default="python"
         )
-        
+
         examples = list(self.code_samples[language].keys())
         example = select_from_list(
-            f"Select {language} example:",
-            examples,
-            default=examples[0]
+            f"Select {language} example:", examples, default=examples[0]
         )
-        
+
         clear_screen()
         code = self.code_samples[language][example]
-        
+
         # Just call display_code - it handles themes internally!
         display_code(
-            code,
-            language,
-            title=example.replace('_', ' ').title(),
-            line_numbers=True
+            code, language, title=example.replace("_", " ").title(), line_numbers=True
         )
-        
+
         await self._wait_for_enter()
-    
+
     async def demo_diff_viewer(self):
         """Demonstrate diff viewing."""
         clear_screen()
-        
-        old_code = '''def process_data(data):
+
+        old_code = """def process_data(data):
     result = []
     for item in data:
         result.append(item['value'])
-    return result'''
-        
+    return result"""
+
         new_code = '''def process_data(data: List[dict]) -> List[Any]:
     """Process data and extract values."""
     return [item['value'] for item in data]'''
-        
+
         # Just call display_diff - themes handled internally!
         display_diff(
             old_code,
             new_code,
             title="Refactoring: Add type hints and simplify",
             file_path="process.py",
-            syntax="python"
+            syntax="python",
         )
-        
+
         action = select_from_list(
             "Review action:",
             ["Approve ✅", "Request Changes 🔄", "Skip"],
-            default="Approve ✅"
+            default="Approve ✅",
         )
-        
+
         if "Approve" in action:
             display_success_banner("Pull request approved!")
         elif "Request" in action:
             comment = ask("What changes are needed?")
             output.warning(f"Changes requested: {comment}")
-        
+
         await self._wait_for_enter()
-    
+
     async def demo_code_review(self):
         """Demonstrate code review."""
         clear_screen()
-        
-        code = '''def process_user_data(users):
+
+        code = """def process_user_data(users):
     results = []
     for u in users:
         if u['age'] > 18:  # Magic number
             results.append(u['name'])
-    return results  # No error handling'''
-        
+    return results  # No error handling"""
+
         comments = [
             {
                 "line": 4,
                 "type": "warning",
                 "message": "Avoid magic numbers",
-                "suggestion": "Define ADULT_AGE = 18 as a constant"
+                "suggestion": "Define ADULT_AGE = 18 as a constant",
             },
             {
                 "line": 5,
                 "type": "info",
                 "message": "Data loss - only keeping name",
-                "suggestion": "Consider returning full user objects"
+                "suggestion": "Consider returning full user objects",
             },
             {
                 "line": 6,
                 "type": "error",
                 "message": "No error handling",
-                "suggestion": "Add try-except for KeyError"
-            }
+                "suggestion": "Add try-except for KeyError",
+            },
         ]
-        
+
         # Just call display_code_review - themes handled internally!
         display_code_review(code, comments, language="python")
-        
+
         await self._wait_for_enter()
-    
+
     async def demo_code_analysis(self):
         """Demonstrate code analysis display."""
         clear_screen()
-        
+
         metrics = {
             "lines": 245,
             "functions": 12,
@@ -236,49 +227,49 @@ class CodeUIDemo:
                 {"severity": "medium"},
                 {"severity": "medium"},
                 {"severity": "low"},
-            ]
+            ],
         }
-        
+
         # Just call display_code_analysis - themes handled internally!
         display_code_analysis(metrics, show_recommendations=True)
-        
+
         await self._wait_for_enter()
-    
+
     async def demo_side_by_side(self):
         """Demonstrate side-by-side comparison."""
         clear_screen()
-        
-        old_code = '''# O(n²) complexity
+
+        old_code = """# O(n²) complexity
 for i in range(len(lst)):
     for j in range(i+1, len(lst)):
         if lst[i] == lst[j]:
-            duplicates.append(lst[i])'''
-        
-        new_code = '''# O(n) complexity
+            duplicates.append(lst[i])"""
+
+        new_code = """# O(n) complexity
 seen = set()
 for item in lst:
     if item in seen:
         duplicates.add(item)
-    seen.add(item)'''
-        
+    seen.add(item)"""
+
         # Just call display_side_by_side - themes handled internally!
         display_side_by_side(
             old_code,
             new_code,
             left_title="Before",
             right_title="After (Optimized)",
-            language="python"
+            language="python",
         )
-        
+
         output.print("\n✅ Time complexity: O(n²) → O(n)")
         output.print("✅ More Pythonic and readable")
-        
+
         await self._wait_for_enter()
-    
+
     async def demo_file_tree(self):
         """Demonstrate file tree display."""
         clear_screen()
-        
+
         tree_data = {
             "src": {
                 "mcp_cli": {
@@ -292,7 +283,7 @@ for item in lst:
                     "core": {
                         "__init__.py": "0.5KB",
                         "client.py": "22.1KB",
-                    }
+                    },
                 }
             },
             "tests": {
@@ -302,43 +293,36 @@ for item in lst:
             "README.md": "4.5KB",
             "pyproject.toml": "1.8KB",
         }
-        
+
         # Just call display_file_tree - themes handled internally!
         display_file_tree(
-            tree_data,
-            title="Project Structure",
-            show_sizes=True,
-            show_icons=True
+            tree_data, title="Project Structure", show_sizes=True, show_icons=True
         )
-        
+
         await self._wait_for_enter()
-    
+
     async def demo_theme_switch(self):
         """Allow switching themes."""
         clear_screen()
-        
+
         themes = ["default", "dark", "light", "minimal", "terminal"]
-        theme = select_from_list(
-            "Select a theme:",
-            themes,
-            default="default"
-        )
-        
+        theme = select_from_list("Select a theme:", themes, default="default")
+
         set_theme(theme)
         output.success(f"Theme switched to: {theme}")
-        
+
         # Show a quick preview
         output.print("\nTheme Preview:")
         output.rule()
-        
+
         sample_code = '''def hello(name: str) -> str:
     """Greet someone."""
     return f"Hello, {name}!"'''
-        
+
         display_code(sample_code, "python", title="Sample Code")
-        
+
         await self._wait_for_enter()
-    
+
     async def _wait_for_enter(self):
         """Wait for user to press Enter."""
         output.print()
@@ -357,6 +341,7 @@ async def main():
     except Exception as e:
         output.fatal(f"Demo failed: {e}")
         import traceback
+
         traceback.print_exc()
     finally:
         restore_terminal()

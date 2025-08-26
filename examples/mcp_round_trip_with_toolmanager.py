@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -39,7 +38,9 @@ async def display_registry_tools(
 
     ns_note = f" - namespace='{namespace}'" if namespace else ""
     print(
-        Fore.CYAN + f"🔧  Registered MCP tools ({len(tools)}){ns_note}" + Style.RESET_ALL
+        Fore.CYAN
+        + f"🔧  Registered MCP tools ({len(tools)}){ns_note}"
+        + Style.RESET_ALL
     )
     for t in tools:
         print(
@@ -103,8 +104,9 @@ async def main() -> None:
         completion = await client.create_completion(
             messages=messages, tools=llm_tools, tool_choice="auto"
         )
-        reply, tool_calls = completion.get("response", ""), completion.get(
-            "tool_calls", []
+        reply, tool_calls = (
+            completion.get("response", ""),
+            completion.get("tool_calls", []),
         )
 
         if reply:
@@ -133,7 +135,9 @@ async def main() -> None:
                 pretty_result(orig_name, res, start, end)
 
             # 5️⃣  Feed tool outputs back for a final model answer
-            messages.append({"role": "assistant", "content": None, "tool_calls": tool_calls})
+            messages.append(
+                {"role": "assistant", "content": None, "tool_calls": tool_calls}
+            )
             for tc, res in zip(tool_calls, results):
                 messages.append(
                     {

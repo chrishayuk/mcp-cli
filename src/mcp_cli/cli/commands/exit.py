@@ -7,11 +7,12 @@ import logging
 from mcp_cli.commands.exit import exit_action
 from mcp_cli.cli.commands.base import BaseCommand
 
-# logger
+# logger
 logger = logging.getLogger(__name__)
 
 # ─── Typer sub‐app ───────────────────────────────────────────────────────────
 app = typer.Typer(help="Exit the interactive mode")
+
 
 @app.command("run")
 def exit_run() -> None:
@@ -30,9 +31,7 @@ class ExitCommand(BaseCommand):
 
     def __init__(self):
         super().__init__(
-            name="exit",
-            help_text="Exit the interactive mode.",
-            aliases=["quit", "q"]
+            name="exit", help_text="Exit the interactive mode.", aliases=["quit", "q"]
         )
 
     async def execute(self, tool_manager: Any, **params: Any) -> bool:

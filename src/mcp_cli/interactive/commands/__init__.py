@@ -1,5 +1,6 @@
 # mcp_cli/interactive/commands/__init__.py
 """Interactive commands package."""
+
 from .help import HelpCommand
 from .exit import ExitCommand
 from .clear import ClearCommand
@@ -10,6 +11,7 @@ from .prompts import PromptsCommand
 from .ping import PingCommand
 from .model import ModelCommand
 from .provider import ProviderCommand
+from .theme import ThemeCommand
 
 # Export for convenience
 __all__ = [
@@ -22,8 +24,10 @@ __all__ = [
     "PromptsCommand",
     "PingCommand",
     "ModelCommand",
-    "ProviderCommand"  # Add this export
+    "ProviderCommand",
+    "ThemeCommand",
 ]
+
 
 def register_all_commands() -> None:
     """
@@ -40,6 +44,7 @@ def register_all_commands() -> None:
     from mcp_cli.interactive.commands.ping import PingCommand
     from mcp_cli.interactive.commands.model import ModelCommand
     from mcp_cli.interactive.commands.provider import ProviderCommand
+    from mcp_cli.interactive.commands.theme import ThemeCommand
 
     reg = InteractiveCommandRegistry
     reg.register(HelpCommand())
@@ -52,3 +57,4 @@ def register_all_commands() -> None:
     reg.register(PingCommand())
     reg.register(ModelCommand())
     reg.register(ProviderCommand())
+    reg.register(ThemeCommand())

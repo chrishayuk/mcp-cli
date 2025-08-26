@@ -3,6 +3,7 @@
 Interactive **provider** and **providers** commands - inspect or switch the active LLM provider
 (and optionally the default model) from inside the shell.
 """
+
 from __future__ import annotations
 
 import logging
@@ -51,7 +52,7 @@ class ProviderCommand(InteractiveCommand):
         *args* arrive without the leading command word, exactly as the
         shared helper expects.
         """
-        
+
         # The provider command does not require ToolManager, but log if absent
         if tool_manager is None:
             log.debug("ProviderCommand executed without ToolManager – OK for now.")
@@ -60,6 +61,7 @@ class ProviderCommand(InteractiveCommand):
         if "model_manager" not in ctx:
             log.debug("Creating ModelManager for interactive provider command")
             from mcp_cli.model_manager import ModelManager
+
             ctx["model_manager"] = ModelManager()
 
         try:
@@ -67,30 +69,36 @@ class ProviderCommand(InteractiveCommand):
         except Exception as exc:  # noqa: BLE001
             output.print(f"[red]Provider command failed:[/red] {exc}")
             log.exception("ProviderCommand error")
-            
+
             # Provide helpful debugging info if the error seems related to our recent fixes
             if "available_models" in str(exc) or "models" in str(exc):
-                output.print(f"[yellow]Hint:[/yellow] This might be a chuk-llm 0.7 compatibility issue.")
-                output.print(f"[yellow]Try:[/yellow] Ensure you're using the latest ModelManager fixes.")
-                
+                output.print(
+                    "[yellow]Hint:[/yellow] This might be a chuk-llm 0.7 compatibility issue."
+                )
+                output.print(
+                    "[yellow]Try:[/yellow] Ensure you're using the latest ModelManager fixes."
+                )
+
     def get_completions(self, partial_command: str) -> List[str]:
         """Provide tab completion for provider commands."""
         try:
             from mcp_cli.model_manager import ModelManager
-            
+
             words = partial_command.strip().split()
-            
+
             # If just "provider" or "p", suggest subcommands
             if len(words) <= 1:
                 return ["list", "config", "diagnostic", "set"]
-            
+
             subcommand = words[1].lower()
-            
+
             # Provider name completions
-            if subcommand in ["diagnostic", "set"] or (subcommand not in ["list", "config"]):
+            if subcommand in ["diagnostic", "set"] or (
+                subcommand not in ["list", "config"]
+            ):
                 mm = ModelManager()
                 providers = mm.list_providers()
-                
+
                 if len(words) == 2:
                     # Complete provider names
                     return [p for p in providers if p.startswith(words[1])]
@@ -106,9 +114,9 @@ class ProviderCommand(InteractiveCommand):
                             return [m for m in models if m.startswith(words[2])]
                         except:
                             return []
-            
+
             return []
-            
+
         except Exception as e:
             log.debug(f"Completion error: {e}")
             return []
@@ -145,7 +153,7 @@ class ProvidersCommand(InteractiveCommand):
         """
         Delegate to :func:`provider_action_async` with default to list.
         """
-        
+
         if tool_manager is None:
             log.debug("ProvidersCommand executed without ToolManager – OK for now.")
 
@@ -153,25 +161,26 @@ class ProvidersCommand(InteractiveCommand):
         if "model_manager" not in ctx:
             log.debug("Creating ModelManager for interactive providers command")
             from mcp_cli.model_manager import ModelManager
+
             ctx["model_manager"] = ModelManager()
 
         try:
             # If no arguments provided, default to "list"
             if not args:
                 args = ["list"]
-            
+
             await provider_action_async(args, context=ctx)
         except Exception as exc:  # noqa: BLE001
             output.print(f"[red]Providers command failed:[/red] {exc}")
             log.exception("ProvidersCommand error")
-                
+
     def get_completions(self, partial_command: str) -> List[str]:
         """Provide tab completion for providers commands."""
         try:
             from mcp_cli.model_manager import ModelManager
-            
+
             words = partial_command.strip().split()
-            
+
             # If just "providers" or "ps", suggest subcommands and provider names
             if len(words) <= 1:
                 # Return both subcommands and provider names
@@ -179,14 +188,16 @@ class ProvidersCommand(InteractiveCommand):
                 mm = ModelManager()
                 providers = mm.list_providers()
                 return subcommands + providers
-            
+
             subcommand = words[1].lower()
-            
+
             # Provider name completions
-            if subcommand in ["diagnostic", "set"] or (subcommand not in ["list", "config"]):
+            if subcommand in ["diagnostic", "set"] or (
+                subcommand not in ["list", "config"]
+            ):
                 mm = ModelManager()
                 providers = mm.list_providers()
-                
+
                 if len(words) == 2:
                     # Complete provider names
                     return [p for p in providers if p.startswith(words[1])]
@@ -202,9 +213,9 @@ class ProvidersCommand(InteractiveCommand):
                             return [m for m in models if m.startswith(words[2])]
                         except:
                             return []
-            
+
             return []
-            
+
         except Exception as e:
             log.debug(f"Completion error: {e}")
             return []

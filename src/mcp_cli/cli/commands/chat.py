@@ -42,13 +42,13 @@ class ChatCommand(BaseCommand):
         api_key = params.get("api_key")
 
         log.debug("Starting chat (provider=%s model=%s)", provider, model)
-        
+
         return await handle_chat_mode(
             tool_manager=tool_manager,
             provider=provider,
             model=model,
             api_base=api_base,
-            api_key=api_key
+            api_key=api_key,
         )
 
     def register(self, app: typer.Typer, run_command_func: Callable) -> None:
@@ -56,13 +56,19 @@ class ChatCommand(BaseCommand):
 
         @app.command(self.name, help=self.help)
         def _chat(
-            config_file: str = typer.Option("server_config.json", help="Configuration file path"),
+            config_file: str = typer.Option(
+                "server_config.json", help="Configuration file path"
+            ),
             server: Optional[str] = typer.Option(None, help="Server to connect to"),
             provider: Optional[str] = typer.Option(None, help="LLM provider name"),
             model: Optional[str] = typer.Option(None, help="Model name"),
-            api_base: Optional[str] = typer.Option(None, "--api-base", help="API base URL"),
+            api_base: Optional[str] = typer.Option(
+                None, "--api-base", help="API base URL"
+            ),
             api_key: Optional[str] = typer.Option(None, "--api-key", help="API key"),
-            disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
+            disable_filesystem: bool = typer.Option(
+                False, help="Disable filesystem access"
+            ),
             logging_level: str = typer.Option("WARNING", help="Set logging level"),
         ) -> None:
             """Start interactive chat mode."""
@@ -74,18 +80,24 @@ class ChatCommand(BaseCommand):
             effective_model = model or model_manager.get_active_model()
 
             servers, _, server_names = process_options(
-                server, disable_filesystem, effective_provider, effective_model, config_file
+                server,
+                disable_filesystem,
+                effective_provider,
+                effective_model,
+                config_file,
             )
 
             extra = {
                 "provider": provider,  # Pass None if not specified - let ModelManager decide
-                "model": model,        # Pass None if not specified - let ModelManager decide
+                "model": model,  # Pass None if not specified - let ModelManager decide
                 "api_base": api_base,
                 "api_key": api_key,
                 "server_names": server_names,
             }
-            
+
             try:
-                run_command_func(self.wrapped_execute, config_file, servers, extra_params=extra)
+                run_command_func(
+                    self.wrapped_execute, config_file, servers, extra_params=extra
+                )
             finally:
                 restore_terminal()

@@ -1,5 +1,6 @@
 # src/mcp_cli/interactive/registry.py
 """Registry for interactive commands."""
+
 from __future__ import annotations
 import logging
 from typing import Dict, Optional
@@ -9,6 +10,7 @@ from mcp_cli.interactive.commands.base import InteractiveCommand
 
 # logger
 logger = logging.getLogger(__name__)
+
 
 class InteractiveCommandRegistry:
     """Registry for interactive commands."""
@@ -35,7 +37,7 @@ class InteractiveCommandRegistry:
     def get_all_commands(cls) -> Dict[str, InteractiveCommand]:
         """Return the mapping of all registered commands."""
         if not isinstance(cls._commands, dict):
-            #print("[DEBUG] InteractiveCommandRegistry._commands polluted! Type:", type(cls._commands))
+            # print("[DEBUG] InteractiveCommandRegistry._commands polluted! Type:", type(cls._commands))
             cls._commands = {}
         return cls._commands
 

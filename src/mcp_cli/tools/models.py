@@ -1,5 +1,6 @@
 # mcp_cli/tools/models.py
 """Data models used throughout MCP-CLI."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -12,6 +13,7 @@ from typing import Any, Dict, List, Optional
 @dataclass
 class ToolInfo:
     """Information about a tool."""
+
     name: str
     namespace: str
     description: Optional[str] = None
@@ -24,6 +26,7 @@ class ToolInfo:
 @dataclass
 class ServerInfo:
     """Information about a connected server instance."""
+
     id: int
     name: str
     status: str
@@ -34,6 +37,7 @@ class ServerInfo:
 @dataclass
 class ToolCallResult:
     """Outcome of a tool execution."""
+
     tool_name: str
     success: bool
     result: Any = None

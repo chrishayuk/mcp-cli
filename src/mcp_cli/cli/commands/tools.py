@@ -6,6 +6,7 @@ CLI binding for the “tools list” command.
 * `ToolsListCommand`               - async, used by interactive shell
                                       or CommandRegistry invocations.
 """
+
 from __future__ import annotations
 
 from typing import Any

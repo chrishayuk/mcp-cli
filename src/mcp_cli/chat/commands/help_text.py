@@ -37,5 +37,19 @@ MCP also provides commands to view and manage the conversation history:
 These commands allow you to review all the messages exchanged during the session, making it easier to track the flow of your conversation.
 """
 
+UI_COMMANDS_HELP = """
+## UI & Preference Commands
+
+MCP CLI provides commands to customize your user interface and manage preferences:
+
+- `/theme`: Open interactive theme selector to choose your preferred color scheme
+  - `/theme <name>`: Switch directly to a specific theme (e.g., `/theme dark`)
+  - Available themes: default, dark, light, minimal, terminal, monokai, dracula, solarized
+
+- `/clear` or `/cls`: Clear the terminal screen and optionally reset conversation history
+
+Themes are persisted across sessions and affect the entire CLI experience.
+"""
+
 # You can concatenate these texts or export them separately as needed.
-ALL_HELP_TEXT = TOOL_COMMANDS_HELP + "\n" + CONVERSATION_COMMANDS_HELP
+ALL_HELP_TEXT = TOOL_COMMANDS_HELP + "\n" + CONVERSATION_COMMANDS_HELP + "\n" + UI_COMMANDS_HELP

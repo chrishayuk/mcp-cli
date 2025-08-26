@@ -7,13 +7,14 @@ Updated to properly handle the new OpenAI client and chuk-tool-processor APIs.
 if __name__ == "__main__":
     import sys
     import asyncio
-    
+
     # Set up proper event loop policy on Windows
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    
+
     try:
         from mcp_cli.main import app
+
         app()
     except KeyboardInterrupt:
         print("\nInterrupted by user")

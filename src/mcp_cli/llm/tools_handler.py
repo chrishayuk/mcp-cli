@@ -5,7 +5,6 @@ import uuid
 from typing import Any, Dict, Optional, List, Union
 
 # Import CHUK tool registry for tool conversions
-from chuk_tool_processor.registry.tool_export import openai_functions
 
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.tools.models import ToolCallResult
@@ -13,14 +12,20 @@ from mcp_cli.tools.models import ToolCallResult
 
 def format_tool_response(response_content: Union[List[Dict[str, Any]], Any]) -> str:
     """Format the response content from a tool.
-    
+
     Preserves structured data in a readable format, ensuring that all data is
     available for the model in future conversation turns.
     """
     # Handle list of dictionaries (likely structured data like SQL results)
-    if isinstance(response_content, list) and response_content and isinstance(response_content[0], dict):
+    if (
+        isinstance(response_content, list)
+        and response_content
+        and isinstance(response_content[0], dict)
+    ):
         # Check if this looks like text records with type field
-        if all(item.get("type") == "text" for item in response_content if "type" in item):
+        if all(
+            item.get("type") == "text" for item in response_content if "type" in item
+        ):
             # Text records - extract just the text
             return "\n".join(
                 item.get("text", "No content")
@@ -49,15 +54,15 @@ def format_tool_response(response_content: Union[List[Dict[str, Any]], Any]) -> 
 async def handle_tool_call(
     tool_call: Union[Dict[str, Any], Any],
     conversation_history: List[Dict[str, Any]],
-    server_streams = None,  # Kept for backward compatibility but ignored
-    stream_manager = None,  # Kept for backward compatibility but recommended to use tool_manager
-    tool_manager: Optional[ToolManager] = None  # Preferred parameter
+    server_streams=None,  # Kept for backward compatibility but ignored
+    stream_manager=None,  # Kept for backward compatibility but recommended to use tool_manager
+    tool_manager: Optional[ToolManager] = None,  # Preferred parameter
 ) -> None:
     """
     Handle a single tool call using the centralized ToolManager.
 
     This function updates the conversation history with both the tool call and its response.
-    
+
     Args:
         tool_call: The tool call object
         conversation_history: The conversation history to update
@@ -67,11 +72,13 @@ async def handle_tool_call(
     """
     # Use tool_manager if provided, otherwise fall back to stream_manager
     manager = tool_manager or stream_manager
-    
+
     if manager is None:
-        logging.error("Either tool_manager or stream_manager is required for handle_tool_call")
+        logging.error(
+            "Either tool_manager or stream_manager is required for handle_tool_call"
+        )
         return
-        
+
     tool_name: str = "unknown_tool"
     tool_args: Dict[str, Any] = {}
     tool_call_id: Optional[str] = None
@@ -105,109 +112,122 @@ async def handle_tool_call(
             tool_call_id = f"call_{tool_name}_{str(uuid.uuid4())[:8]}"
 
         # Log which tool we're calling
-        if hasattr(manager, 'get_server_for_tool'):
+        if hasattr(manager, "get_server_for_tool"):
             server_name = manager.get_server_for_tool(tool_name)
             logging.debug(f"Calling tool '{tool_name}' on server '{server_name}'")
-        
+
         # Call the tool using either manager
         if isinstance(manager, ToolManager):
             # Use ToolManager (preferred)
             result: ToolCallResult = await manager.execute_tool(tool_name, tool_args)
-            
+
             if not result.success:
                 error_msg = result.error or "Unknown error"
                 logging.debug(f"Error calling tool '{tool_name}': {error_msg}")
-                
+
                 # Add failed tool call to conversation history
-                conversation_history.append({
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": [
-                        {
-                            "id": tool_call_id,
-                            "type": "function",
-                            "function": {
-                                "name": tool_name,
-                                "arguments": json.dumps(tool_args),
-                            },
-                        }
-                    ],
-                })
-                
+                conversation_history.append(
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": tool_call_id,
+                                "type": "function",
+                                "function": {
+                                    "name": tool_name,
+                                    "arguments": json.dumps(tool_args),
+                                },
+                            }
+                        ],
+                    }
+                )
+
                 # Add error response
-                conversation_history.append({
-                    "role": "tool",
-                    "name": tool_name,
-                    "content": f"Error: {error_msg}",
-                    "tool_call_id": tool_call_id,
-                })
+                conversation_history.append(
+                    {
+                        "role": "tool",
+                        "name": tool_name,
+                        "content": f"Error: {error_msg}",
+                        "tool_call_id": tool_call_id,
+                    }
+                )
                 return
-            
+
             raw_content = result.result
         else:
             # Use StreamManager (backward compatibility)
             tool_response = await manager.call_tool(tool_name, tool_args)
-            
+
             if tool_response.get("isError"):
                 error_msg = tool_response.get("error", "Unknown error")
                 logging.debug(f"Error calling tool '{tool_name}': {error_msg}")
-                
+
                 # Handle error similar to above
-                conversation_history.append({
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": [
-                        {
-                            "id": tool_call_id,
-                            "type": "function",
-                            "function": {
-                                "name": tool_name,
-                                "arguments": json.dumps(tool_args),
-                            },
-                        }
-                    ],
-                })
-                
-                conversation_history.append({
-                    "role": "tool",
-                    "name": tool_name,
-                    "content": f"Error: {error_msg}",
-                    "tool_call_id": tool_call_id,
-                })
+                conversation_history.append(
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": tool_call_id,
+                                "type": "function",
+                                "function": {
+                                    "name": tool_name,
+                                    "arguments": json.dumps(tool_args),
+                                },
+                            }
+                        ],
+                    }
+                )
+
+                conversation_history.append(
+                    {
+                        "role": "tool",
+                        "name": tool_name,
+                        "content": f"Error: {error_msg}",
+                        "tool_call_id": tool_call_id,
+                    }
+                )
                 return
-            
+
             raw_content = tool_response.get("content", [])
-        
+
         # Format the tool response
         formatted_response: str = format_tool_response(raw_content)
         logging.debug(f"Tool '{tool_name}' Response: {formatted_response}")
 
         # Append the tool call (for tracking purposes)
-        conversation_history.append({
-            "role": "assistant",
-            "content": None,
-            "tool_calls": [
-                {
-                    "id": tool_call_id,
-                    "type": "function",
-                    "function": {
-                        "name": tool_name,
-                        "arguments": json.dumps(tool_args),
-                    },
-                }
-            ],
-        })
+        conversation_history.append(
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": tool_call_id,
+                        "type": "function",
+                        "function": {
+                            "name": tool_name,
+                            "arguments": json.dumps(tool_args),
+                        },
+                    }
+                ],
+            }
+        )
 
         # Append the tool's response to the conversation history
-        conversation_history.append({
-            "role": "tool",
-            "name": tool_name,
-            "content": formatted_response,
-            "tool_call_id": tool_call_id,
-        })
+        conversation_history.append(
+            {
+                "role": "tool",
+                "name": tool_name,
+                "content": formatted_response,
+                "tool_call_id": tool_call_id,
+            }
+        )
 
     except Exception as e:
         logging.error(f"Error handling tool call '{tool_name}': {str(e)}")
+
 
 def convert_to_openai_tools(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """

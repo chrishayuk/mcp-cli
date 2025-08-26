@@ -30,6 +30,7 @@ The response is rendered as a Rich table with three columns:
 * **Status** - ✓ on success, ✗ on timeout or error
 * **Latency** - round-trip time in milliseconds
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, List
@@ -45,7 +46,7 @@ from mcp_cli.chat.commands import register_command
 
 async def ping_command(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
     """Measure round-trip latency to one or more MCP servers."""
-    
+
     tm: ToolManager | None = ctx.get("tool_manager")
     if tm is None:
         output.print("[red]Error:[/red] ToolManager not available.")
@@ -60,4 +61,3 @@ async def ping_command(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: 
 # Registration (no extra alias - keep namespace clean)
 # ---------------------------------------------------------------------------
 register_command("/ping", ping_command)
-

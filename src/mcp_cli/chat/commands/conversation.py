@@ -6,11 +6,11 @@ Conversation-history commands for MCP-CLI chat
 This file wires four convenience commands that let you tidy up or persist the
 current chat history without leaving the session:
 
-* **/cls**       - clear the terminal window but *keep* the conversation.  
+* **/cls**       - clear the terminal window but *keep* the conversation.
 * **/clear**     - clear *both* the screen *and* the in-memory history
-  (system prompt is preserved).  
+  (system prompt is preserved).
 * **/compact**   - ask the LLM to summarise the conversation so far and
-  replace the full history with that concise summary.  
+  replace the full history with that concise summary.
 * **/save** _file_ - dump the history (minus the system prompt) to a JSON file
   on disk.
 
@@ -40,13 +40,12 @@ from mcp_cli.chat.commands import register_command
 async def cmd_cls(_parts: List[str], ctx: Dict[str, Any]) -> bool:
     """Clear the terminal window but *preserve* the conversation history."""
     clear_screen()
-    
+
     # Re-display the chat banner
     display_chat_banner(
-        provider=ctx.get("provider", "unknown"),
-        model=ctx.get("model", "unknown")
+        provider=ctx.get("provider", "unknown"), model=ctx.get("model", "unknown")
     )
-    
+
     output.success("Screen cleared. Conversation history preserved.")
     return True
 
@@ -66,10 +65,9 @@ async def cmd_clear(_parts: List[str], ctx: Dict[str, Any]) -> bool:
 
     # Re-display the chat banner
     display_chat_banner(
-        provider=ctx.get("provider", "unknown"),
-        model=ctx.get("model", "unknown")
+        provider=ctx.get("provider", "unknown"), model=ctx.get("model", "unknown")
     )
-    
+
     output.success("Screen cleared and conversation history reset.")
     return True
 
@@ -110,19 +108,16 @@ async def cmd_compact(_parts: List[str], ctx: Dict[str, Any]) -> bool:
 
     # Re-display the chat banner
     display_chat_banner(
-        provider=ctx.get("provider", "unknown"),
-        model=ctx.get("model", "unknown")
+        provider=ctx.get("provider", "unknown"), model=ctx.get("model", "unknown")
     )
-    
+
     output.success("Conversation compacted.")
-    
+
     # Display the summary in a panel
     output.panel(
-        f"**Summary:**\n\n{summary}",
-        title="Conversation Summary",
-        style="cyan"
+        f"**Summary:**\n\n{summary}", title="Conversation Summary", style="cyan"
     )
-    
+
     return True
 
 
@@ -146,14 +141,14 @@ async def cmd_save(parts: List[str], ctx: Dict[str, Any]) -> bool:
         output.success(f"Conversation saved to {filename}")
     except Exception as exc:
         output.error(f"Failed to save conversation: {exc}")
-    
+
     return True
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # Registration
 # ════════════════════════════════════════════════════════════════════════════
-register_command("/cls",     cmd_cls)
-register_command("/clear",   cmd_clear)
+register_command("/cls", cmd_cls)
+register_command("/clear", cmd_clear)
 register_command("/compact", cmd_compact)
-register_command("/save",    cmd_save, ["<filename>"])
+register_command("/save", cmd_save, ["<filename>"])

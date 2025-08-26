@@ -18,6 +18,7 @@ All variants ultimately render the same Rich table:
 │ api    │ sql_query  │ Extract columns & types from table  │
 └────────┴────────────┴─────────────────────────────────────┘
 """
+
 from __future__ import annotations
 import inspect
 from typing import Any, Dict, List
@@ -42,29 +43,29 @@ async def prompts_action_async(tm: ToolManager) -> List[Dict[str, Any]]:
     list[dict]
         The raw prompt dictionaries exactly as returned by `ToolManager`.
     """
-    
+
     try:
         maybe = tm.list_prompts()
-    except Exception as exc:          # pragma: no cover - network / server errors
+    except Exception as exc:  # pragma: no cover - network / server errors
         output.print(f"[red]Error:[/red] {exc}")
         return []
 
     # `tm.list_prompts()` can be sync or async - handle both gracefully
     prompts = await maybe if inspect.isawaitable(maybe) else maybe
-    if not prompts:                   #  None or empty list
+    if not prompts:  #  None or empty list
         output.print("[dim]No prompts recorded.[/dim]")
         return []
 
     # ── render table ────────────────────────────────────────────────────
     table = Table(title="Prompts", header_style="bold magenta")
-    table.add_column("Server",      style="cyan",   no_wrap=True)
-    table.add_column("Name",        style="yellow", no_wrap=True)
+    table.add_column("Server", style="cyan", no_wrap=True)
+    table.add_column("Name", style="yellow", no_wrap=True)
     table.add_column("Description", overflow="fold")
 
     for item in prompts:
         table.add_row(
             item.get("server", "-"),
-            item.get("name",   "-"),
+            item.get("name", "-"),
             item.get("description", ""),
         )
 

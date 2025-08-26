@@ -1,7 +1,7 @@
 # examples/sample_tools/calculator_tool.py
 from typing import Dict
 
-# imports
+# imports
 from chuk_tool_processor.models.validated_tool import ValidatedTool
 from chuk_tool_processor.registry.decorators import register_tool
 

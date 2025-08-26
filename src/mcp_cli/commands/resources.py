@@ -16,6 +16,7 @@ Compared with the old module:
 * Doc-string starts with a one-line summary, so `/help` shows a nice
   description instead of “No description”.
 """
+
 from __future__ import annotations
 import inspect
 from typing import Any, Dict, List
@@ -50,7 +51,7 @@ async def resources_action_async(tm: ToolManager) -> List[Dict[str, Any]]:
 
     Returns the raw list to allow callers to re-use the data programmatically.
     """
-    
+
     # Most MCP servers expose list_resources() as an awaitable, but some
     # adapters might return a plain list - handle both.
     try:
@@ -67,14 +68,14 @@ async def resources_action_async(tm: ToolManager) -> List[Dict[str, Any]]:
 
     table = Table(title="Resources", header_style="bold magenta")
     table.add_column("Server", style="cyan")
-    table.add_column("URI",    style="yellow")
-    table.add_column("Size",   justify="right")
+    table.add_column("URI", style="yellow")
+    table.add_column("Size", justify="right")
     table.add_column("MIME-type")
 
     for item in resources:
         table.add_row(
             item.get("server", "-"),
-            item.get("uri",    "-"),
+            item.get("uri", "-"),
             _human_size(item.get("size")),
             item.get("mimeType", "-"),
         )
