@@ -1,5 +1,6 @@
 """Tests for chat mode servers command."""
 
+import asyncio
 from unittest.mock import MagicMock, AsyncMock, patch
 import pytest
 
@@ -75,6 +76,11 @@ class TestChatServersCommand:
             MagicMock(name="filesystem"),
             MagicMock(name="github"),
         ]
+
+        # Mock get_streams for ping functionality
+        mock_read = MagicMock()
+        mock_write = MagicMock()
+        tm.get_streams = MagicMock(return_value=[(mock_read, mock_write)])
 
         return tm
 
@@ -282,16 +288,26 @@ class TestChatServersCommand:
         mock_output.rule.assert_called_with("Available Tools: sqlite")
 
     @pytest.mark.asyncio
+    @patch("chuk_mcp.protocol.messages.send_ping")
     @patch("mcp_cli.chat.commands.servers.output")
     @patch("mcp_cli.utils.preferences.get_preference_manager")
     async def test_servers_ping_command(
-        self, mock_pref_manager, mock_output, mock_tool_manager_with_servers
+        self,
+        mock_pref_manager,
+        mock_output,
+        mock_send_ping,
+        mock_tool_manager_with_servers,
     ):
         """Test /servers <name> ping command."""
         # Setup preference manager
         pref_mgr = MagicMock()
         pref_mgr.is_server_disabled.return_value = False
         mock_pref_manager.return_value = pref_mgr
+
+        # Mock send_ping to return an awaitable that returns success
+        future = asyncio.Future()
+        future.set_result(True)
+        mock_send_ping.return_value = future
 
         context = {
             "tool_manager": mock_tool_manager_with_servers,

@@ -188,12 +188,13 @@ class ChainedToolCallDiagnostic:
         self.log_info("🌊 Testing streaming chain simulation")
 
         # Simulate the streaming tool call format that would come from LLM
+        # The tool names should match what the tool manager expects
         streaming_tool_calls = [
             {
                 "id": "call_list_tables_123",
                 "type": "function",
                 "function": {
-                    "name": "stdio_list_tables",  # Note: sanitized name
+                    "name": "list_tables",  # Correct tool name
                     "arguments": "{}",
                 },
             },
@@ -201,17 +202,14 @@ class ChainedToolCallDiagnostic:
                 "id": "call_read_query_456",
                 "type": "function",
                 "function": {
-                    "name": "stdio_read_query",  # Note: sanitized name
+                    "name": "read_query",  # Correct tool name
                     "arguments": '{"query": "SELECT * FROM products LIMIT 10"}',
                 },
             },
         ]
 
-        # Test name mapping (universal tool compatibility)
-        name_mapping = {
-            "stdio_list_tables": "stdio.list_tables",
-            "stdio_read_query": "stdio.read_query",
-        }
+        # No name mapping needed when using correct names
+        name_mapping = {}
 
         # Process tools calls like the streaming system does
         for i, tool_call in enumerate(streaming_tool_calls):

@@ -768,9 +768,10 @@ def display_capability_matrix(servers: List[Dict[str, Any]]):
         caps = server.get("capabilities", {})
         features = server.get("features", {})
 
-        tools_icon = "✅" if caps.get("tools") else "❌"
-        resources_icon = "✅" if caps.get("resources") else "❌"
-        prompts_icon = "✅" if caps.get("prompts") else "❌"
+        # Use features for actual detected capabilities
+        tools_icon = "✅" if features.get("tools") else "❌"
+        resources_icon = "✅" if features.get("resources") else "❌"
+        prompts_icon = "✅" if features.get("prompts") else "❌"
         streaming_icon = "✅" if features.get("streaming") else "❌"
         notifications_icon = "✅" if features.get("notifications") else "❌"
 
@@ -908,6 +909,382 @@ def display_tool_inventory(servers: List[Dict[str, Any]]):
         print("\n  ✅ No duplicate tool names detected")
 
 
+async def test_single_runtime_server(
+    pref_manager, server_name: str, test_tool_info: Dict[str, Any]
+) -> bool:
+    """Test a single runtime server configuration."""
+    try:
+        from mcp_cli.tools.manager import ToolManager
+        import tempfile
+        import json
+        import asyncio
+
+        # Create a temporary server config with ONLY this server
+        temp_config = {"mcpServers": {}}
+
+        # Get ONLY the specific server we're testing
+        server_config = pref_manager.get_runtime_server(server_name)
+        if not server_config:
+            print(f"      ❌ Server '{server_name}' not found in preferences")
+            return False
+            
+        # Add only this server to the config
+        if server_config.get("transport") == "stdio":
+            temp_config["mcpServers"][server_name] = {
+                "command": server_config.get("command"),
+                "args": server_config.get("args", []),
+            }
+            if server_config.get("env"):
+                temp_config["mcpServers"][server_name]["env"] = server_config.get("env")
+        elif server_config.get("transport") in ["http", "sse"]:
+            temp_config["mcpServers"][server_name] = {"url": server_config.get("url")}
+
+        if not temp_config["mcpServers"]:
+            return False
+
+        # Save temp config to test
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(temp_config, f)
+            temp_config_file = f.name
+
+        try:
+            # Try to initialize with the runtime server (with timeout)
+            print("      Attempting connection...")
+            tm = ToolManager(temp_config_file, [server_name])
+
+            # Use a longer timeout for uvx servers (they need to download first time)
+            try:
+                success = await asyncio.wait_for(tm.initialize(), timeout=15.0)
+            except asyncio.TimeoutError:
+                print("      ⏱️  Connection timed out (server may not be installed)")
+                return False
+            except asyncio.CancelledError:
+                print("      ⚠️  Connection timeout (uvx servers work but may need manual testing)")
+                print("      💡 To test manually: mcp-cli tools --server time-test --config-file <config>")
+                return False
+            except Exception as e:
+                print(f"      ❌ Connection failed: {str(e)[:80]}")
+                return False
+
+            if not success:
+                print("      ❌ Failed to initialize")
+                return False
+
+            print("      ✅ Connected successfully")
+
+            # Try to get tools
+            try:
+                tools = await asyncio.wait_for(tm.get_all_tools(), timeout=3.0)
+                if tools:
+                    print(f"      ✅ Found {len(tools)} tools:")
+                    for tool in tools[:5]:  # Show first 5 tools
+                        tool_name = (
+                            tool.name
+                            if hasattr(tool, "name")
+                            else tool.get("name", "unknown")
+                        )
+                        tool_desc = (
+                            tool.description
+                            if hasattr(tool, "description")
+                            else tool.get("description", "")
+                        )
+                        if tool_desc:
+                            print(f"        • {tool_name}: {tool_desc[:50]}")
+                        else:
+                            print(f"        • {tool_name}")
+
+                    # Try to execute the test tool if provided
+                    if test_tool_info and test_tool_info.get("name"):
+                        test_tool_name = test_tool_info["name"]
+                        test_tool_args = test_tool_info.get("arguments", {})
+
+                        # Find the test tool in the list
+                        matching_tool = None
+                        for tool in tools:
+                            if hasattr(tool, "name") and tool.name == test_tool_name:
+                                matching_tool = tool
+                                break
+                            elif (
+                                isinstance(tool, dict)
+                                and tool.get("name") == test_tool_name
+                            ):
+                                matching_tool = tool
+                                break
+
+                        if matching_tool:
+                            print(f"      🧪 Testing tool execution: {test_tool_name}")
+                            try:
+                                result = await asyncio.wait_for(
+                                    tm.execute_tool(test_tool_name, test_tool_args),
+                                    timeout=5.0,
+                                )
+                                if result:
+                                    print("        ✅ Tool executed successfully")
+                                    # Show a snippet of the result
+                                    result_str = str(result)[:100]
+                                    print(f"        Result preview: {result_str}...")
+                                else:
+                                    print("        ⚠️  Tool returned no result")
+                            except asyncio.TimeoutError:
+                                print("        ⏱️  Tool execution timed out")
+                            except Exception as e:
+                                print(
+                                    f"        ❌ Tool execution failed: {str(e)[:50]}"
+                                )
+                        else:
+                            print(
+                                f"      ℹ️  Test tool '{test_tool_name}' not found in server tools"
+                            )
+
+                    # Cleanup
+                    try:
+                        await asyncio.wait_for(tm.close(), timeout=2.0)
+                    except:
+                        pass  # Ignore cleanup errors
+
+                    return True
+                else:
+                    print("      ⚠️  No tools found")
+                    await tm.close()
+                    return False
+
+            except asyncio.TimeoutError:
+                print("      ⚠️  Tool discovery timed out")
+                return False
+
+        except Exception as init_error:
+            print(f"      ❌ Error: {str(init_error)[:100]}")
+            return False
+
+        finally:
+            # Remove temp config file
+            import os
+
+            try:
+                os.unlink(temp_config_file)
+            except:
+                pass
+
+    except ImportError:
+        print("      ❌ Could not import required modules")
+        return False
+    except Exception as e:
+        print(f"      ❌ Test failed: {str(e)[:100]}")
+        return False
+
+
+async def test_runtime_server_management():
+    """Test runtime server management functionality."""
+    print("\n🧪 Runtime Server Management Test:")
+    print("=" * 50)
+
+    try:
+        # Import preference manager
+        from mcp_cli.utils.preferences import get_preference_manager
+
+        pref_manager = get_preference_manager()
+
+        # Check for existing runtime servers
+        runtime_servers = pref_manager.get_runtime_servers()
+        if runtime_servers:
+            print(
+                f"  📦 Found {len(runtime_servers)} runtime server(s) in preferences:"
+            )
+            for name, config in runtime_servers.items():
+                transport = config.get("transport", "unknown")
+                if transport == "stdio":
+                    cmd = config.get("command", "unknown")
+                    args = " ".join(config.get("args", []))
+                    print(f"    • {name} (STDIO): {cmd} {args}")
+                elif transport in ["http", "sse"]:
+                    url = config.get("url", "unknown")
+                    print(f"    • {name} ({transport.upper()}): {url}")
+                else:
+                    print(f"    • {name} ({transport})")
+        else:
+            print("  ℹ️  No runtime servers configured")
+
+        # Test adding a runtime server
+        print("\n  🔧 Testing runtime server addition...")
+        test_server_name = "diagnostic-test-server"
+
+        # Check if test server already exists
+        if pref_manager.is_runtime_server(test_server_name):
+            print(
+                f"    ⚠️  Test server '{test_server_name}' already exists, removing..."
+            )
+            pref_manager.remove_runtime_server(test_server_name)
+
+        # Add a test server
+        test_config = {
+            "transport": "stdio",
+            "command": "echo",
+            "args": ["test"],
+            "env": {"TEST_VAR": "diagnostic"},
+        }
+        pref_manager.add_runtime_server(test_server_name, test_config)
+        print(f"    ✅ Added test server '{test_server_name}'")
+
+        # Verify it was added
+        if pref_manager.is_runtime_server(test_server_name):
+            saved_config = pref_manager.get_runtime_server(test_server_name)
+            if saved_config == test_config:
+                print("    ✅ Server configuration saved correctly")
+            else:
+                print("    ⚠️  Server configuration mismatch")
+        else:
+            print("    ❌ Failed to save server")
+
+        # Test removing the server
+        print("\n  🔧 Testing runtime server removal...")
+        if pref_manager.remove_runtime_server(test_server_name):
+            print(f"    ✅ Removed test server '{test_server_name}'")
+        else:
+            print("    ❌ Failed to remove test server")
+
+        # Verify it was removed
+        if not pref_manager.is_runtime_server(test_server_name):
+            print("    ✅ Server successfully removed from preferences")
+        else:
+            print("    ❌ Server still exists after removal")
+
+        # Test preferences file location
+        print("\n  📁 Preferences location:")
+        print(f"    {pref_manager.preferences_file}")
+
+        # Test runtime server validation
+        print("\n  🔍 Testing runtime server validation...")
+
+        # Add realistic test servers (time and sqlite are good test cases)
+        test_servers = [
+            {
+                "name": "test-time-runtime",
+                "config": {
+                    "transport": "stdio",
+                    "command": "uvx",
+                    "args": ["mcp-server-time"],
+                },
+                "test_tool": {
+                    "name": "get_current_time",
+                    "arguments": {"timezone": "UTC"},
+                },
+            },
+            {
+                "name": "test-sqlite-runtime",
+                "config": {
+                    "transport": "stdio",
+                    "command": "uvx",
+                    "args": ["mcp-server-sqlite", "--db-path", "test-runtime.db"],
+                },
+                "test_tool": {"name": "list_tables", "arguments": {}},
+            },
+        ]
+
+        # Try each test server until one works
+        tested_servers = []
+        test_passed = False
+
+        for test_server in test_servers:
+            server_name = test_server["name"]
+            server_config = test_server["config"]
+            test_tool_info = test_server["test_tool"]
+
+            try:
+                print(f"    Testing server: {server_name}")
+                
+                # First check if the server command is available
+                check_cmd = None
+                if server_name == "test-time-runtime":
+                    check_cmd = ["uvx", "mcp-server-time", "--help"]
+                elif server_name == "test-sqlite-runtime":
+                    check_cmd = ["uvx", "mcp-server-sqlite", "--help"]
+                
+                if check_cmd:
+                    import subprocess
+                    try:
+                        # Quick check if server is available
+                        print(f"      Checking server availability...")
+                        result = subprocess.run(
+                            check_cmd,
+                            capture_output=True,
+                            timeout=5,
+                            text=True
+                        )
+                        if result.returncode != 0:
+                            print(f"      ℹ️  Server not available via uvx (exit code: {result.returncode})")
+                            continue
+                        else:
+                            print(f"      ✅ Server is available via uvx")
+                    except subprocess.TimeoutExpired:
+                        print(f"      ⏱️  Check timed out")
+                        continue
+                    except FileNotFoundError:
+                        print(f"      ❌ uvx command not found")
+                        continue
+                    except Exception as e:
+                        print(f"      ❌ Check failed: {str(e)[:50]}")
+                        continue
+
+                # Check if this server was left from a previous test
+                if pref_manager.is_runtime_server(server_name):
+                    pref_manager.remove_runtime_server(server_name)
+
+                pref_manager.add_runtime_server(server_name, server_config)
+                tested_servers.append(server_name)
+
+                # Try to connect to this server
+                test_success = await test_single_runtime_server(
+                    pref_manager, server_name, test_tool_info
+                )
+
+                if test_success:
+                    print(f"    ✅ Server '{server_name}' test completed successfully")
+                    test_passed = True
+                    break  # Found a working server
+                else:
+                    print(
+                        f"    ℹ️  Server '{server_name}' not available, trying next..."
+                    )
+
+            except Exception as e:
+                print(f"    ❌ Error testing {server_name}: {str(e)[:80]}")
+
+        # Always clean up ALL test servers
+        print("\n  🧹 Cleaning up test servers...")
+        for server_name in tested_servers:
+            try:
+                if pref_manager.remove_runtime_server(server_name):
+                    print(f"    ✅ Removed '{server_name}'")
+            except:
+                pass  # Ignore cleanup errors
+
+        # Also check for any lingering test servers from previous runs
+        runtime_servers = pref_manager.get_runtime_servers()
+        for server_name in list(runtime_servers.keys()):
+            if server_name.startswith("test-") and server_name.endswith("-runtime"):
+                try:
+                    pref_manager.remove_runtime_server(server_name)
+                    print(f"    ✅ Removed lingering test server '{server_name}'")
+                except:
+                    pass
+
+        if not test_passed:
+            print(
+                "  ℹ️  No test servers were available (this is normal if they're not installed)"
+            )
+
+        print("\n  ✅ Runtime server management test completed")
+
+    except ImportError:
+        print("  ❌ Could not import preference manager")
+        print("  ℹ️  Runtime server management requires mcp_cli.utils.preferences")
+    except Exception as e:
+        print(f"  ❌ Runtime server test failed: {e}")
+        import traceback
+
+        traceback.print_exc()
+
+
 async def run_diagnostics():
     """Run comprehensive MCP server diagnostics."""
     print("🔍 MCP Server Diagnostic Tool")
@@ -938,6 +1315,9 @@ async def run_diagnostics():
     display_performance_analysis(servers)
     display_protocol_compatibility(servers)
     display_tool_inventory(servers)
+
+    # Test runtime server management
+    await test_runtime_server_management()
 
     # Enhanced recommendations based on real vs mock data
     print("\n💡 Recommendations:")

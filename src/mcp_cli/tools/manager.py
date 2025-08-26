@@ -298,7 +298,7 @@ class ToolManager:
 
                 async def stream(self, *args, **kwargs):
                     yield {"error": "No streaming available"}
-                
+
                 async def close(self):
                     """No-op close method for compatibility."""
                     pass

@@ -50,6 +50,9 @@ class ServerPreferences:
 
     disabled_servers: Dict[str, bool] = field(default_factory=dict)
     server_settings: Dict[str, Any] = field(default_factory=dict)
+    runtime_servers: Dict[str, Dict[str, Any]] = field(
+        default_factory=dict
+    )  # User-added servers
 
 
 @dataclass
@@ -258,6 +261,43 @@ class PreferenceManager:
         """Clear all disabled server preferences."""
         self.preferences.servers.disabled_servers.clear()
         self.save_preferences()
+
+    def add_runtime_server(self, name: str, config: Dict[str, Any]) -> None:
+        """Add a runtime server to preferences.
+
+        Args:
+            name: Server name
+            config: Server configuration (command, args, env, transport, url, etc.)
+        """
+        self.preferences.servers.runtime_servers[name] = config
+        self.save_preferences()
+
+    def remove_runtime_server(self, name: str) -> bool:
+        """Remove a runtime server from preferences.
+
+        Args:
+            name: Server name to remove
+
+        Returns:
+            True if server was removed, False if not found
+        """
+        if name in self.preferences.servers.runtime_servers:
+            del self.preferences.servers.runtime_servers[name]
+            self.save_preferences()
+            return True
+        return False
+
+    def get_runtime_servers(self) -> Dict[str, Dict[str, Any]]:
+        """Get all runtime servers."""
+        return self.preferences.servers.runtime_servers.copy()
+
+    def get_runtime_server(self, name: str) -> Optional[Dict[str, Any]]:
+        """Get a specific runtime server configuration."""
+        return self.preferences.servers.runtime_servers.get(name)
+
+    def is_runtime_server(self, name: str) -> bool:
+        """Check if a server is a runtime server."""
+        return name in self.preferences.servers.runtime_servers
 
 
 # Global singleton instance

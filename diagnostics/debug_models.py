@@ -110,9 +110,26 @@ def test_client_creation():
                 # FIXED: Use "models" key instead of "available_models" for chuk-llm 0.7
                 model_count = len(info.get("models", info.get("available_models", [])))
                 has_key = info.get("has_api_key", False)
-                print(
-                    f"    {'✅' if has_key else '❌'} {name}: {model_count} models, API key: {has_key}"
+
+                # Special handling for Ollama - check if it's running
+                if name == "ollama":
+                    import httpx
+
+                    try:
+                        response = httpx.get(
+                            "http://localhost:11434/api/tags", timeout=2.0
+                        )
+                        if response.status_code == 200:
+                            has_key = True  # Ollama running = no API key needed
+                            ollama_models = response.json().get("models", [])
+                            model_count = len(ollama_models)
+                    except:
+                        pass
+
+                status = (
+                    "✅" if has_key or (name == "ollama" and model_count > 0) else "❌"
                 )
+                print(f"    {status} {name}: {model_count} models, API key: {has_key}")
 
         # Try creating a client
         print("\n  🔧 Testing client creation...")
