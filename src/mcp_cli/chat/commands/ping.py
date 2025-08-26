@@ -10,10 +10,6 @@ interactive chat session.
 
 Key Features
 ------------
-* **Cross-platform console** - uses :pyfunc:`mcp_cli.utils.rich_helpers.get_console`
-  which transparently falls back to plain text when ANSI colours are not
-  supported (e.g. Windows `cmd.exe`, PowerShell without VT, or when the
-  output is being piped to a file).
 * **Zero state** - the handler is a thin façade; it never mutates the
   context and can be hot-reloaded safely.
 * **Filter support** - any additional tokens after */ping* are treated as

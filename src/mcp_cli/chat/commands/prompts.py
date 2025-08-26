@@ -10,10 +10,6 @@ the interactive chat session.
 
 Features
 --------
-* **Cross-platform Rich console** - relies on
-  :pyfunc:`mcp_cli.utils.rich_helpers.get_console`, which transparently
-  falls back to plain text when ANSI colours aren't available (e.g. Windows
-  *cmd.exe*, PowerShell without VT, or when piping to a file).
 * **Read-only & stateless** - the handler simply renders a Rich table and
   never mutates the chat context, so it's safe to hot-reload.
 * **One-liner behaviour** - a single `await` to the shared helper keeps the

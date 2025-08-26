@@ -9,12 +9,6 @@ There are three public call-sites:
 * **resources_action(tm)**       - tiny sync wrapper for legacy CLI paths.
 * **_human_size(n)**             - helper to pretty-print bytes.
 
-Compared with the old module:
-
-* All output now flows through :pyfunc:`mcp_cli.utils.rich_helpers.get_console`
-  so colours & widths behave on Windows, inside pipes, and in CI logs.
-* Doc-string starts with a one-line summary, so `/help` shows a nice
-  description instead of “No description”.
 """
 
 from __future__ import annotations

@@ -20,15 +20,6 @@ At a glance
 All heavy lifting is delegated to
 :meth:`mcp_cli.commands.provider.provider_action_async`, which performs
 safety probes before committing any switch.
-
-Features
---------
-* **Cross-platform Rich console** - via
-  :pyfunc:`mcp_cli.utils.rich_helpers.get_console`.
-* **Graceful error surfacing** - unexpected exceptions are caught and printed
-  as red error messages instead of exploding the event-loop.
-* **Chat context awareness** - preserves chat session state when switching providers.
-* **Plural support** - `/providers` defaults to listing all providers.
 """
 
 from __future__ import annotations

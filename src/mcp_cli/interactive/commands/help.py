@@ -15,10 +15,7 @@ Why this file exists
 The CLI layer already has `mcp_cli.commands.help.help_action`.
 This interactive wrapper merely:
 
-1.  Grabs a cross-platform Rich console via
-    :pyfunc:`mcp_cli.utils.rich_helpers.get_console` so colours work on
-    Windows + piped output.
-2.  Passes the optional `<command>` argument straight through to
+Passes the optional `<command>` argument straight through to
     :func:`help_action`.
 """
 

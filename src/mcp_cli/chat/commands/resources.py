@@ -20,8 +20,6 @@ Implementation highlights
   :pyfunc:`mcp_cli.commands.resources.resources_action_async`, ensuring one
   source of truth for table formatting across CLI, interactive shell and
   chat modes.
-* Uses :pyfunc:`mcp_cli.utils.rich_helpers.get_console` so colours degrade
-  gracefully on Windows consoles or when output is piped.
 * Read-only - does **not** mutate the chat context, therefore safe to
   hot-reload.
 

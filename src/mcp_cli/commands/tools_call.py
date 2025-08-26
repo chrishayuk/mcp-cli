@@ -5,8 +5,6 @@ pass JSON arguments right from the terminal.
 
 Highlights
 ----------
-* Uses :pyfunc:`mcp_cli.utils.rich_helpers.get_console` so colours & width
-  work on Windows terminals, plain pipes, CI logs, etc.
 * Leaves **zero state** behind - safe to hot-reload while a chat/TUI is
   running.
 * Re-uses :pyfunc:`mcp_cli.tools.formatting.display_tool_call_result`
