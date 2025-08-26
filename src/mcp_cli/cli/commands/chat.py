@@ -12,7 +12,7 @@ from mcp_cli.cli.commands.base import BaseCommand
 from mcp_cli.cli_options import process_options
 from mcp_cli.model_manager import ModelManager
 from mcp_cli.tools.manager import ToolManager
-from mcp_cli.ui import restore_terminal
+from chuk_term.ui import restore_terminal
 
 log = logging.getLogger(__name__)
 

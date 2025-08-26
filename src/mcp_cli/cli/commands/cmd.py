@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional
 
 import typer
 from rich import print as rich_print
-from rich.console import Console
+from chuk_term.ui import output
 
 from mcp_cli.cli.commands.base import BaseCommand
 from mcp_cli.cli_options import process_options

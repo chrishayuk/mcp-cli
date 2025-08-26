@@ -27,7 +27,7 @@ from rich.panel import Panel
 from mcp_cli.tools.formatting import create_tools_table
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.utils.async_utils import run_blocking
-from mcp_cli.utils.rich_helpers import get_console
+from chuk_term.ui import output
 
 logger = logging.getLogger(__name__)
 
@@ -63,8 +63,7 @@ async def tools_action_async(                    # noqa: D401
     list
         The list of tool-metadata dictionaries (always JSON-serialisable).
     """
-    console = get_console()
-    console.print("[cyan]\nFetching tool catalogue from all servers…[/cyan]")
+    output.print("[cyan]\nFetching tool catalogue from all servers…[/cyan]")
 
     if show_validation:
         # Show validation-specific information
@@ -108,8 +107,8 @@ async def tools_action_async(                    # noqa: D401
             if hasattr(tm, 'get_validation_summary'):
                 summary = tm.get_validation_summary()
                 if summary.get('invalid_tools', 0) > 0:
-                    console.print(f"[yellow]Note: {summary['invalid_tools']} tools filtered out due to validation errors[/yellow]")
-                    console.print(f"[dim]Use --validation flag to see details[/dim]")
+                    output.print(f"[yellow]Note: {summary['invalid_tools']} tools filtered out due to validation errors[/yellow]")
+                    output.print(f"[dim]Use --validation flag to see details[/dim]")
             
         except Exception as e:
             logger.warning(f"Error getting validated tools, falling back to all tools: {e}")
@@ -119,7 +118,7 @@ async def tools_action_async(                    # noqa: D401
         all_tools = await tm.get_unique_tools()
 
     if not all_tools:
-        console.print("[yellow]No tools available from any server.[/yellow]")
+        output.print("[yellow]No tools available from any server.[/yellow]")
         logger.debug("ToolManager returned an empty tools list")
         return []
 
@@ -137,22 +136,23 @@ async def tools_action_async(                    # noqa: D401
             }
             for t in all_tools
         ]
-        # Use `console.print_json` for better formatting without line numbers. 
-        # Cleaner output for devs working with MCP JSON schemas.
-        console.print_json(json.dumps(payload, indent=2, ensure_ascii=False))
+        # Use Syntax for JSON formatting with syntax highlighting
+        from rich.syntax import Syntax
+        json_str = json.dumps(payload, indent=2, ensure_ascii=False)
+        output.print(Syntax(json_str, "json", line_numbers=False))
         
         return payload
 
     # ── Rich table mode ─────────────────────────────────────────────────
     table: Table = create_tools_table(all_tools, show_details=show_details)
-    console.print(table)
-    console.print(f"[green]Total tools available: {len(all_tools)}[/green]")
+    output.print(table)
+    output.print(f"[green]Total tools available: {len(all_tools)}[/green]")
 
     # Show validation info if enhanced manager
     if hasattr(tm, 'get_validation_summary'):
         summary = tm.get_validation_summary()
         if summary.get('total_tools', 0) > len(all_tools):
-            console.print(f"[dim]({summary['total_tools'] - len(all_tools)} tools hidden due to validation/filtering)[/dim]")
+            output.print(f"[dim]({summary['total_tools'] - len(all_tools)} tools hidden due to validation/filtering)[/dim]")
 
     # Return a safe JSON structure (no .to_dict() needed)
     return [
@@ -171,10 +171,10 @@ async def tools_action_async(                    # noqa: D401
 
 async def _show_validation_info(tm: ToolManager, provider: str, console) -> List[Dict[str, Any]]:
     """Show detailed validation information."""
-    console.print(f"[cyan]Tool Validation Report for {provider}[/cyan]")
+    output.print(f"[cyan]Tool Validation Report for {provider}[/cyan]")
     
     if not hasattr(tm, 'get_validation_summary'):
-        console.print("[yellow]Validation not available - using basic ToolManager[/yellow]")
+        output.print("[yellow]Validation not available - using basic ToolManager[/yellow]")
         return []
     
     # Get validation summary
@@ -191,12 +191,12 @@ async def _show_validation_info(tm: ToolManager, provider: str, console) -> List
     summary_table.add_row("User Disabled", str(summary.get("disabled_by_user", 0)))
     summary_table.add_row("Validation Disabled", str(summary.get("disabled_by_validation", 0)))
     
-    console.print(summary_table)
+    output.print(summary_table)
     
     # Show validation errors
     errors = summary.get("validation_errors", [])
     if errors:
-        console.print(f"\n[red]Validation Errors ({len(errors)}):[/red]")
+        output.print(f"\n[red]Validation Errors ({len(errors)}):[/red]")
         
         errors_table = Table()
         errors_table.add_column("Tool", style="yellow")
@@ -210,15 +210,15 @@ async def _show_validation_info(tm: ToolManager, provider: str, console) -> List
                 error.get("reason", "unknown")
             )
         
-        console.print(errors_table)
+        output.print(errors_table)
         
         if len(errors) > 10:
-            console.print(f"[dim]... and {len(errors) - 10} more errors[/dim]")
+            output.print(f"[dim]... and {len(errors) - 10} more errors[/dim]")
     
     # Show disabled tools
     disabled = summary.get("disabled_tools", {})
     if disabled:
-        console.print(f"\n[yellow]Disabled Tools ({len(disabled)}):[/yellow]")
+        output.print(f"\n[yellow]Disabled Tools ({len(disabled)}):[/yellow]")
         
         disabled_table = Table()
         disabled_table.add_column("Tool", style="yellow")
@@ -227,19 +227,19 @@ async def _show_validation_info(tm: ToolManager, provider: str, console) -> List
         for tool, reason in disabled.items():
             disabled_table.add_row(tool, reason)
         
-        console.print(disabled_table)
+        output.print(disabled_table)
     
     # Show auto-fix status
     if hasattr(tm, 'is_auto_fix_enabled'):
         auto_fix_status = "Enabled" if tm.is_auto_fix_enabled() else "Disabled"
-        console.print(f"\n[cyan]Auto-fix:[/cyan] {auto_fix_status}")
+        output.print(f"\n[cyan]Auto-fix:[/cyan] {auto_fix_status}")
     
     # Show helpful commands
-    console.print(f"\n[dim]Commands:[/dim]")
-    console.print(f"  [dim]• /tools-disable <tool_name>  - Disable a tool[/dim]")
-    console.print(f"  [dim]• /tools-enable <tool_name>   - Enable a tool[/dim]")
-    console.print(f"  [dim]• /tools-validate             - Re-run validation[/dim]")
-    console.print(f"  [dim]• /tools-autofix on          - Enable auto-fixing[/dim]")
+    output.print(f"\n[dim]Commands:[/dim]")
+    output.print(f"  [dim]• /tools-disable <tool_name>  - Disable a tool[/dim]")
+    output.print(f"  [dim]• /tools-enable <tool_name>   - Enable a tool[/dim]")
+    output.print(f"  [dim]• /tools-validate             - Re-run validation[/dim]")
+    output.print(f"  [dim]• /tools-autofix on          - Enable auto-fixing[/dim]")
     
     return [{"validation_summary": summary}]
 

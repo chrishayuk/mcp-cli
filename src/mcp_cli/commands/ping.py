@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Sequence, Tuple
 
 from chuk_mcp.protocol.messages import send_ping
 
-from mcp_cli.ui import output, format_table
+from chuk_term.ui import output, format_table
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.utils.async_utils import run_blocking
 

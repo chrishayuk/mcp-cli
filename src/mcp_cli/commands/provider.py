@@ -9,9 +9,7 @@ from typing import Dict, List, Tuple, Any
 from rich.table import Table
 
 from mcp_cli.model_manager import ModelManager
-from mcp_cli.utils.rich_helpers import get_console
-
-console = get_console()
+from chuk_term.ui import output
 
 
 def _check_ollama_running() -> tuple[bool, int]:
@@ -128,11 +126,11 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
         all_providers_info = model_manager.list_available_providers()
         
         if not all_providers_info:
-            console.print("[red]No providers found. Check chuk-llm installation.[/red]")
+            output.print("[red]No providers found. Check chuk-llm installation.[/red]")
             return
             
     except Exception as e:
-        console.print(f"[red]Error getting provider list:[/red] {e}")
+        output.print(f"[red]Error getting provider list:[/red] {e}")
         return
 
     # Sort providers to put current one first, then alphabetically
@@ -184,8 +182,8 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
             features_display
         )
 
-    console.print(tbl)
-    console.print("\n[dim]💡 Use 'mcp-cli provider <name>' to switch providers[/dim]")
+    output.print(tbl)
+    output.print("\n[dim]💡 Use 'mcp-cli provider <name>' to switch providers[/dim]")
     
     # Show helpful tips based on current state
     inactive_providers = []
@@ -196,7 +194,7 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
                 inactive_providers.append(name)
     
     if inactive_providers:
-        console.print(f"[dim]🔧 Configure providers with: mcp-cli provider set <name> api_key <key>[/dim]")
+        output.print(f"[dim]🔧 Configure providers with: mcp-cli provider set <name> api_key <key>[/dim]")
 
 
 def _render_diagnostic_optimized(model_manager: ModelManager, target: str | None) -> None:
@@ -204,9 +202,9 @@ def _render_diagnostic_optimized(model_manager: ModelManager, target: str | None
     if target:
         providers_to_test = [target] if model_manager.validate_provider(target) else []
         if not providers_to_test:
-            console.print(f"[red]Unknown provider:[/red] {target}")
+            output.print(f"[red]Unknown provider:[/red] {target}")
             available = ", ".join(model_manager.list_providers())
-            console.print(f"[yellow]Available providers:[/yellow] {available}")
+            output.print(f"[yellow]Available providers:[/yellow] {available}")
             return
     else:
         providers_to_test = model_manager.list_providers()
@@ -221,7 +219,7 @@ def _render_diagnostic_optimized(model_manager: ModelManager, target: str | None
     try:
         all_providers_data = model_manager.list_available_providers()
     except Exception as e:
-        console.print(f"[red]Error getting provider data:[/red] {e}")
+        output.print(f"[red]Error getting provider data:[/red] {e}")
         return
 
     for provider in providers_to_test:
@@ -280,7 +278,7 @@ def _render_diagnostic_optimized(model_manager: ModelManager, target: str | None
                 str(exc)[:30] + "..."
             )
 
-    console.print(tbl)
+    output.print(tbl)
 
 
 def _switch_provider_enhanced(
@@ -293,8 +291,8 @@ def _switch_provider_enhanced(
     
     if not model_manager.validate_provider(provider_name):
         available = ", ".join(model_manager.list_providers())
-        console.print(f"[red]Unknown provider:[/red] {provider_name}")
-        console.print(f"[yellow]Available providers:[/yellow] {available}")
+        output.print(f"[red]Unknown provider:[/red] {provider_name}")
+        output.print(f"[yellow]Available providers:[/yellow] {available}")
         return
 
     # Get provider info for validation
@@ -303,31 +301,31 @@ def _switch_provider_enhanced(
         provider_info = all_providers_info.get(provider_name, {})
         
         if "error" in provider_info:
-            console.print(f"[red]Provider error:[/red] {provider_info['error']}")
+            output.print(f"[red]Provider error:[/red] {provider_info['error']}")
             return
         
         # Enhanced status validation
         status_icon, status_text, status_reason = _get_provider_status_enhanced(provider_name, provider_info)
         
         if status_icon == "❌":
-            console.print(f"[red]Provider not ready:[/red] {status_reason}")
+            output.print(f"[red]Provider not ready:[/red] {status_reason}")
             
             # Provide specific help
             if provider_name.lower() == "ollama":
-                console.print("[yellow]💡 Start Ollama with:[/yellow] ollama serve")
+                output.print("[yellow]💡 Start Ollama with:[/yellow] ollama serve")
             elif "No API key" in status_reason:
                 env_var = f"{provider_name.upper()}_API_KEY"
-                console.print(f"[yellow]💡 Set API key with:[/yellow] mcp provider set {provider_name} api_key YOUR_KEY")
-                console.print(f"[yellow]💡 Or set environment variable:[/yellow] export {env_var}=YOUR_KEY")
+                output.print(f"[yellow]💡 Set API key with:[/yellow] mcp provider set {provider_name} api_key YOUR_KEY")
+                output.print(f"[yellow]💡 Or set environment variable:[/yellow] export {env_var}=YOUR_KEY")
             
             return
         
         elif status_icon == "⚠️":
-            console.print(f"[yellow]Warning:[/yellow] {status_reason}")
-            console.print("[dim]Continuing anyway...[/dim]")
+            output.print(f"[yellow]Warning:[/yellow] {status_reason}")
+            output.print("[dim]Continuing anyway...[/dim]")
             
     except Exception as e:
-        console.print(f"[yellow]Warning:[/yellow] Could not validate provider: {e}")
+        output.print(f"[yellow]Warning:[/yellow] Could not validate provider: {e}")
 
     # Determine target model
     if model_name:
@@ -343,13 +341,13 @@ def _switch_provider_enhanced(
         except Exception:
             target_model = "default"
     
-    console.print(f"[dim]Switching to {provider_name} (model: {target_model})...[/dim]")
+    output.print(f"[dim]Switching to {provider_name} (model: {target_model})...[/dim]")
 
     # Perform the switch
     try:
         model_manager.switch_model(provider_name, target_model)
     except Exception as e:
-        console.print(f"[red]Failed to switch provider:[/red] {e}")
+        output.print(f"[red]Failed to switch provider:[/red] {e}")
         return
 
     # Update context
@@ -361,9 +359,9 @@ def _switch_provider_enhanced(
             "model_manager": model_manager,
         })
     except Exception as e:
-        console.print(f"[yellow]Warning:[/yellow] Could not update client context: {e}")
+        output.print(f"[yellow]Warning:[/yellow] Could not update client context: {e}")
     
-    console.print(f"[green]✅ Switched to {provider_name}[/green] (model: {target_model})")
+    output.print(f"[green]✅ Switched to {provider_name}[/green] (model: {target_model})")
 
 
 # Update the main action function with enhanced sub-commands
@@ -386,18 +384,18 @@ async def provider_action_async(
             current_info = all_providers.get(provider, {})
             status_icon, status_text, status_reason = _get_provider_status_enhanced(provider, current_info)
             
-            console.print(f"[cyan]Current provider:[/cyan] {provider}")
-            console.print(f"[cyan]Current model   :[/cyan] {model}")
-            console.print(f"[cyan]Status          :[/cyan] {status_icon} {status_text}")
-            console.print(f"[cyan]Features        :[/cyan] {_format_features(status)}")
+            output.print(f"[cyan]Current provider:[/cyan] {provider}")
+            output.print(f"[cyan]Current model   :[/cyan] {model}")
+            output.print(f"[cyan]Status          :[/cyan] {status_icon} {status_text}")
+            output.print(f"[cyan]Features        :[/cyan] {_format_features(status)}")
             
             if status_icon != "✅":
-                console.print(f"[yellow]Note:[/yellow] {status_reason}")
+                output.print(f"[yellow]Note:[/yellow] {status_reason}")
                 
         except Exception as e:
-            console.print(f"[cyan]Current provider:[/cyan] {provider}")
-            console.print(f"[cyan]Current model   :[/cyan] {model}")
-            console.print(f"[yellow]Status check failed:[/yellow] {e}")
+            output.print(f"[cyan]Current provider:[/cyan] {provider}")
+            output.print(f"[cyan]Current model   :[/cyan] {model}")
+            output.print(f"[yellow]Status check failed:[/yellow] {e}")
 
     def _format_features(status: Dict) -> str:
         features = []

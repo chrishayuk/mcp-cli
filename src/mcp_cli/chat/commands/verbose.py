@@ -35,7 +35,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 # Cross-platform Rich console helper
-from mcp_cli.utils.rich_helpers import get_console
+from chuk_term.ui import output
 
 # Chat-command registry
 from mcp_cli.chat.commands import register_command
@@ -57,7 +57,6 @@ async def verbose_command(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # no
     * **Verbose**: Shows full tool call details with JSON arguments
     * **Compact**: Shows condensed progress with animations (default)
     """
-    console = get_console()
     
     # Get UI manager from context
     ui_manager = ctx.get("ui_manager")
@@ -68,7 +67,7 @@ async def verbose_command(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # no
             ui_manager = context_obj.ui_manager
     
     if not ui_manager:
-        console.print("[red]Error:[/red] UI manager not available.")
+        output.print("[red]Error:[/red] UI manager not available.")
         return True
     
     # Toggle verbose mode
@@ -88,15 +87,15 @@ async def verbose_command(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # no
         else "condensed progress and animations"
     )
     
-    console.print(f"[green]Display mode:[/green] {mode_name}")
-    console.print(f"[dim]Shows {mode_desc}[/dim]")
+    output.print(f"[green]Display mode:[/green] {mode_name}")
+    output.print(f"[dim]Shows {mode_desc}[/dim]")
     
     # If tools are currently running, show how the change affects them
     if getattr(ui_manager, "tools_running", False):
         if new_mode:
-            console.print("[cyan]Future tool calls will show full details.[/cyan]")
+            output.print("[cyan]Future tool calls will show full details.[/cyan]")
         else:
-            console.print("[cyan]Switched to compact tool progress display.[/cyan]")
+            output.print("[cyan]Switched to compact tool progress display.[/cyan]")
     
     return True
 

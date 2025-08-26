@@ -148,31 +148,27 @@ async def test_interactive_wrapper():
     cmd_dummy = DummyCmd("foo", "help foo", aliases=[])
     InteractiveCommandRegistry.register(cmd_dummy)
     
-    # Mock get_console to return a mock console
-    with patch('mcp_cli.interactive.commands.help.get_console') as mock_get_console:
-        mock_console = Mock(spec=Console)
-        mock_get_console.return_value = mock_console
-        
-        # Mock help_action to verify it's called correctly
-        with patch('mcp_cli.interactive.commands.help.help_action') as mock_help_action:
+    # Mock help_action to verify it's called correctly
+    with patch('mcp_cli.interactive.commands.help.help_action') as mock_help_action:
+        with patch('mcp_cli.interactive.commands.help.output') as mock_output:
             help_cmd = HelpCommand()
             
             # Test with no arguments - should show all commands
             await help_cmd.execute([], tool_manager=None)
-            mock_help_action.assert_called_with(None, console=mock_console)
+            mock_help_action.assert_called_with(None)
             
             # Reset mock
             mock_help_action.reset_mock()
             
             # Test with specific command
             await help_cmd.execute(["foo"], tool_manager=None)
-            mock_help_action.assert_called_with("foo", console=mock_console)
+            mock_help_action.assert_called_with("foo")
             
             # Test with command starting with "/"
             mock_help_action.reset_mock()
             await help_cmd.execute(["/foo"], tool_manager=None)
             # Should strip the leading "/"
-            mock_help_action.assert_called_with("foo", console=mock_console)
+            mock_help_action.assert_called_with("foo")
 
 
 def test_extract_description():

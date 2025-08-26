@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from mcp_cli.utils.rich_helpers import get_console
+from chuk_term.ui import output
 from mcp_cli.commands.provider import provider_action_async
 from .base import InteractiveCommand
 
@@ -51,8 +51,7 @@ class ProviderCommand(InteractiveCommand):
         *args* arrive without the leading command word, exactly as the
         shared helper expects.
         """
-        console = get_console()
-
+        
         # The provider command does not require ToolManager, but log if absent
         if tool_manager is None:
             log.debug("ProviderCommand executed without ToolManager – OK for now.")
@@ -66,13 +65,13 @@ class ProviderCommand(InteractiveCommand):
         try:
             await provider_action_async(args, context=ctx)
         except Exception as exc:  # noqa: BLE001
-            console.print(f"[red]Provider command failed:[/red] {exc}")
+            output.print(f"[red]Provider command failed:[/red] {exc}")
             log.exception("ProviderCommand error")
             
             # Provide helpful debugging info if the error seems related to our recent fixes
             if "available_models" in str(exc) or "models" in str(exc):
-                console.print(f"[yellow]Hint:[/yellow] This might be a chuk-llm 0.7 compatibility issue.")
-                console.print(f"[yellow]Try:[/yellow] Ensure you're using the latest ModelManager fixes.")
+                output.print(f"[yellow]Hint:[/yellow] This might be a chuk-llm 0.7 compatibility issue.")
+                output.print(f"[yellow]Try:[/yellow] Ensure you're using the latest ModelManager fixes.")
                 
     def get_completions(self, partial_command: str) -> List[str]:
         """Provide tab completion for provider commands."""
@@ -146,8 +145,7 @@ class ProvidersCommand(InteractiveCommand):
         """
         Delegate to :func:`provider_action_async` with default to list.
         """
-        console = get_console()
-
+        
         if tool_manager is None:
             log.debug("ProvidersCommand executed without ToolManager – OK for now.")
 
@@ -164,7 +162,7 @@ class ProvidersCommand(InteractiveCommand):
             
             await provider_action_async(args, context=ctx)
         except Exception as exc:  # noqa: BLE001
-            console.print(f"[red]Providers command failed:[/red] {exc}")
+            output.print(f"[red]Providers command failed:[/red] {exc}")
             log.exception("ProvidersCommand error")
                 
     def get_completions(self, partial_command: str) -> List[str]:

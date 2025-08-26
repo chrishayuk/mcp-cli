@@ -19,7 +19,7 @@ from rich.columns import Columns
 
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.utils.async_utils import run_blocking
-from mcp_cli.utils.rich_helpers import get_console
+from chuk_term.ui import output
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -341,10 +341,9 @@ async def _display_table_view(
     show_transport: bool = False
 ) -> None:
     """Display servers in clean table format."""
-    console = get_console()
-    
+        
     if not servers:
-        console.print("[dim]No servers connected.[/dim]")
+        output.print("[dim]No servers connected.[/dim]")
         return
     
     # Create table with appropriate columns based on what info to show
@@ -420,22 +419,21 @@ async def _display_table_view(
         
         table.add_row(*row)
     
-    console.print(table)
+    output.print(table)
     
     # Summary - fix the ready count logic
     total_tools = sum(s["tool_count"] for s in servers)
     ready_count = sum(1 for s in servers if s.get("status", "").lower() in ["connected", "ready", "up"])
     
-    console.print(f"\n[green]Summary:[/green] {ready_count}/{len(servers)} servers ready, {total_tools} tools available")
+    output.print(f"\n[green]Summary:[/green] {ready_count}/{len(servers)} servers ready, {total_tools} tools available")
     
     if show_capabilities or detailed:
-        console.print("[dim]Capabilities: 🔧 Tools  📁 Resources  💬 Prompts  📋 Logging  🔔 Notifications[/dim]")
+        output.print("[dim]Capabilities: 🔧 Tools  📁 Resources  💬 Prompts  📋 Logging  🔔 Notifications[/dim]")
 
 
 async def _display_detailed_panels(servers: List[Dict[str, Any]]) -> None:
     """Display detailed panels for each server with row-based layout."""
-    console = get_console()
-    
+        
     for srv in servers:
         icon = _get_server_icon(srv.get("capabilities", {}), srv["tool_count"])
         
@@ -511,14 +509,13 @@ async def _display_detailed_panels(servers: List[Dict[str, Any]]) -> None:
                 tools_display += f" ... and {len(tools) - 5} more"
             table.add_row("Sample Tools", tools_display)
         
-        console.print(table)
-        console.print()  # Add spacing between servers
+        output.print(table)
+        output.print()  # Add spacing between servers
 
 
 async def _display_tree_view(servers: List[Dict[str, Any]]) -> None:
     """Display servers in tree format."""
-    console = get_console()
-    
+        
     tree = Tree("🌐 MCP Servers", style="bold blue")
     
     for srv in servers:
@@ -553,7 +550,7 @@ async def _display_tree_view(servers: List[Dict[str, Any]]) -> None:
             if len(tools) > 3:
                 tools_node.add(f"... {len(tools) - 3} more")
     
-    console.print(tree)
+    output.print(tree)
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -575,8 +572,7 @@ async def servers_action_async(
     This function maintains the same signature expected by the existing CLI
     while providing enhanced functionality.
     """
-    console = get_console()
-    
+        
     # Note about logging noise - this could be addressed by the CLI startup
     # For now, we'll focus on clean server information display
     
@@ -587,14 +583,14 @@ async def servers_action_async(
             server_info = await tm.get_server_info()
         else:
             # Fallback method
-            console.print("[yellow]Warning:[/yellow] get_server_info not available, using fallback")
+            output.print("[yellow]Warning:[/yellow] get_server_info not available, using fallback")
             server_info = []
     except Exception as exc:
-        console.print(f"[red]Error getting server info:[/red] {exc}")
+        output.print(f"[red]Error getting server info:[/red] {exc}")
         return []
     
     if not server_info:
-        console.print("[dim]No servers connected.[/dim]")
+        output.print("[dim]No servers connected.[/dim]")
         return []
     
     # Enhance server information
@@ -728,8 +724,7 @@ async def servers_action_async(
     This function maintains the same signature expected by the existing CLI
     while providing enhanced functionality.
     """
-    console = get_console()
-    
+        
     # Get basic server info using existing ToolManager methods
     try:
         # Try the existing method first
@@ -737,14 +732,14 @@ async def servers_action_async(
             server_info = await tm.get_server_info()
         else:
             # Fallback method
-            console.print("[yellow]Warning:[/yellow] get_server_info not available, using fallback")
+            output.print("[yellow]Warning:[/yellow] get_server_info not available, using fallback")
             server_info = []
     except Exception as exc:
-        console.print(f"[red]Error getting server info:[/red] {exc}")
+        output.print(f"[red]Error getting server info:[/red] {exc}")
         return []
     
     if not server_info:
-        console.print("[dim]No servers connected.[/dim]")
+        output.print("[dim]No servers connected.[/dim]")
         return []
     
     # Enhance server information
@@ -838,7 +833,7 @@ async def servers_action_async(
     # Display based on format
     try:
         if output_format == "json":
-            console.print(json.dumps(enhanced_servers, indent=2, default=str))
+            output.print(json.dumps(enhanced_servers, indent=2, default=str))
         elif output_format == "tree":
             await _display_tree_view(enhanced_servers)
         elif detailed:
@@ -853,7 +848,7 @@ async def servers_action_async(
                 show_transport=show_transport
             )
     except Exception as exc:
-        console.print(f"[red]Display error:[/red] {exc}")
+        output.print(f"[red]Display error:[/red] {exc}")
         # Fallback to simple display
         table = Table(title="MCP Servers (Fallback)")
         table.add_column("Server", style="green")
@@ -863,7 +858,7 @@ async def servers_action_async(
         for srv in enhanced_servers:
             table.add_row(srv["name"], str(srv["tool_count"]), srv["status"])
         
-        console.print(table)
+        output.print(table)
     
     return enhanced_servers
 

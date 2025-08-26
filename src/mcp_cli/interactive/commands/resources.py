@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from typing import Any, List
 
-from mcp_cli.utils.rich_helpers import get_console              # ← NEW
+from chuk_term.ui import output              # ← NEW
 from mcp_cli.commands.resources import resources_action_async   # shared async helper
 from mcp_cli.tools.manager import ToolManager
 from .base import InteractiveCommand
@@ -33,10 +33,9 @@ class ResourcesCommand(InteractiveCommand):
         tool_manager: ToolManager | None = None,
         **_: Any,
     ) -> None:
-        console = get_console()
-
+        
         if tool_manager is None:
-            console.print("[red]Error:[/red] ToolManager not available.")
+            output.print("[red]Error:[/red] ToolManager not available.")
             log.debug("ResourcesCommand triggered without a ToolManager instance.")
             return
 

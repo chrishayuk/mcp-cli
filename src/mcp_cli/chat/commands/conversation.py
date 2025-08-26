@@ -24,7 +24,7 @@ import json
 from typing import Any, Dict, List
 
 # NEW: Use the new UI module instead of rich directly
-from mcp_cli.ui import (
+from chuk_term.ui import (
     output,
     clear_screen,
     display_chat_banner,

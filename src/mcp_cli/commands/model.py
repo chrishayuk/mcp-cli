@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict, List
 
-from mcp_cli.ui import output, format_table
+from chuk_term.ui import output, format_table
 from mcp_cli.model_manager import ModelManager
 from mcp_cli.utils.async_utils import run_blocking
 from mcp_cli.utils.llm_probe import LLMProbe

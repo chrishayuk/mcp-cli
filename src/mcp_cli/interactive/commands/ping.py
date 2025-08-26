@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from mcp_cli.utils.rich_helpers import get_console           # ← NEW
+from chuk_term.ui import output           # ← NEW
 from mcp_cli.commands.ping import ping_action_async          # shared async helper
 from mcp_cli.tools.manager import ToolManager
 from .base import InteractiveCommand
@@ -44,11 +44,10 @@ class PingCommand(InteractiveCommand):
 
         *args* contains any filters supplied after the command word.
         """
-        console = get_console()
-
+        
         if tool_manager is None:
             log.debug("PingCommand executed without ToolManager - aborting.")
-            console.print("[red]Error:[/red] ToolManager not available.")
+            output.print("[red]Error:[/red] ToolManager not available.")
             return
 
         server_names = ctx.get("server_names")  # may be None

@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 from typing import Any, List
 
-from mcp_cli.utils.rich_helpers import get_console
+from chuk_term.ui import output
 from mcp_cli.commands.servers import servers_action_async
 from mcp_cli.tools.manager import ToolManager
 from .base import InteractiveCommand
@@ -70,10 +70,9 @@ class ServersCommand(InteractiveCommand):
             args: Command line arguments to parse
             tool_manager: ToolManager instance
         """
-        console = get_console()
-
+        
         if tool_manager is None:
-            console.print("[red]Error:[/red] ToolManager not available.")
+            output.print("[red]Error:[/red] ToolManager not available.")
             log.debug("ServersCommand executed without a ToolManager instance.")
             return
 
@@ -87,7 +86,7 @@ class ServersCommand(InteractiveCommand):
         
         # Handle invalid format
         if parsed_options.get("invalid_format"):
-            console.print(f"[red]Error:[/red] Invalid format '{parsed_options['invalid_format']}'. Valid formats: table, tree, json")
+            output.print(f"[red]Error:[/red] Invalid format '{parsed_options['invalid_format']}'. Valid formats: table, tree, json")
             return
 
         try:
@@ -99,7 +98,7 @@ class ServersCommand(InteractiveCommand):
                 output_format=parsed_options["format"]
             )
         except Exception as e:
-            console.print(f"[red]Error:[/red] Failed to display server information: {e}")
+            output.print(f"[red]Error:[/red] Failed to display server information: {e}")
             log.error(f"ServersCommand failed: {e}")
 
     def _parse_arguments(self, args: List[str]) -> dict:
@@ -195,42 +194,42 @@ class ServersCommand(InteractiveCommand):
 
     def _show_help(self, console) -> None:
         """Display comprehensive help information."""
-        console.print("[bold cyan]servers[/bold cyan] - Display MCP server information")
-        console.print()
-        console.print("[bold yellow]Usage:[/bold yellow]")
-        console.print("  servers [options]")
-        console.print("  srv [options]                    # Short alias")
-        console.print()
-        console.print("[bold yellow]Options:[/bold yellow]")
-        console.print("  --detailed, -d                  Show detailed information with panels")
-        console.print("  --capabilities, --caps, -c      Include server capability information")
-        console.print("  --transport, --trans, -t        Include transport/connection details") 
-        console.print("  --format <fmt>, -f <fmt>        Output format: table, tree, json")
-        console.print("  --quiet, -q                     Suppress verbose logging")
-        console.print("  --help, -h                      Show this help message")
-        console.print()
-        console.print("[bold yellow]Format Options:[/bold yellow]")
-        console.print("  table                           Compact table view (default)")
-        console.print("  tree                            Hierarchical tree display")
-        console.print("  json                            Raw JSON output")
-        console.print()
-        console.print("[bold yellow]Examples:[/bold yellow]")
-        console.print("  servers                         # Basic table with feature icons")
-        console.print("  servers --detailed              # Full detailed panels")
-        console.print("  servers -d                      # Same as --detailed") 
-        console.print("  servers --capabilities          # Include capability info")
-        console.print("  servers -c                      # Short for --capabilities")
-        console.print("  servers --transport             # Show connection details")
-        console.print("  servers -t                      # Short for --transport")
-        console.print("  servers -dct                    # All details combined")
-        console.print("  servers --format tree           # Tree format display")
-        console.print("  servers -f json                 # JSON output")
-        console.print("  servers tree                    # Format shortcut")
-        console.print("  servers json --quiet            # JSON with reduced logging")
-        console.print()
-        console.print("[bold yellow]Feature Icons:[/bold yellow]")
-        console.print("  🔧 Tools      📁 Resources    💬 Prompts")
-        console.print("  ⚡ Streaming  🔔 Notifications")
+        output.print("[bold cyan]servers[/bold cyan] - Display MCP server information")
+        output.print()
+        output.print("[bold yellow]Usage:[/bold yellow]")
+        output.print("  servers [options]")
+        output.print("  srv [options]                    # Short alias")
+        output.print()
+        output.print("[bold yellow]Options:[/bold yellow]")
+        output.print("  --detailed, -d                  Show detailed information with panels")
+        output.print("  --capabilities, --caps, -c      Include server capability information")
+        output.print("  --transport, --trans, -t        Include transport/connection details") 
+        output.print("  --format <fmt>, -f <fmt>        Output format: table, tree, json")
+        output.print("  --quiet, -q                     Suppress verbose logging")
+        output.print("  --help, -h                      Show this help message")
+        output.print()
+        output.print("[bold yellow]Format Options:[/bold yellow]")
+        output.print("  table                           Compact table view (default)")
+        output.print("  tree                            Hierarchical tree display")
+        output.print("  json                            Raw JSON output")
+        output.print()
+        output.print("[bold yellow]Examples:[/bold yellow]")
+        output.print("  servers                         # Basic table with feature icons")
+        output.print("  servers --detailed              # Full detailed panels")
+        output.print("  servers -d                      # Same as --detailed") 
+        output.print("  servers --capabilities          # Include capability info")
+        output.print("  servers -c                      # Short for --capabilities")
+        output.print("  servers --transport             # Show connection details")
+        output.print("  servers -t                      # Short for --transport")
+        output.print("  servers -dct                    # All details combined")
+        output.print("  servers --format tree           # Tree format display")
+        output.print("  servers -f json                 # JSON output")
+        output.print("  servers tree                    # Format shortcut")
+        output.print("  servers json --quiet            # JSON with reduced logging")
+        output.print()
+        output.print("[bold yellow]Feature Icons:[/bold yellow]")
+        output.print("  🔧 Tools      📁 Resources    💬 Prompts")
+        output.print("  ⚡ Streaming  🔔 Notifications")
 
 
 class ServersCapabilitiesCommand(InteractiveCommand):
@@ -258,10 +257,9 @@ class ServersCapabilitiesCommand(InteractiveCommand):
         **_: Any,
     ) -> None:
         """Show detailed capability analysis for all servers."""
-        console = get_console()
-
+        
         if tool_manager is None:
-            console.print("[red]Error:[/red] ToolManager not available.")
+            output.print("[red]Error:[/red] ToolManager not available.")
             log.debug("ServersCapabilitiesCommand executed without ToolManager.")
             return
 
@@ -275,7 +273,7 @@ class ServersCapabilitiesCommand(InteractiveCommand):
                 output_format="tree"
             )
         except Exception as e:
-            console.print(f"[red]Error:[/red] Failed to analyze capabilities: {e}")
+            output.print(f"[red]Error:[/red] Failed to analyze capabilities: {e}")
             log.error(f"ServersCapabilitiesCommand failed: {e}")
 
 
@@ -304,10 +302,9 @@ class ServersStatusCommand(InteractiveCommand):
         **_: Any,
     ) -> None:
         """Show server connection status and health."""
-        console = get_console()
-
+        
         if tool_manager is None:
-            console.print("[red]Error:[/red] ToolManager not available.")
+            output.print("[red]Error:[/red] ToolManager not available.")
             log.debug("ServersStatusCommand executed without ToolManager.")
             return
 
@@ -321,7 +318,7 @@ class ServersStatusCommand(InteractiveCommand):
                 output_format="table"
             )
         except Exception as e:
-            console.print(f"[red]Error:[/red] Failed to check server status: {e}")
+            output.print(f"[red]Error:[/red] Failed to check server status: {e}")
             log.error(f"ServersStatusCommand failed: {e}")
 
 

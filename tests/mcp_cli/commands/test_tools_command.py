@@ -10,6 +10,7 @@ from rich.syntax import Syntax
 import mcp_cli.commands.tools as tools_mod
 from mcp_cli.commands.tools import tools_action_async
 from mcp_cli.tools.models import ToolInfo
+from chuk_term.ui import output
 
 
 class DummyTMNoTools:
@@ -38,17 +39,14 @@ def make_tool(name, namespace):
 
 @pytest.mark.asyncio
 async def test_tools_action_no_tools(monkeypatch):
-    # Arrange: mock console to capture print calls
-    mock_console = Mock()
+    # Arrange: capture print calls
     printed_messages = []
     
     def capture_print(message):
         printed_messages.append(message)
     
-    mock_console.print = capture_print
-    
-    # Patch get_console to return our mock
-    monkeypatch.setattr(tools_mod, "get_console", lambda: mock_console)
+    # Patch output.print to capture messages
+    monkeypatch.setattr(tools_mod.output, "print", capture_print)
     
     tm = DummyTMNoTools()
     
@@ -62,17 +60,14 @@ async def test_tools_action_no_tools(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_tools_action_table(monkeypatch):
-    # Arrange: mock console to capture print calls
-    mock_console = Mock()
+    # Arrange: capture print calls
     printed_objects = []
     
     def capture_print(obj):
         printed_objects.append(obj)
     
-    mock_console.print = capture_print
-    
-    # Patch get_console to return our mock
-    monkeypatch.setattr(tools_mod, "get_console", lambda: mock_console)
+    # Patch output.print to capture messages
+    monkeypatch.setattr(tools_mod.output, "print", capture_print)
     
     fake_tools = [make_tool("t1", "ns1"), make_tool("t2", "ns2")]
     tm = DummyTMWithTools(fake_tools)
@@ -107,17 +102,14 @@ async def test_tools_action_table(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_tools_action_raw(monkeypatch):
-    # Arrange: mock console to capture print calls
-    mock_console = Mock()
+    # Arrange: capture print calls
     printed_objects = []
     
     def capture_print(obj):
         printed_objects.append(obj)
     
-    mock_console.print = capture_print
-    
-    # Patch get_console to return our mock
-    monkeypatch.setattr(tools_mod, "get_console", lambda: mock_console)
+    # Patch output.print to capture messages
+    monkeypatch.setattr(tools_mod.output, "print", capture_print)
     
     fake_tools = [make_tool("x", "ns")]
     tm = DummyTMWithTools(fake_tools)

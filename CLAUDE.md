@@ -149,12 +149,6 @@ uv run examples/ui_streaming_demo.py
 - Focus on unit tests with module isolation
 - Integration tests for core functionality without external service dependencies
 
-#### UI Test Coverage
-
-- **Terminal Management** (`test_terminal.py`): 99% coverage, 85 tests
-- **Output System** (`test_output.py`): 69% coverage, 46 tests
-- **Theme System** (`test_themes.py`): Comprehensive theme validation
-
 ### Default Behavior
 
 - **Default Provider**: Ollama (local, no API key required)

@@ -29,7 +29,7 @@ from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.styles import Style
 from rich import print
-from rich.console import Console
+from chuk_term.ui import output
 from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -47,7 +47,7 @@ class ChatUIManager:
     # ───────────────────────────── construction ─────────────────────────────
     def __init__(self, context) -> None:
         self.context = context
-        self.console = Console()
+        self.console = output._console
 
         self.verbose_mode = True
         self.tools_running = False

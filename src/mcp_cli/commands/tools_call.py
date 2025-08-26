@@ -19,7 +19,7 @@ import logging
 from typing import Any, Dict
 
 # mcp cli
-from mcp_cli.utils.rich_helpers import get_console
+from chuk_term.ui import output
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.tools.models import ToolCallResult
 from mcp_cli.tools.formatting import display_tool_call_result
@@ -38,8 +38,7 @@ async def tools_call_action(tm: ToolManager) -> None:  # noqa: D401
     This function is designed for *interactive* use only - it blocks on
     `input()` twice (tool selection & JSON args).
     """
-    console = get_console()
-    cprint = console.print
+    cprint = output.print
 
     cprint("[cyan]\nTool Call Interface[/cyan]")
 

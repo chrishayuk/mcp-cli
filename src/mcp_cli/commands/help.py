@@ -7,7 +7,7 @@ Displays help information for commands in both chat and CLI modes.
 from __future__ import annotations
 from typing import Dict, Optional, Any
 
-from mcp_cli.ui import output, format_table
+from chuk_term.ui import output, format_table
 
 # Try interactive registry first, fall back to CLI registry
 try:

@@ -36,7 +36,7 @@ import logging
 from typing import Any, Dict, List
 
 # Cross-platform Rich console helper
-from mcp_cli.utils.rich_helpers import get_console
+from chuk_term.ui import output
 from rich.prompt import Prompt
 
 # Shared implementation
@@ -51,8 +51,7 @@ log = logging.getLogger(__name__)
 # ════════════════════════════════════════════════════════════════════════════
 async def cmd_provider(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
     """Handle the `/provider` slash-command inside chat."""
-    console = get_console()
-
+    
     # Ensure we have a model_manager in the chat context
     if "model_manager" not in ctx:
         log.debug("Creating ModelManager for chat provider command")
@@ -72,19 +71,19 @@ async def cmd_provider(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: 
         new_model = ctx.get("model")
         
         if (new_provider != old_provider or new_model != old_model) and new_provider:
-            console.print(f"[green]Chat session now using:[/green] {new_provider}/{new_model}")
-            console.print(f"[dim]Future messages will use the new provider.[/dim]")
+            output.print(f"[green]Chat session now using:[/green] {new_provider}/{new_model}")
+            output.print(f"[dim]Future messages will use the new provider.[/dim]")
             
     except Exception as exc:  # pragma: no cover – unexpected edge cases
-        console.print(f"[red]Provider command failed:[/red] {exc}")
+        output.print(f"[red]Provider command failed:[/red] {exc}")
         log.exception("Chat provider command error")
         
         # Provide chat-specific troubleshooting hints
         if "available_models" in str(exc) or "models" in str(exc):
-            console.print(f"[yellow]Chat troubleshooting:[/yellow]")
-            console.print(f"  • This might be a chuk-llm 0.7 compatibility issue")
-            console.print(f"  • Try: /provider list to see current provider status")
-            console.print(f"  • Current context: provider={ctx.get('provider')}, model={ctx.get('model')}")
+            output.print(f"[yellow]Chat troubleshooting:[/yellow]")
+            output.print(f"  • This might be a chuk-llm 0.7 compatibility issue")
+            output.print(f"  • Try: /provider list to see current provider status")
+            output.print(f"  • Current context: provider={ctx.get('provider')}, model={ctx.get('model')}")
 
     return True
 
@@ -94,8 +93,7 @@ async def cmd_provider(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: 
 # ════════════════════════════════════════════════════════════════════════════
 async def cmd_providers(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
     """Handle the `/providers` slash-command inside chat (defaults to list)."""
-    console = get_console()
-
+    
     # Ensure we have a model_manager in the chat context
     if "model_manager" not in ctx:
         log.debug("Creating ModelManager for chat providers command")
@@ -114,7 +112,7 @@ async def cmd_providers(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa:
         await provider_action_async(args, context=ctx)
         
     except Exception as exc:  # pragma: no cover – unexpected edge cases
-        console.print(f"[red]Providers command failed:[/red] {exc}")
+        output.print(f"[red]Providers command failed:[/red] {exc}")
         log.exception("Chat providers command error")
 
     return True
@@ -123,13 +121,12 @@ async def cmd_providers(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa:
 # Additional chat-specific helper command
 async def cmd_model(parts: List[str], ctx: Dict[str, Any]) -> bool:
     """Quick model switcher for chat - `/model <model_name>`"""
-    console = get_console()
-    
+        
     if len(parts) < 2:
         # Show current model
         current_provider = ctx.get("provider", "unknown")
         current_model = ctx.get("model", "unknown")
-        console.print(f"[cyan]Current model:[/cyan] {current_provider}/{current_model}")
+        output.print(f"[cyan]Current model:[/cyan] {current_provider}/{current_model}")
         
         # Show available models for current provider
         try:
@@ -137,11 +134,11 @@ async def cmd_model(parts: List[str], ctx: Dict[str, Any]) -> bool:
             mm = ModelManager()
             models = mm.get_available_models(current_provider)
             if models:
-                console.print(f"[cyan]Available models for {current_provider}:[/cyan]")
+                output.print(f"[cyan]Available models for {current_provider}:[/cyan]")
                 index = 0
                 for model in models:  # Show first 10
                     if index == 10:
-                        console.print(f"  ... and {len(models) - index} more")
+                        output.print(f"  ... and {len(models) - index} more")
                         # Use rich to display the prompt, fallback to input() if needed
                         prompt_text = "[bold white]Do you want to list more models?[/bold white]"
                         try:
@@ -155,12 +152,12 @@ async def cmd_model(parts: List[str], ctx: Dict[str, Any]) -> bool:
                         if not response in ["y", ""]:
                             break
                     marker = "→ " if model == current_model else "   "
-                    console.print(f"  {marker}{model}")
+                    output.print(f"  {marker}{model}")
                     index += 1
             else:
-                console.print(f"[cyan]No models found for provider {current_provider}[/cyan]")
+                output.print(f"[cyan]No models found for provider {current_provider}[/cyan]")
         except Exception as e:
-            console.print(f"[yellow]Could not list models:[/yellow] {e}")
+            output.print(f"[yellow]Could not list models:[/yellow] {e}")
         
         return True
     
@@ -172,8 +169,8 @@ async def cmd_model(parts: List[str], ctx: Dict[str, Any]) -> bool:
         # Use the provider command to switch model
         await provider_action_async([current_provider, model_name], context=ctx)
     except Exception as exc:
-        console.print(f"[red]Model switch failed:[/red] {exc}")
-        console.print(f"[yellow]Try:[/yellow] /provider {current_provider} {model_name}")
+        output.print(f"[red]Model switch failed:[/red] {exc}")
+        output.print(f"[yellow]Try:[/yellow] /provider {current_provider} {model_name}")
     
     return True
 

@@ -16,7 +16,7 @@ Usage Examples
 
 from typing import Any, Dict, List
 
-from mcp_cli.utils.rich_helpers import get_console
+from chuk_term.ui import output
 from mcp_cli.commands.servers import servers_action_async
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.chat.commands import register_command
@@ -24,11 +24,10 @@ from mcp_cli.chat.commands import register_command
 
 async def servers_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
     """Enhanced server information display with comprehensive details."""
-    console = get_console()
 
     tm: ToolManager | None = ctx.get("tool_manager")
     if tm is None:
-        console.print("[red]Error:[/red] ToolManager not available.")
+        output.print("[red]Error:[/red] ToolManager not available.")
         return True
 
     # Parse arguments

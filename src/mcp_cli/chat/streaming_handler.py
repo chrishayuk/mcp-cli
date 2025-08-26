@@ -13,7 +13,7 @@ import json
 import time
 from typing import Any, Dict, List, Optional, AsyncIterator
 
-from rich.console import Console
+from chuk_term.ui import output
 from rich.live import Live
 from rich.panel import Panel
 from rich.text import Text
@@ -28,7 +28,7 @@ class StreamingResponseHandler:
     """Enhanced streaming handler with better UI integration and error handling."""
     
     def __init__(self, console: Optional[Console] = None):
-        self.console = console or Console()
+        self.console = console or output._console
         self.current_response = ""
         self.live_display: Optional[Live] = None
         self.start_time = 0.0
@@ -127,7 +127,7 @@ class StreamingResponseHandler:
             content = Text(self.current_response)
         
         # Display final panel
-        self.console.print(
+        output.print(
             Panel(
                 content,
                 title="Assistant",
@@ -248,7 +248,7 @@ class StreamingResponseHandler:
         logger.debug("Using non-streaming completion")
         
         # Show a simple loading indicator
-        with self.console.status("[cyan]Generating response...[/cyan]", spinner="dots"):
+        with output.loading("Generating response..."):
             result = await client.create_completion(messages=messages, tools=tools, **kwargs)
         
         return {

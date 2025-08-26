@@ -19,8 +19,8 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Coroutine, Dict, List, Optional
 
 import typer
-from rich.console import Console
 from rich.panel import Panel
+from chuk_term.ui import output
 
 from mcp_cli.tools.manager import set_tool_manager  # only the setter
 
@@ -219,7 +219,6 @@ def cli_entry(
     """
     Thin wrapper so `uv run mcp-cli chat` (or `interactive`) is minimal.
     """
-    console = Console()
 
     async def _inner() -> None:
         if mode not in {"chat", "interactive"}:
@@ -242,5 +241,5 @@ def cli_entry(
     try:
         asyncio.run(_inner())
     except Exception as exc:        # noqa: BLE001 – show nicely then exit
-        console.print(Panel(str(exc), title="Fatal Error", style="bold red"))
+        output.print(Panel(str(exc), title="Fatal Error", style="bold red"))
         sys.exit(1)

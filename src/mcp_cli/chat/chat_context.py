@@ -9,7 +9,7 @@ import logging
 from typing import Any, Dict, List, AsyncIterator
 
 from rich import print
-from rich.console import Console
+from chuk_term.ui import output
 
 from mcp_cli.chat.system_prompt import generate_system_prompt
 from mcp_cli.tools.manager import ToolManager
@@ -112,21 +112,19 @@ class ChatContext:
     # ── Initialization ────────────────────────────────────────────────────
     async def initialize(self) -> bool:
         """Initialize tools and conversation state."""
-        console = Console()
         try:
-            with console.status("[bold cyan]Setting up chat environment…[/bold cyan]", spinner="dots"):
-                await self._initialize_tools()
-                self._initialize_conversation()
+            await self._initialize_tools()
+            self._initialize_conversation()
             
             if not self.tools:
-                print("[yellow]No tools available. Chat functionality may be limited.[/yellow]")
+                output.print("[yellow]No tools available. Chat functionality may be limited.[/yellow]")
 
             logger.info(f"ChatContext ready: {len(self.tools)} tools, {self.provider}/{self.model}")
             return True
             
         except Exception as exc:
             logger.exception("Error initializing chat context")
-            print(f"[red]Error initializing chat context: {exc}[/red]")
+            output.print(f"[red]Error initializing chat context: {exc}[/red]")
             return False
 
     async def _initialize_tools(self) -> None:

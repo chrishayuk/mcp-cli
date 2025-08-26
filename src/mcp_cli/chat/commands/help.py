@@ -19,7 +19,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 # Cross-platform Rich console helper
-from mcp_cli.utils.rich_helpers import get_console
+from chuk_term.ui import output
 from rich.table import Table
 from rich.panel import Panel
 from rich.markdown import Markdown
@@ -49,18 +49,17 @@ async def cmd_help(cmd_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: 
     • `/help tools` → grouped help for tool-related commands.  
     • `/help conversation` → grouped help for conversation/history commands.
     """
-    console = get_console()
     args = cmd_parts[1:] if len(cmd_parts) > 1 else []
 
     # ── grouped topical help ────────────────────────────────────────────────
     if args and args[0].lower() in {"tools"}:
-        console.print(
+        output.print(
             Panel(Markdown(TOOL_COMMANDS_HELP), title="Tool Commands", style="cyan")
         )
         return True
 
     if args and args[0].lower() in {"conversation", "ch"}:
-        console.print(
+        output.print(
             Panel(
                 Markdown(CONVERSATION_COMMANDS_HELP),
                 title="Conversation-History Commands",
@@ -81,7 +80,7 @@ async def cmd_help(cmd_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: 
         if name in _COMMAND_COMPLETIONS:
             comps = ", ".join(_COMMAND_COMPLETIONS[name])
             text += f"\n\n**Completions:** {comps}"
-        console.print(Panel(Markdown(text), title=f"Help: {name}", style="cyan"))
+        output.print(Panel(Markdown(text), title=f"Help: {name}", style="cyan"))
         return True
 
     # ── fallback: list all commands ────────────────────────────────────────
@@ -99,8 +98,8 @@ async def cmd_help(cmd_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: 
         desc = lines[0] if lines else "No description"
         table.add_row(cmd, desc)
 
-    console.print(table)
-    console.print("\nType [green]/help <command>[/green] for details.")
+    output.print(table)
+    output.print("\nType [green]/help <command>[/green] for details.")
     return True
 
 
@@ -111,8 +110,7 @@ async def display_quick_help(cmd_parts: List[str], ctx: Dict[str, Any]) -> bool:
     """
     Display a short cheat-sheet of the most common commands.
     """
-    console = get_console()
-
+    
     quick_tbl = Table(title="Quick Command Reference")
     quick_tbl.add_column("Command", style="green")
     quick_tbl.add_column("Description")
@@ -128,8 +126,8 @@ async def display_quick_help(cmd_parts: List[str], ctx: Dict[str, Any]) -> bool:
     ]:
         quick_tbl.add_row(cmd, desc)
 
-    console.print(quick_tbl)
-    console.print("\nType [green]/help[/green] for the complete list.")
+    output.print(quick_tbl)
+    output.print("\nType [green]/help[/green] for the complete list.")
     return True
 
 

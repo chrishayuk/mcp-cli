@@ -38,7 +38,7 @@ from rich.syntax import Syntax
 from rich.table import Table
 
 # Cross-platform Rich console helper (handles Windows quirks, piping, etc.)
-from mcp_cli.utils.rich_helpers import get_console
+from chuk_term.ui import output
 
 # Chat-command registry
 from mcp_cli.chat.commands import register_command
@@ -49,8 +49,7 @@ from mcp_cli.chat.commands import register_command
 # ════════════════════════════════════════════════════════════════════════════
 async def tool_history_command(cmd_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
     """Inspect the history of tool calls executed during this chat session."""
-    console = get_console()
-
+    
     history = ctx.get("conversation_history", []) or []
 
     # ── gather all tool-calls from assistant messages ───────────────────────
@@ -71,7 +70,7 @@ async def tool_history_command(cmd_parts: List[str], ctx: Dict[str, Any]) -> boo
             tool_calls.append({"name": name, "args": raw_args})
 
     if not tool_calls:
-        console.print("[italic yellow]No tool calls recorded this session.[/italic yellow]")
+        output.print("[italic yellow]No tool calls recorded this session.[/italic yellow]")
         return True  # command handled
 
     # ── parse flags / positional args ────────────────────────────────────────
@@ -82,7 +81,7 @@ async def tool_history_command(cmd_parts: List[str], ctx: Dict[str, Any]) -> boo
         row = int(args[0])
         if 1 <= row <= len(tool_calls):
             entry = tool_calls[row - 1]
-            console.print(
+            output.print(
                 Panel(
                     Syntax(json.dumps(entry, indent=2, ensure_ascii=False), "json", line_numbers=False),
                     title=f"Tool Call #{row} Details",
@@ -90,12 +89,12 @@ async def tool_history_command(cmd_parts: List[str], ctx: Dict[str, Any]) -> boo
                 )
             )
         else:
-            console.print(f"[red]Invalid index - choose 1-{len(tool_calls)}[/red]")
+            output.print(f"[red]Invalid index - choose 1-{len(tool_calls)}[/red]")
         return True
 
     # 2️⃣  full JSON dump
     if "--json" in args:
-        console.print(Syntax(json.dumps(tool_calls, indent=2, ensure_ascii=False), "json", line_numbers=False))
+        output.print(Syntax(json.dumps(tool_calls, indent=2, ensure_ascii=False), "json", line_numbers=False))
         return True
 
     # 3️⃣  -n limit
@@ -105,7 +104,7 @@ async def tool_history_command(cmd_parts: List[str], ctx: Dict[str, Any]) -> boo
             idx   = args.index("-n")
             limit = int(args[idx + 1])
         except Exception:
-            console.print("[red]Invalid value after -n; showing all rows[/red]")
+            output.print("[red]Invalid value after -n; showing all rows[/red]")
 
     display = tool_calls[-limit:] if limit and limit > 0 else tool_calls
 
@@ -122,7 +121,7 @@ async def tool_history_command(cmd_parts: List[str], ctx: Dict[str, Any]) -> boo
             arg_repr = arg_repr[:77] + "…"
         table.add_row(str(i), call["name"], arg_repr)
 
-    console.print(table)
+    output.print(table)
     return True
 
 

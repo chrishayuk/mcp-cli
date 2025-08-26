@@ -15,7 +15,7 @@ the operation completed.
 from __future__ import annotations
 
 # NEW: Import from the new UI module
-from mcp_cli.ui import (
+from chuk_term.ui import (
     output,
     clear_screen,
 )

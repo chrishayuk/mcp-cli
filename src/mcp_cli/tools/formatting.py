@@ -2,7 +2,7 @@
 """Helper functions for tool display and formatting."""
 from typing import List, Dict, Any
 from rich.table import Table
-from rich.console import Console
+from chuk_term.ui import output
 from rich.markdown import Markdown
 from rich.panel import Panel
 
@@ -97,13 +97,13 @@ def create_servers_table(servers: List[ServerInfo]) -> Table:
     return table
 
 
-def display_tool_call_result(result, console: Console = None):
+def display_tool_call_result(result, console=None):
     """Display the result of a tool call."""
     import json
     from rich.text import Text
     
-    if console is None:
-        console = Console()
+    # If console is provided, use it; otherwise use output.print
+    print_func = console.print if console else output.print
     
     if result.success:
         # Format successful result
@@ -123,7 +123,7 @@ def display_tool_call_result(result, console: Console = None):
         # Use Text object to prevent markup parsing issues
         text_content = Text(content)
         
-        console.print(Panel(text_content, title=title, style="green"))
+        print_func(Panel(text_content, title=title, style="green"))
     else:
         # Format error result
         error_msg = result.error or "Unknown error"
@@ -131,7 +131,7 @@ def display_tool_call_result(result, console: Console = None):
         # Use Text object for error message too
         error_text = Text(f"Error: {error_msg}")
         
-        console.print(Panel(
+        print_func(Panel(
             error_text,
             title=f"Tool '{result.tool_name}' - Failed",
             style="red"

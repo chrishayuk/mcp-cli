@@ -7,7 +7,7 @@ import shlex
 from typing import Any, Dict, List, Optional
 
 from rich import print
-from rich.console import Console
+from chuk_term.ui import output
 from rich.markdown import Markdown
 from rich.panel import Panel
 
@@ -54,7 +54,7 @@ async def interactive_mode(
     """
     Launch the interactive mode CLI with slash-menu autocompletion.
     """
-    console = Console()
+    console = output._console
 
     # Register commands
     register_all_commands()

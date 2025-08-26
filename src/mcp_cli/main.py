@@ -33,13 +33,13 @@ from mcp_cli.cli.commands import register_all_commands
 from mcp_cli.cli.registry import CommandRegistry
 from mcp_cli.run_command import run_command_sync
 
-# NEW: Import from the new UI module structure
-from mcp_cli.ui import (
+# Import UI components from chuk_term
+from chuk_term.ui import (
     output,
     restore_terminal,
     set_terminal_title,
-    set_theme,
 )
+from chuk_term.ui.theme import set_theme
 
 from mcp_cli.cli_options import process_options
 

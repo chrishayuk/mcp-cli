@@ -26,7 +26,7 @@ from rich.table import Table
 # mcp cli
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.utils.async_utils import run_blocking
-from mcp_cli.utils.rich_helpers import get_console
+from chuk_term.ui import output
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -42,18 +42,17 @@ async def prompts_action_async(tm: ToolManager) -> List[Dict[str, Any]]:
     list[dict]
         The raw prompt dictionaries exactly as returned by `ToolManager`.
     """
-    console = get_console()
-
+    
     try:
         maybe = tm.list_prompts()
     except Exception as exc:          # pragma: no cover - network / server errors
-        console.print(f"[red]Error:[/red] {exc}")
+        output.print(f"[red]Error:[/red] {exc}")
         return []
 
     # `tm.list_prompts()` can be sync or async - handle both gracefully
     prompts = await maybe if inspect.isawaitable(maybe) else maybe
     if not prompts:                   #  None or empty list
-        console.print("[dim]No prompts recorded.[/dim]")
+        output.print("[dim]No prompts recorded.[/dim]")
         return []
 
     # ── render table ────────────────────────────────────────────────────
@@ -69,7 +68,7 @@ async def prompts_action_async(tm: ToolManager) -> List[Dict[str, Any]]:
             item.get("description", ""),
         )
 
-    console.print(table)
+    output.print(table)
     return prompts
 
 

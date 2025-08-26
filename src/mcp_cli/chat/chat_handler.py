@@ -11,7 +11,7 @@ import logging
 from typing import Optional
 
 # NEW: Use the new UI module instead of rich directly
-from mcp_cli.ui import (
+from chuk_term.ui import (
     output,
     clear_screen,
     display_chat_banner,

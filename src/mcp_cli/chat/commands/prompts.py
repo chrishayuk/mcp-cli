@@ -35,7 +35,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 # Cross-platform Rich console helper (handles Windows quirks, piping, etc.)
-from mcp_cli.utils.rich_helpers import get_console
+from chuk_term.ui import output
 
 # Shared implementation
 from mcp_cli.commands.prompts import prompts_action_cmd
@@ -45,11 +45,10 @@ from mcp_cli.chat.commands import register_command
 
 async def cmd_prompts(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
     """List stored prompt templates from all connected servers."""
-    console = get_console()
-
+    
     tm: ToolManager | None = ctx.get("tool_manager")
     if tm is None:
-        console.print("[red]Error:[/red] ToolManager not available.")
+        output.print("[red]Error:[/red] ToolManager not available.")
         return True  # command handled (nothing further to do)
 
     # Delegate to the shared async helper

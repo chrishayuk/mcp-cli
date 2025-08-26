@@ -6,76 +6,73 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from mcp_cli.utils.rich_helpers import get_console
+from chuk_term.ui import output
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.chat.commands import register_command
 
 
 async def tools_enable_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
     """Enable a disabled tool."""
-    console = get_console()
     
     tm = ctx.get("tool_manager")
     if not tm or not hasattr(tm, 'enable_tool'):
-        console.print("[red]Error:[/red] Enhanced ToolManager not available.")
+        output.print("[red]Error:[/red] Enhanced ToolManager not available.")
         return True
     
     if len(parts) < 2:
-        console.print("[red]Error:[/red] Tool name required")
+        output.print("[red]Error:[/red] Tool name required")
         return True
     
     tool_name = parts[1]
     
     try:
         tm.enable_tool(tool_name)
-        console.print(f"[green]✓ Enabled tool:[/green] {tool_name}")
+        output.print(f"[green]✓ Enabled tool:[/green] {tool_name}")
         
         chat_ctx = ctx.get("chat_context")
         if chat_ctx and hasattr(chat_ctx, "refresh_after_model_change"):
             await chat_ctx.refresh_after_model_change()
             
     except Exception as e:
-        console.print(f"[red]Error enabling tool:[/red] {e}")
+        output.print(f"[red]Error enabling tool:[/red] {e}")
     
     return True
 
 
 async def tools_disable_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
     """Disable a tool."""
-    console = get_console()
     
     tm = ctx.get("tool_manager")
     if not tm or not hasattr(tm, 'disable_tool'):
-        console.print("[red]Error:[/red] Enhanced ToolManager not available.")
+        output.print("[red]Error:[/red] Enhanced ToolManager not available.")
         return True
     
     if len(parts) < 2:
-        console.print("[red]Error:[/red] Tool name required")
+        output.print("[red]Error:[/red] Tool name required")
         return True
     
     tool_name = parts[1]
     
     try:
         tm.disable_tool(tool_name, reason="user")
-        console.print(f"[yellow]✗ Disabled tool:[/yellow] {tool_name}")
+        output.print(f"[yellow]✗ Disabled tool:[/yellow] {tool_name}")
         
         chat_ctx = ctx.get("chat_context")
         if chat_ctx and hasattr(chat_ctx, "refresh_after_model_change"):
             await chat_ctx.refresh_after_model_change()
             
     except Exception as e:
-        console.print(f"[red]Error disabling tool:[/red] {e}")
+        output.print(f"[red]Error disabling tool:[/red] {e}")
     
     return True
 
 
 async def tools_validate_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
     """Validate tool schemas."""
-    console = get_console()
     
     tm = ctx.get("tool_manager")
     if not tm or not hasattr(tm, 'validate_single_tool'):
-        console.print("[red]Error:[/red] Enhanced ToolManager not available.")
+        output.print("[red]Error:[/red] Enhanced ToolManager not available.")
         return True
     
     tool_name = parts[1] if len(parts) > 1 else None
@@ -85,35 +82,34 @@ async def tools_validate_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
         if tool_name:
             is_valid, error_msg = await tm.validate_single_tool(tool_name, provider)
             if is_valid:
-                console.print(f"[green]✓ Tool '{tool_name}' is valid[/green]")
+                output.print(f"[green]✓ Tool '{tool_name}' is valid[/green]")
             else:
-                console.print(f"[red]✗ Tool '{tool_name}' is invalid:[/red] {error_msg}")
+                output.print(f"[red]✗ Tool '{tool_name}' is invalid:[/red] {error_msg}")
         else:
-            console.print(f"[cyan]Validating all tools for {provider}...[/cyan]")
+            output.print(f"[cyan]Validating all tools for {provider}...[/cyan]")
             
             summary = await tm.revalidate_tools(provider)
-            console.print(f"[green]Validation complete:[/green]")
-            console.print(f"  • Total tools: {summary.get('total_tools', 0)}")
-            console.print(f"  • Valid: {summary.get('valid_tools', 0)}")
-            console.print(f"  • Invalid: {summary.get('invalid_tools', 0)}")
+            output.print(f"[green]Validation complete:[/green]")
+            output.print(f"  • Total tools: {summary.get('total_tools', 0)}")
+            output.print(f"  • Valid: {summary.get('valid_tools', 0)}")
+            output.print(f"  • Invalid: {summary.get('invalid_tools', 0)}")
             
             chat_ctx = ctx.get("chat_context")
             if chat_ctx and hasattr(chat_ctx, "refresh_after_model_change"):
                 await chat_ctx.refresh_after_model_change()
                 
     except Exception as e:
-        console.print(f"[red]Error during validation:[/red] {e}")
+        output.print(f"[red]Error during validation:[/red] {e}")
     
     return True
 
 
 async def tools_status_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
     """Show tool management status."""
-    console = get_console()
     
     tm = ctx.get("tool_manager")
     if not tm or not hasattr(tm, 'get_validation_summary'):
-        console.print("[red]Error:[/red] Enhanced ToolManager not available.")
+        output.print("[red]Error:[/red] Enhanced ToolManager not available.")
         return True
     
     try:
@@ -132,28 +128,27 @@ async def tools_status_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
         table.add_row("Auto-fix Enabled", "Yes" if summary.get("auto_fix_enabled", False) else "No")
         table.add_row("Last Provider", str(summary.get("provider", "None")))
         
-        console.print(table)
+        output.print(table)
         
     except Exception as e:
-        console.print(f"[red]Error getting status:[/red] {e}")
+        output.print(f"[red]Error getting status:[/red] {e}")
     
     return True
 
 
 async def tools_disabled_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
     """List disabled tools."""
-    console = get_console()
     
     tm = ctx.get("tool_manager")
     if not tm or not hasattr(tm, 'get_disabled_tools'):
-        console.print("[red]Error:[/red] Enhanced ToolManager not available.")
+        output.print("[red]Error:[/red] Enhanced ToolManager not available.")
         return True
     
     try:
         disabled_tools = tm.get_disabled_tools()
         
         if not disabled_tools:
-            console.print("[green]No disabled tools[/green]")
+            output.print("[green]No disabled tools[/green]")
         else:
             from rich.table import Table
             table = Table(title="Disabled Tools")
@@ -163,25 +158,24 @@ async def tools_disabled_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
             for tool, reason in disabled_tools.items():
                 table.add_row(tool, reason)
             
-            console.print(table)
+            output.print(table)
             
     except Exception as e:
-        console.print(f"[red]Error listing disabled tools:[/red] {e}")
+        output.print(f"[red]Error listing disabled tools:[/red] {e}")
     
     return True
 
 
 async def tools_details_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
     """Show tool validation details."""
-    console = get_console()
     
     tm = ctx.get("tool_manager")
     if not tm or not hasattr(tm, 'get_tool_validation_details'):
-        console.print("[red]Error:[/red] Enhanced ToolManager not available.")
+        output.print("[red]Error:[/red] Enhanced ToolManager not available.")
         return True
     
     if len(parts) < 2:
-        console.print("[red]Error:[/red] Tool name required")
+        output.print("[red]Error:[/red] Tool name required")
         return True
     
     tool_name = parts[1]
@@ -189,7 +183,7 @@ async def tools_details_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
     try:
         details = tm.get_tool_validation_details(tool_name)
         if not details:
-            console.print(f"[red]Tool '{tool_name}' not found[/red]")
+            output.print(f"[red]Tool '{tool_name}' not found[/red]")
             return True
         
         from rich.panel import Panel
@@ -202,65 +196,62 @@ async def tools_details_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
         if details["can_auto_fix"]:
             content += "Auto-fix: Available\n"
         
-        console.print(Panel(content, title=f"Tool Details: {tool_name}"))
+        output.print(Panel(content, title=f"Tool Details: {tool_name}"))
         
     except Exception as e:
-        console.print(f"[red]Error getting tool details:[/red] {e}")
+        output.print(f"[red]Error getting tool details:[/red] {e}")
     
     return True
 
 
 async def tools_autofix_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
     """Enable/disable auto-fix."""
-    console = get_console()
     
     tm = ctx.get("tool_manager")
     if not tm or not hasattr(tm, 'set_auto_fix_enabled'):
-        console.print("[red]Error:[/red] Enhanced ToolManager not available.")
+        output.print("[red]Error:[/red] Enhanced ToolManager not available.")
         return True
     
     if len(parts) > 1:
         setting = parts[1].lower() in ("on", "enable", "true", "yes")
         tm.set_auto_fix_enabled(setting)
         status = "enabled" if setting else "disabled"
-        console.print(f"[cyan]Auto-fix {status}[/cyan]")
+        output.print(f"[cyan]Auto-fix {status}[/cyan]")
     else:
         current = tm.is_auto_fix_enabled()
-        console.print(f"[cyan]Auto-fix is currently {'enabled' if current else 'disabled'}[/cyan]")
+        output.print(f"[cyan]Auto-fix is currently {'enabled' if current else 'disabled'}[/cyan]")
     
     return True
 
 
 async def tools_clear_validation_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
     """Clear validation-disabled tools."""
-    console = get_console()
     
     tm = ctx.get("tool_manager")
     if not tm or not hasattr(tm, 'clear_validation_disabled_tools'):
-        console.print("[red]Error:[/red] Enhanced ToolManager not available.")
+        output.print("[red]Error:[/red] Enhanced ToolManager not available.")
         return True
     
     try:
         tm.clear_validation_disabled_tools()
-        console.print("[green]Cleared all validation-disabled tools[/green]")
+        output.print("[green]Cleared all validation-disabled tools[/green]")
         
         chat_ctx = ctx.get("chat_context")
         if chat_ctx and hasattr(chat_ctx, "refresh_after_model_change"):
             await chat_ctx.refresh_after_model_change()
             
     except Exception as e:
-        console.print(f"[red]Error clearing validation:[/red] {e}")
+        output.print(f"[red]Error clearing validation:[/red] {e}")
     
     return True
 
 
 async def tools_errors_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
     """Show validation errors."""
-    console = get_console()
     
     tm = ctx.get("tool_manager")
     if not tm or not hasattr(tm, 'get_validation_summary'):
-        console.print("[red]Error:[/red] Enhanced ToolManager not available.")
+        output.print("[red]Error:[/red] Enhanced ToolManager not available.")
         return True
     
     try:
@@ -268,16 +259,16 @@ async def tools_errors_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
         errors = summary.get("validation_errors", [])
         
         if not errors:
-            console.print("[green]No validation errors[/green]")
+            output.print("[green]No validation errors[/green]")
         else:
-            console.print(f"[red]Found {len(errors)} validation errors:[/red]")
+            output.print(f"[red]Found {len(errors)} validation errors:[/red]")
             for error in errors[:10]:
-                console.print(f"  • {error['tool']}: {error['error']}")
+                output.print(f"  • {error['tool']}: {error['error']}")
             if len(errors) > 10:
-                console.print(f"  ... and {len(errors) - 10} more errors")
+                output.print(f"  ... and {len(errors) - 10} more errors")
                 
     except Exception as e:
-        console.print(f"[red]Error getting validation errors:[/red] {e}")
+        output.print(f"[red]Error getting validation errors:[/red] {e}")
     
     return True
 

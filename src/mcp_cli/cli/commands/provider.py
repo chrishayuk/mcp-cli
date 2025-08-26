@@ -11,7 +11,7 @@ import logging
 from typing import Any
 
 import typer
-from rich.console import Console
+from chuk_term.ui import output
 
 from mcp_cli.commands.provider import provider_action_async
 from mcp_cli.model_manager import ModelManager
@@ -36,8 +36,7 @@ def _call_shared_helper(argv: list[str]) -> None:
     try:
         run_blocking(provider_action_async(argv, context=ctx))
     except Exception as e:
-        console = Console()
-        console.print(f"[red]Provider command failed:[/red] {e}")
+        output.print(f"[red]Provider command failed:[/red] {e}")
         log.exception("Provider command error")
 
 
@@ -179,7 +178,7 @@ class ProviderCommand(BaseCommand):
             for arg in ("provider_name", "key", "value"):
                 val = params.get(arg)
                 if val is None:
-                    Console().print(f"[red]Missing {arg} for 'set'[/red]")
+                    output.print(f"[red]Missing {arg} for 'set'[/red]")
                     return
                 argv.append(str(val))
         else:
@@ -196,5 +195,5 @@ class ProviderCommand(BaseCommand):
         try:
             await provider_action_async(argv, context=context)
         except Exception as e:
-            Console().print(f"[red]Provider command failed:[/red] {e}")
+            output.print(f"[red]Provider command failed:[/red] {e}")
             log.exception("Provider command error in interactive mode")

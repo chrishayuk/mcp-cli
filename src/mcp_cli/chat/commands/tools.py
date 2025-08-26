@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 # Cross-platform Rich console helper
-from mcp_cli.utils.rich_helpers import get_console
+from chuk_term.ui import output
 
 # Shared helpers
 from mcp_cli.commands.tools import tools_action_async
@@ -31,21 +31,20 @@ async def tools_manage_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
     /tools-clear-validation            - Clear validation-disabled tools
     /tools-errors                      - Show validation errors
     """
-    console = get_console()
     
     tm: ToolManager = ctx.get("tool_manager")
     if not tm:
-        console.print("[red]Error:[/red] ToolManager not available.")
+        output.print("[red]Error:[/red] ToolManager not available.")
         return True
     
     # Check if enhanced features are available
     if not hasattr(tm, 'disable_tool'):
-        console.print("[red]Error:[/red] Tool management requires enhanced ToolManager.")
-        console.print("[dim]Note: Your ToolManager doesn't support validation features[/dim]")
+        output.print("[red]Error:[/red] Tool management requires enhanced ToolManager.")
+        output.print("[dim]Note: Your ToolManager doesn't support validation features[/dim]")
         return True
     
     if len(parts) < 1:
-        console.print("[red]Error:[/red] No action specified")
+        output.print("[red]Error:[/red] No action specified")
         return True
     
     command = parts[0]  # e.g., "/tools-enable"
@@ -54,12 +53,12 @@ async def tools_manage_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
     # Parse command
     if command == "/tools-enable":
         if not args:
-            console.print("[red]Error:[/red] Tool name required")
+            output.print("[red]Error:[/red] Tool name required")
             return True
         
         tool_name = args[0]
         tm.enable_tool(tool_name)
-        console.print(f"[green]✓ Enabled tool:[/green] {tool_name}")
+        output.print(f"[green]✓ Enabled tool:[/green] {tool_name}")
         
         # Refresh chat context if available
         chat_ctx = ctx.get("chat_context")
@@ -68,12 +67,12 @@ async def tools_manage_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
         
     elif command == "/tools-disable":
         if not args:
-            console.print("[red]Error:[/red] Tool name required")
+            output.print("[red]Error:[/red] Tool name required")
             return True
         
         tool_name = args[0]
         tm.disable_tool(tool_name, reason="user")
-        console.print(f"[yellow]✗ Disabled tool:[/yellow] {tool_name}")
+        output.print(f"[yellow]✗ Disabled tool:[/yellow] {tool_name}")
         
         # Refresh chat context if available
         chat_ctx = ctx.get("chat_context")
@@ -87,22 +86,22 @@ async def tools_manage_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
             try:
                 is_valid, error_msg = await tm.validate_single_tool(tool_name)
                 if is_valid:
-                    console.print(f"[green]✓ Tool '{tool_name}' is valid[/green]")
+                    output.print(f"[green]✓ Tool '{tool_name}' is valid[/green]")
                 else:
-                    console.print(f"[red]✗ Tool '{tool_name}' is invalid:[/red] {error_msg}")
+                    output.print(f"[red]✗ Tool '{tool_name}' is invalid:[/red] {error_msg}")
             except Exception as e:
-                console.print(f"[red]Error validating tool:[/red] {e}")
+                output.print(f"[red]Error validating tool:[/red] {e}")
         else:
             # Validate all tools
             provider = ctx.get("provider", "openai")
-            console.print(f"[cyan]Validating all tools for {provider}...[/cyan]")
+            output.print(f"[cyan]Validating all tools for {provider}...[/cyan]")
             
             try:
                 summary = await tm.revalidate_tools(provider)
-                console.print(f"[green]Validation complete:[/green]")
-                console.print(f"  • Total tools: {summary.get('total_tools', 0)}")
-                console.print(f"  • Valid: {summary.get('valid_tools', 0)}")
-                console.print(f"  • Invalid: {summary.get('invalid_tools', 0)}")
+                output.print(f"[green]Validation complete:[/green]")
+                output.print(f"  • Total tools: {summary.get('total_tools', 0)}")
+                output.print(f"  • Valid: {summary.get('valid_tools', 0)}")
+                output.print(f"  • Invalid: {summary.get('invalid_tools', 0)}")
                 
                 # Refresh chat context
                 chat_ctx = ctx.get("chat_context")
@@ -110,7 +109,7 @@ async def tools_manage_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
                     await chat_ctx.refresh_after_model_change()
                     
             except Exception as e:
-                console.print(f"[red]Error during validation:[/red] {e}")
+                output.print(f"[red]Error during validation:[/red] {e}")
         
     elif command == "/tools-status":
         summary = tm.get_validation_summary()
@@ -128,13 +127,13 @@ async def tools_manage_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
         table.add_row("Auto-fix Enabled", "Yes" if summary.get("auto_fix_enabled", False) else "No")
         table.add_row("Last Provider", str(summary.get("provider", "None")))
         
-        console.print(table)
+        output.print(table)
         
     elif command == "/tools-disabled":
         disabled_tools = tm.get_disabled_tools()
         
         if not disabled_tools:
-            console.print("[green]No disabled tools[/green]")
+            output.print("[green]No disabled tools[/green]")
         else:
             from rich.table import Table
             table = Table(title="Disabled Tools")
@@ -144,17 +143,17 @@ async def tools_manage_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
             for tool, reason in disabled_tools.items():
                 table.add_row(tool, reason)
             
-            console.print(table)
+            output.print(table)
         
     elif command == "/tools-details":
         if not args:
-            console.print("[red]Error:[/red] Tool name required")
+            output.print("[red]Error:[/red] Tool name required")
             return True
         
         tool_name = args[0]
         details = tm.get_tool_validation_details(tool_name)
         if not details:
-            console.print(f"[red]Tool '{tool_name}' not found[/red]")
+            output.print(f"[red]Tool '{tool_name}' not found[/red]")
             return True
         
         # Display details panel
@@ -168,21 +167,21 @@ async def tools_manage_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
         if details["can_auto_fix"]:
             content += "Auto-fix: Available\n"
         
-        console.print(Panel(content, title=f"Tool Details: {tool_name}"))
+        output.print(Panel(content, title=f"Tool Details: {tool_name}"))
         
     elif command == "/tools-autofix":
         if args:
             setting = args[0].lower() in ("on", "enable", "true", "yes")
             tm.set_auto_fix_enabled(setting)
             status = "enabled" if setting else "disabled"
-            console.print(f"[cyan]Auto-fix {status}[/cyan]")
+            output.print(f"[cyan]Auto-fix {status}[/cyan]")
         else:
             current = tm.is_auto_fix_enabled()
-            console.print(f"[cyan]Auto-fix is currently {'enabled' if current else 'disabled'}[/cyan]")
+            output.print(f"[cyan]Auto-fix is currently {'enabled' if current else 'disabled'}[/cyan]")
         
     elif command == "/tools-clear-validation":
         tm.clear_validation_disabled_tools()
-        console.print("[green]Cleared all validation-disabled tools[/green]")
+        output.print("[green]Cleared all validation-disabled tools[/green]")
         
         # Refresh chat context
         chat_ctx = ctx.get("chat_context")
@@ -194,17 +193,17 @@ async def tools_manage_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
         errors = summary.get("validation_errors", [])
         
         if not errors:
-            console.print("[green]No validation errors[/green]")
+            output.print("[green]No validation errors[/green]")
         else:
-            console.print(f"[red]Found {len(errors)} validation errors:[/red]")
+            output.print(f"[red]Found {len(errors)} validation errors:[/red]")
             for error in errors[:10]:  # Show first 10
-                console.print(f"  • {error['tool']}: {error['error']}")
+                output.print(f"  • {error['tool']}: {error['error']}")
             if len(errors) > 10:
-                console.print(f"  ... and {len(errors) - 10} more errors")
+                output.print(f"  ... and {len(errors) - 10} more errors")
     
     else:
-        console.print(f"[red]Unknown tool management command: {command}[/red]")
-        console.print("[dim]Available commands: /tools-enable, /tools-disable, /tools-validate, /tools-status, /tools-disabled, /tools-details, /tools-autofix, /tools-clear-validation, /tools-errors[/dim]")
+        output.print(f"[red]Unknown tool management command: {command}[/red]")
+        output.print("[dim]Available commands: /tools-enable, /tools-disable, /tools-validate, /tools-status, /tools-disabled, /tools-details, /tools-autofix, /tools-clear-validation, /tools-errors[/dim]")
     
     return True
 
@@ -231,11 +230,10 @@ async def tools_command(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa:
     /tools call         - interactive "call tool" helper  
     /t                  - short alias
     """
-    console = get_console()
 
     tm: ToolManager | None = ctx.get("tool_manager")
     if tm is None:
-        console.print("[red]Error:[/red] ToolManager not available.")
+        output.print("[red]Error:[/red] ToolManager not available.")
         return True   # command handled
 
     args = parts[1:]  # drop the command itself

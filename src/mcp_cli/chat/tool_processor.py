@@ -14,7 +14,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from rich import print as rprint
-from rich.console import Console
+from chuk_term.ui import output
 
 from mcp_cli.tools.formatting import display_tool_call_result
 from mcp_cli.tools.models import ToolCallResult
@@ -153,7 +153,7 @@ class ToolProcessor:
                 if self.tool_manager is None:
                     raise RuntimeError("No tool manager available for tool execution")
 
-                with Console().status("[cyan]Executing tool…[/cyan]", spinner="dots"):
+                with output.loading("Executing tool…"):
                     log.info(f"Executing tool: {execution_tool_name} with args: {arguments}")
                     tool_result = await self.tool_manager.execute_tool(execution_tool_name, arguments)
 

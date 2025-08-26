@@ -25,7 +25,7 @@ import json
 from typing import Any, Dict, List
 
 # Cross-platform Rich console
-from mcp_cli.utils.rich_helpers import get_console
+from chuk_term.ui import output
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.syntax import Syntax
@@ -40,11 +40,10 @@ from mcp_cli.chat.commands import register_command
 # ════════════════════════════════════════════════════════════════════════════
 async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
     """Browse or export the in-memory conversation history."""
-    console = get_console()
     history = ctx.get("conversation_history", []) or []
 
     if not history:
-        console.print("[italic yellow]No conversation history available.[/italic yellow]")
+        output.print("[italic yellow]No conversation history available.[/italic yellow]")
         return True
 
     args        = parts[1:]
@@ -56,7 +55,7 @@ async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) ->
     if args and args[0].isdigit():
         single_row = int(args[0])
         if not (1 <= single_row <= len(history)):
-            console.print(f"[red]Invalid row. Must be 1-{len(history)}[/red]")
+            output.print(f"[red]Invalid row. Must be 1-{len(history)}[/red]")
             return True
 
     # -n limit?
@@ -65,7 +64,7 @@ async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) ->
             idx   = args.index("-n")
             limit = int(args[idx + 1])
         except Exception:
-            console.print("[red]Invalid -n value; showing all[/red]")
+            output.print("[red]Invalid -n value; showing all[/red]")
 
     # Slice history
     if single_row is not None:
@@ -83,7 +82,7 @@ async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) ->
             if single_row
             else "Conversation History (JSON)"
         )
-        console.print(
+        output.print(
             Panel(
                 Syntax(json.dumps(payload, indent=2, ensure_ascii=False), "json", word_wrap=True),
                 title=title,
@@ -115,7 +114,7 @@ async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) ->
                 fn = tc["function"]
                 details.append(f"  {idx}. {fn['name']} args={fn['arguments']}\n")
 
-        console.print(
+        output.print(
             Panel(
                 details,
                 title=f"Message #{single_row} — {label}",
@@ -146,8 +145,8 @@ async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) ->
             content = content[:97] + "…"
         table.add_row(str(idx), label, content)
 
-    console.print(table)
-    console.print("\nType [green]/conversation <row>[/green] for full message details.")
+    output.print(table)
+    output.print("\nType [green]/conversation <row>[/green] for full message details.")
     return True
 
 

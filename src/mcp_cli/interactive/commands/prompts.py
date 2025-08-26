@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from mcp_cli.utils.rich_helpers import get_console           # ← NEW
+from chuk_term.ui import output           # ← NEW
 from mcp_cli.commands.prompts import prompts_action_cmd       # shared async helper
 from mcp_cli.tools.manager import ToolManager
 from .base import InteractiveCommand
@@ -41,11 +41,10 @@ class PromptsCommand(InteractiveCommand):
         """
         Delegate to :func:`mcp_cli.commands.prompts.prompts_action_cmd`.
         """
-        console = get_console()
-
+        
         if tool_manager is None:
             log.debug("PromptsCommand executed without ToolManager - aborting.")
-            console.print("[red]Error:[/red] ToolManager not available.")
+            output.print("[red]Error:[/red] ToolManager not available.")
             return
 
         # No sub-arguments are supported right now:

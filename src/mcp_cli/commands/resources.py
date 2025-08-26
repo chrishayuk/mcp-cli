@@ -24,7 +24,7 @@ from rich.table import Table
 # mcp cli
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.utils.async_utils import run_blocking
-from mcp_cli.utils.rich_helpers import get_console
+from chuk_term.ui import output
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -50,20 +50,19 @@ async def resources_action_async(tm: ToolManager) -> List[Dict[str, Any]]:
 
     Returns the raw list to allow callers to re-use the data programmatically.
     """
-    console = get_console()
-
+    
     # Most MCP servers expose list_resources() as an awaitable, but some
     # adapters might return a plain list - handle both.
     try:
         maybe = tm.list_resources()
         resources = await maybe if inspect.isawaitable(maybe) else maybe  # type: ignore[arg-type]
     except Exception as exc:  # noqa: BLE001
-        console.print(f"[red]Error:[/red] {exc}")
+        output.print(f"[red]Error:[/red] {exc}")
         return []
 
     resources = resources or []
     if not resources:
-        console.print("[dim]No resources recorded.[/dim]")
+        output.print("[dim]No resources recorded.[/dim]")
         return resources
 
     table = Table(title="Resources", header_style="bold magenta")
@@ -80,7 +79,7 @@ async def resources_action_async(tm: ToolManager) -> List[Dict[str, Any]]:
             item.get("mimeType", "-"),
         )
 
-    console.print(table)
+    output.print(table)
     return resources
 
 

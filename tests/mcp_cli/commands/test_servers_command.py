@@ -42,10 +42,9 @@ async def test_servers_action_no_servers():
     """Test servers_action when no servers are connected."""
     tm = DummyToolManagerNoServers()
     
-    # Mock the console from rich_helpers
-    with patch('mcp_cli.commands.servers.get_console') as mock_get_console:
-        mock_console = MagicMock()
-        mock_get_console.return_value = mock_console
+    # Mock the output from chuk_term
+    with patch('mcp_cli.commands.servers.output') as mock_output:
+        mock_output.print = MagicMock()
         
         result = await servers_action_async(tm)
         
@@ -53,9 +52,9 @@ async def test_servers_action_no_servers():
         assert result == []
         
         # Should show message about no servers
-        mock_console.print.assert_called()
+        mock_output.print.assert_called()
         # Check that at least one call contains "No servers"
-        calls = mock_console.print.call_args_list
+        calls = mock_output.print.call_args_list
         assert any("No servers" in str(call) for call in calls)
 
 
@@ -68,10 +67,9 @@ async def test_servers_action_with_servers():
     ]
     tm = DummyToolManagerWithServers(infos)
     
-    # Mock the console
-    with patch('mcp_cli.commands.servers.get_console') as mock_get_console:
-        mock_console = MagicMock()
-        mock_get_console.return_value = mock_console
+    # Mock the output
+    with patch('mcp_cli.commands.servers.output') as mock_output:
+        mock_output.print = MagicMock()
         
         result = await servers_action_async(tm)
         
@@ -79,7 +77,7 @@ async def test_servers_action_with_servers():
         assert len(result) == 2
         
         # Should have printed something
-        mock_console.print.assert_called()
+        mock_output.print.assert_called()
 
 
 @pytest.mark.asyncio
@@ -90,9 +88,8 @@ async def test_servers_action_with_detailed_flag():
     ]
     tm = DummyToolManagerWithServers(infos)
     
-    with patch('mcp_cli.commands.servers.get_console') as mock_get_console:
-        mock_console = MagicMock()
-        mock_get_console.return_value = mock_console
+    with patch('mcp_cli.commands.servers.output') as mock_output:
+        mock_output.print = MagicMock()
         
         # Call with detailed flag
         result = await servers_action_async(tm, detailed=True)
@@ -101,7 +98,7 @@ async def test_servers_action_with_detailed_flag():
         assert len(result) == 1
         
         # Should have printed output
-        mock_console.print.assert_called()
+        mock_output.print.assert_called()
 
 
 @pytest.mark.asyncio
@@ -111,9 +108,8 @@ async def test_servers_action_with_capabilities():
     server_info = make_info(0, "test-server", 5, "ready")
     tm = DummyToolManagerWithServers([server_info])
     
-    with patch('mcp_cli.commands.servers.get_console') as mock_get_console:
-        mock_console = MagicMock()
-        mock_get_console.return_value = mock_console
+    with patch('mcp_cli.commands.servers.output') as mock_output:
+        mock_output.print = MagicMock()
         
         # Call with capabilities flag
         result = await servers_action_async(tm, show_capabilities=True)
@@ -133,9 +129,8 @@ async def test_servers_action_with_transport_info():
     server_info = make_info(0, "http-server", 2, "connected")
     tm = DummyToolManagerWithServers([server_info])
     
-    with patch('mcp_cli.commands.servers.get_console') as mock_get_console:
-        mock_console = MagicMock()
-        mock_get_console.return_value = mock_console
+    with patch('mcp_cli.commands.servers.output') as mock_output:
+        mock_output.print = MagicMock()
         
         # Call with transport flag
         result = await servers_action_async(tm, show_transport=True)
@@ -157,9 +152,8 @@ async def test_servers_action_output_formats():
     tm = DummyToolManagerWithServers(infos)
     
     # Test JSON format
-    with patch('mcp_cli.commands.servers.get_console') as mock_get_console:
-        mock_console = MagicMock()
-        mock_get_console.return_value = mock_console
+    with patch('mcp_cli.commands.servers.output') as mock_output:
+        mock_output.print = MagicMock()
         
         result = await servers_action_async(tm, output_format="json")
         
@@ -167,24 +161,23 @@ async def test_servers_action_output_formats():
         assert len(result) == 1
         
         # Check that JSON was printed (json.dumps is called internally)
-        mock_console.print.assert_called()
+        mock_output.print.assert_called()
         # Verify JSON-like output was printed
-        calls = str(mock_console.print.call_args_list)
+        calls = str(mock_output.print.call_args_list)
         # The output should contain JSON structure markers
         assert ('{' in calls or 'id' in calls or 'name' in calls)
     
     # Test tree format
-    with patch('mcp_cli.commands.servers.get_console') as mock_get_console:
-        mock_console = MagicMock()
-        mock_get_console.return_value = mock_console
+    with patch('mcp_cli.commands.servers.output') as mock_output:
+        mock_output.print = MagicMock()
         
         result = await servers_action_async(tm, output_format="tree")
         
         # Should return server infos
         assert len(result) == 1
         
-        # Console should be used for output
-        mock_console.print.assert_called()
+        # Output should be used for output
+        mock_output.print.assert_called()
 
 
 @pytest.mark.asyncio
@@ -197,9 +190,8 @@ async def test_servers_action_error_handling():
     
     tm = ErrorToolManager()
     
-    with patch('mcp_cli.commands.servers.get_console') as mock_get_console:
-        mock_console = MagicMock()
-        mock_get_console.return_value = mock_console
+    with patch('mcp_cli.commands.servers.output') as mock_output:
+        mock_output.print = MagicMock()
         
         # Should handle the error gracefully
         result = await servers_action_async(tm)
@@ -208,8 +200,8 @@ async def test_servers_action_error_handling():
         assert result == []
         
         # Should print error message
-        mock_console.print.assert_called()
-        calls = mock_console.print.call_args_list
+        mock_output.print.assert_called()
+        calls = mock_output.print.call_args_list
         assert any("Error" in str(call) for call in calls)
 
 
@@ -224,9 +216,8 @@ async def test_servers_action_mixed_statuses():
     ]
     tm = DummyToolManagerWithServers(infos)
     
-    with patch('mcp_cli.commands.servers.get_console') as mock_get_console:
-        mock_console = MagicMock()
-        mock_get_console.return_value = mock_console
+    with patch('mcp_cli.commands.servers.output') as mock_output:
+        mock_output.print = MagicMock()
         
         result = await servers_action_async(tm)
         
@@ -241,7 +232,7 @@ async def test_servers_action_mixed_statuses():
         assert "server4" in server_names
         
         # Should have printed output
-        mock_console.print.assert_called()
+        mock_output.print.assert_called()
 
 
 @pytest.mark.asyncio
@@ -252,9 +243,8 @@ async def test_servers_action_with_json_format():
     ]
     tm = DummyToolManagerWithServers(infos)
     
-    with patch('mcp_cli.commands.servers.get_console') as mock_get_console:
-        mock_console = MagicMock()
-        mock_get_console.return_value = mock_console
+    with patch('mcp_cli.commands.servers.output') as mock_output:
+        mock_output.print = MagicMock()
         
         # JSON format should work without issues
         result = await servers_action_async(tm, output_format="json")
@@ -262,8 +252,8 @@ async def test_servers_action_with_json_format():
         # Should return server infos
         assert len(result) == 1
         
-        # Console should have printed something
-        mock_console.print.assert_called()
+        # Output should have printed something
+        mock_output.print.assert_called()
         
         # The printed output should be valid JSON-like structure
         # (checking that the enhanced server data was formatted)
@@ -279,17 +269,16 @@ async def test_servers_action_display_error_handling():
     ]
     tm = DummyToolManagerWithServers(infos)
     
-    with patch('mcp_cli.commands.servers.get_console') as mock_get_console:
-        mock_console = MagicMock()
-        mock_get_console.return_value = mock_console
+    with patch('mcp_cli.commands.servers.output') as mock_output:
+        mock_output.print = MagicMock()
         
-        # Make console.print raise an exception on first call, then work normally
-        mock_console.print.side_effect = [Exception("Console error"), None, None, None]
+        # Make output.print raise an exception on first call, then work normally
+        mock_output.print.side_effect = [Exception("Output error"), None, None, None]
         
         result = await servers_action_async(tm)
         
         # Should still return results despite display error
         assert len(result) == 1
         
-        # Console print should have been called multiple times (retries)
-        assert mock_console.print.call_count >= 1
+        # Output print should have been called multiple times (retries)
+        assert mock_output.print.call_count >= 1

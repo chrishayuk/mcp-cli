@@ -32,7 +32,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 # Cross-platform Rich console helper
-from mcp_cli.utils.rich_helpers import get_console
+from chuk_term.ui import output
 
 # Chat-command registry
 from mcp_cli.chat.commands import register_command
@@ -51,8 +51,7 @@ async def interrupt_command(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # 
       /stop         - same as interrupt
       /cancel       - same as interrupt
     """
-    console = get_console()
-    
+        
     # Get UI manager from context if available
     ui_manager = ctx.get("ui_manager")
     if not ui_manager:
@@ -66,14 +65,14 @@ async def interrupt_command(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # 
     # Check for streaming response
     if ui_manager and getattr(ui_manager, "is_streaming_response", False):
         ui_manager.interrupt_streaming()
-        console.print("[yellow]Streaming response interrupted.[/yellow]")
+        output.print("[yellow]Streaming response interrupted.[/yellow]")
         interrupted_something = True
     
     # Check for running tools
     elif ui_manager and getattr(ui_manager, "tools_running", False):
         if hasattr(ui_manager, "_interrupt_now"):
             ui_manager._interrupt_now()
-        console.print("[yellow]Tool execution interrupted.[/yellow]")
+        output.print("[yellow]Tool execution interrupted.[/yellow]")
         interrupted_something = True
     
     # Check for any tool processor that might be running
@@ -82,15 +81,15 @@ async def interrupt_command(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # 
         if hasattr(tool_processor, "cancel_running_tasks"):
             try:
                 tool_processor.cancel_running_tasks()
-                console.print("[yellow]Running tasks cancelled.[/yellow]")
+                output.print("[yellow]Running tasks cancelled.[/yellow]")
                 interrupted_something = True
             except Exception as e:
-                console.print(f"[red]Error cancelling tasks: {e}[/red]")
+                output.print(f"[red]Error cancelling tasks: {e}[/red]")
     
     # Nothing to interrupt
     if not interrupted_something:
-        console.print("[yellow]Nothing currently running to interrupt.[/yellow]")
-        console.print("[dim]Use this command while streaming responses or tool execution are active.[/dim]")
+        output.print("[yellow]Nothing currently running to interrupt.[/yellow]")
+        output.print("[dim]Use this command while streaming responses or tool execution are active.[/dim]")
     
     return True
 

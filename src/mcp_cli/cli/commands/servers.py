@@ -14,7 +14,7 @@ import logging
 from typing import Any, Optional
 
 import typer
-from rich.console import Console
+from chuk_term.ui import output
 
 # Updated imports for enhanced server functionality
 from mcp_cli.commands.servers import servers_action, servers_action_async
