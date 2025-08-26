@@ -334,10 +334,11 @@ def test_process_options_quiet_mode(mock_discovery, monkeypatch, tmp_path, caplo
     assert "MCP_CLI_MODIFIED_CONFIG" in os.environ
 
 
+@patch("mcp_cli.cli_options.output")
 @patch("mcp_cli.cli_options.trigger_discovery_after_setup")
 @patch("mcp_cli.utils.preferences.get_preference_manager")
 def test_process_options_disabled_server_blocked(
-    mock_pref_manager, mock_discovery, monkeypatch, tmp_path, caplog
+    mock_pref_manager, mock_discovery, mock_output, monkeypatch, tmp_path, caplog
 ):
     """Test that disabled servers are blocked even when explicitly requested."""
     mock_discovery.return_value = 0
@@ -375,11 +376,10 @@ def test_process_options_disabled_server_blocked(
         # specified should still contain what was requested
         assert specified == ["DisabledServer"]
 
-        # Should have logged error about disabled server
-        assert any(
-            "disabled and cannot be used" in record.message for record in caplog.records
-        )
-        assert any("DisabledServer" in record.message for record in caplog.records)
+        # Should have called output.warning about disabled server
+        mock_output.warning.assert_called()
+        warning_calls = [str(call) for call in mock_output.warning.call_args_list]
+        assert any("disabled and cannot be used" in str(call) for call in warning_calls)
 
 
 @patch("mcp_cli.cli_options.trigger_discovery_after_setup")

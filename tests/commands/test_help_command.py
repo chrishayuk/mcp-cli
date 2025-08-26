@@ -9,6 +9,7 @@ from mcp_cli.interactive.commands.help import HelpCommand
 
 # Force help module to use InteractiveCommandRegistry for tests
 import mcp_cli.commands.help
+
 mcp_cli.commands.help.Registry = InteractiveCommandRegistry
 
 

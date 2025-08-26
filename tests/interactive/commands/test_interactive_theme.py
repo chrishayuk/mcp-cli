@@ -1,12 +1,10 @@
 """Tests for interactive mode theme command."""
 
-from unittest.mock import MagicMock, patch, AsyncMock
-import asyncio
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from mcp_cli.interactive.commands.theme import ThemeCommand
-from mcp_cli.utils.preferences import Theme
 
 
 class TestInteractiveThemeCommand:
@@ -53,15 +51,17 @@ class TestInteractiveThemeCommand:
 
 class TestInteractiveThemeFunction:
     """Test the theme_command function directly."""
-    
+
     @patch("mcp_cli.interactive.commands.theme.ask")
     @patch("mcp_cli.interactive.commands.theme.get_preference_manager")
     @patch("mcp_cli.interactive.commands.theme.set_theme")
     @patch("mcp_cli.interactive.commands.theme.output")
-    def test_no_args_triggers_interactive(self, mock_output, mock_set_theme, mock_get_manager, mock_ask):
+    def test_no_args_triggers_interactive(
+        self, mock_output, mock_set_theme, mock_get_manager, mock_ask
+    ):
         """Test that no arguments triggers interactive selection."""
         from mcp_cli.interactive.commands.theme import theme_command
-        
+
         mock_manager = MagicMock()
         mock_manager.get_theme.return_value = "default"
         mock_get_manager.return_value = mock_manager
@@ -82,7 +82,7 @@ class TestInteractiveThemeFunction:
     def test_show_current_and_list(self, mock_output, mock_set_theme, mock_get_manager):
         """Test showing current theme and listing with 'list' argument."""
         from mcp_cli.interactive.commands.theme import theme_command
-        
+
         mock_manager = MagicMock()
         mock_manager.get_theme.return_value = "minimal"
         mock_get_manager.return_value = mock_manager
@@ -99,10 +99,12 @@ class TestInteractiveThemeFunction:
     @patch("mcp_cli.interactive.commands.theme.get_preference_manager")
     @patch("mcp_cli.interactive.commands.theme.set_theme")
     @patch("mcp_cli.interactive.commands.theme.output")
-    def test_set_valid_theme(self, mock_output, mock_set_theme, mock_get_manager, mock_preview):
+    def test_set_valid_theme(
+        self, mock_output, mock_set_theme, mock_get_manager, mock_preview
+    ):
         """Test setting a valid theme."""
         from mcp_cli.interactive.commands.theme import theme_command
-        
+
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
 
@@ -118,7 +120,7 @@ class TestInteractiveThemeFunction:
     def test_set_invalid_theme(self, mock_output, mock_set_theme, mock_get_manager):
         """Test setting an invalid theme."""
         from mcp_cli.interactive.commands.theme import theme_command
-        
+
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
 
@@ -140,11 +142,11 @@ class TestInteractiveThemeFunction:
     ):
         """Test interactive theme selection."""
         from mcp_cli.interactive.commands.theme import theme_command
-        
+
         mock_manager = MagicMock()
         mock_manager.get_theme.return_value = "default"
         mock_get_manager.return_value = mock_manager
-        
+
         # Mock selection to return theme number
         mock_ask.return_value = "4"  # minimal is at index 4
 
@@ -152,7 +154,7 @@ class TestInteractiveThemeFunction:
 
         # Should call selection
         mock_ask.assert_called_once()
-        
+
         # Check that theme was set
         mock_set_theme.assert_called_once_with("minimal")
         mock_manager.set_theme.assert_called_once_with("minimal")
@@ -161,10 +163,12 @@ class TestInteractiveThemeFunction:
     @patch("mcp_cli.interactive.commands.theme.ask")
     @patch("mcp_cli.interactive.commands.theme.set_theme")
     @patch("mcp_cli.interactive.commands.theme.output")
-    def test_select_theme_cancelled(self, mock_output, mock_set_theme, mock_ask, mock_get_manager):
+    def test_select_theme_cancelled(
+        self, mock_output, mock_set_theme, mock_ask, mock_get_manager
+    ):
         """Test invalid number in theme selection."""
         from mcp_cli.interactive.commands.theme import theme_command
-        
+
         mock_manager = MagicMock()
         mock_manager.get_theme.return_value = "default"
         mock_get_manager.return_value = mock_manager
@@ -175,6 +179,6 @@ class TestInteractiveThemeFunction:
         # Should not change anything with invalid number
         mock_manager.set_theme.assert_not_called()
         mock_set_theme.assert_not_called()
-        
+
         # Should show error
         mock_output.error.assert_called()

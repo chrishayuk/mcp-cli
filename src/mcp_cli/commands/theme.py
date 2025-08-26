@@ -3,7 +3,7 @@
 from typing import Optional
 import asyncio
 
-from chuk_term.ui import output, clear_screen
+from chuk_term.ui import output
 from chuk_term.ui.theme import set_theme
 from chuk_term.ui.prompts import ask
 
@@ -70,7 +70,7 @@ def theme_command(
                 pref_manager.set_theme(theme_name.lower())
 
                 output.success(f"Theme switched to: {theme_name.lower()}")
-                output.print(f"\nTheme saved to your preferences.")
+                output.print("\nTheme saved to your preferences.")
 
             except Exception as e:
                 output.error(f"Failed to switch theme: {e}")
@@ -99,36 +99,31 @@ async def _interactive_theme_selection(pref_manager):
 
     # Display themes in a nice table format
     from rich.table import Table
-    
+
     output.rule("Theme Selector")
-    
+
     table = Table(title="Available Themes", show_header=True, header_style="bold cyan")
     table.add_column("#", style="dim", width=3)
     table.add_column("Theme", style="green", width=12)
     table.add_column("Description", style="white")
     table.add_column("Status", justify="center", width=10)
-    
+
     for idx, theme in enumerate(themes, 1):
         desc = theme_descriptions.get(theme, "")
         status = "✓ Current" if theme == current else ""
         status_style = "bold green" if theme == current else "dim"
-        
+
         table.add_row(
-            str(idx),
-            theme,
-            desc,
-            f"[{status_style}]{status}[/{status_style}]"
+            str(idx), theme, desc, f"[{status_style}]{status}[/{status_style}]"
         )
-    
+
     output.print(table)
     output.print()
 
     # Get numeric or name input
     current_idx = themes.index(current) + 1 if current in themes else 1
     response = ask(
-        "Enter theme number (1-8) or name:",
-        default=str(current_idx),
-        show_default=True
+        "Enter theme number (1-8) or name:", default=str(current_idx), show_default=True
     )
 
     # Parse the response - could be number or theme name
@@ -147,14 +142,13 @@ async def _interactive_theme_selection(pref_manager):
             if theme.lower() == response_lower:
                 theme_name = theme
                 break
-        
+
         if not theme_name:
             output.error(f"Unknown theme: {response}")
             output.hint(f"Valid themes: {', '.join(themes)}")
             return
-    
-    if theme_name and theme_name != current:
 
+    if theme_name and theme_name != current:
         # Apply and save theme
         set_theme(theme_name)
         pref_manager.set_theme(theme_name)

@@ -205,15 +205,6 @@ def main_callback(
                 api_key=api_key,
             )
             logger.debug(f"Chat mode completed with success: {success}")
-        except RuntimeError as e:
-            if "Failed to initialise ToolManager" in str(e):
-                # This is expected when no servers are available
-                logger.debug("No tool manager available - servers may be disabled")
-                output.error("No servers available. Please enable servers or specify available ones.")
-                output.info("Use 'mcp-cli servers' to check server status")
-                return
-            else:
-                raise
         finally:
             if tm:
                 logger.debug("Cleaning up tool manager")

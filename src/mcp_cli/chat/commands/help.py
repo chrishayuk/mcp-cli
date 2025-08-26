@@ -84,7 +84,7 @@ async def cmd_help(cmd_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: 
             )
         )
         return True
-    
+
     if args and args[0].lower() in {"ui", "preferences"}:
         output.print(
             Panel(

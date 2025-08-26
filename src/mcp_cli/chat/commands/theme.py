@@ -2,7 +2,7 @@
 
 from typing import List, TYPE_CHECKING
 
-from chuk_term.ui import output, clear_screen
+from chuk_term.ui import output
 from chuk_term.ui.theme import set_theme
 from chuk_term.ui.prompts import ask
 
@@ -43,7 +43,7 @@ async def handle_theme_command(context: "ChatContext", args: List[str]) -> None:
             pref_manager.set_theme(theme_arg)
 
             output.success(f"Theme switched to: {theme_arg}")
-            output.print(f"\nTheme saved to your preferences.")
+            output.print("\nTheme saved to your preferences.")
 
         except Exception as e:
             output.error(f"Failed to switch theme: {e}")
@@ -73,36 +73,31 @@ async def interactive_theme_selection(context: "ChatContext", pref_manager) -> N
 
     # Display themes in a nice table format
     from rich.table import Table
-    
+
     output.rule("Theme Selector")
-    
+
     table = Table(title="Available Themes", show_header=True, header_style="bold cyan")
     table.add_column("#", style="dim", width=3)
     table.add_column("Theme", style="green", width=12)
     table.add_column("Description", style="white")
     table.add_column("Status", justify="center", width=10)
-    
+
     for idx, theme in enumerate(themes, 1):
         desc = theme_descriptions.get(theme, "")
         status = "✓ Current" if theme == current else ""
         status_style = "bold green" if theme == current else "dim"
-        
+
         table.add_row(
-            str(idx),
-            theme,
-            desc,
-            f"[{status_style}]{status}[/{status_style}]"
+            str(idx), theme, desc, f"[{status_style}]{status}[/{status_style}]"
         )
-    
+
     output.print(table)
     output.print()
 
     # Get numeric or name input
     current_idx = themes.index(current) + 1 if current in themes else 1
     response = ask(
-        "Enter theme number (1-8) or name:",
-        default=str(current_idx),
-        show_default=True
+        "Enter theme number (1-8) or name:", default=str(current_idx), show_default=True
     )
 
     # Parse the response - could be number or theme name
@@ -121,14 +116,13 @@ async def interactive_theme_selection(context: "ChatContext", pref_manager) -> N
             if theme.lower() == response_lower:
                 theme_name = theme
                 break
-        
+
         if not theme_name:
             output.error(f"Unknown theme: {response}")
             output.hint(f"Valid themes: {', '.join(themes)}")
             return
-    
-    if theme_name and theme_name != current:
 
+    if theme_name and theme_name != current:
         # Apply and save theme
         set_theme(theme_name)
         pref_manager.set_theme(theme_name)
@@ -137,7 +131,7 @@ async def interactive_theme_selection(context: "ChatContext", pref_manager) -> N
         output.rule(f"Theme: {theme_name}")
         output.success(f"Theme switched to: {theme_name}")
         output.print()
-        
+
         # Show concise preview
         output.print("[bold]Preview:[/bold]")
         output.info("Information")
@@ -146,7 +140,7 @@ async def interactive_theme_selection(context: "ChatContext", pref_manager) -> N
         output.error("Error")
         output.hint("Hint")
         output.print()
-        output.print(f"Theme saved to your preferences.")
+        output.print("Theme saved to your preferences.")
     elif theme_name == current:
         output.info(f"Already using theme: {theme_name}")
 
@@ -154,23 +148,23 @@ async def interactive_theme_selection(context: "ChatContext", pref_manager) -> N
 # Register the command handler
 async def cmd_theme(parts: List[str], ctx: dict) -> bool:
     """Manage UI themes and color schemes.
-    
+
     Usage:
         /theme              - Open interactive theme selector with preview
         /theme <name>       - Switch to a specific theme directly
-        
+
     Available themes:
         default, dark, light, minimal, terminal, monokai, dracula, solarized
-        
+
     Examples:
         /theme              - Interactive selection
         /theme dark         - Switch to dark theme
         /theme monokai      - Switch to monokai theme
-        
+
     Themes are persisted across sessions and affect the entire CLI experience.
     """
     chat_context = ctx.get("chat_context")
-    
+
     # Extract arguments (skip the command itself)
     args = parts[1:] if len(parts) > 1 else []
     await handle_theme_command(chat_context, args)

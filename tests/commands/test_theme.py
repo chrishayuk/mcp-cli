@@ -7,7 +7,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from mcp_cli.commands.theme import theme_command
-from mcp_cli.utils.preferences import PreferenceManager, Theme
 
 
 class TestThemeCommand:
@@ -62,7 +61,9 @@ class TestThemeCommand:
     @patch("mcp_cli.commands.theme.get_preference_manager")
     @patch("mcp_cli.commands.theme.set_theme")
     @patch("mcp_cli.commands.theme.output")
-    def test_set_theme_valid(self, mock_output, mock_set_theme, mock_get_manager, mock_preview):
+    def test_set_theme_valid(
+        self, mock_output, mock_set_theme, mock_get_manager, mock_preview
+    ):
         """Test setting a valid theme."""
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
@@ -143,6 +144,6 @@ class TestThemeCommand:
         # Should not set any theme
         mock_set_theme.assert_not_called()
         mock_manager.set_theme.assert_not_called()
-        
+
         # Should show error
         mock_output.error.assert_called()

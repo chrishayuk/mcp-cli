@@ -13,6 +13,8 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from chuk_term.ui import output
+
 logger = logging.getLogger(__name__)
 
 # Global flag to ensure we only set up once
@@ -321,8 +323,8 @@ def process_options(
         enabled_from_requested = []
         for server in user_specified:
             if pref_manager.is_server_disabled(server):
-                logger.error(f"Server '{server}' is disabled and cannot be used")
-                logger.info(
+                output.warning(f"Server '{server}' is disabled and cannot be used")
+                output.hint(
                     f"To enable it, use: mcp-cli chat then /servers {server} enable"
                 )
             else:
@@ -330,8 +332,8 @@ def process_options(
         servers_list = enabled_from_requested
 
         if not servers_list and user_specified:
-            logger.error("All requested servers are disabled")
-            logger.info("Use 'mcp-cli servers' to see server status")
+            output.warning("All requested servers are disabled")
+            output.hint("Use 'mcp-cli servers' to see server status")
     else:
         # No specific servers requested - filter out disabled ones from preferences
         enabled_servers = []

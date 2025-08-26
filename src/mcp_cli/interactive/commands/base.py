@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class InteractiveCommand(ABC):
     """Base class for interactive mode commands.
-    
+
     All command classes should use 'help' as the attribute name for help text,
     though the constructor parameter is named 'help_text' for clarity.
     """
@@ -25,7 +25,7 @@ class InteractiveCommand(ABC):
 
     def __init__(self, name: str, help_text: str = "", aliases: List[str] = None):
         """Initialize command with name, help text, and optional aliases.
-        
+
         Args:
             name: Command name
             help_text: Help text for the command (stored as self.help)

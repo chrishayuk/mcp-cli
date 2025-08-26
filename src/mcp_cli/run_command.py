@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import logging
 import sys
 from typing import Any, Callable, Dict, List, Optional
 
@@ -23,6 +24,8 @@ from rich.panel import Panel
 from chuk_term.ui import output
 
 from mcp_cli.tools.manager import set_tool_manager  # only the setter
+
+logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------- #
 # internal helpers / globals                                                  #
@@ -52,6 +55,14 @@ async def _init_tool_manager(
     ok = await tm.initialize()  # Remove the hardcoded namespace parameter
 
     if not ok:
+        # Check if this is just because there are no servers
+        if not servers:
+            logger.info("No servers configured - continuing with empty tool manager")
+            # Still record and return the manager for chat without tools
+            set_tool_manager(tm)
+            _ALL_TM.append(tm)
+            return tm
+
         # record it for the tests
         _ALL_TM.append(tm)
         # ensure close() is still invoked
@@ -96,16 +107,7 @@ async def run_command(
         # ------------------------------------------------------------------
         # build ToolManager  (patch-friendly, see helper)
         # ------------------------------------------------------------------
-        try:
-            tm = await _init_tool_manager(config_file, servers, server_names)
-        except RuntimeError as e:
-            if "Failed to initialise ToolManager" in str(e):
-                # This is expected when no servers are available
-                from chuk_term.ui import output
-                output.error("No servers available to run this command")
-                output.info("Enable servers using: mcp-cli chat then /servers <name> enable")
-                return None
-            raise
+        tm = await _init_tool_manager(config_file, servers, server_names)
 
         # ------------------------------------------------------------------
         # special-case: interactive "app" object

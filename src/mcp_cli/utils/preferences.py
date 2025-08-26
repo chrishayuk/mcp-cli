@@ -45,11 +45,20 @@ class ProviderPreferences:
 
 
 @dataclass
+class ServerPreferences:
+    """Server-related preferences."""
+
+    disabled_servers: Dict[str, bool] = field(default_factory=dict)
+    server_settings: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class MCPPreferences:
     """Complete MCP CLI preferences."""
 
     ui: UIPreferences = field(default_factory=UIPreferences)
     provider: ProviderPreferences = field(default_factory=ProviderPreferences)
+    servers: ServerPreferences = field(default_factory=ServerPreferences)
     last_servers: Optional[str] = None
     config_file: Optional[str] = None
 
@@ -58,6 +67,7 @@ class MCPPreferences:
         return {
             "ui": asdict(self.ui),
             "provider": asdict(self.provider),
+            "servers": asdict(self.servers),
             "last_servers": self.last_servers,
             "config_file": self.config_file,
         }
@@ -67,12 +77,16 @@ class MCPPreferences:
         """Create preferences from dictionary."""
         ui_data = data.get("ui", {})
         provider_data = data.get("provider", {})
+        servers_data = data.get("servers", {})
 
         return cls(
             ui=UIPreferences(**ui_data) if ui_data else UIPreferences(),
             provider=ProviderPreferences(**provider_data)
             if provider_data
             else ProviderPreferences(),
+            servers=ServerPreferences(**servers_data)
+            if servers_data
+            else ServerPreferences(),
             last_servers=data.get("last_servers"),
             config_file=data.get("config_file"),
         )
@@ -202,6 +216,48 @@ class PreferenceManager:
         logs_dir = self.config_dir / "logs"
         logs_dir.mkdir(parents=True, exist_ok=True)
         return logs_dir
+
+    def is_server_disabled(self, server_name: str) -> bool:
+        """Check if a server is disabled in preferences.
+
+        Args:
+            server_name: Name of the server to check
+
+        Returns:
+            True if server is disabled, False otherwise
+        """
+        return self.preferences.servers.disabled_servers.get(server_name, False)
+
+    def set_server_disabled(self, server_name: str, disabled: bool = True) -> None:
+        """Set server disabled state in preferences.
+
+        Args:
+            server_name: Name of the server
+            disabled: Whether server should be disabled
+        """
+        if disabled:
+            self.preferences.servers.disabled_servers[server_name] = True
+        else:
+            # Remove from disabled list if enabling
+            self.preferences.servers.disabled_servers.pop(server_name, None)
+        self.save_preferences()
+
+    def enable_server(self, server_name: str) -> None:
+        """Enable a server in preferences."""
+        self.set_server_disabled(server_name, False)
+
+    def disable_server(self, server_name: str) -> None:
+        """Disable a server in preferences."""
+        self.set_server_disabled(server_name, True)
+
+    def get_disabled_servers(self) -> Dict[str, bool]:
+        """Get all disabled servers."""
+        return self.preferences.servers.disabled_servers.copy()
+
+    def clear_disabled_servers(self) -> None:
+        """Clear all disabled server preferences."""
+        self.preferences.servers.disabled_servers.clear()
+        self.save_preferences()
 
 
 # Global singleton instance

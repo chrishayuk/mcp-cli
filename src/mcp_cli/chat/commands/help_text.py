@@ -52,4 +52,6 @@ Themes are persisted across sessions and affect the entire CLI experience.
 """
 
 # You can concatenate these texts or export them separately as needed.
-ALL_HELP_TEXT = TOOL_COMMANDS_HELP + "\n" + CONVERSATION_COMMANDS_HELP + "\n" + UI_COMMANDS_HELP
+ALL_HELP_TEXT = (
+    TOOL_COMMANDS_HELP + "\n" + CONVERSATION_COMMANDS_HELP + "\n" + UI_COMMANDS_HELP
+)

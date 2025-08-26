@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 class BaseCommand(ABC):
     """Abstract base class for all MCP CLI commands.
-    
+
     All command classes should use 'help' as the attribute name for help text,
     though the constructor parameter is named 'help_text' for clarity.
     """
@@ -36,7 +36,7 @@ class BaseCommand(ABC):
 
     def __init__(self, name: str, help_text: str = ""):
         """Initialize command with name and help text.
-        
+
         Args:
             name: Command name
             help_text: Help text for the command (stored as self.help)

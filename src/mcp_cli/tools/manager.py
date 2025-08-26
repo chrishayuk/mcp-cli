@@ -182,8 +182,8 @@ class ToolManager:
                 logger.info("Setting up STDIO servers")
                 success = await self._setup_stdio_servers(namespace)
             else:
-                logger.error("No servers configured")
-                return False
+                logger.info("No servers configured - initializing with empty tool list")
+                success = await self._setup_empty_toolset()
 
             if not success:
                 logger.error("Server setup failed")
@@ -273,6 +273,46 @@ class ToolManager:
 
         except Exception as e:
             logger.error(f"STDIO server setup failed: {e}")
+            return False
+
+    async def _setup_empty_toolset(self) -> bool:
+        """Setup an empty tool processor when no servers are configured."""
+        try:
+            # Create a minimal mock processor that implements the required interface
+            class EmptyToolProcessor:
+                def __init__(self):
+                    self.tools = {}
+
+                async def execute_tool(self, *args, **kwargs):
+                    return {"error": "No tools available"}
+
+                def list_tools(self):
+                    return []
+
+                def get_tool(self, name):
+                    return None
+
+            class EmptyStreamManager:
+                def __init__(self):
+                    pass
+
+                async def stream(self, *args, **kwargs):
+                    yield {"error": "No streaming available"}
+                
+                async def close(self):
+                    """No-op close method for compatibility."""
+                    pass
+
+            # Create minimal processor and stream manager with no tools
+            self.processor = EmptyToolProcessor()
+            self.stream_manager = EmptyStreamManager()
+
+            logger.info(
+                "Initialized with empty tool set - chat mode available without tools"
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to setup empty toolset: {e}")
             return False
 
     async def _setup_common_components(self):
