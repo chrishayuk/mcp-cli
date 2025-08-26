@@ -96,7 +96,16 @@ async def run_command(
         # ------------------------------------------------------------------
         # build ToolManager  (patch-friendly, see helper)
         # ------------------------------------------------------------------
-        tm = await _init_tool_manager(config_file, servers, server_names)
+        try:
+            tm = await _init_tool_manager(config_file, servers, server_names)
+        except RuntimeError as e:
+            if "Failed to initialise ToolManager" in str(e):
+                # This is expected when no servers are available
+                from chuk_term.ui import output
+                output.error("No servers available to run this command")
+                output.info("Enable servers using: mcp-cli chat then /servers <name> enable")
+                return None
+            raise
 
         # ------------------------------------------------------------------
         # special-case: interactive "app" object
