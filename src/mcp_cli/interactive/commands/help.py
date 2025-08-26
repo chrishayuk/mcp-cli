@@ -12,7 +12,7 @@ Usage examples
 
 Why this file exists
 --------------------
-The CLI layer already has `mcp_cli.commands.help.help_action`.  
+The CLI layer already has `mcp_cli.commands.help.help_action`.
 This interactive wrapper merely:
 
 1.  Grabs a cross-platform Rich console via
@@ -26,7 +26,6 @@ from __future__ import annotations
 
 from typing import Any, List, Optional
 
-from mcp_cli.utils.rich_helpers import get_console
 from mcp_cli.commands.help import help_action
 from .base import InteractiveCommand
 
@@ -53,11 +52,10 @@ class HelpCommand(InteractiveCommand):
 
         *args* is everything after the command word.
         """
-        console = get_console()
 
         # First positional token (if any) is treated as command name.
         # Strip a leading “/” so users can type either form.
         cmd_name: Optional[str] = args[0].lstrip("/") if args else None
 
         # help_action is synchronous
-        help_action(cmd_name, console=console)
+        help_action(cmd_name)

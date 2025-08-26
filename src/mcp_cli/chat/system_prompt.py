@@ -3,6 +3,7 @@
 # llm imports
 from mcp_cli.llm.system_prompt_generator import SystemPromptGenerator
 
+
 def generate_system_prompt(tools):
     """Generate a concise system prompt for the assistant."""
     prompt_generator = SystemPromptGenerator()

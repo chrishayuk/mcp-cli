@@ -10,6 +10,7 @@ Run from the repo root, e.g.
 
 Requires `OPENAI_API_KEY` for OpenAI; load a local `.env` automatically.
 """
+
 from __future__ import annotations
 import argparse
 import asyncio
@@ -18,11 +19,11 @@ import sys
 from typing import Any, Dict, List
 from dotenv import load_dotenv
 
-# imports
+# imports
 from chuk_llm.llm.client import get_client
 from mcp_cli.llm.system_prompt_generator import SystemPromptGenerator
 
-# load environment variables
+# load environment variables
 load_dotenv()
 
 
@@ -52,6 +53,7 @@ async def run_llm_diagnostic(provider: str, model: str, prompt: str) -> None:
 
 
 # ────────────────────────────── CLI wrapper ──────────────────────────────
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Basic LLM diagnostic script")

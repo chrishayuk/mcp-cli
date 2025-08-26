@@ -21,7 +21,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 # Cross-platform Rich console (handles colour fallback on Windows / pipes)
-from mcp_cli.utils.rich_helpers import get_console
+from chuk_term.ui import output
 
 from mcp_cli.commands.model import model_action_async
 from mcp_cli.chat.commands import register_command
@@ -34,19 +34,18 @@ async def cmd_model(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D40
     """
     View or change the active LLM model.
 
-    * `/model`          - show current provider & model  
-    * `/model list`     - list available models for the active provider  
+    * `/model`          - show current provider & model
+    * `/model list`     - list available models for the active provider
     * `/model <name>`   - attempt to switch to **<name>** (probe first)
 
     The command passes its arguments verbatim to the shared helper and prints
     any errors in a user-friendly way.
     """
-    console = get_console()
 
     try:
         await model_action_async(parts[1:], context=ctx)
     except Exception as exc:  # pragma: no cover  - unexpected
-        console.print(f"[red]Model command failed:[/red] {exc}")
+        output.print(f"[red]Model command failed:[/red] {exc}")
     return True
 
 

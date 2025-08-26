@@ -11,6 +11,7 @@ Run from repo root, e.g.
 No environment variables are required, but the local *ollama* server
 must be running and the chosen model must be pulled.
 """
+
 from __future__ import annotations
 import argparse
 import asyncio
@@ -49,6 +50,7 @@ async def run_ollama_diagnostic(model: str, prompt: str) -> None:
 
 
 # ────────────────────────────── CLI wrapper ──────────────────────────────
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Ollama LLM diagnostic script")

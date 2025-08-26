@@ -11,6 +11,7 @@ How to use
 Both the chat & CLI layers call :pyfunc:`tools_action_async`; the
 blocking helper :pyfunc:`tools_action` exists only for legacy sync code.
 """
+
 from __future__ import annotations
 
 import json
@@ -24,14 +25,15 @@ from rich.table import Table
 from mcp_cli.tools.formatting import create_tools_table
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.utils.async_utils import run_blocking
-from mcp_cli.utils.rich_helpers import get_console
+from chuk_term.ui import output
 
 logger = logging.getLogger(__name__)
+
 
 # ────────────────────────────────────────────────────────────────────────────────
 # async (canonical) implementation
 # ────────────────────────────────────────────────────────────────────────────────
-async def tools_action_async(                    # noqa: D401
+async def tools_action_async(  # noqa: D401
     tm: ToolManager,
     *,
     show_details: bool = False,
@@ -54,12 +56,11 @@ async def tools_action_async(                    # noqa: D401
     list
         The list of tool-metadata dictionaries (always JSON-serialisable).
     """
-    console = get_console()
-    console.print("[cyan]\nFetching tool catalogue from all servers…[/cyan]")
+    output.print("[cyan]\nFetching tool catalogue from all servers…[/cyan]")
 
     all_tools = await tm.get_unique_tools()
     if not all_tools:
-        console.print("[yellow]No tools available from any server.[/yellow]")
+        output.print("[yellow]No tools available from any server.[/yellow]")
         logger.debug("ToolManager returned an empty tools list")
         return []
 
@@ -67,40 +68,44 @@ async def tools_action_async(                    # noqa: D401
     if show_raw:
         payload = [
             {
-                "name":        t.name,
-                "namespace":   t.namespace,
+                "name": t.name,
+                "namespace": t.namespace,
                 "description": t.description,
-                "parameters":  t.parameters,
-                "is_async":    getattr(t, "is_async", False),
-                "tags":        getattr(t, "tags", []),
-                "aliases":     getattr(t, "aliases", []),
+                "parameters": t.parameters,
+                "is_async": getattr(t, "is_async", False),
+                "tags": getattr(t, "tags", []),
+                "aliases": getattr(t, "aliases", []),
             }
             for t in all_tools
         ]
-        console.print(
-            Syntax(json.dumps(payload, indent=2, ensure_ascii=False),
-                   "json", line_numbers=True)
+        output.print(
+            Syntax(
+                json.dumps(payload, indent=2, ensure_ascii=False),
+                "json",
+                line_numbers=True,
+            )
         )
         return payload
 
     # ── Rich table mode ─────────────────────────────────────────────────
     table: Table = create_tools_table(all_tools, show_details=show_details)
-    console.print(table)
-    console.print(f"[green]Total tools available: {len(all_tools)}[/green]")
+    output.print(table)
+    output.print(f"[green]Total tools available: {len(all_tools)}[/green]")
 
     # Return a safe JSON structure (no .to_dict() needed)
     return [
         {
-            "name":        t.name,
-            "namespace":   t.namespace,
+            "name": t.name,
+            "namespace": t.namespace,
             "description": t.description,
-            "parameters":  t.parameters,
-            "is_async":    getattr(t, "is_async", False),
-            "tags":        getattr(t, "tags", []),
-            "aliases":     getattr(t, "aliases", []),
+            "parameters": t.parameters,
+            "is_async": getattr(t, "is_async", False),
+            "tags": getattr(t, "tags", []),
+            "aliases": getattr(t, "aliases", []),
         }
         for t in all_tools
     ]
+
 
 # ────────────────────────────────────────────────────────────────────────────────
 # sync wrapper - for legacy CLI paths
@@ -122,5 +127,6 @@ def tools_action(
     return run_blocking(
         tools_action_async(tm, show_details=show_details, show_raw=show_raw)
     )
+
 
 __all__ = ["tools_action_async", "tools_action"]

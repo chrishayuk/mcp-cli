@@ -2,7 +2,7 @@
 import time
 from typing import Dict, List
 
-# imports
+# imports
 from chuk_tool_processor.registry.decorators import register_tool
 from chuk_tool_processor.models.validated_tool import ValidatedTool
 
@@ -20,12 +20,12 @@ class SearchTool(ValidatedTool):
 
     def _execute(self, query: str, num_results: int) -> Dict:
         """Simulate web search."""
-        time.sleep(0.8)                      # pretend latency
+        time.sleep(0.8)  # pretend latency
         return {
             "results": [
                 {
-                    "title": f"Result {i+1} for {query}",
-                    "url": f"https://example.com/result{i+1}",
+                    "title": f"Result {i + 1} for {query}",
+                    "url": f"https://example.com/result{i + 1}",
                     "snippet": f"This is a search result about {query}.",
                 }
                 for i in range(num_results)

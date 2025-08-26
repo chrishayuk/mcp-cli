@@ -2,6 +2,7 @@
 """
 CLI binding for “resources list”.
 """
+
 from __future__ import annotations
 
 import logging

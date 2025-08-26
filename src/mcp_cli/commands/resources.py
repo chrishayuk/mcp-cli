@@ -16,6 +16,7 @@ Compared with the old module:
 * Doc-string starts with a one-line summary, so `/help` shows a nice
   description instead of “No description”.
 """
+
 from __future__ import annotations
 import inspect
 from typing import Any, Dict, List
@@ -24,7 +25,7 @@ from rich.table import Table
 # mcp cli
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.utils.async_utils import run_blocking
-from mcp_cli.utils.rich_helpers import get_console
+from chuk_term.ui import output
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -50,7 +51,6 @@ async def resources_action_async(tm: ToolManager) -> List[Dict[str, Any]]:
 
     Returns the raw list to allow callers to re-use the data programmatically.
     """
-    console = get_console()
 
     # Most MCP servers expose list_resources() as an awaitable, but some
     # adapters might return a plain list - handle both.
@@ -58,29 +58,29 @@ async def resources_action_async(tm: ToolManager) -> List[Dict[str, Any]]:
         maybe = tm.list_resources()
         resources = await maybe if inspect.isawaitable(maybe) else maybe  # type: ignore[arg-type]
     except Exception as exc:  # noqa: BLE001
-        console.print(f"[red]Error:[/red] {exc}")
+        output.print(f"[red]Error:[/red] {exc}")
         return []
 
     resources = resources or []
     if not resources:
-        console.print("[dim]No resources recorded.[/dim]")
+        output.print("[dim]No resources recorded.[/dim]")
         return resources
 
     table = Table(title="Resources", header_style="bold magenta")
     table.add_column("Server", style="cyan")
-    table.add_column("URI",    style="yellow")
-    table.add_column("Size",   justify="right")
+    table.add_column("URI", style="yellow")
+    table.add_column("Size", justify="right")
     table.add_column("MIME-type")
 
     for item in resources:
         table.add_row(
             item.get("server", "-"),
-            item.get("uri",    "-"),
+            item.get("uri", "-"),
             _human_size(item.get("size")),
             item.get("mimeType", "-"),
         )
 
-    console.print(table)
+    output.print(table)
     return resources
 
 

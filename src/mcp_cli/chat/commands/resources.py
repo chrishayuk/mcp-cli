@@ -41,7 +41,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 # Cross-platform Rich console helper
-from mcp_cli.utils.rich_helpers import get_console
+from chuk_term.ui import output
 
 # Shared async helper
 from mcp_cli.commands.resources import resources_action_async
@@ -60,11 +60,10 @@ async def cmd_resources(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa
     -----
       /resources      - show resources
     """
-    console = get_console()
 
     tm: ToolManager | None = ctx.get("tool_manager")
     if tm is None:
-        console.print("[red]Error:[/red] ToolManager not available.")
+        output.print("[red]Error:[/red] ToolManager not available.")
         return True  # command handled
 
     # Delegate to the canonical async implementation

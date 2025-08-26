@@ -14,7 +14,7 @@ Display Modes
 
 The mode affects:
 - Tool execution display
-- Streaming response formatting  
+- Streaming response formatting
 - Progress indicators
 
 Features
@@ -35,10 +35,11 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 # Cross-platform Rich console helper
-from mcp_cli.utils.rich_helpers import get_console
+from chuk_term.ui import output
 
 # Chat-command registry
 from mcp_cli.chat.commands import register_command
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # Command handler
@@ -51,14 +52,13 @@ async def verbose_command(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # no
     -----
       /verbose    - toggle display mode
       /v          - short alias
-    
+
     Modes
     -----
     * **Verbose**: Shows full tool call details with JSON arguments
     * **Compact**: Shows condensed progress with animations (default)
     """
-    console = get_console()
-    
+
     # Get UI manager from context
     ui_manager = ctx.get("ui_manager")
     if not ui_manager:
@@ -66,38 +66,39 @@ async def verbose_command(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # no
         context_obj = ctx.get("context")
         if context_obj and hasattr(context_obj, "ui_manager"):
             ui_manager = context_obj.ui_manager
-    
+
     if not ui_manager:
-        console.print("[red]Error:[/red] UI manager not available.")
+        output.print("[red]Error:[/red] UI manager not available.")
         return True
-    
+
     # Toggle verbose mode
     current_mode = getattr(ui_manager, "verbose_mode", False)
     new_mode = not current_mode
     ui_manager.verbose_mode = new_mode
-    
+
     # Update any streaming handlers if they exist
     streaming_handler = getattr(ui_manager, "streaming_handler", None)
     if streaming_handler and hasattr(streaming_handler, "verbose_mode"):
         streaming_handler.verbose_mode = new_mode
-    
+
     # Show status
     mode_name = "verbose" if new_mode else "compact"
     mode_desc = (
-        "full tool details and expanded responses" if new_mode 
+        "full tool details and expanded responses"
+        if new_mode
         else "condensed progress and animations"
     )
-    
-    console.print(f"[green]Display mode:[/green] {mode_name}")
-    console.print(f"[dim]Shows {mode_desc}[/dim]")
-    
+
+    output.print(f"[green]Display mode:[/green] {mode_name}")
+    output.print(f"[dim]Shows {mode_desc}[/dim]")
+
     # If tools are currently running, show how the change affects them
     if getattr(ui_manager, "tools_running", False):
         if new_mode:
-            console.print("[cyan]Future tool calls will show full details.[/cyan]")
+            output.print("[cyan]Future tool calls will show full details.[/cyan]")
         else:
-            console.print("[cyan]Switched to compact tool progress display.[/cyan]")
-    
+            output.print("[cyan]Switched to compact tool progress display.[/cyan]")
+
     return True
 
 

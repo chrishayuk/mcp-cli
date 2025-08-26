@@ -2,10 +2,11 @@
 """
 Command registry for MCP-CLI - central place to register & discover commands.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 import typer
 
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 class CommandRegistry:
     """Central registry holding every CLI command object."""
+
     _commands: Dict[str, BaseCommand] = {}
 
     # ── registration helpers ─────────────────────────────────────────
@@ -81,11 +83,17 @@ class CommandRegistry:
 
                 def command_wrapper(
                     *,
-                    config_file: str = typer.Option("server_config.json", help="Configuration file path"),
-                    server: str | None = typer.Option(None, help="Server to connect to"),
+                    config_file: str = typer.Option(
+                        "server_config.json", help="Configuration file path"
+                    ),
+                    server: str | None = typer.Option(
+                        None, help="Server to connect to"
+                    ),
                     provider: str = typer.Option("openai", help="LLM provider name"),
                     model: str | None = typer.Option(None, help="Model name"),
-                    disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
+                    disable_filesystem: bool = typer.Option(
+                        False, help="Disable filesystem access"
+                    ),
                 ) -> None:
                     """Dynamically generated Typer wrapper."""
                     from mcp_cli.cli_options import process_options
@@ -108,15 +116,19 @@ class CommandRegistry:
                     )
 
                 # carry original help text safely
-                help_str = getattr(command, "help_text", None) or getattr(command, "help", "")
+                help_str = getattr(command, "help_text", None) or getattr(
+                    command, "help", ""
+                )
                 command_wrapper.__doc__ = help_str or "Sub-command wrapper"
                 return command_wrapper
 
             # Extract help text from the command
-            cmd_help = getattr(cmd_obj, "help_text", None) or getattr(cmd_obj, "help", "")
+            cmd_help = getattr(cmd_obj, "help_text", None) or getattr(
+                cmd_obj, "help", ""
+            )
             if not cmd_help:
                 cmd_help = f"Execute the {full_name} command"
-            
+
             # Register with explicit help text
             wrapper = _make_wrapper(cmd_obj)
             subapp.command(sub_name, help=cmd_help)(wrapper)

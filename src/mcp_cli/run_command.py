@@ -1,4 +1,4 @@
-# mcp_cli/run_command.py
+# mcp_cli/run_command.py - COMPLETE FIXED VERSION
 """
 Main entry-point helpers for all CLI sub-commands.
 
@@ -7,25 +7,30 @@ These helpers encapsulate
 * construction / cleanup of the shared **ToolManager**
 * hand-off to individual command modules
 * a thin synchronous wrapper so `uv run mcp-cli …` works
+
+ENHANCED: Now properly handles namespace selection for HTTP vs STDIO servers.
 """
+
 from __future__ import annotations
 
 import asyncio
 import importlib
+import logging
 import sys
-from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable, Coroutine, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import typer
-from rich.console import Console
 from rich.panel import Panel
+from chuk_term.ui import output
 
 from mcp_cli.tools.manager import set_tool_manager  # only the setter
+
+logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------- #
 # internal helpers / globals                                                  #
 # --------------------------------------------------------------------------- #
-_ALL_TM: List[Any] = []           # referenced by the unit-tests
+_ALL_TM: List[Any] = []  # referenced by the unit-tests
 
 
 # --------------------------------------------------------------------------- #
@@ -38,13 +43,26 @@ async def _init_tool_manager(
 ):
     """
     Dynamically import **ToolManager** (so monkey-patching works) and create it.
+    ENHANCED: Automatically selects appropriate namespace based on server type.
     """
     tm_mod = importlib.import_module("mcp_cli.tools.manager")
-    ToolManager = getattr(tm_mod, "ToolManager")           # patched in tests
+    ToolManager = getattr(tm_mod, "ToolManager")  # patched in tests
 
-    tm = ToolManager(config_file, servers, server_names)   # type: ignore[call-arg]
-    ok = await tm.initialize(namespace="stdio")
+    tm = ToolManager(config_file, servers, server_names)  # type: ignore[call-arg]
+
+    # ENHANCED: Let ToolManager automatically select the namespace
+    # It will use the server name for HTTP servers, "stdio" for STDIO servers
+    ok = await tm.initialize()  # Remove the hardcoded namespace parameter
+
     if not ok:
+        # Check if this is just because there are no servers
+        if not servers:
+            logger.info("No servers configured - continuing with empty tool manager")
+            # Still record and return the manager for chat without tools
+            set_tool_manager(tm)
+            _ALL_TM.append(tm)
+            return tm
+
         # record it for the tests
         _ALL_TM.append(tm)
         # ensure close() is still invoked
@@ -62,7 +80,7 @@ async def _safe_close(tm) -> None:
     """Close the ToolManager, swallowing any exception during shutdown."""
     try:
         await tm.close()
-    except Exception:        # noqa: BLE001
+    except Exception:  # noqa: BLE001
         pass
 
 
@@ -92,7 +110,7 @@ async def run_command(
         tm = await _init_tool_manager(config_file, servers, server_names)
 
         # ------------------------------------------------------------------
-        # special-case: interactive “app” object
+        # special-case: interactive "app" object
         # ------------------------------------------------------------------
         name = getattr(async_command, "__name__", "")
         module = getattr(async_command, "__module__", "")
@@ -212,7 +230,6 @@ def cli_entry(
     """
     Thin wrapper so `uv run mcp-cli chat` (or `interactive`) is minimal.
     """
-    console = Console()
 
     async def _inner() -> None:
         if mode not in {"chat", "interactive"}:
@@ -234,6 +251,6 @@ def cli_entry(
 
     try:
         asyncio.run(_inner())
-    except Exception as exc:        # noqa: BLE001 – show nicely then exit
-        console.print(Panel(str(exc), title="Fatal Error", style="bold red"))
+    except Exception as exc:  # noqa: BLE001 – show nicely then exit
+        output.print(Panel(str(exc), title="Fatal Error", style="bold red"))
         sys.exit(1)

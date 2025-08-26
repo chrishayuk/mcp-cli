@@ -40,12 +40,13 @@ from mcp_cli.llm.system_prompt_generator import SystemPromptGenerator
 
 load_dotenv()
 
+
 def ensure_async(tool_obj: Any) -> Any:
     """
     If *tool_obj* exposes a synchronous ._execute / .run / .execute / .__call__,
     replace that method with an async wrapper so the executor can await it.
     """
-    for meth_name in ("_execute", "run", "execute", "__call__"):   # ← added _execute
+    for meth_name in ("_execute", "run", "execute", "__call__"):  # ← added _execute
         if not hasattr(tool_obj, meth_name):
             continue
         method = getattr(tool_obj, meth_name)
@@ -53,8 +54,10 @@ def ensure_async(tool_obj: Any) -> Any:
             continue  # already async
 
         if callable(method):
+
             async def _async_wrap(*args, _orig=method, **kwargs):
                 return _orig(*args, **kwargs)
+
             setattr(tool_obj, meth_name, _async_wrap)
 
     return tool_obj
@@ -150,8 +153,8 @@ async def async_main() -> None:
 
     # 1) registry & tool registration
     registry = await ToolRegistryProvider.get_registry()
-    await registry.register_tool(ensure_async(SearchTool()),     name="search")   # ★
-    await registry.register_tool(ensure_async(WeatherTool()),    name="weather")  # ★
+    await registry.register_tool(ensure_async(SearchTool()), name="search")  # ★
+    await registry.register_tool(ensure_async(WeatherTool()), name="weather")  # ★
     await registry.register_tool(ensure_async(CalculatorTool()), name="calculator")
 
     # 2) executor
@@ -163,7 +166,9 @@ async def async_main() -> None:
     # 3) build tools-v2 schema (openai_functions already returns v2 now)
     raw_specs = await openai_functions()
     tools_schema: List[Dict[str, Any]] = [
-        spec if spec.get("type") == "function" else {"type": "function", "function": to_plain_dict(spec)}
+        spec
+        if spec.get("type") == "function"
+        else {"type": "function", "function": to_plain_dict(spec)}
         for spec in raw_specs  # type: ignore[dict-item]
     ]
 

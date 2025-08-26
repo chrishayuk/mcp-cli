@@ -5,18 +5,18 @@ CLI binding for "provider" management commands.
 All heavy-lifting is delegated to the shared helper:
     mcp_cli.commands.provider.provider_action_async
 """
+
 from __future__ import annotations
 
 import logging
 from typing import Any
 
 import typer
-from rich.console import Console
+from chuk_term.ui import output
 
 from mcp_cli.commands.provider import provider_action_async
 from mcp_cli.model_manager import ModelManager
 from mcp_cli.cli.commands.base import BaseCommand
-from mcp_cli.tools.manager import get_tool_manager
 from mcp_cli.utils.async_utils import run_blocking
 
 log = logging.getLogger(__name__)
@@ -32,12 +32,11 @@ def _call_shared_helper(argv: list[str]) -> None:
         "model_manager": ModelManager(),
         # The CLI path has no session client – we omit "client"
     }
-    
+
     try:
         run_blocking(provider_action_async(argv, context=ctx))
     except Exception as e:
-        console = Console()
-        console.print(f"[red]Provider command failed:[/red] {e}")
+        output.print(f"[red]Provider command failed:[/red] {e}")
         log.exception("Provider command error")
 
 
@@ -61,7 +60,7 @@ def provider_config() -> None:
 
 @app.command("diagnostic", help="Run provider diagnostics")
 def provider_diagnostic(
-    provider_name: str = typer.Argument(None, help="Provider to diagnose (optional)")
+    provider_name: str = typer.Argument(None, help="Provider to diagnose (optional)"),
 ) -> None:
     """Run diagnostics on providers to check their configuration and connectivity."""
     args = ["diagnostic"]
@@ -78,7 +77,7 @@ def provider_set(
 ) -> None:
     """
     Set a configuration value for a provider.
-    
+
     Examples:
         mcp-cli provider set openai api_key sk-your-key
         mcp-cli provider set anthropic api_base https://api.anthropic.com
@@ -94,7 +93,7 @@ def provider_switch(
 ) -> None:
     """
     Switch to a specific provider and optionally a model.
-    
+
     Examples:
         mcp-cli provider switch anthropic
         mcp-cli provider switch openai gpt-4o
@@ -114,18 +113,18 @@ def provider_callback(
 ) -> None:
     """
     Provider management. If no subcommand given, show status or switch provider.
-    
+
     Usage:
         mcp-cli provider                    # Show current status
         mcp-cli provider list              # List providers
         mcp-cli provider anthropic         # Switch to Anthropic
         mcp-cli provider openai --model gpt-4o  # Switch to OpenAI with model
     """
-    
+
     # If a subcommand was invoked, let it handle things
     if ctx.invoked_subcommand is not None:
         return
-    
+
     # No subcommand provided
     if provider_name is None:
         # Show current status
@@ -160,7 +159,7 @@ class ProviderCommand(BaseCommand):
         argv: list[str] = []
 
         sub = params.get("subcommand", "show")
-        
+
         if sub == "show":
             # Show current status
             argv = []
@@ -179,7 +178,7 @@ class ProviderCommand(BaseCommand):
             for arg in ("provider_name", "key", "value"):
                 val = params.get(arg)
                 if val is None:
-                    Console().print(f"[red]Missing {arg} for 'set'[/red]")
+                    output.print(f"[red]Missing {arg} for 'set'[/red]")
                     return
                 argv.append(str(val))
         else:
@@ -192,9 +191,9 @@ class ProviderCommand(BaseCommand):
         context: dict[str, Any] = {
             "model_manager": ModelManager(),
         }
-        
+
         try:
             await provider_action_async(argv, context=context)
         except Exception as e:
-            Console().print(f"[red]Provider command failed:[/red] {e}")
+            output.print(f"[red]Provider command failed:[/red] {e}")
             log.exception("Provider command error in interactive mode")

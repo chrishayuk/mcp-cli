@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 # ─── Typer sub‐app ───────────────────────────────────────────────────────────
 app = typer.Typer(help="Call a specific tool with arguments")
 
+
 @app.command("run")
 def tools_call_run() -> None:
     """
@@ -40,8 +41,7 @@ class ToolsCallCommand(BaseCommand):
 
     def __init__(self):
         super().__init__(
-            name="tools call",
-            help_text="Call a specific tool with arguments."
+            name="tools call", help_text="Call a specific tool with arguments."
         )
 
     async def execute(self, tool_manager: Any, **params: Any) -> None:

@@ -4,10 +4,11 @@ import logging
 from pathlib import Path
 from typing import Dict, Any
 
+
 async def load_config(config_path: str, server_name: str = None) -> Dict[str, Any]:
     """
     Load the server configuration from a JSON file.
-    
+
     FIXED: Updated to work with current chuk-tool-processor APIs instead of old chuk_mcp.
     """
     try:
@@ -18,7 +19,7 @@ async def load_config(config_path: str, server_name: str = None) -> Dict[str, An
         config_file_path = Path(config_path)
         if not config_file_path.exists():
             raise FileNotFoundError(f"Configuration file not found: {config_path}")
-            
+
         with open(config_file_path, "r") as config_file:
             config = json.load(config_file)
 
@@ -29,18 +30,18 @@ async def load_config(config_path: str, server_name: str = None) -> Dict[str, An
                 error_msg = f"Server '{server_name}' not found in configuration file."
                 logging.error(error_msg)
                 raise ValueError(error_msg)
-            
+
             # Return in format expected by chuk-tool-processor
             return {
                 "command": server_config["command"],
                 "args": server_config.get("args", []),
                 "env": server_config.get("env", {}),
             }
-        
+
         # Return entire config
         return config
 
-    except FileNotFoundError as e:
+    except FileNotFoundError:
         logging.error(f"Configuration file not found: {config_path}")
         raise
     except json.JSONDecodeError as e:

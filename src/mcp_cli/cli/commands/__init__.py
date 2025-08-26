@@ -18,7 +18,7 @@ def register_all_commands() -> None:
     from mcp_cli.cli.commands.tools_call import ToolsCallCommand
     from mcp_cli.cli.commands.prompts import PromptsListCommand
     from mcp_cli.cli.commands.resources import ResourcesListCommand
-    from mcp_cli.cli.commands.servers import ServersListCommand        # ← NEW
+    from mcp_cli.cli.commands.servers import ServersListCommand  # ← NEW
 
     # Register everything in the central registry
     CommandRegistry.register(InteractiveCommand())
@@ -31,4 +31,4 @@ def register_all_commands() -> None:
     CommandRegistry.register(ToolsCallCommand())
     CommandRegistry.register(PromptsListCommand())
     CommandRegistry.register(ResourcesListCommand())
-    CommandRegistry.register(ServersListCommand())                     # ← NEW
+    CommandRegistry.register(ServersListCommand())  # ← NEW

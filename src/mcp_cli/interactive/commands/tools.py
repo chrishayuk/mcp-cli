@@ -3,13 +3,14 @@
 Interactive **tools** command - list all tools or launch the “call-a-tool”
 helper inside the *interactive shell* (not the chat TUI).
 """
+
 from __future__ import annotations
 
 import logging
 from typing import Any, List
 
-from mcp_cli.utils.rich_helpers import get_console          # ← NEW
-from mcp_cli.commands.tools import tools_action_async        # shared async helper
+from chuk_term.ui import output  # ← NEW
+from mcp_cli.commands.tools import tools_action_async  # shared async helper
 from mcp_cli.commands.tools_call import tools_call_action
 from mcp_cli.tools.manager import ToolManager
 from .base import InteractiveCommand
@@ -35,17 +36,15 @@ class ToolsCommand(InteractiveCommand):
         )
 
     # ────────────────────────────────────────────────────────────────
-    async def execute(                      # noqa: D401
+    async def execute(  # noqa: D401
         self,
         args: List[str],
         tool_manager: ToolManager | None = None,
         **_: Any,
     ) -> None:
-        console = get_console()
-
         # Ensure ToolManager exists
         if tool_manager is None:
-            console.print("[red]Error:[/red] ToolManager not available.")
+            output.print("[red]Error:[/red] ToolManager not available.")
             log.debug("ToolsCommand executed without a ToolManager instance.")
             return
 
@@ -56,7 +55,7 @@ class ToolsCommand(InteractiveCommand):
 
         # Otherwise list tools
         show_details = "--all" in args
-        show_raw     = "--raw" in args
+        show_raw = "--raw" in args
         await tools_action_async(
             tool_manager,
             show_details=show_details,
