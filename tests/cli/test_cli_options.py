@@ -2,7 +2,7 @@
 import json
 import os
 import logging
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import pytest
 
@@ -332,3 +332,185 @@ def test_process_options_quiet_mode(mock_discovery, monkeypatch, tmp_path, caplo
     # The modified config should have been created
     # Check that environment contains path to modified config
     assert "MCP_CLI_MODIFIED_CONFIG" in os.environ
+
+
+@patch("mcp_cli.cli_options.trigger_discovery_after_setup")
+@patch("mcp_cli.utils.preferences.get_preference_manager")
+def test_process_options_disabled_server_blocked(
+    mock_pref_manager, mock_discovery, monkeypatch, tmp_path, caplog
+):
+    """Test that disabled servers are blocked even when explicitly requested."""
+    mock_discovery.return_value = 0
+
+    # Mock preference manager to mark server as disabled
+    mock_pm = MagicMock()
+    mock_pm.is_server_disabled.return_value = True
+    mock_pref_manager.return_value = mock_pm
+
+    config_content = {
+        "mcpServers": {
+            "DisabledServer": {"command": "disabled-cmd", "args": []},
+            "EnabledServer": {"command": "enabled-cmd", "args": []},
+        }
+    }
+    config_file = tmp_path / "test_config.json"
+    config_file.write_text(json.dumps(config_content))
+
+    with monkeypatch.context() as m:
+        m.setenv("LLM_PROVIDER", "test")
+        m.setenv("LLM_MODEL", "test-model")
+
+        # Test with explicitly requesting disabled server
+        servers_list, specified, server_names = process_options(
+            server="DisabledServer",
+            disable_filesystem=True,
+            provider="openai",
+            model="gpt-4",
+            config_file=str(config_file),
+            quiet=False,
+        )
+
+        # Should return empty servers list since server is disabled
+        assert servers_list == []
+        # specified should still contain what was requested
+        assert specified == ["DisabledServer"]
+
+        # Should have logged error about disabled server
+        assert any(
+            "disabled and cannot be used" in record.message for record in caplog.records
+        )
+        assert any("DisabledServer" in record.message for record in caplog.records)
+
+
+@patch("mcp_cli.cli_options.trigger_discovery_after_setup")
+@patch("mcp_cli.utils.preferences.get_preference_manager")
+def test_process_options_mixed_enabled_disabled(
+    mock_pref_manager, mock_discovery, monkeypatch, tmp_path
+):
+    """Test requesting both enabled and disabled servers."""
+    mock_discovery.return_value = 0
+
+    # Mock preference manager - only Server2 is disabled
+    mock_pm = MagicMock()
+
+    def is_disabled(server_name):
+        return server_name == "Server2"
+
+    mock_pm.is_server_disabled.side_effect = is_disabled
+    mock_pref_manager.return_value = mock_pm
+
+    config_content = {
+        "mcpServers": {
+            "Server1": {"command": "cmd1", "args": []},
+            "Server2": {"command": "cmd2", "args": []},
+            "Server3": {"command": "cmd3", "args": []},
+        }
+    }
+    config_file = tmp_path / "test_config.json"
+    config_file.write_text(json.dumps(config_content))
+
+    with monkeypatch.context() as m:
+        m.setenv("LLM_PROVIDER", "test")
+        m.setenv("LLM_MODEL", "test-model")
+
+        # Request multiple servers including disabled one
+        servers_list, specified, server_names = process_options(
+            server="Server1,Server2,Server3",
+            disable_filesystem=True,
+            provider="openai",
+            model="gpt-4",
+            config_file=str(config_file),
+            quiet=False,
+        )
+
+        # Should only return enabled servers
+        assert "Server1" in servers_list
+        assert "Server2" not in servers_list  # Disabled
+        assert "Server3" in servers_list
+        assert len(servers_list) == 2
+
+
+@patch("mcp_cli.cli_options.trigger_discovery_after_setup")
+@patch("mcp_cli.utils.preferences.get_preference_manager")
+def test_process_options_no_servers_when_all_disabled(
+    mock_pref_manager, mock_discovery, monkeypatch, tmp_path, caplog
+):
+    """Test that no servers are loaded when all are disabled."""
+    mock_discovery.return_value = 0
+
+    # Mock preference manager - all servers disabled
+    mock_pm = MagicMock()
+    mock_pm.is_server_disabled.return_value = True
+    mock_pref_manager.return_value = mock_pm
+
+    config_content = {
+        "mcpServers": {
+            "Server1": {"command": "cmd1", "args": []},
+            "Server2": {"command": "cmd2", "args": []},
+        }
+    }
+    config_file = tmp_path / "test_config.json"
+    config_file.write_text(json.dumps(config_content))
+
+    with monkeypatch.context() as m:
+        m.setenv("LLM_PROVIDER", "test")
+        m.setenv("LLM_MODEL", "test-model")
+
+        # Request servers when all are disabled
+        servers_list, specified, server_names = process_options(
+            server=None,  # No specific servers, should check all
+            disable_filesystem=True,
+            provider="openai",
+            model="gpt-4",
+            config_file=str(config_file),
+            quiet=False,
+        )
+
+        # Should return empty list
+        assert servers_list == []
+        # specified is empty list when no servers are requested
+        assert specified == []
+
+        # Should have logged warning
+        assert any(
+            "No enabled servers found" in record.message for record in caplog.records
+        )
+
+
+@patch("mcp_cli.cli_options.trigger_discovery_after_setup")
+@patch("mcp_cli.utils.preferences.get_preference_manager")
+def test_extract_server_names_with_disabled(
+    mock_pref_manager, mock_discovery, tmp_path
+):
+    """Test that extract_server_names respects disabled status."""
+    mock_discovery.return_value = 0
+
+    # Mock preference manager
+    mock_pm = MagicMock()
+
+    def is_disabled(server_name):
+        return server_name == "DisabledServer"
+
+    mock_pm.is_server_disabled.side_effect = is_disabled
+    mock_pref_manager.return_value = mock_pm
+
+    config = {
+        "mcpServers": {
+            "EnabledServer": {"command": "cmd1", "args": []},
+            "DisabledServer": {"command": "cmd2", "args": []},
+            "AnotherEnabled": {"command": "cmd3", "args": []},
+        }
+    }
+
+    # Test without specifying servers - should filter disabled
+    server_names = extract_server_names(config, None)
+    assert "EnabledServer" in server_names.values()
+    assert "DisabledServer" not in server_names.values()
+    assert "AnotherEnabled" in server_names.values()
+
+    # Test with explicitly specifying servers - includes all specified that exist
+    server_names = extract_server_names(config, ["EnabledServer", "DisabledServer"])
+    assert "EnabledServer" in server_names.values()
+    assert (
+        "DisabledServer" in server_names.values()
+    )  # Included when explicitly specified

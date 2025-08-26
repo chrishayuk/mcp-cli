@@ -1,6 +1,5 @@
 """Tests for preference management system."""
 
-import json
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -58,9 +57,12 @@ class TestMCPPreferences:
     def test_to_dict(self):
         """Test converting preferences to dictionary."""
         from mcp_cli.utils.preferences import UIPreferences, ProviderPreferences
+
         prefs = MCPPreferences(
             ui=UIPreferences(theme="dark"),
-            provider=ProviderPreferences(active_provider="ollama", active_model="gpt-oss")
+            provider=ProviderPreferences(
+                active_provider="ollama", active_model="gpt-oss"
+            ),
         )
         result = prefs.to_dict()
         assert result["ui"]["theme"] == "dark"
@@ -78,7 +80,7 @@ class TestMCPPreferences:
             "provider": {
                 "active_provider": "openai",
                 "active_model": "gpt-4",
-            }
+            },
         }
         prefs = MCPPreferences.from_dict(data)
         assert prefs.ui.theme == "monokai"
@@ -120,7 +122,6 @@ class TestPreferenceManager:
     def test_save_and_load_preferences(self):
         """Test saving and loading preferences."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            from mcp_cli.utils.preferences import UIPreferences, ProviderPreferences
             config_dir = Path(tmpdir) / ".mcp-cli"
             manager = PreferenceManager(config_dir=config_dir)
 
@@ -233,7 +234,7 @@ class TestPreferenceManager:
         """Test loading partial preferences file."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir) / ".mcp-cli"
-            manager = PreferenceManager(config_dir=config_dir)
+            PreferenceManager(config_dir=config_dir)  # Create initial manager
 
             # Write partial preferences (with correct nested structure)
             config_dir.mkdir(parents=True, exist_ok=True)
@@ -246,6 +247,129 @@ class TestPreferenceManager:
             assert new_manager.preferences.ui.theme == "dracula"
             assert new_manager.preferences.provider.active_provider is None
             assert new_manager.preferences.ui.confirm_tools is True
+
+
+class TestServerPreferences:
+    """Test server enable/disable preferences."""
+
+    def test_server_disabled_by_default(self):
+        """Test that servers are enabled by default."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dir = Path(tmpdir) / ".mcp-cli"
+            manager = PreferenceManager(config_dir=config_dir)
+
+            # Servers should be enabled by default
+            assert not manager.is_server_disabled("test_server")
+            assert not manager.is_server_disabled("another_server")
+
+    def test_disable_server(self):
+        """Test disabling a server."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dir = Path(tmpdir) / ".mcp-cli"
+            manager = PreferenceManager(config_dir=config_dir)
+
+            # Disable a server
+            manager.disable_server("test_server")
+
+            # Check it's disabled
+            assert manager.is_server_disabled("test_server")
+            assert not manager.is_server_disabled("another_server")
+
+            # Check persistence
+            manager2 = PreferenceManager(config_dir=config_dir)
+            assert manager2.is_server_disabled("test_server")
+
+    def test_enable_server(self):
+        """Test enabling a previously disabled server."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dir = Path(tmpdir) / ".mcp-cli"
+            manager = PreferenceManager(config_dir=config_dir)
+
+            # Disable then enable
+            manager.disable_server("test_server")
+            assert manager.is_server_disabled("test_server")
+
+            manager.enable_server("test_server")
+            assert not manager.is_server_disabled("test_server")
+
+            # Check persistence
+            manager2 = PreferenceManager(config_dir=config_dir)
+            assert not manager2.is_server_disabled("test_server")
+
+    def test_set_server_disabled(self):
+        """Test set_server_disabled method."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dir = Path(tmpdir) / ".mcp-cli"
+            manager = PreferenceManager(config_dir=config_dir)
+
+            # Test disabling
+            manager.set_server_disabled("server1", True)
+            assert manager.is_server_disabled("server1")
+
+            # Test enabling
+            manager.set_server_disabled("server1", False)
+            assert not manager.is_server_disabled("server1")
+
+    def test_get_disabled_servers(self):
+        """Test getting all disabled servers."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dir = Path(tmpdir) / ".mcp-cli"
+            manager = PreferenceManager(config_dir=config_dir)
+
+            # Initially empty
+            assert manager.get_disabled_servers() == {}
+
+            # Disable multiple servers
+            manager.disable_server("server1")
+            manager.disable_server("server2")
+
+            disabled = manager.get_disabled_servers()
+            assert "server1" in disabled
+            assert "server2" in disabled
+            assert disabled["server1"] is True
+            assert disabled["server2"] is True
+
+    def test_clear_disabled_servers(self):
+        """Test clearing all disabled server preferences."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dir = Path(tmpdir) / ".mcp-cli"
+            manager = PreferenceManager(config_dir=config_dir)
+
+            # Disable some servers
+            manager.disable_server("server1")
+            manager.disable_server("server2")
+            assert len(manager.get_disabled_servers()) == 2
+
+            # Clear all
+            manager.clear_disabled_servers()
+            assert manager.get_disabled_servers() == {}
+            assert not manager.is_server_disabled("server1")
+            assert not manager.is_server_disabled("server2")
+
+    def test_server_preferences_persist(self):
+        """Test that server preferences persist across manager instances."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dir = Path(tmpdir) / ".mcp-cli"
+            manager1 = PreferenceManager(config_dir=config_dir)
+
+            # Set various server states
+            manager1.disable_server("disabled_server")
+            manager1.enable_server("enabled_server")
+            manager1.disable_server("another_disabled")
+
+            # Create new manager instance
+            manager2 = PreferenceManager(config_dir=config_dir)
+
+            # Check states persist
+            assert manager2.is_server_disabled("disabled_server")
+            assert not manager2.is_server_disabled("enabled_server")
+            assert manager2.is_server_disabled("another_disabled")
+
+            # Check disabled list
+            disabled = manager2.get_disabled_servers()
+            assert "disabled_server" in disabled
+            assert "another_disabled" in disabled
+            assert "enabled_server" not in disabled
 
 
 class TestSingletonManager:

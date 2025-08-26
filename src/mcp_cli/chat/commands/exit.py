@@ -23,7 +23,6 @@ from typing import Any, Dict, List
 
 # Cross-platform Rich console helper
 from chuk_term.ui import output
-from rich.panel import Panel
 
 # Chat-command registry
 from mcp_cli.chat.commands import register_command
@@ -41,7 +40,7 @@ async def cmd_exit(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D40
       /exit
     """
     ctx["exit_requested"] = True
-    output.print(Panel("Exiting chat mode.", style="bold red"))
+    output.panel("Exiting chat mode.", style="red", title="Goodbye")
     return True
 
 

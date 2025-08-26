@@ -123,11 +123,16 @@ def load_config(config_file: str) -> Optional[dict]:
 def extract_server_names(
     cfg: Optional[dict], specified: List[str] = None
 ) -> Dict[int, str]:
-    """Extract server names from config with HTTP server support."""
+    """Extract server names from config with HTTP server support, respecting disabled status from preferences."""
     if not cfg or "mcpServers" not in cfg:
         return {}
 
     servers = cfg["mcpServers"]
+
+    # Get preference manager to check disabled servers
+    from mcp_cli.utils.preferences import get_preference_manager
+
+    pref_manager = get_preference_manager()
 
     if specified:
         # Filter to only specified servers that exist in config
@@ -139,7 +144,12 @@ def extract_server_names(
                 logger.warning(f"Server '{server}' not found in configuration")
         return {i: name for i, name in enumerate(valid_servers)}
     else:
-        return {i: name for i, name in enumerate(servers.keys())}
+        # Only include enabled servers based on preferences
+        enabled_servers = []
+        for server_name in servers.keys():
+            if not pref_manager.is_server_disabled(server_name):
+                enabled_servers.append(server_name)
+        return {i: name for i, name in enumerate(enabled_servers)}
 
 
 def detect_server_types(cfg: dict, servers: List[str]) -> Tuple[List[dict], List[str]]:
@@ -297,8 +307,43 @@ def process_options(
         # Return empty configuration
         return [], user_specified, {}
 
-    # STEP 6: Validate configuration
-    servers_list = user_specified or list(cfg.get("mcpServers", {}).keys())
+    # STEP 6: Validate configuration and filter disabled servers
+    all_servers = cfg.get("mcpServers", {})
+
+    # Get preference manager to check disabled servers
+    from mcp_cli.utils.preferences import get_preference_manager
+
+    pref_manager = get_preference_manager()
+
+    # Filter out disabled servers
+    if user_specified:
+        # If user explicitly requested servers, check if they're disabled
+        enabled_from_requested = []
+        for server in user_specified:
+            if pref_manager.is_server_disabled(server):
+                logger.error(f"Server '{server}' is disabled and cannot be used")
+                logger.info(
+                    f"To enable it, use: mcp-cli chat then /servers {server} enable"
+                )
+            else:
+                enabled_from_requested.append(server)
+        servers_list = enabled_from_requested
+
+        if not servers_list and user_specified:
+            logger.error("All requested servers are disabled")
+            logger.info("Use 'mcp-cli servers' to see server status")
+    else:
+        # No specific servers requested - filter out disabled ones from preferences
+        enabled_servers = []
+        for server_name in all_servers.keys():
+            if not pref_manager.is_server_disabled(server_name):
+                enabled_servers.append(server_name)
+            else:
+                logger.debug(f"Skipping disabled server: {server_name}")
+        servers_list = enabled_servers
+
+        if not servers_list:
+            logger.warning("No enabled servers found")
 
     if servers_list:
         is_valid, errors = validate_server_config(cfg, servers_list)
