@@ -242,7 +242,7 @@ dependencies = [
 
 [[package]]
 name = "chuk-tool-processor"
-version = "0.6.12"
+version = "0.6.13"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "chuk-mcp" },
@@ -251,9 +251,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "uuid" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/25/b3/9c4e6415c6510c789d681656c1aa3e65ba704689837d2dce660aed849016/chuk_tool_processor-0.6.12.tar.gz", hash = "sha256:b3300c803fc8947e5343850e7ea73bde90ef1a6c0b213111217515ab38e208fd", size = 97835 }
+sdist = { url = "https://files.pythonhosted.org/packages/88/93/fa8696179668e6c042311757d56334735bfe59c9da3651540e147f08b093/chuk_tool_processor-0.6.13.tar.gz", hash = "sha256:d37114f2abd4d7c41bd8cb526b2473d52f7cd43ca8e6a52f3b0e8dd8cc607555", size = 97383 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bb/1a/ff54a57bd80b55067cb27cd370d6429a451a912fe022d3edb407b5979297/chuk_tool_processor-0.6.12-py3-none-any.whl", hash = "sha256:3c63182f6b2edb21de78a32b17a3774af333ef37b68f81a7bc0b428c6f9702ce", size = 121617 },
+    { url = "https://files.pythonhosted.org/packages/ef/41/3084b29ac31f9d924a80cf050efc05855673276882b0e7733498c82d0af5/chuk_tool_processor-0.6.13-py3-none-any.whl", hash = "sha256:6a836a3732e451e0bd3719a807c85aa8a8b4d4ba87b5d7a30504d379d92f47c7", size = 120279 },
 ]
 
 [[package]]
@@ -778,7 +778,7 @@ wheels = [
 
 [[package]]
 name = "mcp-cli"
-version = "0.7.2"
+version = "0.7.3"
 source = { editable = "." }
 dependencies = [
     { name = "asyncio" },
@@ -816,7 +816,7 @@ requires-dist = [
     { name = "chuk-llm", extras = ["all"], specifier = ">=0.9.8" },
     { name = "chuk-mcp", extras = ["full", "pydantic", "ui-manager"], specifier = ">=0.5" },
     { name = "chuk-term", git = "https://github.com/chrishayuk/chuk-term.git" },
-    { name = "chuk-tool-processor", specifier = ">=0.6.12" },
+    { name = "chuk-tool-processor", specifier = ">=0.6.13" },
     { name = "jsonschema", specifier = ">=4.25.1" },
     { name = "numpy", marker = "extra == 'dev'", specifier = ">=2.2.3" },
     { name = "prompt-toolkit", specifier = ">=3.0.50" },
