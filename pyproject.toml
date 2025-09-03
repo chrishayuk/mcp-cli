@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcp-cli"
-version = "0.7.4"
+version = "0.7.5"
 description = "A cli for the Model Context Provider"
 requires-python = ">=3.11"
 readme = "README.md"
@@ -15,9 +15,9 @@ keywords = ["llm", "openai", "claude", "mcp", "cli"]
 license = {text = "MIT"}
 dependencies = [
   "asyncio>=3.4.3",
-  "chuk-llm[all]>=0.10",
+  "chuk-llm[all]>=0.12.2",
   "chuk-mcp[full,pydantic,ui-manager]>=0.5",
-  "chuk-term",
+  "chuk-term>=0.1.0",
   "chuk-tool-processor>=0.6.13",
   "jsonschema>=4.25.1",
   "prompt-toolkit>=3.0.50",
@@ -45,9 +45,6 @@ package-dir = { "" = "src" }
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["mcp_cli*"]
-
-[tool.uv.sources]
-chuk-term = { git = "https://github.com/chrishayuk/chuk-term.git" }
 [dependency-groups]
 dev = [
   "colorama>=0.4.6",
