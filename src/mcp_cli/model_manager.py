@@ -411,6 +411,27 @@ class ModelManager:
         """Get current active model"""
         return self._active_model or "gpt-oss"
 
+    # Properties for compatibility
+    @property
+    def active_provider(self) -> str:
+        """Property access for active provider"""
+        return self.get_active_provider()
+
+    @active_provider.setter
+    def active_provider(self, value: str) -> None:
+        """Property setter for active provider"""
+        self.set_active_provider(value)
+
+    @property
+    def active_model(self) -> str:
+        """Property access for active model"""
+        return self.get_active_model()
+
+    @active_model.setter
+    def active_model(self, value: str) -> None:
+        """Property setter for active model"""
+        self.set_active_model(value)
+
     def get_active_provider_and_model(self) -> Tuple[str, str]:
         """Get current active provider and model as tuple"""
         return (self.get_active_provider(), self.get_active_model())

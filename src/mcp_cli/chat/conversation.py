@@ -1,331 +1,252 @@
-# mcp_cli/chat/conversation.py - FIXED VERSION
+# mcp_cli/chat/conversation_v2.py
 """
-FIXED: Updated to work with the new OpenAI client universal tool compatibility system.
+Simplified conversation processor that leverages chuk-llm's streaming and tool handling.
 """
 
-import time
 import asyncio
 import logging
-from rich import print
+import time
+from typing import Optional
 
-# mcp cli imports
+from chuk_term.ui import output
+from rich.live import Live
+from rich.panel import Panel
+from rich.markdown import Markdown
+
 from mcp_cli.chat.tool_processor import ToolProcessor
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ConversationProcessor:
     """
-    Class to handle LLM conversation processing with streaming support.
+    Simplified conversation processor that uses chuk-llm's native capabilities.
 
-    Updated to work with universal tool compatibility system.
+    This version removes redundant streaming handler and tool call extraction,
+    leveraging chuk-llm's built-in streaming and tool handling.
     """
 
     def __init__(self, context, ui_manager):
         self.context = context
         self.ui_manager = ui_manager
         self.tool_processor = ToolProcessor(context, ui_manager)
+        self._current_live_display: Optional[Live] = None
 
     async def process_conversation(self):
-        """Process the conversation loop, handling tool calls and responses with streaming."""
+        """Process conversation using chuk-llm's native streaming."""
         try:
-            while True:
-                try:
-                    start_time = time.time()
+            # The user message has already been added to context by chat_handler
+            # We just need to get the response from the LLM
+            # No need to get the message from history - just process the conversation
+            
+            # Check if we should use streaming
+            if self._should_use_streaming():
+                # Pass None since the message is already in the conversation
+                await self._handle_streaming_conversation(None)
+            else:
+                await self._handle_regular_conversation(None)
 
-                    # Skip slash commands (already handled by UI)
-                    last_msg = (
-                        self.context.conversation_history[-1]
-                        if self.context.conversation_history
-                        else {}
-                    )
-                    content = last_msg.get("content", "")
-                    if last_msg.get("role") == "user" and content.startswith("/"):
-                        return
-
-                    # Ensure OpenAI tools are loaded for function calling
-                    if not getattr(self.context, "openai_tools", None):
-                        await self._load_tools()
-
-                    # REMOVED: Sanitization logic - now handled by universal tool compatibility
-                    # The OpenAI client automatically handles tool name sanitization and restoration
-
-                    # Check if client supports streaming
-                    client = self.context.client
-
-                    # For chuk-llm, check if create_completion accepts stream parameter
-                    supports_streaming = hasattr(client, "create_completion")
-
-                    if supports_streaming:
-                        # Check if create_completion accepts stream parameter
-                        import inspect
-
-                        try:
-                            sig = inspect.signature(client.create_completion)
-                            has_stream_param = "stream" in sig.parameters
-                            supports_streaming = has_stream_param
-                        except Exception as e:
-                            log.debug(f"Could not inspect signature: {e}")
-                            supports_streaming = False
-
-                    completion = None
-
-                    if supports_streaming:
-                        # Use streaming response handler
-                        try:
-                            completion = await self._handle_streaming_completion()
-                        except Exception as e:
-                            log.warning(
-                                f"Streaming failed, falling back to regular completion: {e}"
-                            )
-                            print(
-                                f"[yellow]Streaming failed, falling back to regular completion: {e}[/yellow]"
-                            )
-                            completion = await self._handle_regular_completion()
-                    else:
-                        # Regular completion
-                        completion = await self._handle_regular_completion()
-
-                    response_content = completion.get("response", "No response")
-                    tool_calls = completion.get("tool_calls", [])
-
-                    # If model requested tool calls, execute them
-                    if tool_calls:
-                        log.debug(f"Processing {len(tool_calls)} tool calls from LLM")
-
-                        # Log the tool calls for debugging
-                        for i, tc in enumerate(tool_calls):
-                            log.debug(f"Tool call {i}: {tc}")
-
-                        # FIXED: Get name mapping from universal tool compatibility system
-                        name_mapping = getattr(self.context, "tool_name_mapping", {})
-                        log.debug(f"Using name mapping: {name_mapping}")
-
-                        # Process tool calls - this will handle streaming display
-                        await self.tool_processor.process_tool_calls(
-                            tool_calls, name_mapping
-                        )
-                        continue
-
-                    # Display assistant response (if not already displayed by streaming)
-                    elapsed = completion.get("elapsed_time", time.time() - start_time)
-
-                    if not completion.get("streaming", False):
-                        # Non-streaming response, display normally
-                        self.ui_manager.print_assistant_response(
-                            response_content, elapsed
-                        )
-                    else:
-                        # Streaming response was already displayed, just notify UI it's complete
-                        self.ui_manager.stop_streaming_response()
-
-                    # Add to conversation history
-                    self.context.conversation_history.append(
-                        {"role": "assistant", "content": response_content}
-                    )
-                    break
-
-                except asyncio.CancelledError:
-                    raise
-                except Exception as exc:
-                    print(f"[red]Error during conversation processing:[/red] {exc}")
-                    import traceback
-
-                    traceback.print_exc()
-                    self.context.conversation_history.append(
-                        {
-                            "role": "assistant",
-                            "content": f"I encountered an error: {exc}",
-                        }
-                    )
-                    break
         except asyncio.CancelledError:
             raise
+        except Exception as exc:
+            logger.exception("Error during conversation processing")
+            output.error(f"Error processing message: {exc}")
+            # Add error to context for recovery
+            self.context.add_assistant_message(f"I encountered an error: {exc}")
 
-    async def _handle_streaming_completion(self) -> dict:
-        """Handle streaming completion with UI integration."""
-        from mcp_cli.chat.streaming_handler import StreamingResponseHandler
+    def _should_use_streaming(self) -> bool:
+        """Check if streaming should be used."""
+        # Check UI preference
+        if hasattr(self.ui_manager, "streaming_enabled"):
+            return self.ui_manager.streaming_enabled
+        # Default to streaming
+        return True
+
+    async def _handle_streaming_conversation(self, user_message: Optional[str] = None):
+        """Handle streaming conversation using chuk-llm's native streaming."""
+        start_time = time.time()
+        collected_response = ""
+        collected_tool_calls = []
 
         # Signal UI that streaming is starting
         self.ui_manager.start_streaming_response()
 
-        # Set the streaming handler reference in UI manager for interruption support
-        streaming_handler = StreamingResponseHandler(self.ui_manager.console)
-        self.ui_manager.streaming_handler = streaming_handler
-
         try:
-            completion = await streaming_handler.stream_response(
-                client=self.context.client,
-                messages=self.context.conversation_history,
-                tools=self.context.openai_tools,
+            # Create live display for streaming
+            self._current_live_display = Live(
+                Panel("", title="⚡ Streaming", border_style="blue"),
+                console=self.ui_manager.console,
+                transient=True,
+                refresh_per_second=4,
             )
 
-            # Enhanced tool call validation and logging
-            if completion.get("tool_calls"):
-                log.debug(
-                    f"Streaming completion returned {len(completion['tool_calls'])} tool calls"
+            with self._current_live_display:
+                chunk_count = 0
+
+                # Get the last user message from conversation history if not provided
+                if user_message is None:
+                    # Get the last user message from the conversation
+                    for msg in reversed(self.context.conversation_history):
+                        if msg.get("role") == "user":
+                            user_message = msg.get("content", "")
+                            break
+                    
+                    if not user_message:
+                        logger.warning("No user message found in conversation history")
+                        return
+
+                # Use chuk-llm's native streaming
+                async for chunk in self.context.stream_with_tools(user_message):
+                    chunk_count += 1
+                    
+                    # Debug: log what we're getting from the LLM
+                    logger.debug(f"Stream chunk {chunk_count}: {type(chunk)} - {str(chunk)[:100]}")
+
+                    # Check for interruption
+                    if self.ui_manager.interrupt_requested:
+                        logger.debug("Streaming interrupted by user")
+                        break
+
+                    # Process chunk based on type
+                    if isinstance(chunk, dict):
+                        # Handle response content
+                        if "response" in chunk:
+                            content = chunk["response"]
+                            if content:
+                                collected_response += content
+                                self._update_streaming_display(
+                                    collected_response, chunk_count, start_time
+                                )
+
+                        # Handle tool calls
+                        if "tool_calls" in chunk:
+                            tool_calls = chunk["tool_calls"]
+                            if tool_calls:
+                                collected_tool_calls.extend(tool_calls)
+
+                    elif isinstance(chunk, str):
+                        # Simple string chunk
+                        collected_response += chunk
+                        self._update_streaming_display(
+                            collected_response, chunk_count, start_time
+                        )
+
+                    # Small delay for smooth display
+                    await asyncio.sleep(0.01)
+
+            # Streaming complete
+            elapsed = time.time() - start_time
+
+            # Process any tool calls
+            if collected_tool_calls:
+                logger.debug(
+                    f"Processing {len(collected_tool_calls)} tool calls from stream"
                 )
-                for i, tc in enumerate(completion["tool_calls"]):
-                    log.debug(f"Streamed tool call {i}: {tc}")
+                await self.tool_processor.process_tool_calls(
+                    collected_tool_calls, self.context.tool_name_mapping
+                )
+            else:
+                # Display final response
+                self._display_final_response(collected_response, elapsed, chunk_count)
 
-                    # Validate tool call structure
-                    if not self._validate_streaming_tool_call(tc):
-                        log.warning(f"Invalid tool call structure from streaming: {tc}")
-                        # Try to fix common issues
-                        fixed_tc = self._fix_tool_call_structure(tc)
-                        if fixed_tc:
-                            completion["tool_calls"][i] = fixed_tc
-                            log.debug(f"Fixed tool call {i}: {fixed_tc}")
-                        else:
-                            log.error(
-                                f"Could not fix tool call {i}, removing from list"
-                            )
-                            completion["tool_calls"].pop(i)
-
-            return completion
+            # Update conversation (chuk-llm handles this internally)
+            self.context.add_assistant_message(collected_response)
 
         finally:
-            # Clear the streaming handler reference
-            self.ui_manager.streaming_handler = None
+            self.ui_manager.stop_streaming_response()
+            self._current_live_display = None
 
-    async def _handle_regular_completion(self) -> dict:
-        """Handle regular (non-streaming) completion."""
+    async def _handle_regular_conversation(self, user_message: Optional[str] = None):
+        """Handle non-streaming conversation using chuk-llm's ask."""
         start_time = time.time()
 
-        try:
-            completion = await self.context.client.create_completion(
-                messages=self.context.conversation_history,
-                tools=self.context.openai_tools,
-            )
-        except Exception as e:
-            # If tools spec invalid, retry without tools
-            err = str(e)
-            if "Invalid 'tools" in err:
-                log.error(f"Tool definition error: {err}")
-                print(
-                    "[yellow]Warning: tool definitions rejected by model, retrying without tools...[/yellow]"
-                )
-                completion = await self.context.client.create_completion(
-                    messages=self.context.conversation_history
-                )
-            else:
-                raise
+        # Get the last user message from conversation history if not provided
+        if user_message is None:
+            # Get the last user message from the conversation
+            for msg in reversed(self.context.conversation_history):
+                if msg.get("role") == "user":
+                    user_message = msg.get("content", "")
+                    break
+            
+            if not user_message:
+                logger.warning("No user message found in conversation history")
+                return
+
+        with output.loading("Generating response..."):
+            # Use chuk-llm's ask with tools
+            result = await self.context.ask_with_tools(user_message)
 
         elapsed = time.time() - start_time
-        completion["elapsed_time"] = elapsed
-        completion["streaming"] = False
 
-        return completion
+        # Extract response and tool calls
+        response_content = result.get("response", "")
+        tool_calls = result.get("tool_calls", [])
 
-    def _validate_streaming_tool_call(self, tool_call: dict) -> bool:
-        """Validate that a tool call from streaming has the required structure."""
+        # Process tool calls if any
+        if tool_calls:
+            logger.debug(f"Processing {len(tool_calls)} tool calls")
+            await self.tool_processor.process_tool_calls(
+                tool_calls, self.context.tool_name_mapping
+            )
+        else:
+            # Display response
+            self.ui_manager.print_assistant_response(response_content, elapsed)
+
+        # Update conversation (chuk-llm handles this internally)
+        self.context.add_assistant_message(response_content)
+
+    def _update_streaming_display(self, content: str, chunks: int, start_time: float):
+        """Update the streaming display with current content."""
+        if not self._current_live_display:
+            return
+
+        elapsed = time.time() - start_time
+
+        # Create formatted content
         try:
-            if not isinstance(tool_call, dict):
-                return False
+            display_content = Markdown(content + " ▌")  # Add cursor
+        except Exception:
+            display_content = content + " ▌"
 
-            # Check for required fields
-            if "function" not in tool_call:
-                return False
+        # Create status text
+        status = f"⚡ Streaming • {chunks} chunks • {elapsed:.1f}s"
 
-            function = tool_call["function"]
-            if not isinstance(function, dict):
-                return False
+        # Update panel
+        panel = Panel(
+            display_content,
+            title=status,
+            border_style="blue",
+            padding=(0, 1),
+        )
 
-            # Check function has name
-            if "name" not in function or not function["name"]:
-                return False
+        self._current_live_display.update(panel)
 
-            # Validate arguments if present
-            if "arguments" in function:
-                args = function["arguments"]
-                if isinstance(args, str):
-                    # Try to parse as JSON
-                    try:
-                        if args.strip():  # Don't try to parse empty strings
-                            import json
+    def _display_final_response(self, content: str, elapsed: float, chunks: int):
+        """Display the final streamed response."""
+        # Calculate stats
+        words = len(content.split())
 
-                            json.loads(args)
-                    except json.JSONDecodeError:
-                        log.warning(f"Invalid JSON arguments in tool call: {args}")
-                        return False
-                elif not isinstance(args, dict):
-                    # Arguments should be string or dict
-                    return False
+        # Create subtitle with stats
+        subtitle_parts = [f"Response time: {elapsed:.2f}s"]
+        if chunks > 1:
+            subtitle_parts.append(f"Streamed: {chunks} chunks")
+        if elapsed > 0:
+            subtitle_parts.append(f"{words / elapsed:.1f} words/s")
 
-            return True
+        subtitle = " | ".join(subtitle_parts)
 
-        except Exception as e:
-            log.error(f"Error validating streaming tool call: {e}")
-            return False
-
-    def _fix_tool_call_structure(self, tool_call: dict) -> dict:
-        """Try to fix common issues with tool call structure from streaming."""
+        # Format content
         try:
-            fixed = dict(tool_call)  # Make a copy
+            formatted_content = Markdown(content)
+        except Exception:
+            formatted_content = content
 
-            # Ensure we have required fields
-            if "id" not in fixed:
-                fixed["id"] = f"call_{hash(str(tool_call)) % 10000}"
-
-            if "type" not in fixed:
-                fixed["type"] = "function"
-
-            if "function" not in fixed:
-                return None  # Can't fix this
-
-            function = fixed["function"]
-
-            # Fix empty name
-            if not function.get("name"):
-                return None  # Can't fix missing name
-
-            # Fix arguments
-            if "arguments" not in function:
-                function["arguments"] = "{}"
-            elif function["arguments"] is None:
-                function["arguments"] = "{}"
-            elif isinstance(function["arguments"], dict):
-                # Convert dict to JSON string
-                import json
-
-                function["arguments"] = json.dumps(function["arguments"])
-            elif not isinstance(function["arguments"], str):
-                # Convert to string
-                function["arguments"] = str(function["arguments"])
-
-            # Validate the fixed version
-            if self._validate_streaming_tool_call(fixed):
-                return fixed
-            else:
-                return None
-
-        except Exception as e:
-            log.error(f"Error fixing tool call structure: {e}")
-            return None
-
-    async def _load_tools(self):
-        """
-        Load and adapt tools for the current provider.
-
-        FIXED: Updated to use universal tool compatibility system.
-        """
-        try:
-            if hasattr(self.context.tool_manager, "get_adapted_tools_for_llm"):
-                # EXPLICITLY specify provider for proper adaptation
-                provider = getattr(self.context, "provider", "openai")
-                tools_and_mapping = (
-                    await self.context.tool_manager.get_adapted_tools_for_llm(provider)
-                )
-                self.context.openai_tools = tools_and_mapping[0]
-                self.context.tool_name_mapping = tools_and_mapping[1]
-                log.debug(
-                    f"Loaded {len(self.context.openai_tools)} adapted tools for {provider}"
-                )
-
-                # FIXED: No longer validate tool names here since universal compatibility handles it
-                log.debug(f"Universal tool compatibility enabled for {provider}")
-
-        except Exception as exc:
-            log.error(f"Error loading tools: {exc}")
-            self.context.openai_tools = []
-            self.context.tool_name_mapping = {}
+        # Display final panel
+        output.print(
+            Panel(
+                formatted_content,
+                title="Assistant",
+                subtitle=subtitle,
+                padding=(0, 1),
+            )
+        )

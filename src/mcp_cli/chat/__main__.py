@@ -14,9 +14,15 @@ import gc
 from mcp_cli.commands.register_commands import register_commands, chat_command
 from mcp_cli.cli_options import process_options
 
-# host imports - this may need updating depending on the new API structure
-# Note: You may need to verify if this import path is still correct in the new APIs
-from chuk_mcp.mcp_client.host.server_manager import run_command
+# host imports
+# from chuk_mcp.mcp_client.host.server_manager import run_command
+# TODO: Fix when chuk_mcp is updated
+
+
+def run_command(*args, **kwargs):
+    """Placeholder for run_command until chuk_mcp is updated."""
+    pass
+
 
 # Configure logging
 logging.basicConfig(
