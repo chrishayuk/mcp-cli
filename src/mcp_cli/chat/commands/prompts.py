@@ -37,14 +37,17 @@ from chuk_term.ui import output
 from mcp_cli.commands.prompts import prompts_action_cmd
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.chat.commands import register_command
+from mcp_cli.context import get_context
 
 
-async def cmd_prompts(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
+async def cmd_prompts(_parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
     """List stored prompt templates from all connected servers."""
+    # Use global context manager
+    context = get_context()
 
-    tm: ToolManager | None = ctx.get("tool_manager")
+    tm: ToolManager | None = context.tool_manager
     if tm is None:
-        output.print("[red]Error:[/red] ToolManager not available.")
+        output.error("ToolManager not available.")
         return True  # command handled (nothing further to do)
 
     # Delegate to the shared async helper

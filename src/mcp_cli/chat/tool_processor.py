@@ -13,10 +13,10 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
-from rich import print as rprint
 from chuk_term.ui import output
 
 from mcp_cli.tools.formatting import display_tool_call_result
+from mcp_cli.utils.preferences import get_preference_manager
 
 log = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class ToolProcessor:
             name_mapping: Mapping from LLM tool names to actual tool names
         """
         if not tool_calls:
-            rprint("[yellow]Warning: Empty tool_calls list received.[/yellow]")
+            output.warning("Empty tool_calls list received.")
             return
 
         if name_mapping is None:
@@ -153,12 +153,12 @@ class ToolProcessor:
                 except Exception as ui_exc:
                     log.warning(f"UI display error (non-fatal): {ui_exc}")
 
-                # Handle user confirmation if enabled
-                if (
-                    hasattr(self.ui_manager, "confirm_tool_execution")
-                    and self.ui_manager.confirm_tool_execution
-                ):
-                    confirmed = self.ui_manager.do_confirm_tool_execution()
+                # Handle user confirmation based on preferences
+                if self._should_confirm_tool(execution_tool_name):
+                    # Show confirmation prompt with tool details
+                    confirmed = self.ui_manager.do_confirm_tool_execution(
+                        tool_name=display_name, arguments=raw_arguments
+                    )
                     if not confirmed:
                         setattr(self.ui_manager, "interrupt_requested", True)
                         self._add_cancelled_tool_to_history(
@@ -334,3 +334,27 @@ class ToolProcessor:
 
         except Exception as e:
             log.error(f"Error adding cancelled tool to history: {e}")
+
+    def _should_confirm_tool(self, tool_name: str) -> bool:
+        """Determine if a tool should be confirmed based on preferences.
+
+        Args:
+            tool_name: Name of the tool to check
+
+        Returns:
+            True if tool should be confirmed, False otherwise
+        """
+        # First check if UI manager has legacy confirm_tool_execution attribute
+        if hasattr(self.ui_manager, "confirm_tool_execution"):
+            # If explicitly set to False, don't confirm
+            if not self.ui_manager.confirm_tool_execution:
+                return False
+
+        # Use preference manager for nuanced decision
+        try:
+            prefs = get_preference_manager()
+            return prefs.should_confirm_tool(tool_name)
+        except Exception as e:
+            log.warning(f"Error checking tool confirmation preference: {e}")
+            # Default to confirming if there's an error
+            return True

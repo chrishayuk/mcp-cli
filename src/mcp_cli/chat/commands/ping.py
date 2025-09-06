@@ -38,14 +38,17 @@ from chuk_term.ui import output
 from mcp_cli.commands.ping import ping_action_async
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.chat.commands import register_command
+from mcp_cli.context import get_context
 
 
-async def ping_command(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
+async def ping_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
     """Measure round-trip latency to one or more MCP servers."""
 
-    tm: ToolManager | None = ctx.get("tool_manager")
+    # Use global context manager
+    context = get_context()
+    tm: ToolManager | None = context.tool_manager
     if tm is None:
-        output.print("[red]Error:[/red] ToolManager not available.")
+        output.error("ToolManager not available.")
         return True  # command *was* handled (nothing else to do)
 
     # Everything after "/ping" is considered a filter (index or name)

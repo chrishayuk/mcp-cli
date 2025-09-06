@@ -39,12 +39,13 @@ from chuk_term.ui import output
 
 # Chat-command registry
 from mcp_cli.chat.commands import register_command
+from mcp_cli.context import get_context
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # Command handler
 # ════════════════════════════════════════════════════════════════════════════
-async def verbose_command(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
+async def verbose_command(_parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
     """
     Toggle between verbose and compact display modes.
 
@@ -58,17 +59,18 @@ async def verbose_command(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # no
     * **Verbose**: Shows full tool call details with JSON arguments
     * **Compact**: Shows condensed progress with animations (default)
     """
+    # Use global context manager
+    context = get_context()
 
     # Get UI manager from context
-    ui_manager = ctx.get("ui_manager")
+    ui_manager = context.ui_manager
     if not ui_manager:
-        # Fallback: look for context object that might have UI manager
-        context_obj = ctx.get("context")
-        if context_obj and hasattr(context_obj, "ui_manager"):
-            ui_manager = context_obj.ui_manager
+        # Try to get from chat context
+        if context.chat_context and hasattr(context.chat_context, "ui_manager"):
+            ui_manager = context.chat_context.ui_manager
 
     if not ui_manager:
-        output.print("[red]Error:[/red] UI manager not available.")
+        output.error("UI manager not available.")
         return True
 
     # Toggle verbose mode
@@ -89,15 +91,15 @@ async def verbose_command(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # no
         else "condensed progress and animations"
     )
 
-    output.print(f"[green]Display mode:[/green] {mode_name}")
-    output.print(f"[dim]Shows {mode_desc}[/dim]")
+    output.success(f"Display mode: {mode_name}")
+    output.print(f"Shows {mode_desc}")
 
     # If tools are currently running, show how the change affects them
     if getattr(ui_manager, "tools_running", False):
         if new_mode:
-            output.print("[cyan]Future tool calls will show full details.[/cyan]")
+            output.info("Future tool calls will show full details.")
         else:
-            output.print("[cyan]Switched to compact tool progress display.[/cyan]")
+            output.info("Switched to compact tool progress display.")
 
     return True
 

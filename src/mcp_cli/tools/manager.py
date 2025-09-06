@@ -741,6 +741,10 @@ class ToolManager:
                         namespace=raw.get("name", "").split("_")[0]
                         if "_" in raw.get("name", "")
                         else raw.get("name", ""),
+                        enabled=raw.get("enabled", True),
+                        connected=raw.get("connected", False),
+                        transport=raw.get("type", "stdio"),
+                        capabilities=raw.get("capabilities", {}),
                     )
                     for raw in raw_infos
                 ]

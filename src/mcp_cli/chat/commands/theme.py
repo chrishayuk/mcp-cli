@@ -76,20 +76,16 @@ async def interactive_theme_selection(context: "ChatContext", pref_manager) -> N
 
     output.rule("Theme Selector")
 
-    table = Table(title="Available Themes", show_header=True, header_style="bold cyan")
-    table.add_column("#", style="dim", width=3)
-    table.add_column("Theme", style="green", width=12)
-    table.add_column("Description", style="white")
+    table = Table(title="Available Themes", show_header=True)
+    table.add_column("#", width=3)
+    table.add_column("Theme", width=12)
+    table.add_column("Description")
     table.add_column("Status", justify="center", width=10)
 
     for idx, theme in enumerate(themes, 1):
         desc = theme_descriptions.get(theme, "")
         status = "✓ Current" if theme == current else ""
-        status_style = "bold green" if theme == current else "dim"
-
-        table.add_row(
-            str(idx), theme, desc, f"[{status_style}]{status}[/{status_style}]"
-        )
+        table.add_row(str(idx), theme, desc, status)
 
     output.print(table)
     output.print()
@@ -133,7 +129,7 @@ async def interactive_theme_selection(context: "ChatContext", pref_manager) -> N
         output.print()
 
         # Show concise preview
-        output.print("[bold]Preview:[/bold]")
+        output.print("Preview:")
         output.info("Information")
         output.success("Success")
         output.warning("Warning")
@@ -146,7 +142,7 @@ async def interactive_theme_selection(context: "ChatContext", pref_manager) -> N
 
 
 # Register the command handler
-async def cmd_theme(parts: List[str], ctx: dict) -> bool:
+async def cmd_theme(parts: List[str], ctx: dict = None) -> bool:
     """Manage UI themes and color schemes.
 
     Usage:
@@ -163,7 +159,11 @@ async def cmd_theme(parts: List[str], ctx: dict) -> bool:
 
     Themes are persisted across sessions and affect the entire CLI experience.
     """
-    chat_context = ctx.get("chat_context")
+    # Use global context manager
+    from mcp_cli.context import get_context
+
+    context = get_context()
+    chat_context = context.chat_context
 
     # Extract arguments (skip the command itself)
     args = parts[1:] if len(parts) > 1 else []

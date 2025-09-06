@@ -45,12 +45,13 @@ from chuk_term.ui import output
 from mcp_cli.commands.resources import resources_action_async
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.chat.commands import register_command
+from mcp_cli.context import get_context
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # Command handler
 # ════════════════════════════════════════════════════════════════════════════
-async def cmd_resources(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
+async def cmd_resources(_parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
     """
     List all recorded resources across connected servers.
 
@@ -58,10 +59,12 @@ async def cmd_resources(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa
     -----
       /resources      - show resources
     """
+    # Use global context manager
+    context = get_context()
 
-    tm: ToolManager | None = ctx.get("tool_manager")
+    tm: ToolManager | None = context.tool_manager
     if tm is None:
-        output.print("[red]Error:[/red] ToolManager not available.")
+        output.error("ToolManager not available.")
         return True  # command handled
 
     # Delegate to the canonical async implementation

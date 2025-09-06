@@ -58,13 +58,13 @@ def register_alias(alias: str, target: str) -> None:
         _COMMAND_COMPLETIONS[alias] = _COMMAND_COMPLETIONS[target]
 
 
-async def handle_command(command_text: str, context: Dict[str, Any]) -> bool:
+async def handle_command(command_text: str, context: Dict[str, Any] = None) -> bool:
     """
     Handle a command and return whether it was handled.
 
     Args:
         command_text: The full command text (starting with /).
-        context: The context dictionary to pass to the handler.
+        context: Optional context dictionary for backwards compatibility.
 
     Returns:
         bool: True if the command was handled, False otherwise.
@@ -87,7 +87,7 @@ async def handle_command(command_text: str, context: Dict[str, Any]) -> bool:
     if not handler:
         return False
 
-    # Call the handler with args and context
+    # Call the handler with args and optional context
     return await handler(parts, context)
 
 

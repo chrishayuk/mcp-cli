@@ -6,12 +6,13 @@ Clean chat context focused on conversation state and tool coordination.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, AsyncIterator
+from typing import Any, Dict, List, AsyncIterator, Optional
 
 from chuk_term.ui import output
 
 from mcp_cli.chat.system_prompt import generate_system_prompt
 from mcp_cli.tools.manager import ToolManager
+from mcp_cli.tools.models import ToolInfo, ServerInfo
 from mcp_cli.model_manager import ModelManager
 
 logger = logging.getLogger(__name__)
@@ -45,11 +46,13 @@ class ChatContext:
         self.conversation_history: List[Dict[str, Any]] = []
 
         # Tool state (filled during initialization)
-        self.tools: List[Dict[str, Any]] = []
-        self.internal_tools: List[Dict[str, Any]] = []
-        self.server_info: List[Dict[str, Any]] = []
+        self.tools: List[ToolInfo] = []
+        self.internal_tools: List[ToolInfo] = []
+        self.server_info: List[ServerInfo] = []
         self.tool_to_server_map: Dict[str, str] = {}
-        self.openai_tools: List[Dict[str, Any]] = []
+        self.openai_tools: List[
+            Dict[str, Any]
+        ] = []  # These remain dicts for OpenAI API
         self.tool_name_mapping: Dict[str, str] = {}
 
         logger.debug(f"ChatContext created with {self.provider}/{self.model}")
@@ -134,35 +137,42 @@ class ChatContext:
 
     async def _initialize_tools(self) -> None:
         """Initialize tool discovery and adaptation."""
-        # Get tools from ToolManager
-        tool_infos = await self.tool_manager.get_unique_tools()
+        # Get tools from ToolManager - already returns ToolInfo objects
+        self.tools = await self.tool_manager.get_unique_tools()
 
-        self.tools = [
-            {
-                "name": t.name,
-                "description": t.description,
-                "parameters": t.parameters,
-                "namespace": t.namespace,
-                "supports_streaming": getattr(t, "supports_streaming", False),
-            }
-            for t in tool_infos
-        ]
+        # Get server info - already returns ServerInfo objects
+        self.server_info = await self.tool_manager.get_server_info()
 
-        # Get server info
-        raw_infos = await self.tool_manager.get_server_info()
-        self.server_info = [
-            {"id": s.id, "name": s.name, "tools": s.tool_count, "status": s.status}
-            for s in raw_infos
-        ]
-
-        # Build tool-to-server mapping
-        self.tool_to_server_map = {t["name"]: t["namespace"] for t in self.tools}
+        # Build tool-to-server mapping using ToolInfo objects
+        self.tool_to_server_map = {t.name: t.namespace for t in self.tools}
 
         # Adapt tools for current provider
         await self._adapt_tools_for_provider()
 
         # Keep copy for system prompt
         self.internal_tools = list(self.tools)
+
+    def find_tool_by_name(self, name: str) -> Optional[ToolInfo]:
+        """Find a tool by its name (handles both simple and namespaced names)."""
+        # First try exact match
+        for tool in self.tools:
+            if tool.name == name or tool.fully_qualified_name == name:
+                return tool
+
+        # Try partial match (just the tool name without namespace)
+        simple_name = name.split(".")[-1] if "." in name else name
+        for tool in self.tools:
+            if tool.name == simple_name:
+                return tool
+
+        return None
+
+    def find_server_by_name(self, name: str) -> Optional[ServerInfo]:
+        """Find a server by its name."""
+        for server in self.server_info:
+            if server.name == name or server.namespace == name:
+                return server
+        return None
 
     async def _adapt_tools_for_provider(self) -> None:
         """Adapt tools for current provider."""
@@ -190,7 +200,31 @@ class ChatContext:
 
     def _initialize_conversation(self) -> None:
         """Initialize conversation with system prompt."""
-        system_prompt = generate_system_prompt(self.internal_tools)
+        # Convert ToolInfo objects to dicts for system prompt generation
+        tools_for_prompt = []
+        for tool in self.internal_tools:
+            if hasattr(tool, "to_openai_format"):
+                tools_for_prompt.append(tool.to_openai_format())
+            elif isinstance(tool, dict):
+                tools_for_prompt.append(tool)
+            else:
+                # Fallback - convert to dict
+                tools_for_prompt.append(
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": tool.name if hasattr(tool, "name") else str(tool),
+                            "description": tool.description
+                            if hasattr(tool, "description")
+                            else "No description",
+                            "parameters": tool.parameters
+                            if hasattr(tool, "parameters")
+                            else {},
+                        },
+                    }
+                )
+
+        system_prompt = generate_system_prompt(tools_for_prompt)
         self.conversation_history = [{"role": "system", "content": system_prompt}]
 
     # ── Model change handling ─────────────────────────────────────────────

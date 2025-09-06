@@ -325,15 +325,15 @@ redis = [
 
 [[package]]
 name = "chuk-term"
-version = "0.1.0"
+version = "0.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
     { name = "rich" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e3/2b/f18b48f4b33e10561b4177b9c2bbf65cdaa2696a572813b0fb5bd4b60d4c/chuk_term-0.1.0.tar.gz", hash = "sha256:c414c03cbfb8027b567c4cd48d2d6c1ee2d1edcc9c70702df73c81fe8ed287d4", size = 136946, upload-time = "2025-09-03T18:30:46.519Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5c/b4/4922e38fcb4ea5756df8b8f166e77d3a1f1196db2eb3e17390e328205826/chuk_term-0.1.2.tar.gz", hash = "sha256:ffc970a07a212756b5fe1c77da57ef3d20f8d3906ff03c3c005970e20c4c30f3", size = 156454, upload-time = "2025-09-06T23:44:19.454Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c4/47/3802d1089c0d8787c8057110109d1ef969b5069f350b683218215a92e86e/chuk_term-0.1.0-py3-none-any.whl", hash = "sha256:a2662d238ccb1a64526918c9a0d025edc58de94ca7bd638541fe86b82f2131b2", size = 38490, upload-time = "2025-09-03T18:30:44.935Z" },
+    { url = "https://files.pythonhosted.org/packages/0b/64/572c0bc7a924ae7861533b2da2a264f1ce0c333b05a2b0c56da937f665ed/chuk_term-0.1.2-py3-none-any.whl", hash = "sha256:badeacf8de5f08cfad258720bb5825f79707d092eee4092387afd5e894869aa1", size = 41276, upload-time = "2025-09-06T23:44:17.933Z" },
 ]
 
 [[package]]
@@ -951,7 +951,7 @@ wheels = [
 
 [[package]]
 name = "mcp-cli"
-version = "0.7.4"
+version = "0.7.5"
 source = { editable = "." }
 dependencies = [
     { name = "asyncio" },
@@ -988,7 +988,7 @@ requires-dist = [
     { name = "asyncio", marker = "extra == 'dev'", specifier = ">=3.4.3" },
     { name = "chuk-llm", extras = ["all"], specifier = ">=0.12.2" },
     { name = "chuk-mcp", extras = ["full", "pydantic", "ui-manager"], specifier = ">=0.5" },
-    { name = "chuk-term", specifier = ">=0.1.0" },
+    { name = "chuk-term", specifier = ">=0.1.2" },
     { name = "chuk-tool-processor", specifier = ">=0.6.13" },
     { name = "jsonschema", specifier = ">=4.25.1" },
     { name = "numpy", marker = "extra == 'dev'", specifier = ">=2.2.3" },

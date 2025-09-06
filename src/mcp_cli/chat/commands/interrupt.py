@@ -36,12 +36,13 @@ from chuk_term.ui import output
 
 # Chat-command registry
 from mcp_cli.chat.commands import register_command
+from mcp_cli.context import get_context
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # Command handlers
 # ════════════════════════════════════════════════════════════════════════════
-async def interrupt_command(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
+async def interrupt_command(_parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
     """
     Interrupt currently running operations (streaming or tools).
 
@@ -52,51 +53,52 @@ async def interrupt_command(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # 
       /cancel       - same as interrupt
     """
 
-    # Get UI manager from context if available
-    ui_manager = ctx.get("ui_manager")
-    if not ui_manager:
-        # Fallback: look for context object that might have UI manager
-        context_obj = ctx.get("context")
-        if context_obj and hasattr(context_obj, "ui_manager"):
-            ui_manager = context_obj.ui_manager
+    # Use global context manager
+    context = get_context()
+
+    # Try to get UI manager from somewhere
+    # Note: UI manager might not be stored in ApplicationContext yet
+    ui_manager = getattr(context, "ui_manager", None)
+    if not ui_manager and hasattr(context, "_extra"):
+        ui_manager = context._extra.get("ui_manager")
 
     interrupted_something = False
 
     # Check for streaming response
     if ui_manager and getattr(ui_manager, "is_streaming_response", False):
         ui_manager.interrupt_streaming()
-        output.print("[yellow]Streaming response interrupted.[/yellow]")
+        output.warning("Streaming response interrupted.")
         interrupted_something = True
 
     # Check for running tools
     elif ui_manager and getattr(ui_manager, "tools_running", False):
         if hasattr(ui_manager, "_interrupt_now"):
             ui_manager._interrupt_now()
-        output.print("[yellow]Tool execution interrupted.[/yellow]")
+        output.warning("Tool execution interrupted.")
         interrupted_something = True
 
     # Check for any tool processor that might be running
-    elif "tool_processor" in ctx:
-        tool_processor = ctx["tool_processor"]
+    elif hasattr(context, "tool_processor"):
+        tool_processor = context.tool_processor
         if hasattr(tool_processor, "cancel_running_tasks"):
             try:
                 tool_processor.cancel_running_tasks()
-                output.print("[yellow]Running tasks cancelled.[/yellow]")
+                output.warning("Running tasks cancelled.")
                 interrupted_something = True
             except Exception as e:
-                output.print(f"[red]Error cancelling tasks: {e}[/red]")
+                output.error(f"Error cancelling tasks: {e}")
 
     # Nothing to interrupt
     if not interrupted_something:
-        output.print("[yellow]Nothing currently running to interrupt.[/yellow]")
+        output.warning("Nothing currently running to interrupt.")
         output.print(
-            "[dim]Use this command while streaming responses or tool execution are active.[/dim]"
+            "Use this command while streaming responses or tool execution are active."
         )
 
     return True
 
 
-async def stop_command(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
+async def stop_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
     """
     Stop currently running operations (alias for interrupt).
 
@@ -107,7 +109,7 @@ async def stop_command(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: 
     return await interrupt_command(parts, ctx)
 
 
-async def cancel_command(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
+async def cancel_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
     """
     Cancel currently running operations (alias for interrupt).
 

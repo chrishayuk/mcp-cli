@@ -14,11 +14,7 @@ import json
 import time
 from typing import Any, Dict, List, Optional
 
-from chuk_term.ui import output
-from rich.live import Live
-from rich.panel import Panel
-from rich.text import Text
-from rich.markdown import Markdown
+from chuk_term.ui import output, StreamingMessage
 
 from mcp_cli.logging_config import get_logger
 
@@ -28,10 +24,11 @@ logger = get_logger("streaming")
 class StreamingResponseHandler:
     """Enhanced streaming handler with better UI integration and error handling."""
 
-    def __init__(self, console: Optional[Console] = None):
-        self.console = console or output._console
+    def __init__(self, console: Optional[Any] = None):
+        self.console = console  # For compatibility
         self.current_response = ""
-        self.live_display: Optional[Live] = None
+        self.live_display: Optional[Any] = None
+        self.streaming_message: Optional[StreamingMessage] = None
         self.start_time = 0.0
         self.chunk_count = 0
         self.is_streaming = False
@@ -41,6 +38,9 @@ class StreamingResponseHandler:
         # Tool call tracking for streaming
         self._accumulated_tool_calls = []
         self._current_tool_call = None
+
+        # Track previous response to detect accumulated vs delta
+        self._previous_response_field = ""
 
     async def stream_response(
         self,
@@ -69,6 +69,7 @@ class StreamingResponseHandler:
         self._interrupted = False
         self._accumulated_tool_calls = []
         self._current_tool_call = None
+        self._previous_response_field = ""  # Reset for new streaming session
 
         try:
             # Check if client supports streaming via create_completion with stream=True
@@ -90,14 +91,8 @@ class StreamingResponseHandler:
             if self.live_display:
                 # Show final response if not already shown
                 if not self._response_complete:
-                    # Stop live display and show final response.  If not done in this order, the live display
-                    # transient removal can cause issues with overwriting the final response.
-                    self.live_display.stop()
-                    self.live_display = None
                     self._show_final_response()
-                else:
-                    self.live_display.stop()
-                    self.live_display = None
+                self.live_display = None
 
     def interrupt_streaming(self):
         """Interrupt the current streaming operation."""
@@ -109,40 +104,38 @@ class StreamingResponseHandler:
         if self._response_complete or not self.current_response:
             return
 
-        elapsed = time.time() - self.start_time
-
-        # Calculate stats
-        words = len(self.current_response.split())
-        chars = len(self.current_response)
-
-        # Create subtitle with stats
-        subtitle_parts = [f"Response time: {elapsed:.2f}s"]
-        if self.chunk_count > 1:
-            subtitle_parts.append(f"Streamed: {self.chunk_count} chunks")
-        if elapsed > 0:
-            subtitle_parts.append(f"{words / elapsed:.1f} words/s")
-
-        subtitle = " | ".join(subtitle_parts)
-
-        # Format content
-        try:
-            # Use Markdown for formatted text
-            content = Markdown(self.current_response)
-        except Exception as e:
-            # Fallback to Text if Markdown parsing fails
-            logger.debug(f"Markdown parsing failed: {e}")
-            content = Text(self.current_response)
-
-        # Display final panel
-        output.print(
-            Panel(
-                content,
-                title="Assistant",
-                subtitle=subtitle,
-                # style="bold blue",
-                padding=(0, 1),
+        # If we have a streaming message, finalize it properly
+        if self.streaming_message:
+            # Log the full content length for debugging
+            logger.debug(
+                f"Finalizing streaming message with {len(self.current_response)} characters"
             )
-        )
+            logger.debug(f"First 100 chars: {self.current_response[:100]}")
+            logger.debug(f"Last 100 chars: {self.current_response[-100:]}")
+            logger.debug(
+                f"StreamingMessage content length: {len(self.streaming_message.content)}"
+            )
+
+            # Ensure the streaming message has the full content
+            # Since we're now properly handling deltas, the streaming message should already have the right content
+            # But we'll still sync it to be safe
+            if self.streaming_message.content != self.current_response:
+                logger.debug(
+                    "Content mismatch, syncing streaming_message.content with current_response"
+                )
+                self.streaming_message.content = self.current_response
+
+            # Call finalize() to properly display the final panel
+            try:
+                self.streaming_message.finalize()
+            except Exception as e:
+                logger.debug(f"Error finalizing streaming message: {e}")
+            self.streaming_message = None
+        else:
+            # No streaming happened, show the regular formatted response
+            elapsed = time.time() - self.start_time if self.start_time else 0
+            output.assistant_message(self.current_response, elapsed=elapsed)
+
         self._response_complete = True
 
     async def _handle_chuk_llm_streaming(
@@ -179,6 +172,10 @@ class StreamingResponseHandler:
         except Exception as e:
             logger.error(f"Streaming error in chuk-llm streaming: {e}")
             raise
+        finally:
+            # Ensure streaming message is properly finalized
+            if self.streaming_message and not self._response_complete:
+                self._show_final_response()
 
         # Build final response
         elapsed = time.time() - self.start_time
@@ -268,15 +265,16 @@ class StreamingResponseHandler:
 
     def _start_live_display(self):
         """Start the live display for streaming updates."""
-        if not self.live_display:
-            self.live_display = Live(
-                self._create_display_content(),
-                console=self.console,
-                transient=True,
-                refresh_per_second=4,  # 10 FPS for smooth updates
-                vertical_overflow="visible",
+        if not self.streaming_message:
+            self.start_time = time.time()
+            # Create StreamingMessage but don't enter context yet
+            # We'll manage the context manually for async compatibility
+            self.streaming_message = StreamingMessage(
+                console=self.console, title="🤖 Assistant", show_elapsed=True
             )
-            self.live_display.start()
+            # Enter the context manager
+            self.streaming_message.__enter__()
+            self.live_display = True
 
     async def _process_chunk(
         self, chunk: Dict[str, Any], tool_calls: List[Dict[str, Any]]
@@ -299,9 +297,10 @@ class StreamingResponseHandler:
                 logger.debug(f"Extracted tool call data: {tool_call_data}")
                 self._process_tool_call_chunk(tool_call_data, tool_calls)
 
-            # Update live display
-            if self.live_display and not self._interrupted:
-                self.live_display.update(self._create_display_content())
+            # Update display with streaming content
+            if self.streaming_message and not self._interrupted and content:
+                # Update the streaming message with new content chunk
+                self.streaming_message.update(content)
 
             # Small delay to prevent overwhelming the terminal
             await asyncio.sleep(0.01)
@@ -317,9 +316,27 @@ class StreamingResponseHandler:
             if isinstance(chunk, dict):
                 # Primary format for chuk-llm
                 if "response" in chunk:
-                    return (
+                    response_field = (
                         str(chunk["response"]) if chunk["response"] is not None else ""
                     )
+
+                    # CRITICAL: Detect if response is accumulated or delta
+                    # If the response field starts with what we had before, it's accumulated
+                    if (
+                        response_field.startswith(self._previous_response_field)
+                        and self._previous_response_field
+                    ):
+                        # It's accumulated! Extract only the new part
+                        delta = response_field[len(self._previous_response_field) :]
+                        self._previous_response_field = response_field
+                        logger.debug(
+                            f"Detected accumulated response, extracted delta: {repr(delta[:50])}"
+                        )
+                        return delta
+                    else:
+                        # Might be a delta or first chunk
+                        self._previous_response_field = response_field
+                        return response_field
 
                 # Alternative formats (for compatibility)
                 elif "content" in chunk:
@@ -705,69 +722,7 @@ class StreamingResponseHandler:
         return cleaned
 
     def _create_display_content(self):
-        """Create enhanced content for live display."""
-        elapsed = time.time() - self.start_time
-
-        # Create enhanced status line
-        status_text = Text()
-        status_text.append("⚡ Streaming", style="cyan bold")
-        status_text.append(f" • {self.chunk_count} chunks", style="dim")
-        status_text.append(f" • {elapsed:.1f}s", style="dim")
-
-        # Show tool call info if any are accumulating
-        if self._accumulated_tool_calls:
-            # Count tools with names
-            named_tools = sum(
-                1
-                for tc in self._accumulated_tool_calls
-                if tc.get("function", {}).get("name")
-            )
-            status_text.append(
-                f" • {named_tools}/{len(self._accumulated_tool_calls)} tools",
-                style="dim magenta",
-            )
-
-        # Show performance metrics if we have enough data
-        if elapsed > 1.0 and self.current_response:
-            words = len(self.current_response.split())
-            chars = len(self.current_response)
-            words_per_sec = words / elapsed
-            chars_per_sec = chars / elapsed
-
-            status_text.append(f" • {words_per_sec:.1f} words/s", style="dim green")
-            status_text.append(f" • {chars_per_sec:.0f} chars/s", style="dim green")
-
-        # Handle interruption state
-        if self._interrupted:
-            status_text.append(" • INTERRUPTED", style="red bold")
-
-        # Response content with typing cursor
-        if self.current_response:
-            try:
-                # Progressive markdown rendering with cursor
-                display_text = self.current_response
-                if not self._interrupted:
-                    display_text += " ▌"  # Add typing cursor
-                response_content = Markdown(markup=display_text)
-            except Exception as e:
-                # Fallback to plain text if markdown fails
-                logger.debug(f"Markdown rendering failed: {e}")
-                display_text = self.current_response
-                if not self._interrupted:
-                    display_text += " ▌"
-                response_content = Text(display_text)
-        else:
-            # Show just cursor when no content yet
-            cursor_style = "dim" if not self._interrupted else "red"
-            response_content = Text("▌", style=cursor_style)
-
-        # Create panel with dynamic styling
-        border_style = "blue" if not self._interrupted else "red"
-
-        return Panel(
-            response_content,
-            title=status_text,
-            title_align="left",
-            border_style=border_style,
-            padding=(0, 1),
-        )
+        """Create display status (not used currently without Live display)."""
+        # This method is kept for compatibility but not actively used
+        # without rich.Live support in chuk-term
+        return None

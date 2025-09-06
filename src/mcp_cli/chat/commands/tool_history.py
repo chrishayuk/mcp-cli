@@ -43,15 +43,21 @@ from chuk_term.ui import output
 
 # Chat-command registry
 from mcp_cli.chat.commands import register_command
+from mcp_cli.context import get_context
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # Command handler
 # ════════════════════════════════════════════════════════════════════════════
-async def tool_history_command(cmd_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
+async def tool_history_command(
+    cmd_parts: List[str], ctx: Dict[str, Any] = None
+) -> bool:  # noqa: D401
+    # Use global context manager
+    context = get_context()
+
     """Inspect the history of tool calls executed during this chat session."""
 
-    history = ctx.get("conversation_history", []) or []
+    history = context.conversation_history or []
 
     # ── gather all tool-calls from assistant messages ───────────────────────
     tool_calls: List[Dict[str, Any]] = []
@@ -71,9 +77,7 @@ async def tool_history_command(cmd_parts: List[str], ctx: Dict[str, Any]) -> boo
             tool_calls.append({"name": name, "args": raw_args})
 
     if not tool_calls:
-        output.print(
-            "[italic yellow]No tool calls recorded this session.[/italic yellow]"
-        )
+        output.warning("No tool calls recorded this session.")
         return True  # command handled
 
     # ── parse flags / positional args ────────────────────────────────────────
@@ -92,11 +96,10 @@ async def tool_history_command(cmd_parts: List[str], ctx: Dict[str, Any]) -> boo
                         line_numbers=False,
                     ),
                     title=f"Tool Call #{row} Details",
-                    style="cyan",
                 )
             )
         else:
-            output.print(f"[red]Invalid index - choose 1-{len(tool_calls)}[/red]")
+            output.error(f"Invalid index - choose 1-{len(tool_calls)}")
         return True
 
     # 2️⃣  full JSON dump
@@ -117,15 +120,15 @@ async def tool_history_command(cmd_parts: List[str], ctx: Dict[str, Any]) -> boo
             idx = args.index("-n")
             limit = int(args[idx + 1])
         except Exception:
-            output.print("[red]Invalid value after -n; showing all rows[/red]")
+            output.error("Invalid value after -n; showing all rows")
 
     display = tool_calls[-limit:] if limit and limit > 0 else tool_calls
 
     # ── render table ─────────────────────────────────────────────────────────
     table = Table(title=f"Tool Call History ({len(display)} calls)")
-    table.add_column("#", style="dim", width=4)
-    table.add_column("Tool", style="green")
-    table.add_column("Arguments", style="yellow")
+    table.add_column("#", width=4)
+    table.add_column("Tool")
+    table.add_column("Arguments")
 
     start = len(tool_calls) - len(display) + 1
     for i, call in enumerate(display, start=start):

@@ -42,7 +42,7 @@ from mcp_cli.chat.commands.help_text import (
 # ════════════════════════════════════════════════════════════════════════════
 # /help  ── contextual manual
 # ════════════════════════════════════════════════════════════════════════════
-async def cmd_help(cmd_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
+async def cmd_help(cmd_parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
     """
     Show contextual help inside chat.
 
@@ -65,14 +65,12 @@ async def cmd_help(cmd_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: 
         if name in _COMMAND_COMPLETIONS:
             comps = ", ".join(_COMMAND_COMPLETIONS[name])
             text += f"\n\n**Completions:** {comps}"
-        output.print(Panel(Markdown(text), title=f"Help: {name}", style="cyan"))
+        output.print(Panel(Markdown(text), title=f"Help: {name}"))
         return True
 
     # ── grouped topical help (if not a command) ────────────────────────────
     if args and args[0].lower() in {"tools"}:
-        output.print(
-            Panel(Markdown(TOOL_COMMANDS_HELP), title="Tool Commands", style="cyan")
-        )
+        output.print(Panel(Markdown(TOOL_COMMANDS_HELP), title="Tool Commands"))
         return True
 
     if args and args[0].lower() in {"conversation", "ch"}:
@@ -80,7 +78,6 @@ async def cmd_help(cmd_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: 
             Panel(
                 Markdown(CONVERSATION_COMMANDS_HELP),
                 title="Conversation-History Commands",
-                style="cyan",
             )
         )
         return True
@@ -90,14 +87,13 @@ async def cmd_help(cmd_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: 
             Panel(
                 Markdown(UI_COMMANDS_HELP),
                 title="UI & Preference Commands",
-                style="cyan",
             )
         )
         return True
 
     # ── fallback: list all commands ────────────────────────────────────────
     table = Table(title=f"{len(_COMMAND_HANDLERS)} Available Commands")
-    table.add_column("Command", style="green")
+    table.add_column("Command")
     table.add_column("Description")
 
     for cmd, handler in sorted(_COMMAND_HANDLERS.items()):
@@ -111,7 +107,7 @@ async def cmd_help(cmd_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: 
         table.add_row(cmd, desc)
 
     output.print(table)
-    output.print("\nType [green]/help <command>[/green] for details.")
+    output.print("\nType /help <command> for details.")
     return True
 
 
@@ -124,7 +120,7 @@ async def display_quick_help(cmd_parts: List[str], ctx: Dict[str, Any]) -> bool:
     """
 
     quick_tbl = Table(title="Quick Command Reference")
-    quick_tbl.add_column("Command", style="green")
+    quick_tbl.add_column("Command")
     quick_tbl.add_column("Description")
 
     for cmd, desc in [
@@ -140,7 +136,7 @@ async def display_quick_help(cmd_parts: List[str], ctx: Dict[str, Any]) -> bool:
         quick_tbl.add_row(cmd, desc)
 
     output.print(quick_tbl)
-    output.print("\nType [green]/help[/green] for the complete list.")
+    output.print("\nType /help for the complete list.")
     return True
 
 

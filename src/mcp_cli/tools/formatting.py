@@ -1,10 +1,8 @@
 # mcp_cli/tools/formatting.py
-"""Helper functions for tool display and formatting."""
+"""Helper functions for tool display and formatting using chuk-term."""
 
 from typing import List, Dict
-from rich.table import Table
 from chuk_term.ui import output
-from rich.panel import Panel
 
 from mcp_cli.tools.models import ToolInfo, ServerInfo
 
@@ -35,107 +33,143 @@ def format_tool_for_display(
     return display_data
 
 
-def create_tools_table(tools: List[ToolInfo], show_details: bool = False) -> Table:
-    """Create a Rich table for displaying tools."""
-    table = Table(title=f"{len(tools)} Available Tools")
-    table.add_column("Server", style="cyan")
-    table.add_column("Tool", style="green")
-    table.add_column("Description")
+def create_tools_table(tools: List[ToolInfo], show_details: bool = False):
+    """Create a Rich table for tools (does not print it)."""
+    # Prepare data for table
+    headers = ["Server", "Tool", "Description"]
     if show_details:
-        table.add_column("Parameters", style="yellow")
+        headers.append("Parameters")
 
-    # Monkey-patch add_row to attach cells for tests
-    original_add_row = table.add_row
-
-    def patched_add_row(*args, **kwargs):
-        original_add_row(*args, **kwargs)
-        # record the last row's cell values as strings
-        values = [str(a) for a in args]
-        last_row = table.rows[-1]
-        setattr(last_row, "cells", values)
-
-    table.add_row = patched_add_row  # type: ignore
-
+    rows = []
     for tool in tools:
         display_data = format_tool_for_display(tool, show_details)
+        row = [
+            display_data["server"],
+            display_data["name"],
+            display_data["description"],
+        ]
         if show_details:
-            table.add_row(
-                display_data["server"],
-                display_data["name"],
-                display_data["description"],
-                display_data.get("parameters", "None"),
-            )
-        else:
-            table.add_row(
-                display_data["server"],
-                display_data["name"],
-                display_data["description"],
-            )
+            row.append(display_data.get("parameters", "None"))
+        rows.append(row)
 
+    # Create a Rich table
+    from rich.table import Table
+
+    table = Table(title=f"{len(tools)} Available Tools")
+    for header in headers:
+        table.add_column(header)
+    for row in rows:
+        table.add_row(*row)
+
+    # Return the Rich table object
     return table
 
 
-def create_servers_table(servers: List[ServerInfo]) -> Table:
-    """Create a Rich table for displaying servers."""
-    table = Table(title="Connected MCP Servers")
-    table.add_column("ID", style="cyan")
-    table.add_column("Server Name", style="green")
-    table.add_column("Tools", style="cyan")
-    table.add_column("Status", style="green")
-
-    # Monkey-patch add_row to attach cells for tests
-    original_add_row = table.add_row
-
-    def patched_add_row(*args, **kwargs):
-        original_add_row(*args, **kwargs)
-        values = [str(a) for a in args]
-        last_row = table.rows[-1]
-        setattr(last_row, "cells", values)
-
-    table.add_row = patched_add_row  # type: ignore
+def create_servers_table(servers: List[ServerInfo]):
+    """Create a Rich table for servers (does not print it)."""
+    # Prepare data for table
+    headers = ["ID", "Server Name", "Tools", "Status"]
+    rows = []
 
     for server in servers:
-        table.add_row(
-            str(server.id), server.name, str(server.tool_count), server.status
+        rows.append(
+            [str(server.id), server.name, str(server.tool_count), server.status]
         )
 
+    # Create a Rich table
+    from rich.table import Table
+
+    table = Table(title="Connected MCP Servers")
+    for header in headers:
+        table.add_column(header)
+    for row in rows:
+        table.add_row(*row)
+
+    # Return the Rich table object
     return table
 
 
 def display_tool_call_result(result, console=None):
-    """Display the result of a tool call."""
+    """Display the result of a tool call using chuk-term."""
     import json
-    from rich.text import Text
-
-    # If console is provided, use it; otherwise use output.print
-    print_func = console.print if console else output.print
 
     if result.success:
-        # Format successful result
-        if isinstance(result.result, (dict, list)):
-            try:
-                content = json.dumps(result.result, indent=2)
-            except Exception:
-                content = str(result.result)
-        else:
-            content = str(result.result)
-
-        title = f"[green]Tool '{result.tool_name}' - Success"
+        # Display success header with timing
+        title = f"✓ Tool '{result.tool_name}' completed"
         if result.execution_time:
             title += f" ({result.execution_time:.2f}s)"
-        title += "[/green]"
+        output.success(title)
 
-        # Use Text object to prevent markup parsing issues
-        text_content = Text(content)
+        # Format and display the result based on type
+        if isinstance(result.result, list) and result.result:
+            # For lists, check if they're records (list of dicts)
+            if all(isinstance(item, dict) for item in result.result):
+                # Display as a table if it's a list of records
+                if len(result.result) <= 10:  # Show table for small result sets
+                    headers = list(result.result[0].keys()) if result.result else []
+                    rows = [
+                        [str(item.get(h, "")) for h in headers]
+                        for item in result.result
+                    ]
+                    from rich.table import Table
 
-        print_func(Panel(text_content, title=title, style="green"))
+                    table = Table()
+                    for header in headers:
+                        table.add_column(header)
+                    for row in rows:
+                        table.add_row(*[str(cell) for cell in row])
+                    output.print_table(table)
+                else:
+                    # For large result sets, show summary
+                    output.info(f"Returned {len(result.result)} records")
+                    # Show first few items
+                    output.print("First 3 records:")
+                    for i, item in enumerate(result.result[:3], 1):
+                        output.print(
+                            f"  {i}. {json.dumps(item, separators=(',', ': '))}"
+                        )
+                    if len(result.result) > 3:
+                        output.print(f"  ... and {len(result.result) - 3} more")
+            else:
+                # For simple lists, show items
+                output.info(f"Returned {len(result.result)} items")
+                for item in result.result[:10]:
+                    output.print(f"  • {item}")
+                if len(result.result) > 10:
+                    output.print(f"  ... and {len(result.result) - 10} more")
+        elif isinstance(result.result, dict):
+            # For dictionaries, show as key-value pairs if small
+            if len(result.result) <= 10:
+                output.kvpairs(result.result)
+            else:
+                # For large dicts, show as formatted JSON
+                content = json.dumps(result.result, indent=2)
+                if len(content) > 500:
+                    # Truncate very large results
+                    output.code(content[:500] + "\n... (truncated)", language="json")
+                else:
+                    output.code(content, language="json")
+        elif isinstance(result.result, str):
+            # For strings, display them nicely
+            if len(result.result) > 500:
+                output.print(result.result[:500] + "... (truncated)")
+            else:
+                output.print(result.result)
+        else:
+            # For other types, format as JSON
+            try:
+                import json
+
+                formatted = json.dumps(result.result, indent=2)
+                if len(formatted) > 500:
+                    output.code(formatted[:500] + "\n... (truncated)", language="json")
+                else:
+                    output.code(formatted, language="json")
+            except:
+                # Fallback to string representation
+                output.print(str(result.result))
     else:
-        # Format error result
+        # Display error
         error_msg = result.error or "Unknown error"
-
-        # Use Text object for error message too
-        error_text = Text(f"Error: {error_msg}")
-
-        print_func(
-            Panel(error_text, title=f"Tool '{result.tool_name}' - Failed", style="red")
-        )
+        output.error(f"✗ Tool '{result.tool_name}' failed")
+        output.print(f"Error: {error_msg}")

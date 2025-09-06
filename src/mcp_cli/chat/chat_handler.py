@@ -23,6 +23,8 @@ from mcp_cli.chat.chat_context import ChatContext, TestChatContext
 from mcp_cli.chat.ui_manager import ChatUIManager
 from mcp_cli.chat.conversation import ConversationProcessor
 from mcp_cli.tools.manager import ToolManager
+from mcp_cli.context import initialize_context
+from mcp_cli.config import initialize_config
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -34,6 +36,7 @@ async def handle_chat_mode(
     model: str = None,
     api_base: str = None,
     api_key: str = None,
+    confirm_mode: str = None,
 ) -> bool:
     """
     Launch the interactive chat loop with streaming support.
@@ -44,6 +47,7 @@ async def handle_chat_mode(
         model: Model to use (optional, uses ModelManager active if None)
         api_base: API base URL override (optional)
         api_key: API key override (optional)
+        confirm_mode: Tool confirmation mode override (optional)
 
     Returns:
         True if session ended normally, False on failure
@@ -51,6 +55,20 @@ async def handle_chat_mode(
     ui: Optional[ChatUIManager] = None
 
     try:
+        # Initialize configuration manager
+        from pathlib import Path
+
+        initialize_config(Path("server_config.json"))
+
+        # Initialize global context manager for commands to work
+        app_context = initialize_context(
+            tool_manager=tool_manager,
+            provider=provider or "openai",
+            model=model or "gpt-4",
+            api_base=api_base,
+            api_key=api_key,
+        )
+
         # Create chat context using clean factory
         with output.loading("Initializing chat context..."):
             ctx = ChatContext.create(
@@ -64,6 +82,9 @@ async def handle_chat_mode(
             if not await ctx.initialize():
                 output.error("Failed to initialize chat context.")
                 return False
+
+            # Update global context with initialized data
+            await app_context.initialize()
 
         # Welcome banner
         if not logger.debug:

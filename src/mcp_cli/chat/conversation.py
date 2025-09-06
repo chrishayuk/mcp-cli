@@ -6,7 +6,7 @@ FIXED: Updated to work with the new OpenAI client universal tool compatibility s
 import time
 import asyncio
 import logging
-from rich import print
+from chuk_term.ui import output
 
 # mcp cli imports
 from mcp_cli.chat.tool_processor import ToolProcessor
@@ -78,8 +78,8 @@ class ConversationProcessor:
                             log.warning(
                                 f"Streaming failed, falling back to regular completion: {e}"
                             )
-                            print(
-                                f"[yellow]Streaming failed, falling back to regular completion: {e}[/yellow]"
+                            output.warning(
+                                f"Streaming failed, falling back to regular completion: {e}"
                             )
                             completion = await self._handle_regular_completion()
                     else:
@@ -128,7 +128,7 @@ class ConversationProcessor:
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
-                    print(f"[red]Error during conversation processing:[/red] {exc}")
+                    output.error(f"Error during conversation processing: {exc}")
                     import traceback
 
                     traceback.print_exc()
@@ -202,8 +202,8 @@ class ConversationProcessor:
             err = str(e)
             if "Invalid 'tools" in err:
                 log.error(f"Tool definition error: {err}")
-                print(
-                    "[yellow]Warning: tool definitions rejected by model, retrying without tools...[/yellow]"
+                output.warning(
+                    "Tool definitions rejected by model, retrying without tools..."
                 )
                 completion = await self.context.client.create_completion(
                     messages=self.context.conversation_history

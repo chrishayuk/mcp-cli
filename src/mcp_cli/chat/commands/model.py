@@ -25,12 +25,13 @@ from chuk_term.ui import output
 
 from mcp_cli.commands.model import model_action_async
 from mcp_cli.chat.commands import register_command
+from mcp_cli.context import get_context
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # /model entry-point
 # ════════════════════════════════════════════════════════════════════════════
-async def cmd_model(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
+async def cmd_model(parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
     """
     View or change the active LLM model.
 
@@ -42,10 +43,13 @@ async def cmd_model(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D40
     any errors in a user-friendly way.
     """
 
+    # Use global context manager
+    context = get_context()
+
     try:
-        await model_action_async(parts[1:], context=ctx)
+        await model_action_async(parts[1:], context=context.to_dict())
     except Exception as exc:  # pragma: no cover  - unexpected
-        output.print(f"[red]Model command failed:[/red] {exc}")
+        output.error(f"Model command failed: {exc}")
     return True
 
 

@@ -32,19 +32,21 @@ from chuk_term.ui import (
 
 # Chat registry
 from mcp_cli.chat.commands import register_command
+from mcp_cli.context import get_context
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # /cls  - clear screen, keep history
 # ════════════════════════════════════════════════════════════════════════════
-async def cmd_cls(_parts: List[str], ctx: Dict[str, Any]) -> bool:
+async def cmd_cls(_parts: List[str], ctx: Dict[str, Any] = None) -> bool:
     """Clear the terminal window but *preserve* the conversation history."""
     clear_screen()
 
+    # Use global context manager
+    context = get_context()
+
     # Re-display the chat banner
-    display_chat_banner(
-        provider=ctx.get("provider", "unknown"), model=ctx.get("model", "unknown")
-    )
+    display_chat_banner(provider=context.provider, model=context.model)
 
     output.success("Screen cleared. Conversation history preserved.")
     return True
@@ -53,20 +55,21 @@ async def cmd_cls(_parts: List[str], ctx: Dict[str, Any]) -> bool:
 # ════════════════════════════════════════════════════════════════════════════
 # /clear - clear screen *and* history
 # ════════════════════════════════════════════════════════════════════════════
-async def cmd_clear(_parts: List[str], ctx: Dict[str, Any]) -> bool:
+async def cmd_clear(_parts: List[str], ctx: Dict[str, Any] = None) -> bool:
     """Clear the screen *and* reset the in-memory history."""
     clear_screen()
 
-    history = ctx.get("conversation_history", [])
+    # Use global context manager
+    context = get_context()
+
+    history = context.conversation_history
     if history and history[0].get("role") == "system":
         system_prompt = history[0]["content"]
         history.clear()
         history.append({"role": "system", "content": system_prompt})
 
     # Re-display the chat banner
-    display_chat_banner(
-        provider=ctx.get("provider", "unknown"), model=ctx.get("model", "unknown")
-    )
+    display_chat_banner(provider=context.provider, model=context.model)
 
     output.success("Screen cleared and conversation history reset.")
     return True
@@ -75,9 +78,12 @@ async def cmd_clear(_parts: List[str], ctx: Dict[str, Any]) -> bool:
 # ════════════════════════════════════════════════════════════════════════════
 # /compact - summarise conversation
 # ════════════════════════════════════════════════════════════════════════════
-async def cmd_compact(_parts: List[str], ctx: Dict[str, Any]) -> bool:
+async def cmd_compact(_parts: List[str], ctx: Dict[str, Any] = None) -> bool:
     """Replace lengthy history with a compact LLM-generated summary."""
-    history = ctx.get("conversation_history", [])
+    # Use global context manager
+    context = get_context()
+
+    history = context.conversation_history
 
     if len(history) <= 1:
         output.warning("Nothing to compact.")
@@ -91,9 +97,13 @@ async def cmd_compact(_parts: List[str], ctx: Dict[str, Any]) -> bool:
 
     with output.loading("Generating summary..."):
         try:
-            result = await ctx["client"].create_completion(
-                messages=history + [summary_prompt]
-            )
+            # Get the client from context
+            client = context.llm_client
+            if not client:
+                output.error("LLM client not available")
+                return True
+
+            result = await client.create_completion(messages=history + [summary_prompt])
             summary = result.get("response", "No summary available.")
         except Exception as exc:
             output.error(f"Error summarising conversation: {exc}")
@@ -101,15 +111,13 @@ async def cmd_compact(_parts: List[str], ctx: Dict[str, Any]) -> bool:
 
     # Reset history
     clear_screen()
-    ctx["conversation_history"][:] = [
+    context.conversation_history[:] = [
         {"role": "system", "content": system_prompt},
         {"role": "assistant", "content": f"**Summary:**\n\n{summary}"},
     ]
 
     # Re-display the chat banner
-    display_chat_banner(
-        provider=ctx.get("provider", "unknown"), model=ctx.get("model", "unknown")
-    )
+    display_chat_banner(provider=context.provider, model=context.model)
 
     output.success("Conversation compacted.")
 
@@ -124,17 +132,20 @@ async def cmd_compact(_parts: List[str], ctx: Dict[str, Any]) -> bool:
 # ════════════════════════════════════════════════════════════════════════════
 # /save  - write history to disk
 # ════════════════════════════════════════════════════════════════════════════
-async def cmd_save(parts: List[str], ctx: Dict[str, Any]) -> bool:
+async def cmd_save(parts: List[str], ctx: Dict[str, Any] = None) -> bool:
     """Persist the conversation history to a JSON file on disk."""
     if len(parts) < 2:
         output.warning("Usage: /save <filename>")
         return True
 
+    # Use global context manager
+    context = get_context()
+
     filename = parts[1]
     if not filename.endswith(".json"):
         filename += ".json"
 
-    history = ctx.get("conversation_history", [])[1:]  # skip system prompt
+    history = context.conversation_history[1:]  # skip system prompt
     try:
         with open(filename, "w", encoding="utf-8") as fp:
             json.dump(history, fp, indent=2, ensure_ascii=False)

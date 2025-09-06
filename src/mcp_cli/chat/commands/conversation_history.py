@@ -33,19 +33,22 @@ from rich.table import Table
 from rich import box  # noqa: T201 - used deliberately
 
 from mcp_cli.chat.commands import register_command
+from mcp_cli.context import get_context
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # Handler
 # ════════════════════════════════════════════════════════════════════════════
-async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
+async def conversation_history_command(
+    parts: List[str], ctx: Dict[str, Any] = None
+) -> bool:  # noqa: D401
     """Browse or export the in-memory conversation history."""
-    history = ctx.get("conversation_history", []) or []
+    # Use global context manager
+    context = get_context()
+    history = context.conversation_history or []
 
     if not history:
-        output.print(
-            "[italic yellow]No conversation history available.[/italic yellow]"
-        )
+        output.warning("No conversation history available.")
         return True
 
     args = parts[1:]
@@ -57,7 +60,7 @@ async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) ->
     if args and args[0].isdigit():
         single_row = int(args[0])
         if not (1 <= single_row <= len(history)):
-            output.print(f"[red]Invalid row. Must be 1-{len(history)}[/red]")
+            output.error(f"Invalid row. Must be 1-{len(history)}")
             return True
 
     # -n limit?
@@ -66,7 +69,7 @@ async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) ->
             idx = args.index("-n")
             limit = int(args[idx + 1])
         except Exception:
-            output.print("[red]Invalid -n value; showing all[/red]")
+            output.error("Invalid -n value; showing all")
 
     # Slice history
     if single_row is not None:
@@ -93,7 +96,6 @@ async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) ->
                 ),
                 title=title,
                 box=box.ROUNDED,
-                border_style="cyan",
                 expand=True,
                 padding=(1, 2),
             )
@@ -128,7 +130,6 @@ async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) ->
                 details,
                 title=f"Message #{single_row} — {label}",
                 box=box.ROUNDED,
-                border_style="cyan",
                 expand=True,
                 padding=(1, 2),
             )
@@ -137,9 +138,9 @@ async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) ->
 
     # ── tabular list view ───────────────────────────────────────────────────
     table = Table(title=f"Conversation History ({len(selection)} messages)")
-    table.add_column("#", style="dim", width=4)
-    table.add_column("Role", style="cyan", width=12)
-    table.add_column("Content", style="white")
+    table.add_column("#", width=4)
+    table.add_column("Role", width=12)
+    table.add_column("Content")
 
     for msg in selection:
         idx = history.index(msg) + 1
@@ -157,7 +158,7 @@ async def conversation_history_command(parts: List[str], ctx: Dict[str, Any]) ->
         table.add_row(str(idx), label, content)
 
     output.print(table)
-    output.print("\nType [green]/conversation <row>[/green] for full message details.")
+    output.print("\nType /conversation <row> for full message details.")
     return True
 
 

@@ -26,12 +26,13 @@ from chuk_term.ui import output
 
 # Chat-command registry
 from mcp_cli.chat.commands import register_command
+from mcp_cli.context import get_context
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # Core handlers
 # ════════════════════════════════════════════════════════════════════════════
-async def cmd_exit(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
+async def cmd_exit(_parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
     """
     Terminate the chat session.
 
@@ -39,12 +40,14 @@ async def cmd_exit(_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D40
     -----
       /exit
     """
-    ctx["exit_requested"] = True
+    # Use global context manager
+    context = get_context()
+    context.exit_requested = True
     output.panel("Exiting chat mode.", style="red", title="Goodbye")
     return True
 
 
-async def cmd_quit(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
+async def cmd_quit(parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
     """
     Terminate the chat session.
 

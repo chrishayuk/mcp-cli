@@ -11,12 +11,13 @@ from mcp_cli.commands.tools import tools_action_async
 from mcp_cli.commands.tools_call import tools_call_action
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.chat.commands import register_command
+from mcp_cli.context import get_context
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # ENHANCED: Tool management commands
 # ════════════════════════════════════════════════════════════════════════════
-async def tools_manage_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
+async def tools_manage_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:
     """
     Manage tools (enable/disable/validate).
 
@@ -31,22 +32,22 @@ async def tools_manage_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
     /tools-clear-validation            - Clear validation-disabled tools
     /tools-errors                      - Show validation errors
     """
+    # Use global context manager
+    context = get_context()
 
-    tm: ToolManager = ctx.get("tool_manager")
+    tm: ToolManager = context.tool_manager
     if not tm:
-        output.print("[red]Error:[/red] ToolManager not available.")
+        output.error("ToolManager not available.")
         return True
 
     # Check if enhanced features are available
     if not hasattr(tm, "disable_tool"):
-        output.print("[red]Error:[/red] Tool management requires enhanced ToolManager.")
-        output.print(
-            "[dim]Note: Your ToolManager doesn't support validation features[/dim]"
-        )
+        output.error("Tool management requires enhanced ToolManager.")
+        output.hint("Note: Your ToolManager doesn't support validation features")
         return True
 
     if len(parts) < 1:
-        output.print("[red]Error:[/red] No action specified")
+        output.error("No action specified")
         return True
 
     command = parts[0]  # e.g., "/tools-enable"
@@ -55,12 +56,12 @@ async def tools_manage_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
     # Parse command
     if command == "/tools-enable":
         if not args:
-            output.print("[red]Error:[/red] Tool name required")
+            output.error("Tool name required")
             return True
 
         tool_name = args[0]
         tm.enable_tool(tool_name)
-        output.print(f"[green]✓ Enabled tool:[/green] {tool_name}")
+        output.success(f"✓ Enabled tool: {tool_name}")
 
         # Refresh chat context if available
         chat_ctx = ctx.get("chat_context")
@@ -69,12 +70,12 @@ async def tools_manage_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
 
     elif command == "/tools-disable":
         if not args:
-            output.print("[red]Error:[/red] Tool name required")
+            output.error("Tool name required")
             return True
 
         tool_name = args[0]
         tm.disable_tool(tool_name, reason="user")
-        output.print(f"[yellow]✗ Disabled tool:[/yellow] {tool_name}")
+        output.warning(f"✗ Disabled tool: {tool_name}")
 
         # Refresh chat context if available
         chat_ctx = ctx.get("chat_context")
@@ -88,32 +89,28 @@ async def tools_manage_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
             try:
                 is_valid, error_msg = await tm.validate_single_tool(tool_name)
                 if is_valid:
-                    output.print(f"[green]✓ Tool '{tool_name}' is valid[/green]")
+                    output.success(f"✓ Tool '{tool_name}' is valid")
                 else:
-                    output.print(
-                        f"[red]✗ Tool '{tool_name}' is invalid:[/red] {error_msg}"
-                    )
+                    output.error(f"✗ Tool '{tool_name}' is invalid: {error_msg}")
             except Exception as e:
-                output.print(f"[red]Error validating tool:[/red] {e}")
+                output.error(f"Error validating tool: {e}")
         else:
             # Validate all tools
-            provider = ctx.get("provider", "openai")
-            output.print(f"[cyan]Validating all tools for {provider}...[/cyan]")
+            provider = context.provider
+            output.info(f"Validating all tools for {provider}...")
 
             try:
                 summary = await tm.revalidate_tools(provider)
-                output.print("[green]Validation complete:[/green]")
+                output.success("Validation complete:")
                 output.print(f"  • Total tools: {summary.get('total_tools', 0)}")
                 output.print(f"  • Valid: {summary.get('valid_tools', 0)}")
                 output.print(f"  • Invalid: {summary.get('invalid_tools', 0)}")
 
-                # Refresh chat context
-                chat_ctx = ctx.get("chat_context")
-                if chat_ctx and hasattr(chat_ctx, "refresh_after_model_change"):
-                    await chat_ctx.refresh_after_model_change()
+                # Refresh chat context if needed
+                # Note: chat_context refresh might be handled elsewhere
 
             except Exception as e:
-                output.print(f"[red]Error during validation:[/red] {e}")
+                output.error(f"Error during validation: {e}")
 
     elif command == "/tools-status":
         summary = tm.get_validation_summary()
@@ -143,7 +140,7 @@ async def tools_manage_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
         disabled_tools = tm.get_disabled_tools()
 
         if not disabled_tools:
-            output.print("[green]No disabled tools[/green]")
+            output.success("No disabled tools")
         else:
             from rich.table import Table
 
@@ -158,13 +155,13 @@ async def tools_manage_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
 
     elif command == "/tools-details":
         if not args:
-            output.print("[red]Error:[/red] Tool name required")
+            output.error("Tool name required")
             return True
 
         tool_name = args[0]
         details = tm.get_tool_validation_details(tool_name)
         if not details:
-            output.print(f"[red]Tool '{tool_name}' not found[/red]")
+            output.error(f"Tool '{tool_name}' not found")
             return True
 
         # Display details panel
@@ -190,39 +187,37 @@ async def tools_manage_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
             setting = args[0].lower() in ("on", "enable", "true", "yes")
             tm.set_auto_fix_enabled(setting)
             status = "enabled" if setting else "disabled"
-            output.print(f"[cyan]Auto-fix {status}[/cyan]")
+            output.info(f"Auto-fix {status}")
         else:
             current = tm.is_auto_fix_enabled()
             output.print(
-                f"[cyan]Auto-fix is currently {'enabled' if current else 'disabled'}[/cyan]"
+                f"Auto-fix is currently {'enabled' if current else 'disabled'}"
             )
 
     elif command == "/tools-clear-validation":
         tm.clear_validation_disabled_tools()
-        output.print("[green]Cleared all validation-disabled tools[/green]")
+        output.success("Cleared all validation-disabled tools")
 
-        # Refresh chat context
-        chat_ctx = ctx.get("chat_context")
-        if chat_ctx and hasattr(chat_ctx, "refresh_after_model_change"):
-            await chat_ctx.refresh_after_model_change()
+        # Refresh chat context if needed
+        # Note: chat_context refresh might be handled elsewhere
 
     elif command == "/tools-errors":
         summary = tm.get_validation_summary()
         errors = summary.get("validation_errors", [])
 
         if not errors:
-            output.print("[green]No validation errors[/green]")
+            output.success("No validation errors")
         else:
-            output.print(f"[red]Found {len(errors)} validation errors:[/red]")
+            output.error(f"Found {len(errors)} validation errors:")
             for error in errors[:10]:  # Show first 10
                 output.print(f"  • {error['tool']}: {error['error']}")
             if len(errors) > 10:
                 output.print(f"  ... and {len(errors) - 10} more errors")
 
     else:
-        output.print(f"[red]Unknown tool management command: {command}[/red]")
-        output.print(
-            "[dim]Available commands: /tools-enable, /tools-disable, /tools-validate, /tools-status, /tools-disabled, /tools-details, /tools-autofix, /tools-clear-validation, /tools-errors[/dim]"
+        output.error(f"Unknown tool management command: {command}")
+        output.hint(
+            "Available commands: /tools-enable, /tools-disable, /tools-validate, /tools-status, /tools-disabled, /tools-details, /tools-autofix, /tools-clear-validation, /tools-errors"
         )
 
     return True
@@ -231,7 +226,7 @@ async def tools_manage_command(parts: List[str], ctx: Dict[str, Any]) -> bool:
 # ════════════════════════════════════════════════════════════════════════════
 # Command handler (ENHANCED)
 # ════════════════════════════════════════════════════════════════════════════
-async def tools_command(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
+async def tools_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
     """
     List available tools (or call one interactively).
 
@@ -250,10 +245,12 @@ async def tools_command(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa:
     /tools call         - interactive "call tool" helper
     /t                  - short alias
     """
+    # Use global context manager
+    context = get_context()
 
-    tm: ToolManager | None = ctx.get("tool_manager")
+    tm: ToolManager | None = context.tool_manager
     if tm is None:
-        output.print("[red]Error:[/red] ToolManager not available.")
+        output.error("ToolManager not available.")
         return True  # command handled
 
     args = parts[1:]  # drop the command itself
@@ -267,7 +264,7 @@ async def tools_command(parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa:
     show_details = "--all" in args
     show_raw = "--raw" in args
     show_validation = "--validation" in args
-    provider = ctx.get("provider", "openai")
+    provider = context.provider
 
     await tools_action_async(
         tm,

@@ -83,16 +83,30 @@ def main_callback(
     theme: str = typer.Option(
         "default", "--theme", help="UI theme (default, dark, light, minimal, terminal)"
     ),
+    confirm_mode: str = typer.Option(
+        None,
+        "--confirm-mode",
+        help="Tool confirmation mode: always, never, or smart (risk-based)",
+    ),
 ) -> None:
     """MCP CLI - If no subcommand is given, start chat mode."""
 
     # Re-configure logging based on user options (this overrides the default ERROR level)
     setup_logging(level=log_level, quiet=quiet, verbose=verbose)
 
-    # Set UI theme - use preference if not specified
+    # Set UI theme and confirmation mode - use preference if not specified
     from mcp_cli.utils.preferences import get_preference_manager
 
     pref_manager = get_preference_manager()
+
+    # Set confirmation mode if specified
+    if confirm_mode:
+        if confirm_mode.lower() in ["always", "never", "smart"]:
+            pref_manager.set_tool_confirmation_mode(confirm_mode.lower())
+        else:
+            output.print(f"[red]Invalid confirmation mode: {confirm_mode}[/red]")
+            output.print("[dim]Valid modes: always, never, smart[/dim]")
+            raise typer.Exit(1)
 
     if theme and theme != "default":
         # User specified theme via command line
@@ -244,10 +258,27 @@ def _interactive_command(
     theme: str = typer.Option(
         "default", "--theme", help="UI theme (default, dark, light, minimal, terminal)"
     ),
+    confirm_mode: str = typer.Option(
+        None,
+        "--confirm-mode",
+        help="Tool confirmation mode: always, never, or smart (risk-based)",
+    ),
 ) -> None:
     """Start interactive command mode."""
     # Re-configure logging based on user options
     setup_logging(level=log_level, quiet=quiet, verbose=verbose)
+
+    # Set confirmation mode if specified
+    if confirm_mode:
+        from mcp_cli.utils.preferences import get_preference_manager
+
+        pref_manager = get_preference_manager()
+        if confirm_mode.lower() in ["always", "never", "smart"]:
+            pref_manager.set_tool_confirmation_mode(confirm_mode.lower())
+        else:
+            output.print(f"[red]Invalid confirmation mode: {confirm_mode}[/red]")
+            output.print("[dim]Valid modes: always, never, smart[/dim]")
+            raise typer.Exit(1)
 
     # Set UI theme - use preference if not specified
     from mcp_cli.utils.preferences import get_preference_manager
