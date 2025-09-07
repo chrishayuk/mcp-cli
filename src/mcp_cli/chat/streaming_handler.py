@@ -741,21 +741,32 @@ class StreamingResponseHandler:
         if self._interrupted:
             status_text.append(" • INTERRUPTED", style="red bold")
 
-        # Response content with typing cursor
+        # Response content with typing cursor - handle ANSI content properly
+        # Initialize is_ascii_art to avoid scope issues
+        is_ascii_art = False
+        
         if self.current_response:
-            try:
-                # Progressive markdown rendering with cursor
-                display_text = self.current_response
-                if not self._interrupted:
-                    display_text += " ▌"  # Add typing cursor
-                response_content = Markdown(markup=display_text)
-            except Exception as e:
-                # Fallback to plain text if markdown fails
-                logger.debug(f"Markdown rendering failed: {e}")
-                display_text = self.current_response
-                if not self._interrupted:
-                    display_text += " ▌"
-                response_content = Text(display_text)
+            display_text = self.current_response
+            if not self._interrupted:
+                display_text += " ▌"  # Add typing cursor
+                
+            # Check if content contains ANSI or ASCII art that needs special handling
+            from mcp_cli.tools.formatting import format_content_with_ansi_support
+            box_chars = {'┌', '┐', '└', '┘', '├', '┤', '┬', '┴', '┼', '│', '─', '█', '▄', '▀', '▌', '▐'}
+            has_ansi = '\033[' in display_text or '\x1b[' in display_text
+            is_ascii_art = any(char in display_text for char in box_chars) or has_ansi
+            
+            if is_ascii_art:
+                # For ASCII art/ANSI content, use our specialized formatter
+                response_content = format_content_with_ansi_support(display_text, no_wrap=True)
+            else:
+                # For regular content, try markdown first
+                try:
+                    response_content = Markdown(markup=display_text)
+                except Exception as e:
+                    # Fallback to proper text wrapping without ellipses
+                    logger.debug(f"Markdown rendering failed: {e}")
+                    response_content = Text(display_text, overflow="fold", no_wrap=False)
         else:
             # Show just cursor when no content yet
             cursor_style = "dim" if not self._interrupted else "red"
@@ -763,11 +774,24 @@ class StreamingResponseHandler:
 
         # Create panel with dynamic styling
         border_style = "blue" if not self._interrupted else "red"
-
-        return Panel(
-            response_content,
-            title=status_text,
-            title_align="left",
-            border_style=border_style,
-            padding=(0, 1),
-        )
+        
+        # Use optimized settings for ASCII art/ANSI content
+        if is_ascii_art and self.current_response:
+            return Panel(
+                response_content,
+                title=status_text,
+                title_align="left",
+                border_style=border_style,
+                width=None,
+                padding=(0, 0),
+                expand=True,
+                safe_box=False,
+            )
+        else:
+            return Panel(
+                response_content,
+                title=status_text,
+                title_align="left",
+                border_style=border_style,
+                padding=(0, 1),
+            )

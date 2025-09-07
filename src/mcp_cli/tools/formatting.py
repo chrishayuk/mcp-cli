@@ -102,6 +102,40 @@ def create_servers_table(servers: List[ServerInfo]) -> Table:
     return table
 
 
+def format_content_with_ansi_support(content: str, no_wrap: bool = False):
+    """
+    Helper function to format content with proper ANSI escape sequence handling.
+    
+    Args:
+        content: The content to format
+        no_wrap: If True, disable wrapping (for ASCII art/charts)
+    
+    Returns:
+        Rich Text object with proper formatting
+    """
+    from rich.text import Text
+    
+    # Check if content looks like ASCII art/chart (contains box drawing characters or ANSI codes)
+    box_chars = {'┌', '┐', '└', '┘', '├', '┤', '┬', '┴', '┼', '│', '─', '█', '▄', '▀', '▌', '▐'}
+    has_ansi = '\033[' in content or '\x1b[' in content  # Check for ANSI escape sequences
+    is_ascii_art = any(char in content for char in box_chars) or has_ansi
+    
+    if is_ascii_art or no_wrap:
+        # For ASCII art, need special handling to preserve formatting
+        # First, clean up any invisible characters that might interfere
+        clean_content = content.replace('\u200b', '').replace('\u200c', '').replace('\u200d', '')  # Remove zero-width spaces
+        
+        # Handle ANSI content by using Text.from_ansi() to properly interpret escape sequences
+        if has_ansi:
+            return Text.from_ansi(clean_content, no_wrap=True)
+        else:
+            return Text(clean_content, no_wrap=True, overflow="ignore")
+    else:
+        # For regular content, use Text object with normal wrapping behavior
+        # Use "ellipsis" instead of "fold" to ensure proper line breaking
+        return Text(content)
+
+
 def display_tool_call_result(result, console=None):
     """Display the result of a tool call."""
     import json
@@ -125,10 +159,36 @@ def display_tool_call_result(result, console=None):
             title += f" ({result.execution_time:.2f}s)"
         title += "[/green]"
 
-        # Use Text object to prevent markup parsing issues
-        text_content = Text(content)
-
-        print_func(Panel(text_content, title=title, style="green"))
+        # Check if we need special handling for ASCII art
+        box_chars = {'┌', '┐', '└', '┘', '├', '┤', '┬', '┴', '┼', '│', '─', '█', '▄', '▀', '▌', '▐'}
+        has_ansi = '\033[' in content or '\x1b[' in content
+        is_ascii_art = any(char in content for char in box_chars) or has_ansi
+        
+        if is_ascii_art:
+            # For ASCII art, use the helper function and optimized panel settings
+            text_content = format_content_with_ansi_support(content, no_wrap=True)
+            print_func(Panel(
+                text_content,
+                title=title, 
+                style="green", 
+                width=None, 
+                padding=(0, 0),
+                expand=True,
+                safe_box=False
+            ))
+        else:
+            # For regular content, force proper text wrapping without ellipses
+            from rich.text import Text
+            # Create Text object with forced wrapping - NO ellipses mode
+            text_content = Text(content, overflow="fold", no_wrap=False)
+            print_func(Panel(
+                text_content, 
+                title=title, 
+                style="green", 
+                expand=False,
+                width=None,  # Let it size naturally
+                padding=(0, 1)  # Small padding for readability
+            ))
     else:
         # Format error result
         error_msg = result.error or "Unknown error"
