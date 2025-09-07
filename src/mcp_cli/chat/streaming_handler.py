@@ -14,7 +14,8 @@ import json
 import time
 from typing import Any, Dict, List, Optional
 
-from chuk_term.ui import output, StreamingMessage
+from chuk_term.ui import output
+from mcp_cli.ui.streaming_display import StreamingContext
 
 from mcp_cli.logging_config import get_logger
 
@@ -24,11 +25,12 @@ logger = get_logger("streaming")
 class StreamingResponseHandler:
     """Enhanced streaming handler with better UI integration and error handling."""
 
-    def __init__(self, console: Optional[Any] = None):
+    def __init__(self, console: Optional[Any] = None, chat_display=None):
         self.console = console  # For compatibility
+        self.chat_display = chat_display  # Centralized display manager
         self.current_response = ""
         self.live_display: Optional[Any] = None
-        self.streaming_message: Optional[StreamingMessage] = None
+        self.streaming_context: Optional[StreamingContext] = None
         self.start_time = 0.0
         self.chunk_count = 0
         self.is_streaming = False
@@ -88,11 +90,10 @@ class StreamingResponseHandler:
 
         finally:
             self.is_streaming = False
-            if self.live_display:
-                # Show final response if not already shown
-                if not self._response_complete:
-                    self._show_final_response()
-                self.live_display = None
+            # Ensure streaming is properly finalized for both display systems
+            if not self._response_complete:
+                self._show_final_response()
+            self.live_display = None
 
     def interrupt_streaming(self):
         """Interrupt the current streaming operation."""
@@ -104,36 +105,23 @@ class StreamingResponseHandler:
         if self._response_complete or not self.current_response:
             return
 
-        # If we have a streaming message, finalize it properly
-        if self.streaming_message:
-            # Log the full content length for debugging
-            logger.debug(
-                f"Finalizing streaming message with {len(self.current_response)} characters"
-            )
-            logger.debug(f"First 100 chars: {self.current_response[:100]}")
-            logger.debug(f"Last 100 chars: {self.current_response[-100:]}")
-            logger.debug(
-                f"StreamingMessage content length: {len(self.streaming_message.content)}"
-            )
+        # Calculate elapsed time
+        elapsed = time.time() - self.start_time if self.start_time else 0
 
-            # Ensure the streaming message has the full content
-            # Since we're now properly handling deltas, the streaming message should already have the right content
-            # But we'll still sync it to be safe
-            if self.streaming_message.content != self.current_response:
-                logger.debug(
-                    "Content mismatch, syncing streaming_message.content with current_response"
-                )
-                self.streaming_message.content = self.current_response
-
-            # Call finalize() to properly display the final panel
+        # Finalize display
+        if self.chat_display:
+            self.chat_display.finish_streaming()
+            logger.debug("Finalized centralized display")
+        elif self.streaming_context:
+            # Fallback to streaming context finalization
+            logger.debug(f"Finalizing streaming context with {len(self.current_response)} characters")
             try:
-                self.streaming_message.finalize()
+                self.streaming_context.__exit__(None, None, None)
             except Exception as e:
-                logger.debug(f"Error finalizing streaming message: {e}")
-            self.streaming_message = None
+                logger.debug(f"Error finalizing streaming context: {e}")
+            self.streaming_context = None
         else:
-            # No streaming happened, show the regular formatted response
-            elapsed = time.time() - self.start_time if self.start_time else 0
+            # No streaming display, use regular output
             output.assistant_message(self.current_response, elapsed=elapsed)
 
         self._response_complete = True
@@ -170,11 +158,11 @@ class StreamingResponseHandler:
             self._interrupted = True
             raise
         except Exception as e:
-            logger.error(f"Streaming error in chuk-llm streaming: {e}")
+            logger.warning(f"Streaming error in chuk-llm streaming: {e}")
             raise
         finally:
-            # Ensure streaming message is properly finalized
-            if self.streaming_message and not self._response_complete:
+            # Ensure streaming is properly finalized for both display systems
+            if not self._response_complete:
                 self._show_final_response()
 
         # Build final response
@@ -224,7 +212,7 @@ class StreamingResponseHandler:
             self._interrupted = True
             raise
         except Exception as e:
-            logger.error(f"Streaming error in stream_completion: {e}")
+            logger.warning(f"Streaming error in stream_completion: {e}")
             raise
 
         # Build final response
@@ -265,16 +253,33 @@ class StreamingResponseHandler:
 
     def _start_live_display(self):
         """Start the live display for streaming updates."""
-        if not self.streaming_message:
-            self.start_time = time.time()
-            # Create StreamingMessage but don't enter context yet
-            # We'll manage the context manually for async compatibility
-            self.streaming_message = StreamingMessage(
-                console=self.console, title="🤖 Assistant", show_elapsed=True
+        self.start_time = time.time()
+        
+        # Use centralized display if available, otherwise fallback
+        if self.chat_display:
+            self.chat_display.start_streaming()
+            logger.debug("Started streaming with centralized display")
+        elif not self.streaming_context:
+            # Fallback to original StreamingContext
+            logger.debug(f"Console type: {type(self.console)}")
+            if hasattr(self.console, "width"):
+                logger.debug(f"Console width: {self.console.width}")
+            if hasattr(self.console, "size"):
+                logger.debug(f"Console size: {self.console.size}")
+
+            # Create StreamingContext with the new compact display
+            self.streaming_context = StreamingContext(
+                console=self.console,
+                title="🤖 Assistant",
+                mode="response",
+                refresh_per_second=8,  # Moderate refresh rate for stability
+                transient=True,  # Will clear when done
             )
             # Enter the context manager
-            self.streaming_message.__enter__()
-            self.live_display = True
+            self.streaming_context.__enter__()
+            
+        self.live_display = True
+
 
     async def _process_chunk(
         self, chunk: Dict[str, Any], tool_calls: List[Dict[str, Any]]
@@ -289,7 +294,11 @@ class StreamingResponseHandler:
             # Extract content from chunk
             content = self._extract_chunk_content(chunk)
             if content:
+                logger.debug(
+                    f"Extracted streaming content: {repr(content[:50])}{'...' if len(content) > 50 else ''}"
+                )
                 self.current_response += content
+                logger.debug(f"Total response length now: {len(self.current_response)}")
 
             # Handle tool calls in chunks
             tool_call_data = self._extract_tool_calls_from_chunk(chunk)
@@ -298,12 +307,17 @@ class StreamingResponseHandler:
                 self._process_tool_call_chunk(tool_call_data, tool_calls)
 
             # Update display with streaming content
-            if self.streaming_message and not self._interrupted and content:
-                # Update the streaming message with new content chunk
-                self.streaming_message.update(content)
+            if not self._interrupted and content:
+                if self.chat_display:
+                    self.chat_display.update_streaming(content)
+                    logger.debug(f"Updated centralized display with: {repr(content[:50])}")
+                elif self.streaming_context:
+                    logger.debug(f"Updating streaming context with content: {repr(content[:50])}")
+                    self.streaming_context.update(content)
+                    logger.debug(f"StreamingContext content length: {len(self.streaming_context.content)}")
 
-            # Small delay to prevent overwhelming the terminal
-            await asyncio.sleep(0.01)
+            # Minimal delay for smooth streaming
+            await asyncio.sleep(0.0005)  # 0.5ms for very smooth streaming
 
         except Exception as e:
             logger.warning(f"Error processing chunk: {e}")
@@ -544,7 +558,7 @@ class StreamingResponseHandler:
             # Don't finalize during streaming - wait for end
 
         except Exception as e:
-            logger.error(f"Error accumulating tool call: {e}")
+            logger.warning(f"Error accumulating tool call: {e}")
             import traceback
 
             traceback.print_exc()
@@ -685,7 +699,7 @@ class StreamingResponseHandler:
                         func["arguments"] = fixed_args
                         logger.debug(f"Fixed JSON for tool: {name}")
                     except json.JSONDecodeError:
-                        logger.error(f"Cannot fix JSON for tool {name}, skipping")
+                        logger.warning(f"Cannot fix JSON for tool {name}, skipping")
                         continue
 
             # Clean up and add to final list

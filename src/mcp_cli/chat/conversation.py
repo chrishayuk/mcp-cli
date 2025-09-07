@@ -90,7 +90,7 @@ class ConversationProcessor:
                     tool_calls = completion.get("tool_calls", [])
 
                     # If model requested tool calls, execute them
-                    if tool_calls:
+                    if tool_calls and len(tool_calls) > 0:
                         log.debug(f"Processing {len(tool_calls)} tool calls from LLM")
 
                         # Log the tool calls for debugging
@@ -116,8 +116,12 @@ class ConversationProcessor:
                             response_content, elapsed
                         )
                     else:
-                        # Streaming response was already displayed, just notify UI it's complete
+                        # Streaming response - final display already handled by finish_streaming()
+                        # Just mark streaming as stopped and clean up
                         self.ui_manager.stop_streaming_response()
+                        # Clear streaming handler reference
+                        if hasattr(self.ui_manager, "streaming_handler"):
+                            self.ui_manager.streaming_handler = None
 
                     # Add to conversation history
                     self.context.conversation_history.append(
@@ -150,7 +154,10 @@ class ConversationProcessor:
         self.ui_manager.start_streaming_response()
 
         # Set the streaming handler reference in UI manager for interruption support
-        streaming_handler = StreamingResponseHandler(self.ui_manager.console)
+        streaming_handler = StreamingResponseHandler(
+            console=self.ui_manager.console,
+            chat_display=self.ui_manager.display
+        )
         self.ui_manager.streaming_handler = streaming_handler
 
         try:
@@ -185,8 +192,9 @@ class ConversationProcessor:
             return completion
 
         finally:
-            # Clear the streaming handler reference
-            self.ui_manager.streaming_handler = None
+            # Keep streaming handler reference for finalization
+            # Will be cleared after finalization in main conversation loop
+            pass
 
     async def _handle_regular_completion(self) -> dict:
         """Handle regular (non-streaming) completion."""

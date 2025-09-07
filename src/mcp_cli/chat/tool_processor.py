@@ -173,13 +173,22 @@ class ToolProcessor:
                 if self.tool_manager is None:
                     raise RuntimeError("No tool manager available for tool execution")
 
-                with output.loading("Executing tool…"):
+                # Skip loading indicator during streaming to avoid Rich Live display conflict
+                if self.ui_manager.is_streaming_response:
                     log.info(
                         f"Executing tool: {execution_tool_name} with args: {arguments}"
                     )
                     tool_result = await self.tool_manager.execute_tool(
                         execution_tool_name, arguments
                     )
+                else:
+                    with output.loading("Executing tool…"):
+                        log.info(
+                            f"Executing tool: {execution_tool_name} with args: {arguments}"
+                        )
+                        tool_result = await self.tool_manager.execute_tool(
+                            execution_tool_name, arguments
+                        )
 
                 log.info(
                     f"Tool result: success={tool_result.success}, error='{tool_result.error}'"
@@ -194,6 +203,12 @@ class ToolProcessor:
                 # Add to conversation history
                 self._add_tool_call_to_history(
                     llm_tool_name, call_id, arguments, content
+                )
+
+                # Finish tool execution in unified display
+                self.ui_manager.finish_tool_execution(
+                    result=content,
+                    success=tool_result.success
                 )
 
                 # Display result if in verbose mode

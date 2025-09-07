@@ -45,7 +45,16 @@ class ChatUIManager:
         self.confirm_tool_execution = True  # Legacy attribute for compatibility
 
         # Console reference for compatibility
-        self.console = output._console if hasattr(output, "_console") else None
+        # For streaming, create an unconstrained console to avoid truncation
+        from rich.console import Console
+
+        self.console = Console(
+            width=None,  # Auto-detect terminal width, don't constrain
+            soft_wrap=True,
+            legacy_windows=True,
+            force_terminal=True,  # Force terminal mode for better streaming
+            color_system="auto",  # Auto-detect color support
+        )
 
         # Tool tracking
         self.tool_calls: List[Dict[str, Any]] = []
@@ -56,6 +65,11 @@ class ChatUIManager:
         # Streaming state
         self.is_streaming_response = False
         self.streaming_handler: Optional[Any] = None
+        self._pending_tool: Optional[Dict[str, Any]] = None
+        
+        # Centralized display manager
+        from mcp_cli.ui.chat_display_manager import ChatDisplayManager
+        self.display = ChatDisplayManager(self.console)
 
         # Signal handling
         self._prev_sigint_handler: Optional[signal.Handlers] = None
@@ -108,42 +122,36 @@ class ChatUIManager:
     # ─── Message Display ─────────────────────────────────────────────────
 
     def print_user_message(self, message: str) -> None:
-        """Display user message using chuk-term."""
-        try:
-            output.user_message(message or "[No Message]")
-            self.tool_calls.clear()
-        except Exception as exc:
-            logger.error(f"Error printing user message: {exc}")
-            # Fallback to simple output
-            output.print("You:")
-            output.print(message or "[No Message]")
+        """Display user message using centralized display."""
+        self.display.show_user_message(message or "[No Message]")
+        self.tool_calls.clear()
 
     def print_assistant_response(self, content: str, elapsed: float) -> None:
-        """Display assistant response using chuk-term."""
-        try:
-            # Stop streaming if active
-            if self.is_streaming_response:
-                self.stop_streaming_response()
-                return
+        """Display assistant response using centralized display."""
+        # Stop streaming if active
+        if self.is_streaming_response:
+            self.stop_streaming_response()
 
-            # Clean up any tool tracking
-            self._cleanup_tool_display()
+        # Show any pending tool execution now (after streaming completes)
+        if self._pending_tool:
+            # Don't start tool execution here, wait for tool processor to finish
+            pass
 
-            # Display the response
-            output.assistant_message(
-                content or "[No Response]", subtitle=f"Response time: {elapsed:.2f}s"
-            )
-        except Exception as exc:
-            logger.error(f"Error displaying assistant response: {exc}")
-            # Fallback
-            output.print("Assistant:")
-            output.print(content or "[No Response]")
-            output.print(f"Response time: {elapsed:.2f}s")
+        # Clean up any tool tracking
+        self._cleanup_tool_display()
+
+        # If we have pending tools, store the response for later
+        if self._pending_tool:
+            self._final_response = (content or "[No Response]", elapsed)
+            logger.debug("Storing final assistant response until after tool execution")
+        else:
+            # No pending tools, show response immediately
+            self.display.show_assistant_message(content or "[No Response]", elapsed)
 
     # ─── Tool Display ────────────────────────────────────────────────────
 
     def print_tool_call(self, tool_name: str, raw_args: Any) -> None:
-        """Display a tool call using chuk-term."""
+        """Display a tool call using chuk-term or integrate with streaming."""
         try:
             # Start timing if first tool
             if not self.tool_start_time:
@@ -161,6 +169,12 @@ class ChatUIManager:
 
             # Track the tool call
             self.tool_calls.append({"name": tool_name, "args": processed_args})
+
+            # Always defer tool display until after streaming completes
+            logger.debug(f"Storing tool call for later display: {tool_name}")
+            # Store tool info for display after streaming
+            self._pending_tool = {"name": tool_name, "args": processed_args}
+            return
 
             # Display based on mode
             if self.verbose_mode or self.confirm_tool_execution:
@@ -196,12 +210,50 @@ class ChatUIManager:
             logger.error(f"Error displaying tool call: {exc}")
             output.warning(f"Error displaying tool call: {exc}")
 
+    def _integrate_tool_call_into_streaming(self, tool_name: str, processed_args: dict) -> None:
+        """Show tool call - during streaming, just display a simple message."""
+        try:
+            # During streaming, don't interfere with the active display
+            # Just show a simple tool message
+            if self.is_streaming_response:
+                logger.debug(f"Tool call during streaming: {tool_name}")
+                # Let the unified display handle it naturally
+                if hasattr(self.unified_display, 'start_tool_execution'):
+                    self.unified_display.start_tool_execution(tool_name, processed_args)
+            else:
+                # Not streaming, show a proper tool panel
+                output.tool_call(tool_name, processed_args)
+            
+        except Exception as exc:
+            logger.warning(f"Error showing tool call: {exc}")
+            logger.info(f"Tool call: {tool_name} with args: {processed_args}")
+
+    def finish_tool_execution(self, result: str = None, success: bool = True) -> None:
+        """Finish tool execution in centralized display."""
+        # Show pending tool if we have one (after streaming completes)
+        if self._pending_tool:
+            self.display.start_tool_execution(self._pending_tool["name"], self._pending_tool["args"])
+            # Brief pause to let animation show
+            import time
+            time.sleep(0.5)
+            self._pending_tool = None
+        
+        self.display.finish_tool_execution(result or "", success)
+        logger.debug(f"Finished tool execution: success={success}")
+        
+        # Now show the final assistant response if we have it stored
+        if hasattr(self, '_final_response'):
+            content, elapsed = self._final_response
+            self.display.show_assistant_message(content, elapsed)
+            delattr(self, '_final_response')
+
     def _cleanup_tool_display(self) -> None:
         """Clean up tool tracking and display."""
         if self.tool_start_time:
             try:
                 total_time = time.time() - self.tool_start_time
-                output.info(f"Tools completed in {total_time:.2f}s total")
+                # Unified display handles its own output, no need for separate info message
+                pass
             except Exception:
                 pass
 
