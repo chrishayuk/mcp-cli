@@ -6,6 +6,7 @@ from typing import List
 
 from mcp_cli.commands.servers import servers_action_async
 from mcp_cli.tools.models import ServerInfo
+from mcp_cli.context import initialize_context, ContextManager
 
 
 class DummyToolManagerNoServers:
@@ -35,11 +36,16 @@ async def test_servers_action_no_servers():
     """Test servers_action when no servers are connected."""
     tm = DummyToolManagerNoServers()
 
+    # Reset context manager
+    ContextManager().reset()
+    # Initialize context with mock tool manager
+    initialize_context(tool_manager=tm)
+
     # Mock the output from chuk_term
     with patch("mcp_cli.commands.servers.output") as mock_output:
         mock_output.print = MagicMock()
 
-        result = await servers_action_async(tm)
+        result = await servers_action_async()
 
         # Should return empty list
         assert result == []
@@ -60,11 +66,16 @@ async def test_servers_action_with_servers():
     ]
     tm = DummyToolManagerWithServers(infos)
 
+    # Reset context manager
+    ContextManager().reset()
+    # Initialize context with mock tool manager
+    initialize_context(tool_manager=tm)
+
     # Mock the output
     with patch("mcp_cli.commands.servers.output") as mock_output:
         mock_output.print = MagicMock()
 
-        result = await servers_action_async(tm)
+        result = await servers_action_async()
 
         # Should return enhanced server info (not the original)
         assert len(result) == 2
@@ -81,11 +92,16 @@ async def test_servers_action_with_detailed_flag():
     ]
     tm = DummyToolManagerWithServers(infos)
 
+    # Reset context manager
+    ContextManager().reset()
+    # Initialize context with mock tool manager
+    initialize_context(tool_manager=tm)
+
     with patch("mcp_cli.commands.servers.output") as mock_output:
         mock_output.print = MagicMock()
 
         # Call with detailed flag
-        result = await servers_action_async(tm, detailed=True)
+        result = await servers_action_async(detailed=True)
 
         # Should return server infos
         assert len(result) == 1
@@ -101,11 +117,16 @@ async def test_servers_action_with_capabilities():
     server_info = make_info(0, "test-server", 5, "ready")
     tm = DummyToolManagerWithServers([server_info])
 
+    # Reset context manager
+    ContextManager().reset()
+    # Initialize context with mock tool manager
+    initialize_context(tool_manager=tm)
+
     with patch("mcp_cli.commands.servers.output") as mock_output:
         mock_output.print = MagicMock()
 
         # Call with capabilities flag
-        result = await servers_action_async(tm, show_capabilities=True)
+        result = await servers_action_async(show_capabilities=True)
 
         # Should return enhanced server info
         assert len(result) == 1
@@ -122,11 +143,16 @@ async def test_servers_action_with_transport_info():
     server_info = make_info(0, "http-server", 2, "connected")
     tm = DummyToolManagerWithServers([server_info])
 
+    # Reset context manager
+    ContextManager().reset()
+    # Initialize context with mock tool manager
+    initialize_context(tool_manager=tm)
+
     with patch("mcp_cli.commands.servers.output") as mock_output:
         mock_output.print = MagicMock()
 
         # Call with transport flag
-        result = await servers_action_async(tm, show_transport=True)
+        result = await servers_action_async(show_transport=True)
 
         # Should return enhanced server info
         assert len(result) == 1
@@ -144,11 +170,16 @@ async def test_servers_action_output_formats():
     ]
     tm = DummyToolManagerWithServers(infos)
 
+    # Reset context manager
+    ContextManager().reset()
+    # Initialize context with mock tool manager
+    initialize_context(tool_manager=tm)
+
     # Test JSON format
     with patch("mcp_cli.commands.servers.output") as mock_output:
         mock_output.print = MagicMock()
 
-        result = await servers_action_async(tm, output_format="json")
+        result = await servers_action_async(output_format="json")
 
         # Should return server infos
         assert len(result) == 1
@@ -164,7 +195,7 @@ async def test_servers_action_output_formats():
     with patch("mcp_cli.commands.servers.output") as mock_output:
         mock_output.print = MagicMock()
 
-        result = await servers_action_async(tm, output_format="tree")
+        result = await servers_action_async(output_format="tree")
 
         # Should return server infos
         assert len(result) == 1
@@ -183,11 +214,16 @@ async def test_servers_action_error_handling():
 
     tm = ErrorToolManager()
 
+    # Reset context manager
+    ContextManager().reset()
+    # Initialize context with mock tool manager
+    initialize_context(tool_manager=tm)
+
     with patch("mcp_cli.commands.servers.output") as mock_output:
         mock_output.print = MagicMock()
 
         # Should handle the error gracefully
-        result = await servers_action_async(tm)
+        result = await servers_action_async()
 
         # Should return empty list on error
         assert result == []
@@ -209,10 +245,15 @@ async def test_servers_action_mixed_statuses():
     ]
     tm = DummyToolManagerWithServers(infos)
 
+    # Reset context manager
+    ContextManager().reset()
+    # Initialize context with mock tool manager
+    initialize_context(tool_manager=tm)
+
     with patch("mcp_cli.commands.servers.output") as mock_output:
         mock_output.print = MagicMock()
 
-        result = await servers_action_async(tm)
+        result = await servers_action_async()
 
         # Should return enhanced info for all servers
         assert len(result) == 4
@@ -236,11 +277,16 @@ async def test_servers_action_with_json_format():
     ]
     tm = DummyToolManagerWithServers(infos)
 
+    # Reset context manager
+    ContextManager().reset()
+    # Initialize context with mock tool manager
+    initialize_context(tool_manager=tm)
+
     with patch("mcp_cli.commands.servers.output") as mock_output:
         mock_output.print = MagicMock()
 
         # JSON format should work without issues
-        result = await servers_action_async(tm, output_format="json")
+        result = await servers_action_async(output_format="json")
 
         # Should return server infos
         assert len(result) == 1
@@ -262,13 +308,18 @@ async def test_servers_action_display_error_handling():
     ]
     tm = DummyToolManagerWithServers(infos)
 
+    # Reset context manager
+    ContextManager().reset()
+    # Initialize context with mock tool manager
+    initialize_context(tool_manager=tm)
+
     with patch("mcp_cli.commands.servers.output") as mock_output:
         mock_output.print = MagicMock()
 
         # Make output.print raise an exception on first call, then work normally
         mock_output.print.side_effect = [Exception("Output error"), None, None, None]
 
-        result = await servers_action_async(tm)
+        result = await servers_action_async()
 
         # Should still return results despite display error
         assert len(result) == 1

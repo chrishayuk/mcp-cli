@@ -32,7 +32,7 @@ Examples
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import List
 
 # Cross-platform Rich console helper
 from chuk_term.ui import output
@@ -45,7 +45,7 @@ from mcp_cli.context import get_context
 # ════════════════════════════════════════════════════════════════════════════
 # Command handler
 # ════════════════════════════════════════════════════════════════════════════
-async def verbose_command(_parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
+async def verbose_command(_parts: List[str]) -> bool:  # noqa: D401
     """
     Toggle between verbose and compact display modes.
 
@@ -62,15 +62,16 @@ async def verbose_command(_parts: List[str], ctx: Dict[str, Any] = None) -> bool
     # Use global context manager
     context = get_context()
 
-    # Get UI manager from context
-    ui_manager = context.ui_manager
-    if not ui_manager:
-        # Try to get from chat context
-        if context.chat_context and hasattr(context.chat_context, "ui_manager"):
-            ui_manager = context.chat_context.ui_manager
+    # Get UI manager from context (may be stored in _extra)
+    ui_manager = getattr(context, "ui_manager", None)
+    if not ui_manager and hasattr(context, "_extra"):
+        ui_manager = context._extra.get("ui_manager")
 
     if not ui_manager:
-        output.error("UI manager not available.")
+        # If no UI manager, just toggle the verbose_mode flag on context
+        context.verbose_mode = not context.verbose_mode
+        mode_name = "verbose" if context.verbose_mode else "compact"
+        output.success(f"Display mode: {mode_name}")
         return True
 
     # Toggle verbose mode

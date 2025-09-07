@@ -10,7 +10,7 @@ from typing import Dict, Any
 
 
 async def load_server_config(
-    config_path: str, server_name: str = None
+    config_path: str, server_name: str | None = None
 ) -> Dict[str, Any]:
     """
     Load the server configuration from a JSON file.

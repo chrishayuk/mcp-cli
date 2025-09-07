@@ -52,7 +52,7 @@ async def test_exit_action_non_interactive_mode():
         with patch.object(exit_module, "restore_terminal") as mock_restore:
             with patch.object(exit_module.sys, "exit") as mock_exit:
                 # Call exit_action in non-interactive mode
-                result = exit_module.exit_action(interactive=False)
+                exit_module.exit_action(interactive=False)
 
                 # Should not return (sys.exit called), but in test it's mocked
                 # so we can check the calls

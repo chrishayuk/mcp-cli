@@ -24,7 +24,7 @@ sys.modules["mcp_cli.interactive.commands"] = dummy_pkg
 sys.modules["mcp_cli.interactive.commands.base"] = dummy_base
 
 # ─── Now import the registry itself ────────────────────────────────────────
-from mcp_cli.interactive.registry import InteractiveCommandRegistry
+from mcp_cli.interactive.registry import InteractiveCommandRegistry  # noqa: E402
 
 
 class DummyCommand(InteractiveCommand):

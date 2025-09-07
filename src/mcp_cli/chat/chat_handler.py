@@ -32,11 +32,11 @@ logger = logging.getLogger(__name__)
 
 async def handle_chat_mode(
     tool_manager: ToolManager,
-    provider: str = None,
-    model: str = None,
-    api_base: str = None,
-    api_key: str = None,
-    confirm_mode: str = None,
+    provider: str | None = None,
+    model: str | None = None,
+    api_base: str | None = None,
+    api_key: str | None = None,
+    confirm_mode: str | None = None,
 ) -> bool:
     """
     Launch the interactive chat loop with streaming support.
@@ -162,8 +162,8 @@ async def handle_chat_mode(
 
 async def handle_chat_mode_for_testing(
     stream_manager,
-    provider: str = None,
-    model: str = None,
+    provider: str | None = None,
+    model: str | None = None,
 ) -> bool:
     """
     Launch chat mode for testing with stream_manager.
@@ -240,7 +240,7 @@ async def _run_enhanced_chat_loop(
             if not user_msg:
                 continue
 
-            # Handle exit commands
+            # Handle plain exit commands (without slash)
             if user_msg.lower() in ("exit", "quit"):
                 output.panel("Exiting chat mode.", style="red", title="Goodbye")
                 break
@@ -355,8 +355,8 @@ async def handle_chat_mode_legacy(
     manager,  # ToolManager or stream_manager
     provider: str = "openai",
     model: str = "gpt-4o-mini",
-    api_base: str = None,
-    api_key: str = None,
+    api_base: str | None = None,
+    api_key: str | None = None,
     **kwargs,  # Ignore other legacy parameters
 ) -> bool:
     """

@@ -1,81 +1,119 @@
 # commands/test_tools_call_command.py
 import pytest
-from rich.console import Console
-from rich.table import Table
+from unittest.mock import patch, MagicMock
+import json
 
-from mcp_cli.commands.resources import resources_action_async
+from mcp_cli.commands.tools_call import tools_call_action
+from mcp_cli.tools.models import ToolInfo, ToolCallResult
+from tests.conftest import setup_test_context
 
 
-class DummyTMNoResources:
-    def list_resources(self):
+class DummyTMWithTools:
+    def __init__(self, tools):
+        self._tools = tools
+
+    async def get_unique_tools(self):
+        return self._tools
+
+    async def execute_tool(self, tool_name, arguments):
+        # Mock successful execution
+        return ToolCallResult(
+            tool_name=tool_name,
+            success=True,
+            result={"status": "success", "data": arguments},
+            error=None,
+        )
+
+
+class DummyTMNoTools:
+    async def get_unique_tools(self):
         return []
 
 
-class DummyTMWithResources:
-    def __init__(self, data):
-        self._data = data
+@pytest.mark.asyncio
+async def test_tools_call_no_tools():
+    """Test tools_call_action when no tools are available."""
+    tm = DummyTMNoTools()
+    # Setup context with test tool manager
+    setup_test_context(tool_manager=tm)
 
-    def list_resources(self):
-        return self._data
+    with patch("mcp_cli.commands.tools_call.output") as mock_output:
+        mock_output.print = MagicMock()
 
+        await tools_call_action()
 
-class DummyTMError:
-    def list_resources(self):
-        raise RuntimeError("fail!")
+        # Should print message about no tools
+        mock_output.print.assert_called()
+        calls = mock_output.print.call_args_list
+        assert any("No tools available" in str(call) for call in calls)
 
 
 @pytest.mark.asyncio
-async def test_resources_action_error(monkeypatch):
-    tm = DummyTMError()
-    printed = []
-    monkeypatch.setattr(
-        Console, "print", lambda self, msg, **kw: printed.append(str(msg))
-    )
-
-    result = await resources_action_async(tm)
-    assert result == []
-    assert any("Error:" in p and "fail!" in p for p in printed)
-
-
-@pytest.mark.asyncio
-async def test_resources_action_no_resources(monkeypatch):
-    tm = DummyTMNoResources()
-    printed = []
-    monkeypatch.setattr(
-        Console, "print", lambda self, msg, **kw: printed.append(str(msg))
-    )
-
-    result = await resources_action_async(tm)
-    assert result == []
-    assert any("No resources recorded" in p for p in printed)
-
-
-@pytest.mark.asyncio
-async def test_resources_action_with_resources(monkeypatch):
-    data = [
-        {"server": "s1", "uri": "/path/1", "size": 500, "mimeType": "text/plain"},
-        {
-            "server": "s2",
-            "uri": "/path/2",
-            "size": 2048,
-            "mimeType": "application/json",
-        },
+async def test_tools_call_with_tools_user_cancels():
+    """Test when user cancels tool selection."""
+    tools = [
+        ToolInfo(
+            name="test_tool",
+            namespace="test",
+            description="A test tool",
+            parameters={"type": "object", "properties": {}},
+            is_async=True,
+            tags=[],
+        )
     ]
-    tm = DummyTMWithResources(data)
+    tm = DummyTMWithTools(tools)
+    # Setup context with test tool manager
+    setup_test_context(tool_manager=tm)
 
-    output = []
-    monkeypatch.setattr(Console, "print", lambda self, obj, **kw: output.append(obj))
+    with patch("mcp_cli.commands.tools_call.output") as mock_output:
+        mock_output.print = MagicMock()
 
-    result = await resources_action_async(tm)
-    assert result == data
+        # Mock user input to cancel
+        with patch("builtins.input", side_effect=["q"]):
+            await tools_call_action()
 
-    tables = [o for o in output if isinstance(o, Table)]
-    assert tables, f"No Table printed, got {output}"
-    table = tables[0]
+        # Should print the tools list
+        mock_output.print.assert_called()
+        calls = str(mock_output.print.call_args_list)
+        assert "test_tool" in calls
 
-    # Two data rows
-    assert table.row_count == 2
 
-    # Headers
-    headers = [col.header for col in table.columns]
-    assert headers == ["Server", "URI", "Size", "MIME-type"]
+@pytest.mark.asyncio
+async def test_tools_call_successful_execution():
+    """Test successful tool execution."""
+    tools = [
+        ToolInfo(
+            name="echo",
+            namespace="test",
+            description="Echo tool",
+            parameters={
+                "type": "object",
+                "properties": {"message": {"type": "string"}},
+                "required": ["message"],
+            },
+            is_async=True,
+            tags=[],
+        )
+    ]
+    tm = DummyTMWithTools(tools)
+    # Setup context with test tool manager
+    setup_test_context(tool_manager=tm)
+
+    with patch("mcp_cli.commands.tools_call.output") as mock_output:
+        mock_output.print = MagicMock()
+
+        # Mock user input to select tool and provide arguments
+        test_args = json.dumps({"message": "hello"})
+        with patch("builtins.input", side_effect=["1", test_args]):
+            with patch(
+                "mcp_cli.commands.tools_call.display_tool_call_result"
+            ) as mock_display:
+                await tools_call_action()
+
+                # Should display the result
+                mock_display.assert_called_once()
+
+                # Check that the tool was called with correct arguments
+                result = mock_display.call_args[0][0]
+                assert result.tool_name == "echo"
+                assert not result.is_error

@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from chuk_term.ui import output
 
-from mcp_cli.tools.formatting import display_tool_call_result
+from mcp_cli.ui.formatting import display_tool_call_result
 from mcp_cli.utils.preferences import get_preference_manager
 
 log = logging.getLogger(__name__)
@@ -207,8 +207,7 @@ class ToolProcessor:
 
                 # Finish tool execution in unified display
                 self.ui_manager.finish_tool_execution(
-                    result=content,
-                    success=tool_result.success
+                    result=content, success=tool_result.success
                 )
 
                 # Display result if in verbose mode

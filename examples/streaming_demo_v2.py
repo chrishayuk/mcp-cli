@@ -230,4 +230,3 @@ if __name__ == "__main__":
     output.print("\n🚀 Starting MCP-CLI Streaming Demo V2...")
     output.print("Demonstrating the new compact streaming display\n")
     asyncio.run(main())
-

@@ -114,7 +114,9 @@ class StreamingResponseHandler:
             logger.debug("Finalized centralized display")
         elif self.streaming_context:
             # Fallback to streaming context finalization
-            logger.debug(f"Finalizing streaming context with {len(self.current_response)} characters")
+            logger.debug(
+                f"Finalizing streaming context with {len(self.current_response)} characters"
+            )
             try:
                 self.streaming_context.__exit__(None, None, None)
             except Exception as e:
@@ -254,7 +256,7 @@ class StreamingResponseHandler:
     def _start_live_display(self):
         """Start the live display for streaming updates."""
         self.start_time = time.time()
-        
+
         # Use centralized display if available, otherwise fallback
         if self.chat_display:
             self.chat_display.start_streaming()
@@ -277,9 +279,8 @@ class StreamingResponseHandler:
             )
             # Enter the context manager
             self.streaming_context.__enter__()
-            
-        self.live_display = True
 
+        self.live_display = True
 
     async def _process_chunk(
         self, chunk: Dict[str, Any], tool_calls: List[Dict[str, Any]]
@@ -310,11 +311,17 @@ class StreamingResponseHandler:
             if not self._interrupted and content:
                 if self.chat_display:
                     self.chat_display.update_streaming(content)
-                    logger.debug(f"Updated centralized display with: {repr(content[:50])}")
+                    logger.debug(
+                        f"Updated centralized display with: {repr(content[:50])}"
+                    )
                 elif self.streaming_context:
-                    logger.debug(f"Updating streaming context with content: {repr(content[:50])}")
+                    logger.debug(
+                        f"Updating streaming context with content: {repr(content[:50])}"
+                    )
                     self.streaming_context.update(content)
-                    logger.debug(f"StreamingContext content length: {len(self.streaming_context.content)}")
+                    logger.debug(
+                        f"StreamingContext content length: {len(self.streaming_context.content)}"
+                    )
 
             # Minimal delay for smooth streaming
             await asyncio.sleep(0.0005)  # 0.5ms for very smooth streaming

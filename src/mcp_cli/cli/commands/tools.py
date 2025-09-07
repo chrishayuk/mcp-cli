@@ -30,12 +30,19 @@ def tools_run(
     """
     List unique tools across all connected servers (blocking CLI mode).
     """
-    tm = get_tool_manager()
-    if tm is None:
-        typer.echo("[red]Error:[/] no ToolManager initialized", err=True)
-        raise typer.Exit(code=1)
+    # Context should already be initialized by run_command
+    from mcp_cli.context import get_context
 
-    tools_action(tm, show_details=all, show_raw=raw)
+    try:
+        get_context()
+    except RuntimeError:
+        # Fallback if context not initialized
+        tm = get_tool_manager()
+        if tm is None:
+            typer.echo("[red]Error:[/] no ToolManager initialized", err=True)
+            raise typer.Exit(code=1)
+
+    tools_action(show_details=all, show_raw=raw)
     raise typer.Exit(code=0)
 
 
@@ -59,8 +66,8 @@ class ToolsListCommand(BaseCommand):
         """
         show_details = params.get("all", False)
         show_raw = params.get("raw", False)
+        # Commands now get tool_manager from context
         await tools_action_async(
-            tool_manager,
             show_details=show_details,
             show_raw=show_raw,
         )

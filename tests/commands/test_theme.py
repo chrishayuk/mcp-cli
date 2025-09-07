@@ -52,8 +52,10 @@ class TestThemeCommand:
 
         # Should show current theme (when no args, it lists themes with current marked)
         mock_output.rule.assert_called_with("Available Themes")
-        calls = mock_output.print.call_args_list
-        all_output = str(calls)
+        # Check both print and info calls since we use info for current theme
+        print_calls = mock_output.print.call_args_list
+        info_calls = mock_output.info.call_args_list
+        all_output = str(print_calls) + str(info_calls)
         assert "monokai" in all_output
         assert "(current)" in all_output
 

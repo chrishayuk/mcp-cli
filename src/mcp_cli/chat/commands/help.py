@@ -16,7 +16,7 @@ Internally the code introspects the central **chat command registry**
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import List
 
 # Cross-platform Rich console helper
 from chuk_term.ui import output
@@ -42,7 +42,7 @@ from mcp_cli.chat.commands.help_text import (
 # ════════════════════════════════════════════════════════════════════════════
 # /help  ── contextual manual
 # ════════════════════════════════════════════════════════════════════════════
-async def cmd_help(cmd_parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
+async def cmd_help(cmd_parts: List[str]) -> bool:  # noqa: D401
     """
     Show contextual help inside chat.
 
@@ -114,7 +114,7 @@ async def cmd_help(cmd_parts: List[str], ctx: Dict[str, Any] = None) -> bool:  #
 # ════════════════════════════════════════════════════════════════════════════
 # /quickhelp  ── cheat-sheet
 # ════════════════════════════════════════════════════════════════════════════
-async def display_quick_help(cmd_parts: List[str], ctx: Dict[str, Any]) -> bool:  # noqa: D401
+async def display_quick_help(cmd_parts: List[str]) -> bool:  # noqa: D401
     """
     Display a short cheat-sheet of the most common commands.
     """

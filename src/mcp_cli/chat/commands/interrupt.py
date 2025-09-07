@@ -29,7 +29,7 @@ Examples
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import List
 
 # Cross-platform Rich console helper
 from chuk_term.ui import output
@@ -42,7 +42,7 @@ from mcp_cli.context import get_context
 # ════════════════════════════════════════════════════════════════════════════
 # Command handlers
 # ════════════════════════════════════════════════════════════════════════════
-async def interrupt_command(_parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
+async def interrupt_command(_parts: List[str]) -> bool:  # noqa: D401
     """
     Interrupt currently running operations (streaming or tools).
 
@@ -98,7 +98,7 @@ async def interrupt_command(_parts: List[str], ctx: Dict[str, Any] = None) -> bo
     return True
 
 
-async def stop_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
+async def stop_command(parts: List[str]) -> bool:  # noqa: D401
     """
     Stop currently running operations (alias for interrupt).
 
@@ -106,10 +106,10 @@ async def stop_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:  #
     -----
       /stop    - stop streaming response or tool execution
     """
-    return await interrupt_command(parts, ctx)
+    return await interrupt_command(parts)
 
 
-async def cancel_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
+async def cancel_command(parts: List[str]) -> bool:  # noqa: D401
     """
     Cancel currently running operations (alias for interrupt).
 
@@ -117,7 +117,7 @@ async def cancel_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool: 
     -----
       /cancel    - cancel streaming response or tool execution
     """
-    return await interrupt_command(parts, ctx)
+    return await interrupt_command(parts)
 
 
 # ════════════════════════════════════════════════════════════════════════════

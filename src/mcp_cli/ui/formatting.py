@@ -1,8 +1,8 @@
-# mcp_cli/tools/formatting.py
+# src/mcp_cli/ui/formatting.py
 """Helper functions for tool display and formatting using chuk-term."""
 
 from typing import List, Dict
-from chuk_term.ui import output
+from chuk_term.ui import output, format_table
 
 from mcp_cli.tools.models import ToolInfo, ServerInfo
 
@@ -34,58 +34,53 @@ def format_tool_for_display(
 
 
 def create_tools_table(tools: List[ToolInfo], show_details: bool = False):
-    """Create a Rich table for tools (does not print it)."""
+    """Create a chuk-term table for tools (does not print it)."""
     # Prepare data for table
     headers = ["Server", "Tool", "Description"]
     if show_details:
         headers.append("Parameters")
 
+    # Convert to list of dicts for chuk-term's format_table
     rows = []
     for tool in tools:
         display_data = format_tool_for_display(tool, show_details)
-        row = [
-            display_data["server"],
-            display_data["name"],
-            display_data["description"],
-        ]
+        row_dict = {
+            "Server": display_data["server"],
+            "Tool": display_data["name"],
+            "Description": display_data["description"],
+        }
         if show_details:
-            row.append(display_data.get("parameters", "None"))
-        rows.append(row)
+            row_dict["Parameters"] = display_data.get("parameters", "None")
+        rows.append(row_dict)
 
-    # Create a Rich table
-    from rich.table import Table
+    # Create a chuk-term table
+    table = format_table(rows, title=f"{len(tools)} Available Tools", columns=headers)
 
-    table = Table(title=f"{len(tools)} Available Tools")
-    for header in headers:
-        table.add_column(header)
-    for row in rows:
-        table.add_row(*row)
-
-    # Return the Rich table object
+    # Return the table object
     return table
 
 
 def create_servers_table(servers: List[ServerInfo]):
-    """Create a Rich table for servers (does not print it)."""
+    """Create a chuk-term table for servers (does not print it)."""
     # Prepare data for table
     headers = ["ID", "Server Name", "Tools", "Status"]
-    rows = []
 
+    # Convert to list of dicts for chuk-term's format_table
+    rows = []
     for server in servers:
         rows.append(
-            [str(server.id), server.name, str(server.tool_count), server.status]
+            {
+                "ID": str(server.id),
+                "Server Name": server.name,
+                "Tools": str(server.tool_count),
+                "Status": server.status,
+            }
         )
 
-    # Create a Rich table
-    from rich.table import Table
+    # Create a chuk-term table
+    table = format_table(rows, title="Connected MCP Servers", columns=headers)
 
-    table = Table(title="Connected MCP Servers")
-    for header in headers:
-        table.add_column(header)
-    for row in rows:
-        table.add_row(*row)
-
-    # Return the Rich table object
+    # Return the table object
     return table
 
 
@@ -106,18 +101,11 @@ def display_tool_call_result(result, console=None):
             if all(isinstance(item, dict) for item in result.result):
                 # Display as a table if it's a list of records
                 if len(result.result) <= 10:  # Show table for small result sets
-                    headers = list(result.result[0].keys()) if result.result else []
-                    rows = [
-                        [str(item.get(h, "")) for h in headers]
-                        for item in result.result
-                    ]
-                    from rich.table import Table
-
-                    table = Table()
-                    for header in headers:
-                        table.add_column(header)
-                    for row in rows:
-                        table.add_row(*[str(cell) for cell in row])
+                    # chuk-term's format_table expects list of dicts
+                    table = format_table(
+                        result.result,  # Already a list of dicts
+                        columns=list(result.result[0].keys()) if result.result else [],
+                    )
                     output.print_table(table)
                 else:
                     # For large result sets, show summary
@@ -165,7 +153,7 @@ def display_tool_call_result(result, console=None):
                     output.code(formatted[:500] + "\n... (truncated)", language="json")
                 else:
                     output.code(formatted, language="json")
-            except:
+            except (TypeError, ValueError):
                 # Fallback to string representation
                 output.print(str(result.result))
     else:

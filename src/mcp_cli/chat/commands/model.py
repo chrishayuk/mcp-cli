@@ -18,7 +18,7 @@ to ensure it responds before committing the switch.
 """
 
 from __future__ import annotations
-from typing import Any, Dict, List
+from typing import List
 
 # Cross-platform Rich console (handles colour fallback on Windows / pipes)
 from chuk_term.ui import output
@@ -31,7 +31,7 @@ from mcp_cli.context import get_context
 # ════════════════════════════════════════════════════════════════════════════
 # /model entry-point
 # ════════════════════════════════════════════════════════════════════════════
-async def cmd_model(parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
+async def cmd_model(parts: List[str]) -> bool:  # noqa: D401
     """
     View or change the active LLM model.
 

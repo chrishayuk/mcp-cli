@@ -21,7 +21,7 @@ in-memory context that the chat UI passes in.
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List
+from typing import List
 
 # NEW: Use the new UI module instead of rich directly
 from chuk_term.ui import (
@@ -38,7 +38,7 @@ from mcp_cli.context import get_context
 # ════════════════════════════════════════════════════════════════════════════
 # /cls  - clear screen, keep history
 # ════════════════════════════════════════════════════════════════════════════
-async def cmd_cls(_parts: List[str], ctx: Dict[str, Any] = None) -> bool:
+async def cmd_cls(_parts: List[str]) -> bool:
     """Clear the terminal window but *preserve* the conversation history."""
     clear_screen()
 
@@ -55,7 +55,7 @@ async def cmd_cls(_parts: List[str], ctx: Dict[str, Any] = None) -> bool:
 # ════════════════════════════════════════════════════════════════════════════
 # /clear - clear screen *and* history
 # ════════════════════════════════════════════════════════════════════════════
-async def cmd_clear(_parts: List[str], ctx: Dict[str, Any] = None) -> bool:
+async def cmd_clear(_parts: List[str]) -> bool:
     """Clear the screen *and* reset the in-memory history."""
     clear_screen()
 
@@ -78,7 +78,7 @@ async def cmd_clear(_parts: List[str], ctx: Dict[str, Any] = None) -> bool:
 # ════════════════════════════════════════════════════════════════════════════
 # /compact - summarise conversation
 # ════════════════════════════════════════════════════════════════════════════
-async def cmd_compact(_parts: List[str], ctx: Dict[str, Any] = None) -> bool:
+async def cmd_compact(_parts: List[str]) -> bool:
     """Replace lengthy history with a compact LLM-generated summary."""
     # Use global context manager
     context = get_context()
@@ -132,7 +132,7 @@ async def cmd_compact(_parts: List[str], ctx: Dict[str, Any] = None) -> bool:
 # ════════════════════════════════════════════════════════════════════════════
 # /save  - write history to disk
 # ════════════════════════════════════════════════════════════════════════════
-async def cmd_save(parts: List[str], ctx: Dict[str, Any] = None) -> bool:
+async def cmd_save(parts: List[str]) -> bool:
     """Persist the conversation history to a JSON file on disk."""
     if len(parts) < 2:
         output.warning("Usage: /save <filename>")

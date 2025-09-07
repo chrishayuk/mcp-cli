@@ -1,3 +1,4 @@
+# src/mcp_cli/ui/streaming_display.py
 """
 Compact streaming display components for MCP-CLI.
 
@@ -12,7 +13,6 @@ from rich.live import Live
 from rich.panel import Panel
 from rich.text import Text
 from rich.markdown import Markdown
-from rich.table import Table
 
 
 def tokenize_text(text: str) -> Generator[str, None, None]:
@@ -91,23 +91,23 @@ class CompactStreamingDisplay:
             self.detected_type = "text"
 
         return self.detected_type
-    
+
     def _is_markdown_table(self, text: str) -> bool:
         """Check if text contains a markdown table."""
-        lines = text.split('\n')
-        pipe_lines = [line for line in lines if '|' in line]
-        
+        lines = text.split("\n")
+        pipe_lines = [line for line in lines if "|" in line]
+
         # Need at least 2 lines with pipes (header + separator)
         if len(pipe_lines) < 2:
             return False
-        
+
         # Check for separator line with dashes
         for line in pipe_lines:
-            if '|' in line and '-' in line:
+            if "|" in line and "-" in line:
                 # Count pipes and dashes
-                if line.count('|') >= 2 and line.count('-') >= 3:
+                if line.count("|") >= 2 and line.count("-") >= 3:
                     return True
-        
+
         return False
 
     def get_phase_message(self):
@@ -279,19 +279,26 @@ class CompactStreamingDisplay:
         """Get the final formatted panel with full content."""
         # Check if this is primarily a markdown table
         has_markdown_table = self._is_markdown_table(self.content)
-        
+
         # Determine how to render the content
         should_render_markdown = False
-        
+
         # For markdown tables with mixed content, we need special handling
         if has_markdown_table:
             # Check if it's JUST a table or has other markdown content
-            lines = self.content.split('\n')
-            non_table_lines = [l for l in lines if '|' not in l and l.strip() and not l.strip().startswith('-')]
-            
+            lines = self.content.split("\n")
+            non_table_lines = [
+                line
+                for line in lines
+                if "|" not in line and line.strip() and not line.strip().startswith("-")
+            ]
+
             # If there's significant non-table content with markdown, render as markdown
-            has_other_markdown = any('##' in l or '```' in l or '**' in l for l in non_table_lines)
-            
+            has_other_markdown = any(
+                "##" in line or "```" in line or "**" in line
+                for line in non_table_lines
+            )
+
             if has_other_markdown:
                 # Mixed content - try markdown but be ready to fall back
                 should_render_markdown = True
@@ -304,7 +311,7 @@ class CompactStreamingDisplay:
             should_render_markdown = True
         elif self.detected_type == "markdown":
             should_render_markdown = True
-        
+
         # Try to render as markdown if appropriate
         if should_render_markdown:
             try:
@@ -323,7 +330,7 @@ class CompactStreamingDisplay:
             subtitle=f"Response time: {elapsed:.2f}s",
             subtitle_align="right",
             border_style="green",
-            expand=True  # Keep normal expansion
+            expand=True,  # Keep normal expansion
         )
 
 
@@ -378,4 +385,3 @@ class StreamingContext:
     def content(self):
         """Get the accumulated content."""
         return self.display.content
-

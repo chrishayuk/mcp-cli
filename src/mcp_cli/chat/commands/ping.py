@@ -29,7 +29,7 @@ The response is rendered as a Rich table with three columns:
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import List
 
 # Rich console helper (handles Windows quirks, ANSI passthrough, etc.)
 from chuk_term.ui import output
@@ -41,7 +41,7 @@ from mcp_cli.chat.commands import register_command
 from mcp_cli.context import get_context
 
 
-async def ping_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
+async def ping_command(parts: List[str]) -> bool:  # noqa: D401
     """Measure round-trip latency to one or more MCP servers."""
 
     # Use global context manager

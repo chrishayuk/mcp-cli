@@ -202,7 +202,7 @@ def test_command_with_no_aliases():
     cmd = DummyCmd("test", "Test command", aliases=[])
     InteractiveCommandRegistry.register(cmd)
 
-    with patch("mcp_cli.commands.help.output") as mock_output:
+    with patch("mcp_cli.commands.help.output"):
         with patch("mcp_cli.commands.help.format_table") as mock_format_table:
             mock_format_table.return_value = Mock()
 
@@ -219,7 +219,7 @@ def test_command_with_multiple_aliases():
     cmd = DummyCmd("test", "Test command", aliases=["t", "tst", "test2"])
     InteractiveCommandRegistry.register(cmd)
 
-    with patch("mcp_cli.commands.help.output") as mock_output:
+    with patch("mcp_cli.commands.help.output"):
         with patch("mcp_cli.commands.help.format_table") as mock_format_table:
             mock_format_table.return_value = Mock()
 

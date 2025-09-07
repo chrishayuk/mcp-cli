@@ -130,7 +130,6 @@ class MCPToolDiagnosticTool:
         # Import MCP CLI components
         try:
             from mcp_cli.tools.manager import ToolManager
-            from mcp_cli.tools.models import ToolCallResult
         except ImportError as e:
             self.log_error(f"Failed to import MCP CLI components: {e}")
             return DiagnosisResult(0, 0, 0, 0, 0, [], ["Install MCP CLI components"])
@@ -599,7 +598,7 @@ async def main():
             result = await diagnostic.diagnose_tool_manager(args.config, args.server)
 
         # Generate and display report
-        report = diagnostic.generate_report(result)
+        diagnostic.generate_report(result)
 
         if args.output:
             with open(args.output, "w") as f:

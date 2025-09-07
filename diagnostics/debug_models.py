@@ -123,7 +123,7 @@ def test_client_creation():
                             has_key = True  # Ollama running = no API key needed
                             ollama_models = response.json().get("models", [])
                             model_count = len(ollama_models)
-                    except:
+                    except Exception:
                         pass
 
                 status = (
@@ -135,7 +135,7 @@ def test_client_creation():
         print("\n  🔧 Testing client creation...")
         if "openai" in providers and providers["openai"].get("has_api_key"):
             try:
-                client = get_client(provider="openai", model="gpt-4o-mini")
+                get_client(provider="openai", model="gpt-4o-mini")
                 print("    ✅ OpenAI client created successfully")
             except Exception as e:
                 print(f"    ❌ OpenAI client creation failed: {e}")
@@ -147,8 +147,6 @@ def test_client_creation():
 
         # Try legacy approach
         try:
-            from chuk_llm.llm.llm_client import get_llm_client
-
             print("  🔄 Trying legacy client creation...")
 
             # This would need your existing ModelManager for config
@@ -178,7 +176,7 @@ def suggest_fixes():
                 try:
                     provider_config = config.get_provider(provider_name)
                     total_models += len(provider_config.models)
-                except:
+                except Exception:
                     pass
 
             if total_models == 0:

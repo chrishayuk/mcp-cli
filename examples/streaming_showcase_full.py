@@ -21,6 +21,7 @@ from chuk_term.ui.theme import set_theme
 # Import streaming helpers from MCP-CLI
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from mcp_cli.ui.streaming_display import StreamingContext, tokenize_text
@@ -39,14 +40,14 @@ async def demo_code_generation():
     """Demonstrate code generation with multiple languages."""
     output = get_output()
     console = Console()
-    
+
     output.print("\n" + "─" * 40)
     output.print("Code Generation Examples", style="bold cyan")
     output.print("─" * 40)
-    
+
     # Python code example
     output.info("Generating Python implementation...")
-    
+
     python_code = """I'll create a comprehensive Python class for data processing.
 
 ## DataProcessor Class
@@ -161,22 +162,22 @@ This implementation includes:
 - Data validation and cleaning
 - Normalization capabilities
 - Logging integration"""
-    
+
     with StreamingContext(
         console=console,
         title="🐍 Python Code",
         mode="response",
         refresh_per_second=10,
-        transient=True
+        transient=True,
     ) as ctx:
         async for chunk in stream_response(python_code, speed=0.02):
             ctx.update(chunk)
-    
+
     await asyncio.sleep(1)
-    
+
     # JavaScript/TypeScript example
     output.info("\nGenerating TypeScript implementation...")
-    
+
     typescript_code = """Here's the equivalent TypeScript implementation:
 
 ```typescript
@@ -300,13 +301,13 @@ processor.process(testData).then(result => {
 ```
 
 The TypeScript version provides the same functionality with strong typing."""
-    
+
     with StreamingContext(
         console=console,
         title="📘 TypeScript Code",
         mode="response",
         refresh_per_second=10,
-        transient=True
+        transient=True,
     ) as ctx:
         async for chunk in stream_response(typescript_code, speed=0.015):
             ctx.update(chunk)
@@ -316,14 +317,14 @@ async def demo_tool_execution():
     """Demonstrate various tool executions."""
     output = get_output()
     console = Console()
-    
+
     output.print("\n" + "─" * 40)
     output.print("Tool Execution Examples", style="bold cyan")
     output.print("─" * 40)
-    
+
     # Database query tool
     output.info("Executing database analysis...")
-    
+
     db_tool = """Analyzing database performance metrics...
 
 Connecting to PostgreSQL database...
@@ -378,22 +379,22 @@ Recommendations:
 3. Add index on users.email for faster lookups
 
 Total execution time: 1.47s"""
-    
+
     with StreamingContext(
         console=console,
         title="🗄️ Database Analyzer",
         mode="tool",
         refresh_per_second=8,
-        transient=True
+        transient=True,
     ) as ctx:
         async for chunk in stream_response(db_tool, speed=0.02):
             ctx.update(chunk)
-    
+
     await asyncio.sleep(1)
-    
+
     # File system tool
     output.info("\nScanning file system...")
-    
+
     fs_tool = """Scanning project directory for large files...
 
 Walking directory tree: /Users/project/src
@@ -423,13 +424,13 @@ Checking for common issues:
 ⚠ node_modules included (add to .gitignore)
 
 Scan completed in 0.89s"""
-    
+
     with StreamingContext(
         console=console,
         title="📁 File System Scanner",
         mode="tool",
         refresh_per_second=8,
-        transient=True
+        transient=True,
     ) as ctx:
         async for chunk in stream_response(fs_tool, speed=0.018):
             ctx.update(chunk)
@@ -439,14 +440,14 @@ async def demo_markdown_tables():
     """Demonstrate various markdown table formats."""
     output = get_output()
     console = Console()
-    
+
     output.print("\n" + "─" * 40)
     output.print("Markdown Tables & Data Visualization", style="bold cyan")
     output.print("─" * 40)
-    
+
     # Performance comparison table
     output.info("Generating performance comparison...")
-    
+
     perf_table = """I'll analyze the performance metrics across different implementations.
 
 ## Performance Comparison Analysis
@@ -500,22 +501,22 @@ After running comprehensive benchmarks, here are the results:
 - MongoDB leads in geospatial queries
 - Gin offers best raw performance but with steeper learning curve
 - FastAPI provides excellent balance of performance and developer experience"""
-    
+
     with StreamingContext(
         console=console,
         title="📊 Performance Analysis",
         mode="response",
         refresh_per_second=8,
-        transient=True
+        transient=True,
     ) as ctx:
         async for chunk in stream_response(perf_table, speed=0.015):
             ctx.update(chunk)
-    
+
     await asyncio.sleep(1)
-    
+
     # Cost analysis table
     output.info("\nGenerating cost analysis...")
-    
+
     cost_table = """## Cloud Services Cost Analysis
 
 Based on current usage patterns, here's the monthly cost breakdown:
@@ -534,13 +535,13 @@ Based on current usage patterns, here's the monthly cost breakdown:
 | **Total Monthly** | **$2,359.40** | **$2,234.38** | **$2,155.00** | **GCP** ✅ |
 
 Potential savings by switching to GCP: $204.40/month ($2,452.80/year)"""
-    
+
     with StreamingContext(
         console=console,
         title="💰 Cost Analysis",
         mode="response",
         refresh_per_second=8,
-        transient=True
+        transient=True,
     ) as ctx:
         async for chunk in stream_response(cost_table, speed=0.02):
             ctx.update(chunk)
@@ -550,12 +551,12 @@ async def demo_mixed_content():
     """Demonstrate mixed content types in a single response."""
     output = get_output()
     console = Console()
-    
+
     output.print("\n" + "─" * 40)
     output.print("Mixed Content Response", style="bold cyan")
     output.print("─" * 40)
     output.info("Analyzing system architecture and providing recommendations...")
-    
+
     mixed_response = """I'll analyze your system architecture and provide comprehensive recommendations.
 
 ## System Architecture Analysis
@@ -736,13 +737,13 @@ Annual savings: **$4,848**
    - Consider migration to Kubernetes
 
 Would you like me to provide more detailed implementation guides for any of these recommendations?"""
-    
+
     with StreamingContext(
         console=console,
         title="🏗️ Architecture Analysis",
         mode="response",
         refresh_per_second=10,
-        transient=True
+        transient=True,
     ) as ctx:
         async for chunk in stream_response(mixed_response, speed=0.012):
             ctx.update(chunk)
@@ -752,12 +753,12 @@ async def demo_thinking_process():
     """Demonstrate thinking/reasoning process."""
     output = get_output()
     console = Console()
-    
+
     output.print("\n" + "─" * 40)
     output.print("Thinking & Reasoning Process", style="bold cyan")
     output.print("─" * 40)
     output.info("Analyzing complex problem...")
-    
+
     thinking = """Let me think through this optimization problem step by step.
 
 The user wants to optimize a recommendation system that's currently too slow.
@@ -795,13 +796,13 @@ Evaluating based on constraints:
 Best approach: Start with incremental processing + smart caching, then add LSH for similarity calculations.
 
 This should reduce processing time by 85% with minimal infrastructure changes."""
-    
+
     with StreamingContext(
         console=console,
         title="💭 Thinking",
         mode="thinking",
         refresh_per_second=8,
-        transient=True
+        transient=True,
     ) as ctx:
         async for chunk in stream_response(thinking, speed=0.02):
             ctx.update(chunk)
@@ -811,12 +812,12 @@ async def demo_json_yaml_config():
     """Demonstrate JSON and YAML configuration examples."""
     output = get_output()
     console = Console()
-    
+
     output.print("\n" + "─" * 40)
     output.print("Configuration & Data Formats", style="bold cyan")
     output.print("─" * 40)
     output.info("Generating configuration examples...")
-    
+
     config_response = """I'll provide configuration examples for your deployment pipeline.
 
 ## Docker Compose Configuration
@@ -1135,13 +1136,13 @@ Here's a comprehensive `config.json` for your application:
 ```
 
 These configurations provide a complete setup for containerized deployment with proper health checks, resource limits, and security considerations."""
-    
+
     with StreamingContext(
         console=console,
         title="⚙️ Configuration Examples",
         mode="response",
         refresh_per_second=10,
-        transient=True
+        transient=True,
     ) as ctx:
         async for chunk in stream_response(config_response, speed=0.015):
             ctx.update(chunk)
@@ -1151,36 +1152,38 @@ async def main():
     """Run the full streaming showcase."""
     output = get_output()
     set_theme("default")
-    
+
     # Header
-    output.print("\n" + "="*80)
+    output.print("\n" + "=" * 80)
     output.print("MCP-CLI STREAMING SHOWCASE - FULL DEMO", style="bold cyan")
-    output.print("Comprehensive demonstration of all streaming capabilities", style="dim")
-    output.print("="*80)
-    
+    output.print(
+        "Comprehensive demonstration of all streaming capabilities", style="dim"
+    )
+    output.print("=" * 80)
+
     # Run all demos
     await demo_code_generation()
     await asyncio.sleep(1)
-    
+
     await demo_tool_execution()
     await asyncio.sleep(1)
-    
+
     await demo_markdown_tables()
     await asyncio.sleep(1)
-    
+
     await demo_thinking_process()
     await asyncio.sleep(1)
-    
+
     await demo_json_yaml_config()
     await asyncio.sleep(1)
-    
+
     await demo_mixed_content()
-    
+
     # Summary
-    output.print("\n" + "="*80)
+    output.print("\n" + "=" * 80)
     output.success("✅ Full Streaming Showcase Complete!")
-    output.print("="*80)
-    
+    output.print("=" * 80)
+
     output.info("\n📊 Demonstrated Capabilities:")
     output.print("• Code generation with syntax highlighting (Python, TypeScript)")
     output.print("• Tool execution with real-time progress")
@@ -1191,7 +1194,7 @@ async def main():
     output.print("• Content-aware phase messages")
     output.print("• Automatic content type detection")
     output.print("• Clean transient display with final panels")
-    
+
     output.print("\n💡 The streaming system automatically:")
     output.print("• Detects content type from early chunks")
     output.print("• Adapts phase messages based on content")

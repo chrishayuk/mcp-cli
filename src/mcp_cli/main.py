@@ -12,38 +12,33 @@ from typing import Optional
 
 import typer
 
-# ──────────────────────────────────────────────────────────────────────────────
-# CRITICAL: Set up silent environment IMMEDIATELY before any other imports
-# This prevents MCP server noise from appearing during module imports
-# ──────────────────────────────────────────────────────────────────────────────
+# Module imports
 from mcp_cli.logging_config import (
     setup_logging,
     get_logger,
     setup_silent_mcp_environment,
 )
+from mcp_cli.cli.commands import register_all_commands
+from mcp_cli.cli.registry import CommandRegistry
+from mcp_cli.run_command import run_command_sync
+from chuk_term.ui import (
+    output,
+    restore_terminal,
+)
+from chuk_term.ui.theme import set_theme
+from mcp_cli.cli_options import process_options
+from mcp_cli.context import initialize_context
 
+# ──────────────────────────────────────────────────────────────────────────────
+# CRITICAL: Set up silent environment IMMEDIATELY after imports
+# This prevents MCP server noise from appearing during module imports
+# ──────────────────────────────────────────────────────────────────────────────
 # FIRST: Set environment variables to silence MCP servers before they start
 setup_silent_mcp_environment()
 
 # THEN: Set up default clean logging immediately
 # This will be overridden later if user specifies different options
 setup_logging(level="ERROR", quiet=False, verbose=False)
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Now safe to import components that might start MCP servers
-# ──────────────────────────────────────────────────────────────────────────────
-from mcp_cli.cli.commands import register_all_commands
-from mcp_cli.cli.registry import CommandRegistry
-from mcp_cli.run_command import run_command_sync
-
-# Import UI components from chuk_term
-from chuk_term.ui import (
-    output,
-    restore_terminal,
-)
-from chuk_term.ui.theme import set_theme
-
-from mcp_cli.cli_options import process_options
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Module logger
@@ -132,12 +127,13 @@ def main_callback(
 
         # Execute the provider command
         from mcp_cli.commands.provider import provider_action_async
-        from mcp_cli.model_manager import ModelManager
+        from mcp_cli.context import initialize_context
 
-        context = {"model_manager": ModelManager()}
+        # Initialize context for the provider command
+        initialize_context()
 
         try:
-            asyncio.run(provider_action_async([provider], context=context))
+            asyncio.run(provider_action_async([provider]))
         except Exception as e:
             output.error(f"Error: {e}")
         finally:
@@ -389,12 +385,12 @@ direct_registered = []
 def _run_provider_command(args, log_prefix="Provider command"):
     """Shared function to run provider commands."""
     from mcp_cli.commands.provider import provider_action_async
-    from mcp_cli.model_manager import ModelManager
 
-    context = {"model_manager": ModelManager()}
+    # Initialize context for the provider command
+    initialize_context()
 
     try:
-        asyncio.run(provider_action_async(args, context=context))
+        asyncio.run(provider_action_async(args))
     except Exception as e:
         output.error(f"Error: {e}")
         raise typer.Exit(1)
@@ -572,9 +568,8 @@ def tools_command(
     from mcp_cli.commands.tools import tools_action_async
 
     # Execute via run_command_sync with async wrapper
-    async def _tools_wrapper(tool_manager, **params):
+    async def _tools_wrapper(**params):
         return await tools_action_async(
-            tool_manager,
             show_details=params.get("all", False),
             show_raw=params.get("raw", False),
         )
@@ -659,9 +654,8 @@ def servers_command(
 
     from mcp_cli.commands.servers import servers_action_async
 
-    async def _servers_wrapper(tool_manager, **params):
+    async def _servers_wrapper(**params):
         return await servers_action_async(
-            tool_manager,
             detailed=params.get("detailed", False),
             show_capabilities=params.get("capabilities", False),
             show_transport=params.get("transport", False),
@@ -712,8 +706,8 @@ def resources_command(
 
     from mcp_cli.commands.resources import resources_action_async
 
-    async def _resources_wrapper(tool_manager, **params):
-        return await resources_action_async(tool_manager)
+    async def _resources_wrapper(**params):
+        return await resources_action_async()
 
     run_command_sync(
         _resources_wrapper,
@@ -753,8 +747,8 @@ def prompts_command(
 
     from mcp_cli.commands.prompts import prompts_action_async
 
-    async def _prompts_wrapper(tool_manager, **params):
-        return await prompts_action_async(tool_manager)
+    async def _prompts_wrapper(**params):
+        return await prompts_action_async()
 
     run_command_sync(
         _prompts_wrapper,

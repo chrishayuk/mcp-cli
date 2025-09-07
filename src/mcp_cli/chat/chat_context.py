@@ -61,10 +61,10 @@ class ChatContext:
     def create(
         cls,
         tool_manager: ToolManager,
-        provider: str = None,
-        model: str = None,
-        api_base: str = None,
-        api_key: str = None,
+        provider: str | None = None,
+        model: str | None = None,
+        api_base: str | None = None,
+        api_key: str | None = None,
     ) -> "ChatContext":
         """
         Factory method for convenient creation.
@@ -420,8 +420,8 @@ class TestChatContext(ChatContext):
     def create_for_testing(
         cls,
         stream_manager: Any,
-        provider: str = None,
-        model: str = None,
+        provider: str | None = None,
+        model: str | None = None,
     ) -> "TestChatContext":
         """Factory for test contexts."""
         model_manager = ModelManager()

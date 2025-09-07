@@ -349,7 +349,7 @@ async def analyze_real_servers():
         if temp_config_file:
             try:
                 os.unlink(temp_config_file)
-            except:
+            except Exception:
                 pass
 
         return analysis_results
@@ -1043,7 +1043,7 @@ async def test_single_runtime_server(
                     # Cleanup
                     try:
                         await asyncio.wait_for(tm.close(), timeout=2.0)
-                    except:
+                    except Exception:
                         pass  # Ignore cleanup errors
 
                     return True
@@ -1066,7 +1066,7 @@ async def test_single_runtime_server(
 
             try:
                 os.unlink(temp_config_file)
-            except:
+            except Exception:
                 pass
 
     except ImportError:
@@ -1259,7 +1259,7 @@ async def test_runtime_server_management():
             try:
                 if pref_manager.remove_runtime_server(server_name):
                     print(f"    ✅ Removed '{server_name}'")
-            except:
+            except Exception:
                 pass  # Ignore cleanup errors
 
         # Also check for any lingering test servers from previous runs
@@ -1269,7 +1269,7 @@ async def test_runtime_server_management():
                 try:
                     pref_manager.remove_runtime_server(server_name)
                     print(f"    ✅ Removed lingering test server '{server_name}'")
-                except:
+                except Exception:
                     pass
 
         if not test_passed:

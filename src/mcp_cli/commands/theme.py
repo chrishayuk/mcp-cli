@@ -3,7 +3,7 @@
 from typing import Optional
 import asyncio
 
-from chuk_term.ui import output
+from chuk_term.ui import output, format_table
 from chuk_term.ui.theme import set_theme
 from chuk_term.ui.prompts import ask
 
@@ -44,7 +44,7 @@ def theme_command(
         for theme in themes:
             desc = theme_descriptions.get(theme, "")
             if theme == current:
-                output.print(f"• [bold cyan]{theme}[/bold cyan] (current) - {desc}")
+                output.info(f"• {theme} (current) - {desc}")
             else:
                 output.print(f"• {theme} - {desc}")
 
@@ -98,26 +98,23 @@ async def _interactive_theme_selection(pref_manager):
     }
 
     # Display themes in a nice table format
-    from rich.table import Table
-
     output.rule("Theme Selector")
 
-    table = Table(title="Available Themes", show_header=True, header_style="bold cyan")
-    table.add_column("#", style="dim", width=3)
-    table.add_column("Theme", style="green", width=12)
-    table.add_column("Description", style="white")
-    table.add_column("Status", justify="center", width=10)
+    # Build table data for chuk_term
+    table_data = []
+    columns = ["#", "Theme", "Description", "Status"]
 
     for idx, theme in enumerate(themes, 1):
         desc = theme_descriptions.get(theme, "")
         status = "✓ Current" if theme == current else ""
-        status_style = "bold green" if theme == current else "dim"
 
-        table.add_row(
-            str(idx), theme, desc, f"[{status_style}]{status}[/{status_style}]"
+        table_data.append(
+            {"#": str(idx), "Theme": theme, "Description": desc, "Status": status}
         )
 
-    output.print(table)
+    # Create and display table using chuk-term
+    table = format_table(table_data, title="Available Themes", columns=columns)
+    output.print_table(table)
     output.print()
 
     # Get numeric or name input
@@ -168,9 +165,9 @@ async def _interactive_theme_selection(pref_manager):
 
 def _show_theme_preview():
     """Show a preview of the current theme."""
-    output.print("[bold]Theme Preview:[/bold]")
-    output.info("ℹ️  Information message")
-    output.success("✅ Success message")
-    output.warning("⚠️  Warning message")
-    output.error("❌ Error message")
-    output.hint("💡 Hint message")
+    output.print("Theme Preview:")
+    output.info("Information message")
+    output.success("Success message")
+    output.warning("Warning message")
+    output.error("Error message")
+    output.hint("Hint message")

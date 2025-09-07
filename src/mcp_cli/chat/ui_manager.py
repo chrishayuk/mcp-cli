@@ -44,18 +44,6 @@ class ChatUIManager:
         self.interrupt_requested = False
         self.confirm_tool_execution = True  # Legacy attribute for compatibility
 
-        # Console reference for compatibility
-        # For streaming, create an unconstrained console to avoid truncation
-        from rich.console import Console
-
-        self.console = Console(
-            width=None,  # Auto-detect terminal width, don't constrain
-            soft_wrap=True,
-            legacy_windows=True,
-            force_terminal=True,  # Force terminal mode for better streaming
-            color_system="auto",  # Auto-detect color support
-        )
-
         # Tool tracking
         self.tool_calls: List[Dict[str, Any]] = []
         self.tool_times: List[float] = []
@@ -66,10 +54,14 @@ class ChatUIManager:
         self.is_streaming_response = False
         self.streaming_handler: Optional[Any] = None
         self._pending_tool: Optional[Dict[str, Any]] = None
-        
+
         # Centralized display manager
         from mcp_cli.ui.chat_display_manager import ChatDisplayManager
-        self.display = ChatDisplayManager(self.console)
+
+        self.display = ChatDisplayManager()
+
+        # Add console attribute for compatibility with streaming handler
+        self.console = None  # Not using Rich console, using chuk-term instead
 
         # Signal handling
         self._prev_sigint_handler: Optional[signal.Handlers] = None
@@ -210,7 +202,9 @@ class ChatUIManager:
             logger.error(f"Error displaying tool call: {exc}")
             output.warning(f"Error displaying tool call: {exc}")
 
-    def _integrate_tool_call_into_streaming(self, tool_name: str, processed_args: dict) -> None:
+    def _integrate_tool_call_into_streaming(
+        self, tool_name: str, processed_args: dict
+    ) -> None:
         """Show tool call - during streaming, just display a simple message."""
         try:
             # During streaming, don't interfere with the active display
@@ -218,12 +212,12 @@ class ChatUIManager:
             if self.is_streaming_response:
                 logger.debug(f"Tool call during streaming: {tool_name}")
                 # Let the unified display handle it naturally
-                if hasattr(self.unified_display, 'start_tool_execution'):
+                if hasattr(self.unified_display, "start_tool_execution"):
                     self.unified_display.start_tool_execution(tool_name, processed_args)
             else:
                 # Not streaming, show a proper tool panel
                 output.tool_call(tool_name, processed_args)
-            
+
         except Exception as exc:
             logger.warning(f"Error showing tool call: {exc}")
             logger.info(f"Tool call: {tool_name} with args: {processed_args}")
@@ -232,26 +226,29 @@ class ChatUIManager:
         """Finish tool execution in centralized display."""
         # Show pending tool if we have one (after streaming completes)
         if self._pending_tool:
-            self.display.start_tool_execution(self._pending_tool["name"], self._pending_tool["args"])
+            self.display.start_tool_execution(
+                self._pending_tool["name"], self._pending_tool["args"]
+            )
             # Brief pause to let animation show
             import time
+
             time.sleep(0.5)
             self._pending_tool = None
-        
+
         self.display.finish_tool_execution(result or "", success)
         logger.debug(f"Finished tool execution: success={success}")
-        
+
         # Now show the final assistant response if we have it stored
-        if hasattr(self, '_final_response'):
+        if hasattr(self, "_final_response"):
             content, elapsed = self._final_response
             self.display.show_assistant_message(content, elapsed)
-            delattr(self, '_final_response')
+            delattr(self, "_final_response")
 
     def _cleanup_tool_display(self) -> None:
         """Clean up tool tracking and display."""
         if self.tool_start_time:
             try:
-                total_time = time.time() - self.tool_start_time
+                time.time() - self.tool_start_time
                 # Unified display handles its own output, no need for separate info message
                 pass
             except Exception:

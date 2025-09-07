@@ -1,7 +1,7 @@
 # mcp_cli/chat/commands/tools.py
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import List
 
 # Cross-platform Rich console helper
 from chuk_term.ui import output
@@ -17,7 +17,7 @@ from mcp_cli.context import get_context
 # ════════════════════════════════════════════════════════════════════════════
 # ENHANCED: Tool management commands
 # ════════════════════════════════════════════════════════════════════════════
-async def tools_manage_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:
+async def tools_manage_command(parts: List[str]) -> bool:
     """
     Manage tools (enable/disable/validate).
 
@@ -64,7 +64,7 @@ async def tools_manage_command(parts: List[str], ctx: Dict[str, Any] = None) -> 
         output.success(f"✓ Enabled tool: {tool_name}")
 
         # Refresh chat context if available
-        chat_ctx = ctx.get("chat_context")
+        chat_ctx = context.chat_context if hasattr(context, "chat_context") else None
         if chat_ctx and hasattr(chat_ctx, "refresh_after_model_change"):
             await chat_ctx.refresh_after_model_change()
 
@@ -78,7 +78,7 @@ async def tools_manage_command(parts: List[str], ctx: Dict[str, Any] = None) -> 
         output.warning(f"✗ Disabled tool: {tool_name}")
 
         # Refresh chat context if available
-        chat_ctx = ctx.get("chat_context")
+        chat_ctx = context.chat_context if hasattr(context, "chat_context") else None
         if chat_ctx and hasattr(chat_ctx, "refresh_after_model_change"):
             await chat_ctx.refresh_after_model_change()
 
@@ -226,7 +226,7 @@ async def tools_manage_command(parts: List[str], ctx: Dict[str, Any] = None) -> 
 # ════════════════════════════════════════════════════════════════════════════
 # Command handler (ENHANCED)
 # ════════════════════════════════════════════════════════════════════════════
-async def tools_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
+async def tools_command(parts: List[str]) -> bool:  # noqa: D401
     """
     List available tools (or call one interactively).
 
@@ -267,7 +267,6 @@ async def tools_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:  
     provider = context.provider
 
     await tools_action_async(
-        tm,
         show_details=show_details,
         show_raw=show_raw,
         show_validation=show_validation,

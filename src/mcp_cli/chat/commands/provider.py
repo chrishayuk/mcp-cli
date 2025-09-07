@@ -24,11 +24,11 @@ safety probes before committing any switch.
 
 from __future__ import annotations
 import logging
-from typing import Any, Dict, List
+from typing import List
 
-# Cross-platform Rich console helper
+# Cross-platform chuk_term console helper
 from chuk_term.ui import output
-from rich.prompt import Prompt
+from chuk_term.ui.prompts import confirm
 
 # Shared implementation
 from mcp_cli.commands.provider import provider_action_async
@@ -41,7 +41,7 @@ log = logging.getLogger(__name__)
 # ════════════════════════════════════════════════════════════════════════════
 # /provider entry-point
 # ════════════════════════════════════════════════════════════════════════════
-async def cmd_provider(parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
+async def cmd_provider(parts: List[str]) -> bool:  # noqa: D401
     """Handle the `/provider` slash-command inside chat."""
     # Use global context manager
     context = get_context()
@@ -65,7 +65,7 @@ async def cmd_provider(parts: List[str], ctx: Dict[str, Any] = None) -> bool:  #
             "provider": context.provider,
             "model": context.model,
         }
-        await provider_action_async(parts[1:], context=provider_ctx)
+        await provider_action_async(parts[1:])
 
         # Update global context with any changes
         if "provider" in provider_ctx:
@@ -100,7 +100,7 @@ async def cmd_provider(parts: List[str], ctx: Dict[str, Any] = None) -> bool:  #
 # ════════════════════════════════════════════════════════════════════════════
 # /providers entry-point (plural - defaults to list)
 # ════════════════════════════════════════════════════════════════════════════
-async def cmd_providers(parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
+async def cmd_providers(parts: List[str]) -> bool:  # noqa: D401
     """Handle the `/providers` slash-command inside chat (defaults to list)."""
     # Use global context manager
     context = get_context()
@@ -122,12 +122,8 @@ async def cmd_providers(parts: List[str], ctx: Dict[str, Any] = None) -> bool:  
 
         # Forward to the shared helper
         # Note: provider_action_async may still expect a dict, so pass one
-        provider_ctx = {
-            "model_manager": context.model_manager,
-            "provider": context.provider,
-            "model": context.model,
-        }
-        await provider_action_async(args, context=provider_ctx)
+        # Context is already initialized in the global context manager
+        await provider_action_async(args)
 
     except Exception as exc:  # pragma: no cover – unexpected edge cases
         output.error(f"Providers command failed: {exc}")
@@ -137,7 +133,7 @@ async def cmd_providers(parts: List[str], ctx: Dict[str, Any] = None) -> bool:  
 
 
 # Additional chat-specific helper command
-async def cmd_model(parts: List[str], ctx: Dict[str, Any] = None) -> bool:
+async def cmd_model(parts: List[str]) -> bool:
     """Quick model switcher for chat - `/model <model_name>`"""
     # Use global context manager
     context = get_context()
@@ -160,22 +156,10 @@ async def cmd_model(parts: List[str], ctx: Dict[str, Any] = None) -> bool:
                 for model in models:  # Show first 10
                     if index == 10:
                         output.print(f"  ... and {len(models) - index} more")
-                        # Use rich to display the prompt, fallback to input() if needed
-                        prompt_text = "Do you want to list more models?"
-                        try:
-                            # Use rich Prompt if available
-                            response = Prompt.ask(
-                                prompt_text,
-                                case_sensitive=False,
-                                choices=["y", "n"],
-                                default="y",
-                            )
-                            response = response.strip().lower()
-                        except Exception:
-                            # Fallback to input()
-                            print(prompt_text, end="")
-                            response = input().strip().lower()
-                        if response not in ["y", ""]:
+                        # Use chuk_term confirm prompt
+                        if not confirm(
+                            "Do you want to list more models?", default=True
+                        ):
                             break
                     marker = "→ " if model == current_model else "   "
                     output.print(f"  {marker}{model}")
@@ -194,20 +178,8 @@ async def cmd_model(parts: List[str], ctx: Dict[str, Any] = None) -> bool:
     try:
         # Use the provider command to switch model
         # Note: provider_action_async may still expect a dict, so pass one
-        provider_ctx = {
-            "model_manager": context.model_manager,
-            "provider": context.provider,
-            "model": context.model,
-        }
-        await provider_action_async(
-            [current_provider, model_name], context=provider_ctx
-        )
-
-        # Update global context with any changes
-        if "provider" in provider_ctx:
-            context.provider = provider_ctx["provider"]
-        if "model" in provider_ctx:
-            context.model = provider_ctx["model"]
+        # The provider_action_async function gets context internally
+        await provider_action_async([current_provider, model_name])
 
     except Exception as exc:
         output.error(f"Model switch failed: {exc}")

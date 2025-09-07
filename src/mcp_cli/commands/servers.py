@@ -11,12 +11,10 @@ from __future__ import annotations
 import json
 import time
 from typing import Any, Dict, List
-from rich.table import Table
-from rich.tree import Tree
-
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.utils.async_utils import run_blocking
-from chuk_term.ui import output
+from chuk_term.ui import output, format_table
+from mcp_cli.context import get_context
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -364,37 +362,29 @@ async def _display_table_view(
         output.print("[dim]No servers connected.[/dim]")
         return
 
-    # Create table with appropriate columns based on what info to show
-    table = Table(title="MCP Servers", header_style="bold magenta")
-    table.add_column("", width=2)  # Icon
-    table.add_column("Server", style="green", width=18)
-    table.add_column("Tools", justify="right", width=5)
-    table.add_column("Status", width=8)
-    table.add_column("Version", width=10)
-    table.add_column("Protocol", width=10)
+    # Build table data as list of dicts for chuk-term
+    table_data = []
+    columns = ["Icon", "Server", "Tools", "Status", "Version", "Protocol"]
 
     if show_capabilities:
-        table.add_column("Capabilities", width=12)
-
+        columns.append("Capabilities")
     if show_transport:
-        table.add_column("Transport", width=15)
-
-    # Performance column for detailed view only
+        columns.append("Transport")
     if detailed:
-        table.add_column("Performance", width=12)
+        columns.append("Performance")
 
     for srv in servers:
         icon = _get_server_icon(srv.get("capabilities", {}), srv["tool_count"])
-        tools_display = _format_tool_count(srv["tool_count"])
+        tools_display = str(srv["tool_count"])
 
-        # Status with color coding - fix the ready count issue
+        # Status with color coding
         status = srv.get("status", "unknown").lower()
         if status in ["connected", "ready", "up"]:
-            status_display = "[green]●[/green] Ready"
+            status_display = "● Ready"
         elif status in ["connecting", "starting"]:
-            status_display = "[yellow]●[/yellow] Start"
+            status_display = "● Start"
         else:
-            status_display = f"[red]●[/red] {status.title()}"
+            status_display = f"● {status.title()}"
 
         # Version info
         server_info = srv.get("server_info", {})
@@ -402,27 +392,26 @@ async def _display_table_view(
         if len(version) > 8:
             version = version[:6] + "..."
 
-        # Protocol version - show actual protocol, not "current"
+        # Protocol version
         protocol_version = server_info.get("protocol_version", "unknown")
         if len(protocol_version) > 10:
-            # If it's a date format like 2025-06-18, show it as is
             if "-" in protocol_version and len(protocol_version) == 10:
                 pass  # Keep full date
             else:
                 protocol_version = protocol_version[:8] + "..."
 
-        row = [
-            icon,
-            srv["name"],
-            tools_display,
-            status_display,
-            version,
-            protocol_version,
-        ]
+        row_dict = {
+            "Icon": icon,
+            "Server": srv["name"],
+            "Tools": tools_display,
+            "Status": status_display,
+            "Version": version,
+            "Protocol": protocol_version,
+        }
 
         if show_capabilities:
             caps_display = _format_capabilities(srv.get("capabilities", {}))
-            row.append(caps_display)
+            row_dict["Capabilities"] = caps_display
 
         if show_transport:
             server_info = srv.get("server_info", {})
@@ -436,15 +425,17 @@ async def _display_table_view(
             else:
                 transport_display = transport
 
-            row.append(transport_display)
+            row_dict["Transport"] = transport_display
 
         if detailed:
             perf_icon, perf_text = _format_performance(srv.get("ping_ms"))
-            row.append(f"{perf_icon} {perf_text}")
+            row_dict["Performance"] = f"{perf_icon} {perf_text}"
 
-        table.add_row(*row)
+        table_data.append(row_dict)
 
-    output.print(table)
+    # Create and display table using chuk-term
+    table = format_table(table_data, title="MCP Servers", columns=columns)
+    output.print_table(table)
 
     # Summary - fix the ready count logic
     total_tools = sum(s["tool_count"] for s in servers)
@@ -470,32 +461,30 @@ async def _display_detailed_panels(servers: List[Dict[str, Any]]) -> None:
     for srv in servers:
         icon = _get_server_icon(srv.get("capabilities", {}), srv["tool_count"])
 
-        # Create a table for each server showing details as rows
-        table = Table(title=f"{icon} {srv['name']}", header_style="bold blue", width=80)
-        table.add_column("Property", style="cyan", width=15)
-        table.add_column("Value", style="green", width=60)
+        # Build table data for chuk-term
+        table_data = []
 
         # Basic info rows
-        table.add_row("ID", str(srv["id"]))
-        table.add_row("Tools", str(srv["tool_count"]))
+        table_data.append({"Property": "ID", "Value": str(srv["id"])})
+        table_data.append({"Property": "Tools", "Value": str(srv["tool_count"])})
 
         # Status
         status = srv.get("status", "unknown").lower()
         if status in ["connected", "ready", "up"]:
-            status_display = "[green]● Ready[/green]"
+            status_display = "● Ready"
         elif status in ["connecting", "starting"]:
-            status_display = "[yellow]● Starting[/yellow]"
+            status_display = "● Starting"
         else:
-            status_display = f"[red]● {status.title()}[/red]"
-        table.add_row("Status", status_display)
+            status_display = f"● {status.title()}"
+        table_data.append({"Property": "Status", "Value": status_display})
 
         # Server info
         server_info = srv.get("server_info", {})
         version = server_info.get("version", "unknown")
-        table.add_row("Version", version)
+        table_data.append({"Property": "Version", "Value": version})
 
         protocol_version = server_info.get("protocol_version", "2025-06-18")
-        table.add_row("Protocol", protocol_version)
+        table_data.append({"Property": "Protocol", "Value": protocol_version})
 
         # Transport
         transport = server_info.get("transport", "stdio")
@@ -504,14 +493,16 @@ async def _display_detailed_panels(servers: List[Dict[str, Any]]) -> None:
             transport_display = f"{transport} ({command})"
         else:
             transport_display = transport
-        table.add_row("Transport", transport_display)
+        table_data.append({"Property": "Transport", "Value": transport_display})
 
         # Performance
         if srv.get("ping_ms") is not None:
             perf_icon, perf_text = _format_performance(srv["ping_ms"])
-            table.add_row("Performance", f"{perf_icon} {perf_text}")
+            table_data.append(
+                {"Property": "Performance", "Value": f"{perf_icon} {perf_text}"}
+            )
         else:
-            table.add_row("Performance", "❓ Unknown")
+            table_data.append({"Property": "Performance", "Value": "❓ Unknown"})
 
         # Capabilities
         capabilities = srv.get("capabilities", {})
@@ -531,7 +522,7 @@ async def _display_detailed_panels(servers: List[Dict[str, Any]]) -> None:
             caps_list.append(f"✓ Notifications: {', '.join(active)}")
 
         caps_display = "\n".join(caps_list) if caps_list else "None detected"
-        table.add_row("Capabilities", caps_display)
+        table_data.append({"Property": "Capabilities", "Value": caps_display})
 
         # Sample tools
         tools = srv.get("tools", [])
@@ -540,16 +531,21 @@ async def _display_detailed_panels(servers: List[Dict[str, Any]]) -> None:
             tools_display = ", ".join(sample_tools)
             if len(tools) > 5:
                 tools_display += f" ... and {len(tools) - 5} more"
-            table.add_row("Sample Tools", tools_display)
+            table_data.append({"Property": "Sample Tools", "Value": tools_display})
 
-        output.print(table)
+        # Create and display table using chuk-term
+        table = format_table(
+            table_data, title=f"{icon} {srv['name']}", columns=["Property", "Value"]
+        )
+        output.print_table(table)
         output.print()  # Add spacing between servers
 
 
 async def _display_tree_view(servers: List[Dict[str, Any]]) -> None:
-    """Display servers in tree format."""
+    """Display servers in tree format using text-based output."""
 
-    tree = Tree("🌐 MCP Servers", style="bold blue")
+    output.print("\n🌐 MCP Servers")
+    output.print("─" * 40)
 
     for srv in servers:
         icon = _get_server_icon(srv.get("capabilities", {}), srv["tool_count"])
@@ -557,95 +553,34 @@ async def _display_tree_view(servers: List[Dict[str, Any]]) -> None:
 
         status = srv.get("status", "unknown")
         if status in ["connected", "ready", "up"]:
-            server_node = tree.add(f"[green]{server_label}[/green]")
+            output.success(f"\n└── {server_label}")
         else:
-            server_node = tree.add(f"[red]{server_label}[/red]")
+            output.error(f"\n└── {server_label}")
 
         # Performance
         if srv.get("ping_ms") is not None:
             perf_icon, perf_text = _format_performance(srv["ping_ms"])
-            server_node.add(f"Performance: {perf_icon} {perf_text}")
+            output.print(f"    ├── Performance: {perf_icon} {perf_text}")
 
         # Capabilities
         capabilities = srv.get("capabilities", {})
         if capabilities and any(capabilities.values()):
-            caps_node = server_node.add("[blue]Capabilities[/blue]")
+            output.print("    ├── Capabilities:")
             for cap_name, enabled in capabilities.items():
                 if cap_name != "notifications" and enabled:
-                    caps_node.add(f"✓ {cap_name}")
+                    output.print(f"    │   └── ✓ {cap_name}")
 
         # Sample tools
         tools = srv.get("tools", [])
         if tools:
-            tools_node = server_node.add(f"[blue]Tools ({len(tools)})[/blue]")
-            for tool in tools[:3]:
-                tools_node.add(f"• {tool.get('name', 'unknown')}")
+            output.print(f"    └── Tools ({len(tools)}):")
+            for i, tool in enumerate(tools[:3]):
+                prefix = "└──" if i == min(2, len(tools) - 1) else "├──"
+                output.print(f"        {prefix} {tool.get('name', 'unknown')}")
             if len(tools) > 3:
-                tools_node.add(f"... {len(tools) - 3} more")
+                output.print(f"        └── ... {len(tools) - 3} more")
 
-    output.print(tree)
-
-
-# ════════════════════════════════════════════════════════════════════════
-# Main Function - Compatible with existing infrastructure
-# ════════════════════════════════════════════════════════════════════════
-
-
-async def servers_action_async(
-    tm: ToolManager,
-    *,
-    detailed: bool = False,
-    show_capabilities: bool = False,
-    show_transport: bool = False,  # This parameter was missing in original
-    output_format: str = "table",
-    **kwargs,  # Accept any additional parameters for compatibility
-) -> List[Dict[str, Any]]:
-    """
-    Enhanced server information display compatible with existing mcp-cli infrastructure.
-
-    This function maintains the same signature expected by the existing CLI
-    while providing enhanced functionality.
-    """
-
-    # Note about logging noise - this could be addressed by the CLI startup
-    # For now, we'll focus on clean server information display
-
-    # Get basic server info using existing ToolManager methods
-    try:
-        # Try the existing method first
-        if hasattr(tm, "get_server_info"):
-            server_info = await tm.get_server_info()
-        else:
-            # Fallback method
-            output.print(
-                "[yellow]Warning:[/yellow] get_server_info not available, using fallback"
-            )
-            server_info = []
-    except Exception as exc:
-        output.print(f"[red]Error getting server info:[/red] {exc}")
-        return []
-
-    if not server_info:
-        output.print("[dim]No servers connected.[/dim]")
-        return []
-
-    # Enhance server information
-    enhanced_servers = []
-
-    for i, srv in enumerate(server_info):
-        # Handle different server info formats
-        if hasattr(srv, "id"):
-            server_id = srv.id
-            server_name = srv.name
-            server_status = getattr(srv, "status", "unknown")
-        elif isinstance(srv, dict):
-            server_id = srv.get("id", i)
-            server_name = srv.get("name", f"server-{i}")
-            server_status = srv.get("status", "unknown")
-        else:
-            server_id = i
-            server_name = str(srv)
-            server_status = "unknown"
+    output.print("─" * 40)
 
 
 async def _query_server_initialization_data(
@@ -757,25 +692,30 @@ async def _query_server_initialization_data(
 
 
 # ════════════════════════════════════════════════════════════════════════
-# Main Function - Compatible with existing infrastructure
+# Main Function - Uses context manager
 # ════════════════════════════════════════════════════════════════════════
 
 
 async def servers_action_async(
-    tm: ToolManager,
     *,
     detailed: bool = False,
     show_capabilities: bool = False,
-    show_transport: bool = False,  # This parameter was missing in original
+    show_transport: bool = False,
     output_format: str = "table",
     **kwargs,  # Accept any additional parameters for compatibility
 ) -> List[Dict[str, Any]]:
     """
-    Enhanced server information display compatible with existing mcp-cli infrastructure.
+    Enhanced server information display using centralized context.
 
-    This function maintains the same signature expected by the existing CLI
-    while providing enhanced functionality.
+    This function uses the context manager to get the ToolManager.
     """
+    # Get context and tool manager
+    context = get_context()
+    tm = context.tool_manager
+
+    if not tm:
+        output.print("[red]Error:[/red] No tool manager available")
+        return []
 
     # Get basic server info using existing ToolManager methods
     try:
@@ -908,16 +848,23 @@ async def servers_action_async(
             )
     except Exception as exc:
         output.print(f"[red]Display error:[/red] {exc}")
-        # Fallback to simple display
-        table = Table(title="MCP Servers (Fallback)")
-        table.add_column("Server", style="green")
-        table.add_column("Tools", justify="right")
-        table.add_column("Status")
-
+        # Fallback to simple display using chuk-term
+        table_data = []
         for srv in enhanced_servers:
-            table.add_row(srv["name"], str(srv["tool_count"]), srv["status"])
+            table_data.append(
+                {
+                    "Server": srv["name"],
+                    "Tools": str(srv["tool_count"]),
+                    "Status": srv["status"],
+                }
+            )
 
-        output.print(table)
+        table = format_table(
+            table_data,
+            title="MCP Servers (Fallback)",
+            columns=["Server", "Tools", "Status"],
+        )
+        output.print_table(table)
 
     return enhanced_servers
 
@@ -927,9 +874,9 @@ async def servers_action_async(
 # ════════════════════════════════════════════════════════════════════════
 
 
-def servers_action(tm: ToolManager, **kwargs) -> List[Dict[str, Any]]:
+def servers_action(**kwargs) -> List[Dict[str, Any]]:
     """Blocking wrapper around servers_action_async for backward compatibility."""
-    return run_blocking(servers_action_async(tm, **kwargs))
+    return run_blocking(servers_action_async(**kwargs))
 
 
 # Export for compatibility

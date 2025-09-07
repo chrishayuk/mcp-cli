@@ -24,7 +24,10 @@ class SystemPromptGenerator:
         self.default_tool_config = "No additional configuration is required."
 
     def generate_prompt(
-        self, tools: dict, user_system_prompt: str = None, tool_config: str = None
+        self,
+        tools: dict,
+        user_system_prompt: str | None = None,
+        tool_config: str | None = None,
     ) -> str:
         """
         Generate a system prompt based on the provided tools JSON, user prompt, and tool configuration.

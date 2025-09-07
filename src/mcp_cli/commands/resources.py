@@ -14,12 +14,11 @@ There are three public call-sites:
 from __future__ import annotations
 import inspect
 from typing import Any, Dict, List
-from rich.table import Table
 
 # mcp cli
-from mcp_cli.tools.manager import ToolManager
 from mcp_cli.utils.async_utils import run_blocking
-from chuk_term.ui import output
+from chuk_term.ui import output, format_table
+from mcp_cli.context import get_context
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -39,12 +38,19 @@ def _human_size(size: int | None) -> str:
 # ════════════════════════════════════════════════════════════════════════
 # async (primary) implementation
 # ════════════════════════════════════════════════════════════════════════
-async def resources_action_async(tm: ToolManager) -> List[Dict[str, Any]]:
+async def resources_action_async() -> List[Dict[str, Any]]:
     """
-    Fetch resources from *tm* and render a Rich table.
+    Fetch resources and render a Rich table.
 
     Returns the raw list to allow callers to re-use the data programmatically.
     """
+    # Get context and tool manager
+    context = get_context()
+    tm = context.tool_manager
+
+    if not tm:
+        output.error("No tool manager available")
+        return []
 
     # Most MCP servers expose list_resources() as an awaitable, but some
     # adapters might return a plain list - handle both.
@@ -52,42 +58,44 @@ async def resources_action_async(tm: ToolManager) -> List[Dict[str, Any]]:
         maybe = tm.list_resources()
         resources = await maybe if inspect.isawaitable(maybe) else maybe  # type: ignore[arg-type]
     except Exception as exc:  # noqa: BLE001
-        output.print(f"[red]Error:[/red] {exc}")
+        output.error(f"{exc}")
         return []
 
     resources = resources or []
     if not resources:
-        output.print("[dim]No resources recorded.[/dim]")
+        output.info("No resources recorded.")
         return resources
 
-    table = Table(title="Resources", header_style="bold magenta")
-    table.add_column("Server", style="cyan")
-    table.add_column("URI", style="yellow")
-    table.add_column("Size", justify="right")
-    table.add_column("MIME-type")
+    # Build table data for chuk_term
+    table_data = []
+    columns = ["Server", "URI", "Size", "MIME-type"]
 
     for item in resources:
-        table.add_row(
-            item.get("server", "-"),
-            item.get("uri", "-"),
-            _human_size(item.get("size")),
-            item.get("mimeType", "-"),
+        table_data.append(
+            {
+                "Server": item.get("server", "-"),
+                "URI": item.get("uri", "-"),
+                "Size": _human_size(item.get("size")),
+                "MIME-type": item.get("mimeType", "-"),
+            }
         )
 
-    output.print(table)
+    # Create and display table using chuk-term
+    table = format_table(table_data, title="Resources", columns=columns)
+    output.print_table(table)
     return resources
 
 
 # ════════════════════════════════════════════════════════════════════════
 # sync wrapper - used by non-interactive CLI paths
 # ════════════════════════════════════════════════════════════════════════
-def resources_action(tm: ToolManager) -> List[Dict[str, Any]]:
+def resources_action() -> List[Dict[str, Any]]:
     """
     Blocking wrapper around :pyfunc:`resources_action_async`.
 
     Raises *RuntimeError* if called from inside an active event-loop.
     """
-    return run_blocking(resources_action_async(tm))
+    return run_blocking(resources_action_async())
 
 
 __all__ = [

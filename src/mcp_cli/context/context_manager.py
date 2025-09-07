@@ -174,6 +174,30 @@ class ApplicationContext:
             **self._extra,
         }
 
+    def update_from_dict(self, data: Dict[str, Any]) -> None:
+        """
+        Update context from a dictionary (for backwards compatibility).
+
+        This is a transitional method while migrating from dict-based context.
+        """
+        for key, value in data.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+            else:
+                self._extra[key] = value
+
+    def update(self, **kwargs) -> None:
+        """
+        Update context with keyword arguments.
+
+        This method provides a simple way to update multiple context attributes.
+        """
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+            else:
+                self._extra[key] = value
+
 
 class ContextManager:
     """

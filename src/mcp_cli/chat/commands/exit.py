@@ -19,7 +19,7 @@ automatically falls back to plain text when ANSI colours are unavailable
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import List
 
 # Cross-platform Rich console helper
 from chuk_term.ui import output
@@ -32,7 +32,7 @@ from mcp_cli.context import get_context
 # ════════════════════════════════════════════════════════════════════════════
 # Core handlers
 # ════════════════════════════════════════════════════════════════════════════
-async def cmd_exit(_parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
+async def cmd_exit(_parts: List[str]) -> bool:  # noqa: D401
     """
     Terminate the chat session.
 
@@ -47,7 +47,7 @@ async def cmd_exit(_parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # no
     return True
 
 
-async def cmd_quit(parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
+async def cmd_quit(parts: List[str]) -> bool:  # noqa: D401
     """
     Terminate the chat session.
 
@@ -55,7 +55,7 @@ async def cmd_quit(parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noq
     -----
       /quit
     """
-    return await cmd_exit(parts, ctx)
+    return await cmd_exit(parts)
 
 
 # ════════════════════════════════════════════════════════════════════════════

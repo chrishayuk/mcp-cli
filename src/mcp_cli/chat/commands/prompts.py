@@ -28,7 +28,7 @@ Example
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import List
 
 # Cross-platform Rich console helper (handles Windows quirks, piping, etc.)
 from chuk_term.ui import output
@@ -40,7 +40,7 @@ from mcp_cli.chat.commands import register_command
 from mcp_cli.context import get_context
 
 
-async def cmd_prompts(_parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
+async def cmd_prompts(_parts: List[str]) -> bool:  # noqa: D401
     """List stored prompt templates from all connected servers."""
     # Use global context manager
     context = get_context()
@@ -51,7 +51,7 @@ async def cmd_prompts(_parts: List[str], ctx: Dict[str, Any] = None) -> bool:  #
         return True  # command handled (nothing further to do)
 
     # Delegate to the shared async helper
-    await prompts_action_cmd(tm)
+    await prompts_action_cmd()
     return True
 
 

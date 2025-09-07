@@ -155,8 +155,7 @@ class ConversationProcessor:
 
         # Set the streaming handler reference in UI manager for interruption support
         streaming_handler = StreamingResponseHandler(
-            console=self.ui_manager.console,
-            chat_display=self.ui_manager.display
+            console=self.ui_manager.console, chat_display=self.ui_manager.display
         )
         self.ui_manager.streaming_handler = streaming_handler
 

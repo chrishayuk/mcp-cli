@@ -5,14 +5,14 @@ Chat commands for tool management.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import List
 
 from chuk_term.ui import output
 from mcp_cli.chat.commands import register_command
 from mcp_cli.context import get_context
 
 
-async def tools_enable_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:
+async def tools_enable_command(parts: List[str]) -> bool:
     # Use global context manager
     context = get_context()
 
@@ -42,7 +42,7 @@ async def tools_enable_command(parts: List[str], ctx: Dict[str, Any] = None) -> 
     return True
 
 
-async def tools_disable_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:
+async def tools_disable_command(parts: List[str]) -> bool:
     # Use global context manager
     context = get_context()
 
@@ -72,7 +72,7 @@ async def tools_disable_command(parts: List[str], ctx: Dict[str, Any] = None) ->
     return True
 
 
-async def tools_validate_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:
+async def tools_validate_command(parts: List[str]) -> bool:
     # Use global context manager
     context = get_context()
 
@@ -102,10 +102,8 @@ async def tools_validate_command(parts: List[str], ctx: Dict[str, Any] = None) -
             output.print(f"  • Valid: {summary.get('valid_tools', 0)}")
             output.print(f"  • Invalid: {summary.get('invalid_tools', 0)}")
 
-            # Use global context for chat context
-            chat_ctx = context.chat_context
-            if chat_ctx and hasattr(chat_ctx, "refresh_after_model_change"):
-                await chat_ctx.refresh_after_model_change()
+            # Note: In the future, we might need to refresh tool context
+            # For now, validation is complete
 
     except Exception as e:
         output.error(f"Error during validation: {e}")
@@ -113,7 +111,7 @@ async def tools_validate_command(parts: List[str], ctx: Dict[str, Any] = None) -
     return True
 
 
-async def tools_status_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:
+async def tools_status_command(parts: List[str]) -> bool:
     # Use global context manager
     context = get_context()
 
@@ -154,7 +152,7 @@ async def tools_status_command(parts: List[str], ctx: Dict[str, Any] = None) -> 
     return True
 
 
-async def tools_disabled_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:
+async def tools_disabled_command(parts: List[str]) -> bool:
     # Use global context manager
     context = get_context()
 
@@ -188,7 +186,7 @@ async def tools_disabled_command(parts: List[str], ctx: Dict[str, Any] = None) -
     return True
 
 
-async def tools_details_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:
+async def tools_details_command(parts: List[str]) -> bool:
     # Use global context manager
     context = get_context()
 
@@ -234,7 +232,7 @@ async def tools_details_command(parts: List[str], ctx: Dict[str, Any] = None) ->
     return True
 
 
-async def tools_autofix_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:
+async def tools_autofix_command(parts: List[str]) -> bool:
     # Use global context manager
     context = get_context()
 
@@ -257,9 +255,7 @@ async def tools_autofix_command(parts: List[str], ctx: Dict[str, Any] = None) ->
     return True
 
 
-async def tools_clear_validation_command(
-    parts: List[str], ctx: Dict[str, Any] = None
-) -> bool:
+async def tools_clear_validation_command(parts: List[str]) -> bool:
     # Use global context manager
     context = get_context()
 
@@ -283,7 +279,7 @@ async def tools_clear_validation_command(
     return True
 
 
-async def tools_errors_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:
+async def tools_errors_command(parts: List[str]) -> bool:
     # Use global context manager
     context = get_context()
 

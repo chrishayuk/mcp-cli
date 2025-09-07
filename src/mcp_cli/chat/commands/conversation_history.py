@@ -23,7 +23,7 @@ so you can invoke it as often as you like without side-effects.
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List
+from typing import List
 
 # Cross-platform Rich console
 from chuk_term.ui import output
@@ -39,9 +39,7 @@ from mcp_cli.context import get_context
 # ════════════════════════════════════════════════════════════════════════════
 # Handler
 # ════════════════════════════════════════════════════════════════════════════
-async def conversation_history_command(
-    parts: List[str], ctx: Dict[str, Any] = None
-) -> bool:  # noqa: D401
+async def conversation_history_command(parts: List[str]) -> bool:  # noqa: D401
     """Browse or export the in-memory conversation history."""
     # Use global context manager
     context = get_context()

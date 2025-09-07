@@ -53,7 +53,7 @@ def check_mcp_cli_installation():
             print(f"   ✅ mcp-cli command found: {result.stdout.strip()}")
         else:
             print("   ❌ mcp-cli command not found in PATH")
-    except:
+    except Exception:
         print("   ❌ Cannot check mcp-cli command")
 
     # Check if we can import mcp_cli
@@ -63,13 +63,17 @@ def check_mcp_cli_installation():
         print(f"   ✅ mcp_cli module: {mcp_cli.__file__}")
 
         # Check for main components
-        from mcp_cli.tools.manager import ToolManager
+        import importlib.util
 
-        print("   ✅ ToolManager importable")
+        if importlib.util.find_spec("mcp_cli.tools.manager"):
+            print("   ✅ ToolManager importable")
+        else:
+            print("   ❌ ToolManager not found")
 
-        from mcp_cli.run_command import run_command
-
-        print("   ✅ run_command importable")
+        if importlib.util.find_spec("mcp_cli.run_command"):
+            print("   ✅ run_command importable")
+        else:
+            print("   ❌ run_command not found")
 
     except ImportError as e:
         print(f"   ❌ Cannot import mcp_cli: {e}")

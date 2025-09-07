@@ -112,7 +112,7 @@ class ProviderCommand(InteractiveCommand):
                             provider = words[1]
                             models = mm.get_available_models(provider)
                             return [m for m in models if m.startswith(words[2])]
-                        except:
+                        except Exception:
                             return []
 
             return []
@@ -211,7 +211,7 @@ class ProvidersCommand(InteractiveCommand):
                             provider = words[1]
                             models = mm.get_available_models(provider)
                             return [m for m in models if m.startswith(words[2])]
-                        except:
+                        except Exception:
                             return []
 
             return []

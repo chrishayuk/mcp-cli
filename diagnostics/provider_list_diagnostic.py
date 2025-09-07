@@ -91,7 +91,7 @@ def test_provider_status_logic():
                         model_count = len([line for line in lines[1:] if line.strip()])
                         return "✅", f"Running ({model_count} models)"
                     return "❌", "Not running"
-                except:
+                except Exception:
                     return "❌", "Not running"
 
             has_api_key = provider_info.get("has_api_key", False)
@@ -140,7 +140,7 @@ def test_model_count_display():
                         count = len([line for line in lines[1:] if line.strip()])
                         return f"{count} models"
                     return "Ollama not running"
-                except:
+                except Exception:
                     return "Ollama not running"
 
             models = provider_info.get(
@@ -203,7 +203,7 @@ def simulate_fixed_provider_list():
                     else:
                         status = "❌"
                         models_display = "Not running"
-                except:
+                except Exception:
                     status = "❌"
                     models_display = "Not running"
             else:

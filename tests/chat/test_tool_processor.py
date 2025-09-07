@@ -13,9 +13,14 @@ from mcp_cli.tools.models import ToolCallResult
 class DummyUIManager:
     def __init__(self):
         self.printed_calls = []  # To record calls to print_tool_call
+        self.is_streaming_response = False  # Add missing attribute
 
     def print_tool_call(self, tool_name, raw_arguments):
         self.printed_calls.append((tool_name, raw_arguments))
+
+    def finish_tool_execution(self, result=None, success=True):
+        # Add method that tool processor expects
+        pass
 
 
 class DummyStreamManager:
@@ -102,7 +107,7 @@ async def test_process_tool_calls_empty_list(capfd):
 
     # Optionally, also check that a warning was printed.
     captured = capfd.readouterr().out
-    assert "Warning: Empty tool_calls list received." in captured
+    assert "Empty tool_calls list received." in captured
 
 
 @pytest.mark.asyncio

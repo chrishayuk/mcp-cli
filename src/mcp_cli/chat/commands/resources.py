@@ -36,7 +36,7 @@ Example
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import List
 
 # Cross-platform Rich console helper
 from chuk_term.ui import output
@@ -51,7 +51,7 @@ from mcp_cli.context import get_context
 # ════════════════════════════════════════════════════════════════════════════
 # Command handler
 # ════════════════════════════════════════════════════════════════════════════
-async def cmd_resources(_parts: List[str], ctx: Dict[str, Any] = None) -> bool:  # noqa: D401
+async def cmd_resources(_parts: List[str]) -> bool:  # noqa: D401
     """
     List all recorded resources across connected servers.
 
@@ -68,7 +68,7 @@ async def cmd_resources(_parts: List[str], ctx: Dict[str, Any] = None) -> bool: 
         return True  # command handled
 
     # Delegate to the canonical async implementation
-    await resources_action_async(tm)
+    await resources_action_async()
     return True
 
 

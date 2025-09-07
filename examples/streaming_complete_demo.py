@@ -14,6 +14,7 @@ from chuk_term.ui.theme import set_theme
 # Import streaming helpers from MCP-CLI
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from mcp_cli.ui.streaming_display import StreamingContext, tokenize_text
@@ -31,18 +32,18 @@ async def main():
     output = get_output()
     set_theme("default")
     console = Console()
-    
+
     # Header
-    output.print("\n" + "="*70)
+    output.print("\n" + "=" * 70)
     output.print("MCP-CLI COMPLETE STREAMING DEMO", style="bold cyan")
     output.print("Showcasing all content types", style="dim")
-    output.print("="*70)
-    
+    output.print("=" * 70)
+
     # 1. Code Generation
-    output.print("\n" + "─"*40)
+    output.print("\n" + "─" * 40)
     output.print("1. CODE GENERATION", style="bold yellow")
-    output.print("─"*40)
-    
+    output.print("─" * 40)
+
     code_response = """I'll help you create a Python web scraper with error handling.
 
 ```python
@@ -98,24 +99,24 @@ print(f"Found {len(data.get('links', []))} links")
 ```
 
 This scraper includes rate limiting, error handling, and session management."""
-    
+
     with StreamingContext(
         console=console,
         title="🐍 Python Web Scraper",
         mode="response",
         refresh_per_second=10,
-        transient=True
+        transient=True,
     ) as ctx:
         async for chunk in stream_response(code_response, 0.015):
             ctx.update(chunk)
-    
+
     await asyncio.sleep(1)
-    
+
     # 2. Tool Execution
-    output.print("\n" + "─"*40)
+    output.print("\n" + "─" * 40)
     output.print("2. TOOL EXECUTION", style="bold yellow")
-    output.print("─"*40)
-    
+    output.print("─" * 40)
+
     tool_response = """Analyzing git repository statistics...
 
 Scanning commit history...
@@ -140,24 +141,24 @@ Recent activity (last 30 days):
 - Active contributors: 8
 
 Repository health score: 92/100 ✅"""
-    
+
     with StreamingContext(
         console=console,
         title="📊 Git Analyzer",
         mode="tool",
         refresh_per_second=8,
-        transient=True
+        transient=True,
     ) as ctx:
         async for chunk in stream_response(tool_response, 0.02):
             ctx.update(chunk)
-    
+
     await asyncio.sleep(1)
-    
+
     # 3. Markdown Tables
-    output.print("\n" + "─"*40)
+    output.print("\n" + "─" * 40)
     output.print("3. MARKDOWN TABLES", style="bold yellow")
-    output.print("─"*40)
-    
+    output.print("─" * 40)
+
     table_response = """Here's a performance comparison of different algorithms:
 
 ## Algorithm Performance Analysis
@@ -185,24 +186,24 @@ Repository health score: 92/100 ✅"""
 - Redis is unmatched for simple key-value operations
 - Elasticsearch dominates full-text search
 - PostgreSQL offers best all-around performance"""
-    
+
     with StreamingContext(
         console=console,
         title="📈 Performance Analysis",
         mode="response",
         refresh_per_second=8,
-        transient=True
+        transient=True,
     ) as ctx:
         async for chunk in stream_response(table_response, 0.018):
             ctx.update(chunk)
-    
+
     await asyncio.sleep(1)
-    
+
     # 4. Thinking Process
-    output.print("\n" + "─"*40)
+    output.print("\n" + "─" * 40)
     output.print("4. THINKING PROCESS", style="bold yellow")
-    output.print("─"*40)
-    
+    output.print("─" * 40)
+
     thinking_response = """Let me analyze this system design problem step by step.
 
 The requirements are:
@@ -244,24 +245,24 @@ Given these constraints, I recommend:
 - Istio for service mesh capabilities
 
 This architecture should handle the load while maintaining low latency."""
-    
+
     with StreamingContext(
         console=console,
         title="💭 System Design Analysis",
         mode="thinking",
         refresh_per_second=8,
-        transient=True
+        transient=True,
     ) as ctx:
         async for chunk in stream_response(thinking_response, 0.022):
             ctx.update(chunk)
-    
+
     await asyncio.sleep(1)
-    
+
     # 5. Mixed Content
-    output.print("\n" + "─"*40)
+    output.print("\n" + "─" * 40)
     output.print("5. MIXED CONTENT", style="bold yellow")
-    output.print("─"*40)
-    
+    output.print("─" * 40)
+
     mixed_response = """I'll analyze your API and provide optimization recommendations.
 
 ## Current API Performance
@@ -352,29 +353,29 @@ async def get_products(category_id):
 | 🟡 Low | Add CDN | -30% bandwidth | Low | 1 week |
 
 Implementing these changes should reduce P99 latency by 65% and increase throughput to 12,000 req/s."""
-    
+
     with StreamingContext(
         console=console,
         title="🔧 API Optimization Analysis",
         mode="response",
         refresh_per_second=10,
-        transient=True
+        transient=True,
     ) as ctx:
         async for chunk in stream_response(mixed_response, 0.012):
             ctx.update(chunk)
-    
+
     # Summary
-    output.print("\n" + "="*70)
+    output.print("\n" + "=" * 70)
     output.success("✅ Complete Streaming Demo Finished!")
-    output.print("="*70)
-    
+    output.print("=" * 70)
+
     output.info("\n📊 Demonstrated:")
     output.print("• Code generation with syntax highlighting")
     output.print("• Tool execution with progress tracking")
     output.print("• Markdown tables with data")
     output.print("• Thinking/reasoning process")
     output.print("• Mixed content with code, tables, and analysis")
-    
+
     output.print("\n✨ All content types handled seamlessly with:")
     output.print("• Automatic content detection")
     output.print("• Appropriate phase messages")

@@ -109,7 +109,7 @@ class ModelManager:
             logger.warning(f"ModelManager discovery failed (continuing anyway): {e}")
             # Don't fail initialization if discovery fails
 
-    def refresh_models(self, provider: str = None):
+    def refresh_models(self, provider: str | None = None):
         """Manually refresh models for a provider"""
         try:
             if provider == "ollama" or provider is None:
@@ -128,7 +128,7 @@ class ModelManager:
             logger.error(f"Failed to refresh models for {provider}: {e}")
             return 0
 
-    def refresh_discovery(self, provider: str = None):
+    def refresh_discovery(self, provider: str | None = None):
         """Refresh discovery for a provider (alias for refresh_models)"""
         return self.refresh_models(provider) > 0
 
@@ -168,7 +168,7 @@ class ModelManager:
             logger.error(f"Failed to get available providers: {e}")
             return ["ollama"]  # Safe fallback
 
-    def get_available_models(self, provider: str = None) -> List[str]:
+    def get_available_models(self, provider: str | None = None) -> List[str]:
         """Get available models for a provider (including discovered ones)"""
         if not self._chuk_config:
             # Return default models even without config
@@ -261,7 +261,7 @@ class ModelManager:
                         "gemma3",
                         "deepseek-coder",
                     ]
-                    sorted_models = []
+                    sorted_models: List[str] = []
                 elif target_provider == "openai":
                     # GPT-5 models first, then GPT-4, then reasoning models
                     priority_models = [
@@ -454,9 +454,8 @@ class ModelManager:
             available_models = self.get_available_models(provider)
             self._active_model = available_models[0] if available_models else "default"
 
-    def set_active_model(self, model: str, provider: str = None):
+    def set_active_model(self, model: str, provider: str | None = None):
         """Set the active model"""
-        target_provider = provider or self._active_provider
 
         if provider and provider != self._active_provider:
             self.set_active_provider(provider)
@@ -486,7 +485,7 @@ class ModelManager:
         """Check if a provider is valid/available"""
         return provider in self.get_available_providers()
 
-    def validate_model(self, model: str, provider: str = None) -> bool:
+    def validate_model(self, model: str, provider: str | None = None) -> bool:
         """Check if a model is available for a provider"""
         target_provider = provider or self._active_provider
         available_models = self.get_available_models(target_provider)
@@ -532,7 +531,7 @@ class ModelManager:
         """Get list of all available providers (alias for get_available_providers)"""
         return self.get_available_providers()
 
-    def get_client(self, provider: str = None, model: str = None):
+    def get_client(self, provider: str | None = None, model: str | None = None):
         """
         Get a chuk_llm client for the specified or active provider/model.
         FIXED: Now uses caching and properly handles the updated OpenAI client.
@@ -560,12 +559,12 @@ class ModelManager:
             )
             raise
 
-    def get_client_for_provider(self, provider: str, model: str = None):
+    def get_client_for_provider(self, provider: str, model: str | None = None):
         """Get a client for a specific provider (alias for get_client)"""
         return self.get_client(provider=provider, model=model)
 
     def configure_provider(
-        self, provider: str, api_key: str = None, api_base: str = None
+        self, provider: str, api_key: str | None = None, api_base: str | None = None
     ):
         """Configure a provider with API settings"""
         try:
@@ -595,7 +594,9 @@ class ModelManager:
             logger.debug(f"Model {provider}:{model} not accessible: {e}")
             return False
 
-    def get_model_info(self, provider: str = None, model: str = None) -> Dict[str, Any]:
+    def get_model_info(
+        self, provider: str | None = None, model: str | None = None
+    ) -> Dict[str, Any]:
         """Get information about a model"""
         try:
             client = self.get_client(provider, model)

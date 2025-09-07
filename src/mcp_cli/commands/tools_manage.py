@@ -7,9 +7,7 @@ import asyncio
 import logging
 from typing import Any, Dict, Optional
 
-from rich.table import Table
-from rich.panel import Panel
-from chuk_term.ui import output
+from chuk_term.ui import output, format_table
 
 from mcp_cli.tools.manager import ToolManager
 
@@ -33,20 +31,20 @@ async def tools_manage_action_async(
 
     if action == "enable":
         if not tool_name:
-            output.print("[red]Error: Tool name required for enable action[/red]")
+            output.error("Tool name required for enable action")
             return {"success": False, "error": "Tool name required"}
 
         tm.enable_tool(tool_name)
-        output.print(f"[green]✓ Enabled tool:[/green] {tool_name}")
+        output.success(f"✓ Enabled tool: {tool_name}")
         return {"success": True, "action": "enable", "tool": tool_name}
 
     elif action == "disable":
         if not tool_name:
-            output.print("[red]Error: Tool name required for disable action[/red]")
+            output.error("Tool name required for disable action")
             return {"success": False, "error": "Tool name required"}
 
         tm.disable_tool(tool_name, reason="user")
-        output.print(f"[yellow]✗ Disabled tool:[/yellow] {tool_name}")
+        output.warning(f"✗ Disabled tool: {tool_name}")
         return {"success": True, "action": "disable", "tool": tool_name}
 
     elif action == "validate":
@@ -54,9 +52,9 @@ async def tools_manage_action_async(
             # Validate single tool
             is_valid, error_msg = await tm.validate_single_tool(tool_name)
             if is_valid:
-                output.print(f"[green]✓ Tool '{tool_name}' is valid[/green]")
+                output.success(f"✓ Tool '{tool_name}' is valid")
             else:
-                output.print(f"[red]✗ Tool '{tool_name}' is invalid:[/red] {error_msg}")
+                output.error(f"✗ Tool '{tool_name}' is invalid: {error_msg}")
 
             return {
                 "success": True,
@@ -68,11 +66,11 @@ async def tools_manage_action_async(
         else:
             # Validate all tools
             provider = kwargs.get("provider", "openai")
-            output.print(f"[cyan]Validating all tools for {provider}...[/cyan]")
+            output.info(f"Validating all tools for {provider}...")
 
             summary = await tm.revalidate_tools(provider)
 
-            output.print("[green]Validation complete:[/green]")
+            output.success("Validation complete:")
             output.print(f"  • Total tools: {summary.get('total_tools', 0)}")
             output.print(f"  • Valid: {summary.get('valid_tools', 0)}")
             output.print(f"  • Invalid: {summary.get('invalid_tools', 0)}")
@@ -82,41 +80,56 @@ async def tools_manage_action_async(
     elif action == "status":
         summary = tm.get_validation_summary()
 
-        # Create status table
-        table = Table(title="Tool Management Status")
-        table.add_column("Metric", style="cyan")
-        table.add_column("Value", style="green")
+        # Create status table data
+        table_data = [
+            {
+                "Metric": "Total Tools",
+                "Value": str(summary.get("total_tools", "Unknown")),
+            },
+            {
+                "Metric": "Valid Tools",
+                "Value": str(summary.get("valid_tools", "Unknown")),
+            },
+            {
+                "Metric": "Invalid Tools",
+                "Value": str(summary.get("invalid_tools", "Unknown")),
+            },
+            {
+                "Metric": "Disabled by User",
+                "Value": str(summary.get("disabled_by_user", 0)),
+            },
+            {
+                "Metric": "Disabled by Validation",
+                "Value": str(summary.get("disabled_by_validation", 0)),
+            },
+            {
+                "Metric": "Auto-fix Enabled",
+                "Value": "Yes" if summary.get("auto_fix_enabled", False) else "No",
+            },
+            {"Metric": "Last Provider", "Value": str(summary.get("provider", "None"))},
+        ]
 
-        table.add_row("Total Tools", str(summary.get("total_tools", "Unknown")))
-        table.add_row("Valid Tools", str(summary.get("valid_tools", "Unknown")))
-        table.add_row("Invalid Tools", str(summary.get("invalid_tools", "Unknown")))
-        table.add_row("Disabled by User", str(summary.get("disabled_by_user", 0)))
-        table.add_row(
-            "Disabled by Validation", str(summary.get("disabled_by_validation", 0))
+        table = format_table(
+            table_data, title="Tool Management Status", columns=["Metric", "Value"]
         )
-        table.add_row(
-            "Auto-fix Enabled",
-            "Yes" if summary.get("auto_fix_enabled", False) else "No",
-        )
-        table.add_row("Last Provider", str(summary.get("provider", "None")))
-
-        output.print(table)
+        output.print_table(table)
         return {"success": True, "action": "status", "summary": summary}
 
     elif action == "list-disabled":
         disabled_tools = tm.get_disabled_tools()
 
         if not disabled_tools:
-            output.print("[green]No disabled tools[/green]")
+            output.success("No disabled tools")
         else:
-            table = Table(title="Disabled Tools")
-            table.add_column("Tool Name", style="yellow")
-            table.add_column("Reason", style="red")
-
+            # Build table data for disabled tools
+            table_data = []
             for tool, reason in disabled_tools.items():
-                table.add_row(tool, reason)
+                table_data.append({"Tool Name": tool, "Reason": reason})
 
-            output.print(table)
+            table = format_table(
+                table_data, title="Disabled Tools", columns=["Tool Name", "Reason"]
+            )
+            output.print_table(table)
 
         return {
             "success": True,
@@ -126,12 +139,12 @@ async def tools_manage_action_async(
 
     elif action == "details":
         if not tool_name:
-            output.print("[red]Error: Tool name required for details action[/red]")
+            output.error("Tool name required for details action")
             return {"success": False, "error": "Tool name required"}
 
         details = tm.get_tool_validation_details(tool_name)
         if not details:
-            output.print(f"[red]Tool '{tool_name}' not found[/red]")
+            output.error(f"Tool '{tool_name}' not found")
             return {"success": False, "error": "Tool not found"}
 
         # Display details panel
@@ -148,7 +161,7 @@ async def tools_manage_action_async(
         if details["can_auto_fix"]:
             content += "Auto-fix: Available\n"
 
-        output.print(Panel(content, title=f"Tool Details: {tool_name}"))
+        output.panel(content, title=f"Tool Details: {tool_name}")
         return {
             "success": True,
             "action": "details",
@@ -160,12 +173,12 @@ async def tools_manage_action_async(
         setting = kwargs.get("enabled", True)
         tm.set_auto_fix_enabled(setting)
         status = "enabled" if setting else "disabled"
-        output.print(f"[cyan]Auto-fix {status}[/cyan]")
+        output.info(f"Auto-fix {status}")
         return {"success": True, "action": "auto_fix", "enabled": setting}
 
     elif action == "clear-validation":
         tm.clear_validation_disabled_tools()
-        output.print("[green]Cleared all validation-disabled tools[/green]")
+        output.success("Cleared all validation-disabled tools")
         return {"success": True, "action": "clear_validation"}
 
     elif action == "validation-errors":
@@ -173,16 +186,16 @@ async def tools_manage_action_async(
         errors = summary.get("validation_errors", [])
 
         if not errors:
-            output.print("[green]No validation errors[/green]")
+            output.success("No validation errors")
         else:
-            output.print(f"[red]Found {len(errors)} validation errors:[/red]")
+            output.error(f"Found {len(errors)} validation errors:")
             for error in errors:
                 output.print(f"  • {error['tool']}: {error['error']}")
 
         return {"success": True, "action": "validation_errors", "errors": errors}
 
     else:
-        output.print(f"[red]Unknown action: {action}[/red]")
+        output.error(f"Unknown action: {action}")
         return {"success": False, "error": f"Unknown action: {action}"}
 
 

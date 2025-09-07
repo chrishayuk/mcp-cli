@@ -23,7 +23,9 @@ class InteractiveCommand(ABC):
     help: str  # Standard attribute name for help text
     aliases: List[str]
 
-    def __init__(self, name: str, help_text: str = "", aliases: List[str] = None):
+    def __init__(
+        self, name: str, help_text: str = "", aliases: List[str] | None = None
+    ):
         """Initialize command with name, help text, and optional aliases.
 
         Args:

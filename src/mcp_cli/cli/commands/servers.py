@@ -103,7 +103,6 @@ def servers_list(
     try:
         # Use the enhanced servers_action with new parameters
         servers_action(
-            tm,
             detailed=detailed,
             show_capabilities=capabilities,
             show_transport=transport,
@@ -142,9 +141,9 @@ def servers_capabilities(
     # This would call a specialized capability analysis function
     try:
         if compare:
-            servers_action(tm, output_format="tree", show_capabilities=True)
+            servers_action(output_format="tree", show_capabilities=True)
         else:
-            servers_action(tm, detailed=True, show_capabilities=True)
+            servers_action(detailed=True, show_capabilities=True)
     except Exception as e:
         logger.error(f"Error showing capabilities: {e}")
         typer.echo(f"Error: {e}", err=True)
@@ -178,7 +177,7 @@ def servers_status(
 
     try:
         # Show basic status-focused view
-        servers_action(tm, show_capabilities=False, show_transport=False)
+        servers_action(show_capabilities=False, show_transport=False)
     except Exception as e:
         logger.error(f"Error checking server status: {e}")
         typer.echo(f"Error: {e}", err=True)
@@ -250,7 +249,6 @@ def servers_default(
 
     try:
         servers_action(
-            tm,
             detailed=detailed,
             show_capabilities=capabilities,
             show_transport=transport,

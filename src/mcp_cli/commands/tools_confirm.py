@@ -18,11 +18,8 @@ import json
 import logging
 from typing import Any, Dict, List
 
-from rich.syntax import Syntax
-from rich.table import Table
-
 # MCP-CLI helpers
-from mcp_cli.tools.formatting import create_tools_table
+from mcp_cli.ui.formatting import create_tools_table
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.utils.async_utils import run_blocking
 from chuk_term.ui import output
@@ -56,11 +53,11 @@ async def tools_action_async(  # noqa: D401
     list
         The list of tool-metadata dictionaries (always JSON-serialisable).
     """
-    output.print("[cyan]\nFetching tool catalogue from all servers…[/cyan]")
+    output.info("\nFetching tool catalogue from all servers…")
 
     all_tools = await tm.get_unique_tools()
     if not all_tools:
-        output.print("[yellow]No tools available from any server.[/yellow]")
+        output.warning("No tools available from any server.")
         logger.debug("ToolManager returned an empty tools list")
         return []
 
@@ -78,19 +75,13 @@ async def tools_action_async(  # noqa: D401
             }
             for t in all_tools
         ]
-        output.print(
-            Syntax(
-                json.dumps(payload, indent=2, ensure_ascii=False),
-                "json",
-                line_numbers=True,
-            )
-        )
+        output.json(json.dumps(payload, indent=2, ensure_ascii=False))
         return payload
 
     # ── Rich table mode ─────────────────────────────────────────────────
-    table: Table = create_tools_table(all_tools, show_details=show_details)
-    output.print(table)
-    output.print(f"[green]Total tools available: {len(all_tools)}[/green]")
+    table = create_tools_table(all_tools, show_details=show_details)
+    output.print_table(table)
+    output.success(f"Total tools available: {len(all_tools)}")
 
     # Return a safe JSON structure (no .to_dict() needed)
     return [

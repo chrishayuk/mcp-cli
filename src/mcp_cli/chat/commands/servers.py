@@ -1,36 +1,21 @@
+# mcp_cli/chat/commands/servers.py
+"""Enhanced /servers command with detailed capability and protocol information."""
+
 from __future__ import annotations
 
-"""
-Enhanced /servers command with detailed capability and protocol information.
-
-Usage Examples
---------------
-/servers                    - Interactive server selection with details
-/servers --detailed         - Full detailed view with all information
-/servers --select           - Interactive selection mode (default)
-/servers --enable <name>    - Enable a disabled server
-/servers --disable <name>   - Disable a server
-/srv -d                     - Short alias with detailed flag
-"""
-
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 import json
-from pathlib import Path
 
-from chuk_term.ui import output
-from mcp_cli.tools.models import ServerInfo
+from chuk_term.ui import output, format_table
 from chuk_term.ui.prompts import confirm
-from rich.table import Table
-from rich.panel import Panel
-from rich.syntax import Syntax
 
 from mcp_cli.chat.commands import register_command
 from mcp_cli.utils.preferences import get_preference_manager
-from mcp_cli.context import ApplicationContext
 from mcp_cli.config import get_config
+from mcp_cli.tools.models import ServerInfo
 
 
-async def collect_server_info(context: ApplicationContext) -> List[ServerInfo]:
+async def collect_server_info(context) -> List[ServerInfo]:
     """Collect information about all servers, returning ServerInfo objects."""
     servers: List[ServerInfo] = []
     tm = context.tool_manager
@@ -98,8 +83,6 @@ async def collect_server_info(context: ApplicationContext) -> List[ServerInfo]:
                 server_info.env = server_config.env
                 server_info.transport = server_config.transport
 
-        # No need to classify servers - they're all just servers
-
         # Check if server is disabled in preferences
         server_info.enabled = not pref_manager.is_server_disabled(server_name)
 
@@ -134,25 +117,15 @@ async def collect_server_info(context: ApplicationContext) -> List[ServerInfo]:
     return servers
 
 
-async def display_servers_table(
+def display_servers_table(
     servers: List[ServerInfo], show_details: bool = False
 ) -> None:
-    """Display servers in an enhanced table format."""
+    """Display servers in an enhanced table format using chuk_term."""
 
     output.rule("MCP Server Manager")
 
-    table = Table(title="Available Servers", show_header=True, header_style="bold cyan")
-    table.add_column("#", style="dim", width=3)
-    table.add_column("Server", style="green", width=18)
-    table.add_column("Enabled", width=10)
-    table.add_column("Status", width=12)
-    table.add_column("Tools", justify="center", width=7)
-    table.add_column("Type", width=12)
-    table.add_column("Active", justify="center", width=10)
-
-    if show_details:
-        table.add_column("Capabilities", width=15)
-        table.add_column("Command", width=30)
+    # Build data for chuk_term's format_table
+    data = []
 
     for i, server in enumerate(servers, 1):
         # Use ServerInfo properties
@@ -175,15 +148,15 @@ async def display_servers_table(
         is_current = server.capabilities.get("current", False)
         current_display = "✓ Active" if is_current else ""
 
-        row = [
-            str(i),
-            server.name,
-            enabled_display,
-            status_display,
-            tools_display,
-            conn_type,
-            current_display,
-        ]
+        row_data = {
+            "#": str(i),
+            "Server": server.name,
+            "Enabled": enabled_display,
+            "Status": status_display,
+            "Tools": tools_display,
+            "Type": conn_type,
+            "Active": current_display,
+        }
 
         if show_details:
             # Capabilities
@@ -197,22 +170,29 @@ async def display_servers_table(
                 cap_icons.append("💬")
             if caps.get("logging"):
                 cap_icons.append("📋")
-            row.append(" ".join(cap_icons) if cap_icons else "None")
+            row_data["Capabilities"] = " ".join(cap_icons) if cap_icons else "None"
 
             # Command (from config if available)
-            config = server.capabilities.get("config", {})
-            command = config.get("command", "unknown")
+            command = server.command or "unknown"
             if len(command) > 25:
                 command = command[:22] + "..."
-            row.append(command)
+            row_data["Command"] = command
 
-        table.add_row(*row)
+        data.append(row_data)
+
+    # Define columns based on detail level
+    columns = ["#", "Server", "Enabled", "Status", "Tools", "Type", "Active"]
+    if show_details:
+        columns.extend(["Capabilities", "Command"])
+
+    # Create and print table using chuk_term
+    table = format_table(data=data, title="Available Servers", columns=columns)
 
     output.print(table)
     output.print()
 
 
-async def show_servers_list(context: ApplicationContext) -> bool:
+async def show_servers_list(context) -> bool:
     """Show compact list of all servers using ServerInfo models."""
     servers = await collect_server_info(context)
 
@@ -224,16 +204,8 @@ async def show_servers_list(context: ApplicationContext) -> bool:
     # Display servers in a nice table format
     output.rule("MCP Servers")
 
-    table = Table(title="Available Servers", show_header=True, header_style="bold cyan")
-    table.add_column("#", width=3)
-    table.add_column("Server", width=16)
-    table.add_column("Status", width=12)
-    table.add_column("Enabled", justify="center", width=8)
-    table.add_column("Tools", justify="center", width=6)
-    table.add_column("Type", width=10)
-    table.add_column("Description")
-
-    # No hardcoded descriptions - use what servers provide
+    # Build data for chuk_term's format_table
+    data = []
 
     for idx, server in enumerate(servers, 1):
         # Use ServerInfo properties
@@ -253,21 +225,30 @@ async def show_servers_list(context: ApplicationContext) -> bool:
         # Get description from server itself
         desc = server.display_description
 
-        table.add_row(
-            str(idx),
-            server.name,
-            status,
-            enabled_display,
-            tools_display,
-            server_type,
-            desc,
+        data.append(
+            {
+                "#": str(idx),
+                "Server": server.name,
+                "Status": status,
+                "Enabled": enabled_display,
+                "Tools": tools_display,
+                "Type": server_type,
+                "Description": desc,
+            }
         )
+
+    # Create and print table using chuk_term
+    table = format_table(
+        data=data,
+        title="Available Servers",
+        columns=["#", "Server", "Status", "Enabled", "Tools", "Type", "Description"],
+    )
 
     output.print(table)
     output.print()
 
-    # Show slash command guidance
-    output.rule("💡 Available Commands")
+    # Show command guidance
+    output.rule("Available Commands")
     output.print("Use these slash commands to manage servers:")
     output.print()
 
@@ -295,7 +276,7 @@ async def show_servers_list(context: ApplicationContext) -> bool:
 
 
 async def handle_server_action(
-    context: ApplicationContext,
+    context,
     server_name: str,
     action: str,
     extra_args: List[str],
@@ -345,16 +326,14 @@ async def handle_server_action(
         return True
 
 
-async def show_server_details(server: ServerInfo, context: ApplicationContext) -> bool:
+async def show_server_details(server: ServerInfo, context) -> bool:
     """Show detailed information about a server using ServerInfo model."""
     output.rule(f"Server Details: {server.name}")
 
-    # Create info table
-    info_table = Table(show_header=False, box=None, padding=(0, 2))
-    info_table.add_column("Property", style="bold cyan", width=15)
-    info_table.add_column("Value", style="white")
+    # Build info data for table
+    info_data = []
 
-    # Use ServerInfo properties
+    # Status
     status_display = server.display_status.capitalize()
     if server.connected:
         status_desc = " - Currently active and responding"
@@ -362,8 +341,9 @@ async def show_server_details(server: ServerInfo, context: ApplicationContext) -
         status_desc = " - Ready to connect but not currently active"
     else:
         status_desc = " - Server is disabled in configuration"
-
-    info_table.add_row("Status", f"● {status_display}{status_desc}")
+    info_data.append(
+        {"Property": "Status", "Value": f"● {status_display}{status_desc}"}
+    )
 
     # Type with icon
     type_icons = {
@@ -373,7 +353,7 @@ async def show_server_details(server: ServerInfo, context: ApplicationContext) -
         "websocket": "🔌 WebSocket",
     }
     server_type = type_icons.get(server.transport, f"❓ {server.transport.upper()}")
-    info_table.add_row("Type", server_type)
+    info_data.append({"Property": "Type", "Value": server_type})
 
     # Tool count
     if server.has_tools:
@@ -383,27 +363,27 @@ async def show_server_details(server: ServerInfo, context: ApplicationContext) -
             tools_display = f"{server.tool_count} tools (when connected)"
     else:
         if server.connected:
-            tools_display = "Checking... - use /servers {server.name} tools"
+            tools_display = f"Checking... - use /servers {server.name} tools"
         else:
             tools_display = "Unknown - server not connected"
-    info_table.add_row("Tools", tools_display)
+    info_data.append({"Property": "Tools", "Value": tools_display})
 
-    # Source - where is this server configured
+    # Source
     if server.command:
         source_display = f"Command: {server.command}"
     else:
         source_display = "Runtime detected"
-    info_table.add_row("Source", source_display)
+    info_data.append({"Property": "Source", "Value": source_display})
 
-    # Display main panel
-    main_panel = Panel(
-        info_table, title="📊 Server Information", border_style="blue", padding=(1, 2)
+    # Create and display table
+    info_table = format_table(
+        data=info_data, title="Server Information", columns=["Property", "Value"]
     )
-    output.print(main_panel)
+    output.print(info_table)
 
     # Show available commands
     output.print()
-    output.rule("💡 Available Commands")
+    output.rule("Available Commands")
 
     if server.enabled:
         output.print(f"⚙️  /servers {server.name} config - View server configuration")
@@ -444,72 +424,51 @@ async def disable_server(server: ServerInfo) -> bool:
 
 async def show_server_config(server: ServerInfo) -> bool:
     """Show server configuration using ServerInfo model."""
-    config = get_config()
-
     output.rule(f"Configuration: {server.name}")
 
-    # Get config from ServerInfo capabilities or load from file
-    actual_config = server.capabilities.get("config", {})
+    # Build config data
+    config_data = []
 
-    if not actual_config:
-        # Try loading from file
-        try:
-            config_file = Path(config_path)
-            if config_file.exists():
-                with open(config_file, "r") as f:
-                    full_config = json.load(f)
-                    actual_config = full_config.get("mcpServers", {}).get(
-                        server.name, {}
-                    )
-        except Exception:
-            pass
+    if server.command:
+        config_data.append({"Property": "Command", "Value": server.command})
 
-    if actual_config:
-        # Display configuration
-        config_table = Table(show_header=False, box=None, padding=(0, 2))
-        config_table.add_column("Property", style="bold cyan", width=15)
-        config_table.add_column("Value", style="white")
+    if server.args:
+        args_text = "\n".join(f"  • {arg}" for arg in server.args)
+        config_data.append({"Property": "Arguments", "Value": args_text})
 
-        command = actual_config.get("command", "Not specified")
-        config_table.add_row("Command", command)
+    if server.env:
+        env_text = "\n".join(f"  • {k}={v}" for k, v in server.env.items())
+        config_data.append({"Property": "Environment", "Value": env_text})
 
-        args = actual_config.get("args", [])
-        if args:
-            args_text = "\n".join(f"  • {arg}" for arg in args)
-            config_table.add_row("Arguments", args_text)
-
-        env = actual_config.get("env", {})
-        if env:
-            env_text = "\n".join(f"  • {k}={v}" for k, v in env.items())
-            config_table.add_row("Environment", env_text)
-
-        config_panel = Panel(
-            config_table,
-            title="⚙️ Server Configuration",
-            border_style="cyan",
-            padding=(1, 2),
+    if config_data:
+        # Create and display table
+        config_table = format_table(
+            data=config_data,
+            title="Server Configuration",
+            columns=["Property", "Value"],
         )
-        output.print(config_panel)
+        output.print(config_table)
 
         # Show raw JSON
         output.print()
         output.print("Raw configuration:")
-        config_json = json.dumps(actual_config, indent=2)
-        syntax = Syntax(config_json, "json", theme="monokai", line_numbers=False)
-        json_panel = Panel(syntax, border_style="dim", padding=(0, 1))
-        output.print(json_panel)
+        config_dict = {
+            "command": server.command,
+            "args": server.args,
+            "env": server.env,
+            "transport": server.transport,
+        }
+        config_json = json.dumps(config_dict, indent=2)
+        output.print(config_json)
     else:
         output.warning(f"No configuration found for '{server.name}'")
-        output.hint(f"Add server configuration to {config_path}")
+        output.hint("Add server configuration to server_config.json")
 
     return True
 
 
-async def show_server_tools(server: ServerInfo, context: ApplicationContext) -> bool:
+async def show_server_tools(server: ServerInfo, context) -> bool:
     """Show server tools using ServerInfo model."""
-    # Implementation would fetch tools for this specific server
-    # For now, just show tool count from ServerInfo
-
     if not server.has_tools:
         output.warning(f"No tools available for '{server.name}'")
         return True
@@ -521,9 +480,7 @@ async def show_server_tools(server: ServerInfo, context: ApplicationContext) -> 
     return True
 
 
-async def ping_server_connection(
-    server: ServerInfo, context: ApplicationContext
-) -> bool:
+async def ping_server_connection(server: ServerInfo, context) -> bool:
     """Ping a specific server to test connectivity."""
 
     if not server.enabled:
@@ -538,8 +495,7 @@ async def ping_server_connection(
 
     output.info(f"Pinging server '{server.name}'...")
 
-    # Implementation would ping the specific server
-    # For now, just show status
+    # Check server status
     if server.is_healthy:
         output.success(f"✅ Server '{server.name}' is healthy and responding")
     else:
@@ -548,9 +504,7 @@ async def ping_server_connection(
     return True
 
 
-async def test_all_server_tools(
-    server: ServerInfo, context: ApplicationContext
-) -> bool:
+async def test_all_server_tools(server: ServerInfo, context) -> bool:
     """Test all tools for a server."""
 
     if not server.enabled:
@@ -616,9 +570,26 @@ async def toggle_server_status(server_name: str, enable: bool) -> bool:
         return False
 
 
-async def servers_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:
-    """Manage MCP servers - now using ServerInfo models throughout."""
+async def servers_command(parts: List[str]) -> bool:
+    """Manage MCP servers - now using ServerInfo models throughout.
 
+    Usage:
+        /servers                      - Show all servers with status
+        /servers <name>               - Show details for a specific server
+        /servers <name> enable        - Enable a disabled server
+        /servers <name> disable       - Disable a server
+        /servers <name> config        - Show server configuration
+        /servers <name> tools         - List server tools
+        /servers <name> ping          - Test server connectivity
+        /servers <name> test          - Test all server tools
+        /servers <name> connect       - Show connection instructions
+
+    Examples:
+        /servers                      - List all configured servers
+        /servers sqlite               - Show SQLite server details
+        /servers sqlite tools         - List SQLite server tools
+        /servers echo disable         - Disable the echo server
+    """
     # Use global context manager
     from mcp_cli.context import get_context
 
@@ -646,4 +617,20 @@ async def servers_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:
 
 # Register commands
 register_command("/servers", servers_command)
-register_command("/srv", servers_command)
+
+# Register command help
+SERVERS_HELP = {
+    "name": "servers",
+    "description": "Manage MCP servers",
+    "usage": [
+        "/servers - List all configured servers",
+        "/servers <name> - Show server details",
+        "/servers <name> <action> - Perform action on server",
+    ],
+    "examples": [
+        "/servers",
+        "/servers sqlite",
+        "/servers sqlite tools",
+        "/servers echo disable",
+    ],
+}

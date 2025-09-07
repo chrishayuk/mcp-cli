@@ -11,7 +11,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from chuk_term.ui import output
 
@@ -123,7 +123,7 @@ def load_config(config_file: str) -> Optional[dict]:
 
 
 def extract_server_names(
-    cfg: Optional[dict], specified: List[str] = None
+    cfg: Optional[dict], specified: List[str] | None = None
 ) -> Dict[int, str]:
     """Extract server names from config with HTTP server support, respecting disabled status from preferences."""
     if not cfg or "mcpServers" not in cfg:
@@ -391,7 +391,7 @@ def process_options(
     return servers_list, user_specified, server_names
 
 
-def get_discovery_status() -> Dict[str, any]:
+def get_discovery_status() -> Dict[str, Any]:
     """Get discovery status for debugging"""
     return {
         "env_setup_complete": _ENV_SETUP_COMPLETE,
@@ -416,7 +416,7 @@ def force_discovery_refresh():
     return trigger_discovery_after_setup()
 
 
-def get_config_summary(config_file: str) -> Dict[str, any]:
+def get_config_summary(config_file: str) -> Dict[str, Any]:
     """Get a summary of the configuration for debugging."""
     cfg = load_config(config_file)
 

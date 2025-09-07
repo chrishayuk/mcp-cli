@@ -17,19 +17,19 @@ from chuk_term.ui import output, format_table
 from mcp_cli.model_manager import ModelManager
 from mcp_cli.utils.async_utils import run_blocking
 from mcp_cli.utils.llm_probe import LLMProbe
+from mcp_cli.context import get_context
 
 
-async def model_action_async(args: List[str], *, context: Dict[str, Any]) -> None:
+async def model_action_async(args: List[str]) -> None:
     """
     Handle model management commands.
 
     Args:
         args: Command arguments
-        context: Execution context containing model_manager
     """
-    # Get or create ModelManager
-    model_manager: ModelManager = context.get("model_manager") or ModelManager()
-    context.setdefault("model_manager", model_manager)
+    # Get context and model manager
+    context = get_context()
+    model_manager = context.model_manager
 
     provider = model_manager.get_active_provider()
     current_model = model_manager.get_active_model()
@@ -67,7 +67,7 @@ async def _show_status(model_manager: ModelManager, model: str, provider: str) -
     count = 0
     for available_model in available_models:
         if available_model == model:
-            output.print(f"  → [bold green]{available_model}[/bold green] (current)")
+            output.success(f"  → {available_model} (current)")
         else:
             output.print(f"     {available_model}")
 
@@ -242,11 +242,9 @@ async def _show_ollama_status(model_manager: ModelManager) -> None:
             else:
                 status += " | Discovery: ❌"
 
-            output.print(f"\n[dim]{status}[/dim]")
+            output.info(f"\n{status}")
         else:
-            output.print(
-                "\n[dim]Ollama: Not running | Use 'ollama serve' to start[/dim]"
-            )
+            output.hint("\nOllama: Not running | Use 'ollama serve' to start")
 
     except Exception:
         pass
@@ -269,6 +267,6 @@ async def _check_local_ollama() -> tuple[bool, list[str]]:
         return False, []
 
 
-def model_action(args: List[str], *, context: Dict[str, Any]) -> None:
+def model_action(args: List[str]) -> None:
     """Synchronous wrapper for model_action_async."""
-    run_blocking(model_action_async(args, context=context))
+    run_blocking(model_action_async(args))

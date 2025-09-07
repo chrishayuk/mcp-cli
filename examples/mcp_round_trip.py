@@ -80,7 +80,7 @@ def format_tool_response(response_content: Any) -> str:
     if isinstance(response_content, (dict, list)):
         try:
             return json.dumps(response_content, indent=2)
-        except:
+        except (TypeError, ValueError):
             return str(response_content)
     return str(response_content)
 
@@ -256,9 +256,7 @@ async def main() -> None:
             for tc in tool_calls:
                 if tc.get("function") and "name" in tc.get("function", {}):
                     openai_name = tc["function"]["name"]
-                    tool_call_id = (
-                        tc.get("id") or f"call_{openai_name}_{uuid.uuid4().hex[:8]}"
-                    )
+                    (tc.get("id") or f"call_{openai_name}_{uuid.uuid4().hex[:8]}")
 
                     # Convert back to original name for execution
                     if openai_name in name_mapping:

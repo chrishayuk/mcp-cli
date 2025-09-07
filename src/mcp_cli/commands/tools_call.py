@@ -19,9 +19,9 @@ from typing import Any, Dict
 
 # mcp cli
 from chuk_term.ui import output
-from mcp_cli.tools.manager import ToolManager
 from mcp_cli.tools.models import ToolCallResult
-from mcp_cli.tools.formatting import display_tool_call_result
+from mcp_cli.ui.formatting import display_tool_call_result
+from mcp_cli.context import get_context
 
 # logger
 logger = logging.getLogger(__name__)
@@ -30,13 +30,21 @@ logger = logging.getLogger(__name__)
 # ════════════════════════════════════════════════════════════════════════
 # Main entry-point (async coroutine)
 # ════════════════════════════════════════════════════════════════════════
-async def tools_call_action(tm: ToolManager) -> None:  # noqa: D401
+async def tools_call_action() -> None:  # noqa: D401
     """
     Launch the mini-wizard, execute the chosen tool, show the result.
 
     This function is designed for *interactive* use only - it blocks on
     `input()` twice (tool selection & JSON args).
     """
+    # Get context and tool manager
+    context = get_context()
+    tm = context.tool_manager
+
+    if not tm:
+        output.print("[red]Error:[/red] No tool manager available")
+        return
+
     cprint = output.print
 
     cprint("[cyan]\nTool Call Interface[/cyan]")
@@ -88,7 +96,7 @@ async def tools_call_action(tm: ToolManager) -> None:  # noqa: D401
 
     try:
         result: ToolCallResult = await tm.execute_tool(fq_name, args)
-        display_tool_call_result(None, result, console)
+        display_tool_call_result(result)
     except Exception as exc:  # noqa: BLE001
         logger.exception("Error executing tool")
         cprint(f"[red]Error: {exc}[/red]")

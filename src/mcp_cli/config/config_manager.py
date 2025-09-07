@@ -38,7 +38,7 @@ class ServerConfig:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary format."""
-        config = {}
+        config: Dict[str, Any] = {}
         if self.command:
             config["command"] = self.command
         if self.args:

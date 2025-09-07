@@ -4,10 +4,12 @@ Command handling system for the MCP CLI chat interface.
 """
 
 from typing import Dict, List, Any, Callable, Awaitable
-import re
+import importlib
+import pkgutil
+from pathlib import Path
 
 # Type for command handlers
-CommandHandler = Callable[[List[str], Dict[str, Any]], Awaitable[bool]]
+CommandHandler = Callable[[List[str]], Awaitable[bool]]
 
 # Global registries
 _COMMAND_HANDLERS: Dict[str, CommandHandler] = {}
@@ -87,8 +89,8 @@ async def handle_command(command_text: str, context: Dict[str, Any] = None) -> b
     if not handler:
         return False
 
-    # Call the handler with args and optional context
-    return await handler(parts, context)
+    # Call the handler with just args (no context parameter)
+    return await handler(parts)
 
 
 def get_command_completions(partial_text: str) -> List[str]:
@@ -135,10 +137,6 @@ def get_command_completions(partial_text: str) -> List[str]:
 
 # Import any built-in command modules here
 # This allows them to self-register their commands
-import importlib
-import pkgutil
-import sys
-from pathlib import Path
 
 
 def _import_submodules():
@@ -161,7 +159,7 @@ _import_submodules()
 
 # Explicit imports for critical modules to ensure they're loaded even if auto-discovery fails
 try:
-    from . import provider
-    from . import model
+    from . import provider  # noqa: F401
+    from . import model  # noqa: F401
 except ImportError as e:
     print(f"Warning: Failed to import critical command module: {e}")

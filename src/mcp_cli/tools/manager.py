@@ -74,14 +74,14 @@ class ToolManager:
         self._executor: Optional[ToolExecutor] = None
 
         # Server type detection
-        self._http_servers = []
-        self._stdio_servers = []
-        self._sse_servers = []
-        self._config_cache = None
+        self._http_servers: List[Any] = []
+        self._stdio_servers: List[Any] = []
+        self._sse_servers: List[Any] = []
+        self._config_cache: Optional[Dict[str, Any]] = None
 
         # ENHANCED: Tool validation and filtering
         self.tool_filter = ToolFilter()
-        self.validation_results: Dict[str, Dict[str, Any]] = {}
+        self.validation_results: Dict[str, Any] = {}
         self.last_validation_provider: Optional[str] = None
 
     def _determine_timeout(self, explicit_timeout: Optional[float]) -> float:
@@ -401,7 +401,7 @@ class ToolManager:
         return unique
 
     async def get_tool_by_name(
-        self, tool_name: str, namespace: str = None
+        self, tool_name: str, namespace: str | None = None
     ) -> Optional[ToolInfo]:
         """Get tool info by name and optional namespace."""
         if not self._registry:
@@ -909,7 +909,7 @@ class ToolManager:
         summary.update(self.validation_results)
         return summary
 
-    async def revalidate_tools(self, provider: str = None) -> Dict[str, Any]:
+    async def revalidate_tools(self, provider: str | None = None) -> Dict[str, Any]:
         """
         Re-run validation on all tools.
 

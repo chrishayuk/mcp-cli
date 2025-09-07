@@ -49,9 +49,7 @@ from mcp_cli.context import get_context
 # ════════════════════════════════════════════════════════════════════════════
 # Command handler
 # ════════════════════════════════════════════════════════════════════════════
-async def tool_history_command(
-    cmd_parts: List[str], ctx: Dict[str, Any] = None
-) -> bool:  # noqa: D401
+async def tool_history_command(cmd_parts: List[str]) -> bool:  # noqa: D401
     # Use global context manager
     context = get_context()
 

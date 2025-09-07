@@ -1,5 +1,4 @@
-from __future__ import annotations
-
+# mcp_cli/chat/commands/confirm.py
 """
 Enhanced /confirm command with nuanced tool confirmation preferences.
 
@@ -20,7 +19,9 @@ The smart mode uses risk-based confirmation:
 - High-risk tools (delete_*, execute_*, run_*): Always confirm
 """
 
-from typing import Any, Dict, List
+from __future__ import annotations
+
+from typing import List
 
 from chuk_term.ui import output
 from mcp_cli.utils.preferences import get_preference_manager
@@ -28,7 +29,7 @@ from mcp_cli.chat.commands import register_command
 from mcp_cli.context import get_context
 
 
-async def confirm_command(parts: List[str], ctx: Dict[str, Any] = None) -> bool:
+async def confirm_command(parts: List[str]) -> bool:
     """Command to control tool confirmation preferences."""
 
     # Use global context manager

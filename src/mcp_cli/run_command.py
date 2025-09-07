@@ -18,12 +18,14 @@ import importlib
 import logging
 import sys
 from typing import Any, Callable, Dict, List, Optional
+from pathlib import Path
 
 import typer
 from rich.panel import Panel
 from chuk_term.ui import output
 
 from mcp_cli.tools.manager import set_tool_manager  # only the setter
+from mcp_cli.context import initialize_context
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +97,7 @@ async def run_command(
     extra_params: Optional[Dict[str, Any]],
 ) -> Any:
     """
-    Initialise the ToolManager, then call *async_command(tool_manager, …)*.
+    Initialise the ToolManager and context, then call *async_command(...)*.
 
     The *async_command* may itself be `async` **or** synchronous – both work.
     The ToolManager is always closed, even when the callable raises.
@@ -110,21 +112,40 @@ async def run_command(
         tm = await _init_tool_manager(config_file, servers, server_names)
 
         # ------------------------------------------------------------------
+        # Initialize context with tool manager and other params
+        # ------------------------------------------------------------------
+        context = initialize_context(
+            tool_manager=tm,
+            config_path=Path(config_file),
+            provider=(extra_params or {}).get("provider", "openai"),
+            model=(extra_params or {}).get("model", "gpt-4o-mini"),
+            api_base=(extra_params or {}).get("api_base"),
+            api_key=(extra_params or {}).get("api_key"),
+        )
+
+        # Initialize the context (load servers, tools, etc.)
+        await context.initialize()
+
+        # ------------------------------------------------------------------
         # special-case: interactive "app" object
         # ------------------------------------------------------------------
         name = getattr(async_command, "__name__", "")
         module = getattr(async_command, "__module__", "")
         if name == "app" and "interactive" in module:
-            provider = (extra_params or {}).get("provider", "openai")
-            model = (extra_params or {}).get("model", "gpt-4o-mini")
+            provider = context.provider
+            model = context.model
             result = await _enter_interactive_mode(tm, provider=provider, model=model)
             return result
 
         # ------------------------------------------------------------------
-        # normal pathway
+        # normal pathway - commands no longer need context passed
         # ------------------------------------------------------------------
-        call_kwargs = (extra_params or {}).copy()
-        call_kwargs["tool_manager"] = tm
+        # Remove tool_manager and context from call_kwargs since commands get it from context
+        call_kwargs = {}
+
+        # Pass all extra_params to the command
+        if extra_params:
+            call_kwargs.update(extra_params)
 
         maybe_coro = async_command(**call_kwargs)
 
