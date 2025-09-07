@@ -620,25 +620,33 @@ class ChatUIManager:
                         f"[yellow]Warning: Error restoring signal handler: {sig_exc}[/yellow]"
                     )
 
-            # Display the assistant's response
+            # Display the assistant's response with proper ANSI support
             try:
-                # Check if content might contain problematic markup characters
+                content = content or "[No Response]"
+                
+                # Check if content contains ANSI or ASCII art that needs special handling
+                from mcp_cli.tools.formatting import format_content_with_ansi_support
+                box_chars = {'┌', '┐', '└', '┘', '├', '┤', '┬', '┴', '┼', '│', '─', '█', '▄', '▀', '▌', '▐'}
+                has_ansi = '\033[' in content or '\x1b[' in content
+                is_ascii_art = any(char in content for char in box_chars) or has_ansi
                 needs_text_object = "[/" in content or "\\[" in content
 
-                if needs_text_object:
-                    # Use Text object to prevent markup parsing issues
-                    response_content = Text(content or "[No Response]")
-                    # response_content = Text(text=(content or "[No Response]"), overflow="fold")
+                if is_ascii_art:
+                    # For ASCII art/ANSI content, use our specialized formatter
+                    response_content = format_content_with_ansi_support(content, no_wrap=True)
+                elif needs_text_object:
+                    # Use Text object to prevent markup parsing issues - no ellipses
+                    response_content = Text(content, overflow="fold", no_wrap=False)
                 else:
                     # Otherwise use Markdown as normal
                     try:
-                        response_content = Markdown(content or "[No Response]")
+                        response_content = Markdown(content)
                     except Exception as md_exc:
-                        # Fallback to Text if Markdown parsing fails
+                        # Fallback to proper text wrapping without ellipses
                         log.warning(
                             f"Markdown parsing failed, using Text object: {md_exc}"
                         )
-                        response_content = Text(content or "[No Response]")
+                        response_content = Text(content, overflow="fold", no_wrap=False)
 
                 def remove_think_tags(text):
                     print(f"Removing thinking tags from content: {text}")
@@ -649,14 +657,29 @@ class ChatUIManager:
                 if suppress_thinking:
                     response_content = remove_think_tags(response_content)
 
-                print(
-                    Panel(
-                        response_content,
-                        style="bold blue",
-                        title="Assistant",
-                        subtitle=f"Response time: {elapsed:.2f}s",
+                # Use optimized panel settings for ASCII art
+                if is_ascii_art:
+                    print(
+                        Panel(
+                            response_content,
+                            style="bold blue",
+                            title="Assistant",
+                            subtitle=f"Response time: {elapsed:.2f}s",
+                            width=None,
+                            padding=(0, 1),
+                            expand=True,
+                            safe_box=False
+                        )
                     )
-                )
+                else:
+                    print(
+                        Panel(
+                            response_content,
+                            style="bold blue",
+                            title="Assistant",
+                            subtitle=f"Response time: {elapsed:.2f}s",
+                        )
+                    )
             except Exception as panel_exc:
                 log.error(f"Error creating response panel: {panel_exc}")
                 # Fallback to plain text if rich formatting fails
