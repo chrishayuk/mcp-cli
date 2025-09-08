@@ -184,10 +184,17 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
             }
         )
 
-    # Create and display table using chuk-term
-    table = format_table(table_data, title="Available Providers", columns=columns)
+    # Create and display table with visual styling
+    output.rule("[bold]🌐 Available Providers[/bold]", style="primary")
+    
+    table = format_table(
+        table_data, 
+        title=None,  # Using rule for title
+        columns=columns
+    )
     output.print_table(table)
-    output.tip("Use '/provider <name>' to switch providers")
+    output.print()
+    output.tip("💡 Use '/provider <name>' to switch providers")
 
     # Show helpful tips based on current state
     inactive_providers = []
@@ -396,20 +403,21 @@ async def provider_action_async(
                 provider, current_info
             )
 
-            # Display in a panel format for consistency
-            status_lines = [
-                f"Current provider: {provider}",
-                f"Current model   : {model}",
-                f"Status          : {status_icon} {status_text}",
-                f"Features        : {_format_features(status)}"
-            ]
+            # Display in a beautifully formatted panel
+            output.rule(f"[bold]🔧 Provider Status[/bold]", style="primary")
+            output.print()
+            
+            # Create visually appealing status display
+            output.print(f"  [bold]Provider:[/bold] {provider}")
+            output.print(f"  [bold]Model:[/bold]    {model}")
+            output.print(f"  [bold]Status:[/bold]   {status_icon} {status_text}")
+            output.print(f"  [bold]Features:[/bold] {_format_features(status)}")
             
             if status_icon != "✅":
-                status_lines.append(f"\nNote: {status_reason}")
+                output.print()
+                output.warning(f"  ⚠️  {status_reason}")
             
-            # Use output.panel without style to use theme defaults
-            panel_content = "\n".join(f"ℹ {line}" for line in status_lines)
-            output.panel(panel_content)
+            output.print()
             
             # Show available providers tip
             output.tip("Use: /provider <name> to switch  |  /providers to list all  |  /provider set <name> for config")

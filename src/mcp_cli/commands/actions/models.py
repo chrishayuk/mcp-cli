@@ -52,38 +52,46 @@ async def model_action_async(args: List[str]) -> None:
 
 
 async def _show_status(model_manager: ModelManager, model: str, provider: str) -> None:
-    """Show current model status."""
-    output.info(f"Current model: {provider}/{model}")
+    """Show current model status with visual appeal."""
+    output.rule("[bold]🤖 Model Status[/bold]", style="primary")
+    output.print()
+    
+    # Show current status with formatting
+    output.print(f"  [bold]Provider:[/bold] {provider}")
+    output.print(f"  [bold]Model:[/bold]    {model}")
 
     # Get available models
     available_models = model_manager.get_available_models(provider)
 
     if not available_models:
-        output.warning("No models found for current provider")
+        output.print()
+        output.warning("  ⚠️  No models found for current provider")
         return
 
-    # Show first few available models
-    output.print("\nAvailable models:")
+    # Show first few available models with visual hierarchy
+    output.print()
+    output.print("  [bold]Available models:[/bold]")
     count = 0
     for available_model in available_models:
         if available_model == model:
-            output.success(f"  → {available_model} (current)")
+            output.success(f"    ✓ {available_model} [dim](current)[/dim]")
         else:
-            output.print(f"     {available_model}")
+            output.print(f"    • {available_model}")
 
         count += 1
         if count >= 10:
             remaining = len(available_models) - 10
             if remaining > 0:
-                output.print(f"     ... and {remaining} more")
+                output.print(f"    [dim]... and {remaining} more[/dim]")
             break
 
     # Show Ollama status if applicable
     if provider.lower() == "ollama":
         await _show_ollama_status(model_manager)
 
+    output.print()
     output.tip(
-        "Use: /model <name> to switch  |  /models to list all  |  /model refresh to discover"
+        "💡 Use: /model <name> to switch  |  /models to list all  |  /model refresh to discover"
     )
 
 

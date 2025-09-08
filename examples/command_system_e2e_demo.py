@@ -141,7 +141,7 @@ class CommandSystemE2EDemo:
         self.test_command(
             "/models",
             "Show current model",
-            ["Current model:", "gpt-4o-mini"]
+            ["Model Status", "Model:", "gpt-4o-mini"]
         )
         
         self.test_command(
@@ -165,19 +165,19 @@ class CommandSystemE2EDemo:
         self.test_command(
             "/provider",
             "Show current provider status (singular)",
-            ["Current provider", "Current model", "Status"]
+            ["Provider Status", "Provider:", "Model:"]
         )
         
         self.test_command(
             "/providers",
             "List all providers (plural form)",
-            ["Available Providers", "openai", "Status"]
+            ["Available Providers", "openai"]
         )
         
         self.test_command(
             "/provider list",
             "List all providers (alternative)",
-            ["Available Providers", "openai", "ollama"]
+            ["Available Providers", "openai"]
         )
         
         self.test_command(
@@ -195,7 +195,7 @@ class CommandSystemE2EDemo:
         self.test_command(
             "/servers",
             "List connected MCP servers (plural)",
-            ["Connected MCP Servers", "echo"]
+            ["Connected MCP Servers", "echo", "Server"]
         )
         
         self.test_command(

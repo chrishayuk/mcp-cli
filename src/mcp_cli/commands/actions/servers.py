@@ -171,16 +171,21 @@ async def servers_action_async(
             
             table_data.append(row)
         
-        # Display table
+        # Display table with themed styling
+        output.rule("[bold]Connected MCP Servers[/bold]", style="primary")
+        
         table = format_table(
             table_data,
-            title="Connected MCP Servers",
+            title=None,  # We're using rule for title
             columns=columns
         )
         output.print_table(table)
         
-        # Show tip
-        output.tip("Use: /server <name> for details  |  /ping to test connectivity  |  /tools to see available tools")
+        # Add some visual separation
+        output.print()
+        
+        # Show tip with icon
+        output.tip("💡 Use: /server <name> for details  |  /ping to test connectivity  |  /tools to see available tools")
     
     return server_data
 
@@ -231,7 +236,7 @@ async def server_details_async(server_name: str) -> None:
         output.hint("Use /servers to list all available servers")
         return
     
-    # Display detailed server info in a panel
+    # Display detailed server info with visual appeal
     icon = _get_server_icon(target_server.capabilities, target_server.tool_count)
     
     # Ping the server
@@ -246,33 +251,31 @@ async def server_details_async(server_name: str) -> None:
     except:
         ping_status = "❓ Unknown"
     
-    # Build panel content
-    panel_lines = [
-        f"Server: {icon} {target_server.name}",
-        f"Transport: {target_server.transport}",
-        f"Status: {ping_status}",
-        f"Tools: {target_server.tool_count} available",
-        f"Capabilities: {_format_capabilities(target_server.capabilities)}",
-    ]
+    # Display with visual formatting
+    output.rule(f"[bold]{icon} Server: {target_server.name}[/bold]", style="primary")
+    output.print()
+    
+    output.print(f"  [bold]Transport:[/bold]     {target_server.transport}")
+    output.print(f"  [bold]Status:[/bold]        {ping_status}")
+    output.print(f"  [bold]Tools:[/bold]         {target_server.tool_count} available")
+    output.print(f"  [bold]Capabilities:[/bold]  {_format_capabilities(target_server.capabilities)}")
     
     # Add tools list if available and not too many
     if target_server.tool_count > 0 and target_server.tool_count <= 10:
         try:
             tools = await tm.get_tools_for_server(server_name) if hasattr(tm, 'get_tools_for_server') else []
             if tools:
-                panel_lines.append("")
-                panel_lines.append("Available tools:")
+                output.print()
+                output.print("  [bold]Available tools:[/bold]")
                 for tool in tools[:10]:
                     tool_name = tool.name if hasattr(tool, 'name') else str(tool)
-                    panel_lines.append(f"  • {tool_name}")
+                    output.print(f"    • {tool_name}")
         except:
             pass
     
-    panel_content = "\n".join(f"ℹ {line}" for line in panel_lines)
-    output.panel(panel_content, title=f"Server: {target_server.name}")
-    
-    # Show tip
-    output.tip("Use: /servers to list all servers  |  /ping to test connectivity")
+    # Show tip with spacing
+    output.print()
+    output.tip("💡 Use: /servers to list all servers  |  /ping to test connectivity")
 
 
 __all__ = [
