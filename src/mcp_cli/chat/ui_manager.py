@@ -29,11 +29,11 @@ from chuk_term.ui.theme import get_theme
 from mcp_cli.ui.color_converter import create_transparent_completion_style
 
 from mcp_cli.chat.command_completer import ChatCommandCompleter
+
 # Use unified command system through adapter
 from mcp_cli.adapters.chat import ChatCommandAdapter
 from mcp_cli.commands import register_all_commands
 from mcp_cli.utils.preferences import get_preference_manager
-from mcp_cli.tools.models import ToolInfo
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ class ChatUIManager:
         # Create prompt session with history and auto-suggestions
         # Use theme colors for autocomplete with terminal background
         theme = get_theme()
-        
+
         # Determine background color based on theme
         # Light themes use white/light background, dark themes use black
         if theme.name in ["light"]:
@@ -97,9 +97,11 @@ class ChatUIManager:
             bg_color = ""  # No background
         else:
             bg_color = "black"  # Default for dark themes
-        
+
         # Create style for autocomplete menu matching terminal background
-        style = Style.from_dict(create_transparent_completion_style(theme.colors, bg_color))
+        style = Style.from_dict(
+            create_transparent_completion_style(theme.colors, bg_color)
+        )
 
         self.session: PromptSession = PromptSession(
             history=FileHistory(str(history_path)),
@@ -402,7 +404,7 @@ class ChatUIManager:
         try:
             # Ensure commands are registered
             register_all_commands()
-            
+
             # Build context for unified commands
             context = {
                 "tool_manager": self.context.tool_manager,
@@ -411,14 +413,14 @@ class ChatUIManager:
                 "chat_context": self.context,
                 "ui_manager": self,
             }
-            
+
             # Use the unified command adapter
             handled = await ChatCommandAdapter.handle_command(cmd, context)
-            
+
             # Check if context requested exit
             if self.context.exit_requested:
                 return True
-            
+
             return handled
 
         except Exception as exc:

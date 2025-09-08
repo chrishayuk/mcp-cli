@@ -17,19 +17,19 @@ from mcp_cli.commands.base import (
 
 class ConversationCommand(UnifiedCommand):
     """Manage conversation history."""
-    
+
     @property
     def name(self) -> str:
         return "conversation"
-    
+
     @property
     def aliases(self) -> List[str]:
         return ["history", "ch"]
-    
+
     @property
     def description(self) -> str:
         return "Manage conversation history"
-    
+
     @property
     def help_text(self) -> str:
         return """
@@ -50,12 +50,12 @@ Examples:
   /conversation save chat.json - Save to file
   /conversation load chat.json - Load from file
 """
-    
+
     @property
     def modes(self) -> CommandMode:
         """This is a chat-only command."""
         return CommandMode.CHAT
-    
+
     @property
     def parameters(self) -> List[CommandParameter]:
         return [
@@ -73,7 +73,7 @@ Examples:
                 help="Filename for save/load operations",
             ),
         ]
-    
+
     async def execute(self, **kwargs) -> CommandResult:
         """Execute the conversation command."""
         # Get chat context
@@ -83,7 +83,7 @@ Examples:
                 success=False,
                 error="Conversation command requires chat context.",
             )
-        
+
         # Get action
         action = kwargs.get("action", "show")
         if "args" in kwargs:
@@ -92,7 +92,7 @@ Examples:
                 action = args_val[0]
             elif isinstance(args_val, str):
                 action = args_val
-        
+
         if action == "show":
             # Show conversation history
             if hasattr(chat_context, "conversation_history"):
@@ -102,7 +102,7 @@ Examples:
                         success=True,
                         output="No conversation history.",
                     )
-                
+
                 output_lines = ["Conversation History:", "=" * 40]
                 for i, msg in enumerate(history):
                     role = msg.get("role", "unknown")
@@ -110,9 +110,9 @@ Examples:
                     # Truncate long messages
                     if len(content) > 200:
                         content = content[:197] + "..."
-                    output_lines.append(f"\n[{i+1}] {role.upper()}:")
+                    output_lines.append(f"\n[{i + 1}] {role.upper()}:")
                     output_lines.append(content)
-                
+
                 return CommandResult(
                     success=True,
                     output="\n".join(output_lines),
@@ -122,7 +122,7 @@ Examples:
                     success=False,
                     error="Conversation history not available.",
                 )
-        
+
         elif action == "clear":
             # Clear conversation history
             if hasattr(chat_context, "clear_conversation"):
@@ -136,7 +136,7 @@ Examples:
                     success=False,
                     error="Cannot clear conversation history.",
                 )
-        
+
         elif action == "save":
             # Save conversation
             filename = kwargs.get("filename")
@@ -144,15 +144,16 @@ Examples:
                 args_val = kwargs["args"]
                 if isinstance(args_val, list) and len(args_val) > 1:
                     filename = args_val[1]
-            
+
             if not filename:
                 return CommandResult(
                     success=False,
                     error="Filename required for save. Usage: /conversation save <filename>",
                 )
-            
+
             try:
                 import json
+
                 if hasattr(chat_context, "conversation_history"):
                     with open(filename, "w") as f:
                         json.dump(chat_context.conversation_history, f, indent=2)
@@ -170,7 +171,7 @@ Examples:
                     success=False,
                     error=f"Failed to save conversation: {str(e)}",
                 )
-        
+
         elif action == "load":
             # Load conversation
             filename = kwargs.get("filename")
@@ -178,18 +179,19 @@ Examples:
                 args_val = kwargs["args"]
                 if isinstance(args_val, list) and len(args_val) > 1:
                     filename = args_val[1]
-            
+
             if not filename:
                 return CommandResult(
                     success=False,
                     error="Filename required for load. Usage: /conversation load <filename>",
                 )
-            
+
             try:
                 import json
+
                 with open(filename, "r") as f:
                     history = json.load(f)
-                
+
                 if hasattr(chat_context, "set_conversation_history"):
                     chat_context.set_conversation_history(history)
                     return CommandResult(
@@ -206,7 +208,7 @@ Examples:
                     success=False,
                     error=f"Failed to load conversation: {str(e)}",
                 )
-        
+
         else:
             return CommandResult(
                 success=False,

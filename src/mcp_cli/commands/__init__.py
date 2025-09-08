@@ -21,7 +21,7 @@ from mcp_cli.commands.registry import registry, UnifiedCommandRegistry
 def register_all_commands() -> None:
     """
     Register all built-in commands with the unified registry.
-    
+
     This should be called once during application startup.
     """
     # Import all command implementations
@@ -44,39 +44,39 @@ def register_all_commands() -> None:
     from mcp_cli.commands.definitions.verbose import VerboseCommand
     from mcp_cli.commands.definitions.interrupt import InterruptCommand
     from mcp_cli.commands.definitions.tool_history import ToolHistoryCommand
-    
+
     # Register basic commands
     registry.register(HelpCommand())
     registry.register(ExitCommand())
     registry.register(ClearCommand())
-    
+
     # Register server commands (singular and plural)
     registry.register(ServerSingularCommand())  # /server <name> - show details
-    registry.register(ServersCommand())         # /servers - list all
-    
+    registry.register(ServersCommand())  # /servers - list all
+
     registry.register(PingCommand())
     registry.register(ResourcesCommand())
     registry.register(PromptsCommand())
-    
+
     # Register theme commands (singular and plural)
     registry.register(ThemeSingularCommand())  # /theme - show current
-    registry.register(ThemesPluralCommand())   # /themes - list all
+    registry.register(ThemesPluralCommand())  # /themes - list all
     # Note: Keep old ThemeCommand for backward compatibility if needed
-    
+
     # Register provider commands (singular and plural)
     registry.register(ProviderSingularCommand())  # /provider - show current
-    registry.register(ProviderCommand())          # /providers - list all
-    
+    registry.register(ProviderCommand())  # /providers - list all
+
     # Register command groups
     registry.register(ToolsCommand())
     registry.register(ModelCommand())
-    
+
     # Register chat-specific commands
     registry.register(ConversationCommand())
     registry.register(VerboseCommand())
     registry.register(InterruptCommand())
     registry.register(ToolHistoryCommand())
-    
+
     # All commands have been migrated!
     # - tools (with subcommands: list, call, confirm)
     # - provider (with subcommands: list, set, show)

@@ -3,7 +3,6 @@ import logging
 import sys
 import typer
 import atexit
-import os
 import asyncio
 import signal
 import gc
@@ -32,6 +31,7 @@ def restore_terminal():
     attention to subprocess transports."""
     # Use chuk_term's terminal restoration
     from chuk_term.ui import restore_terminal as chuk_restore_terminal
+
     chuk_restore_terminal()
 
     # First, try to explicitly clean up subprocess transports

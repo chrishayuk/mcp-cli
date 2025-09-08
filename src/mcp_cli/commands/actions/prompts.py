@@ -23,7 +23,7 @@ from mcp_cli.context import get_context
 async def prompts_action_async() -> List[Dict[str, Any]]:
     """
     Fetch and display prompt templates from all connected MCP servers.
-    
+
     Returns:
         List of prompt dictionaries from all servers.
     """
@@ -68,10 +68,10 @@ async def prompts_action_async() -> List[Dict[str, Any]]:
 def prompts_action() -> List[Dict[str, Any]]:
     """
     Sync wrapper for prompts_action_async.
-    
+
     Returns:
         List of prompt dictionaries from all servers.
-        
+
     Raises:
         RuntimeError: If called from inside an active event loop.
     """
@@ -81,7 +81,7 @@ def prompts_action() -> List[Dict[str, Any]]:
 async def prompts_action_cmd() -> List[Dict[str, Any]]:
     """
     Alias for prompts_action_async (backward compatibility).
-    
+
     Returns:
         List of prompt dictionaries from all servers.
     """

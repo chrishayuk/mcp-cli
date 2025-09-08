@@ -186,11 +186,11 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
 
     # Create and display table with visual styling
     output.rule("[bold]🌐 Available Providers[/bold]", style="primary")
-    
+
     table = format_table(
-        table_data, 
+        table_data,
         title=None,  # Using rule for title
-        columns=columns
+        columns=columns,
     )
     output.print_table(table)
     output.print()
@@ -205,9 +205,7 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
                 inactive_providers.append(name)
 
     if inactive_providers:
-        output.hint(
-            "Configure providers with: /provider set <name> api_key <key>"
-        )
+        output.hint("Configure providers with: /provider set <name> api_key <key>")
 
 
 def _render_diagnostic_optimized(
@@ -404,23 +402,25 @@ async def provider_action_async(
             )
 
             # Display in a beautifully formatted panel
-            output.rule(f"[bold]🔧 Provider Status[/bold]", style="primary")
+            output.rule("[bold]🔧 Provider Status[/bold]", style="primary")
             output.print()
-            
+
             # Create visually appealing status display
             output.print(f"  [bold]Provider:[/bold] {provider}")
             output.print(f"  [bold]Model:[/bold]    {model}")
             output.print(f"  [bold]Status:[/bold]   {status_icon} {status_text}")
             output.print(f"  [bold]Features:[/bold] {_format_features(status)}")
-            
+
             if status_icon != "✅":
                 output.print()
                 output.warning(f"  ⚠️  {status_reason}")
-            
+
             output.print()
-            
+
             # Show available providers tip
-            output.tip("Use: /provider <name> to switch  |  /providers to list all  |  /provider set <name> for config")
+            output.tip(
+                "Use: /provider <name> to switch  |  /providers to list all  |  /provider set <name> for config"
+            )
 
         except Exception as e:
             output.info(f"Current provider: {provider}")

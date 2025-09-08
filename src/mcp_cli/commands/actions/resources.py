@@ -33,7 +33,7 @@ def _human_size(size: int | None) -> str:
 async def resources_action_async() -> List[Dict[str, Any]]:
     """
     Fetch and display resources from all connected MCP servers.
-    
+
     Returns:
         List of resource dictionaries from all servers.
     """
@@ -79,10 +79,10 @@ async def resources_action_async() -> List[Dict[str, Any]]:
 def resources_action() -> List[Dict[str, Any]]:
     """
     Sync wrapper for resources_action_async.
-    
+
     Returns:
         List of resource dictionaries from all servers.
-        
+
     Raises:
         RuntimeError: If called from inside an active event loop.
     """

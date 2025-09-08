@@ -5,34 +5,31 @@ Unified prompts command implementation.
 
 from __future__ import annotations
 
-import json
 from typing import List
 
 from mcp_cli.commands.base import (
     UnifiedCommand,
-    CommandMode,
     CommandParameter,
     CommandResult,
 )
-from mcp_cli.context import get_context
-from chuk_term.ui import output, format_table
+from chuk_term.ui import output
 
 
 class PromptsCommand(UnifiedCommand):
     """List and manage MCP prompts."""
-    
+
     @property
     def name(self) -> str:
         return "prompts"
-    
+
     @property
     def aliases(self) -> List[str]:
         return []
-    
+
     @property
     def description(self) -> str:
         return "List and manage MCP prompts"
-    
+
     @property
     def help_text(self) -> str:
         return """
@@ -54,7 +51,7 @@ Examples:
   prompts --raw           - Output as JSON
   prompts --get "summarize" - Get the summarize prompt
 """
-    
+
     @property
     def parameters(self) -> List[CommandParameter]:
         return [
@@ -78,28 +75,25 @@ Examples:
                 help="Get a specific prompt by name",
             ),
         ]
-    
+
     async def execute(self, **kwargs) -> CommandResult:
         """Execute the prompts command."""
         # Import the existing prompts implementation
         from mcp_cli.commands.actions.prompts import prompts_action_async
-        
+
         try:
             # Use the existing enhanced implementation
             # It handles all the display internally
             prompts = await prompts_action_async()
-            
+
             # Add count info if we have prompts
             if prompts:
                 output.print(f"\nTotal prompts: {len(prompts)}")
-            
+
             # The existing implementation handles all output directly
             # Just return success
-            return CommandResult(
-                success=True,
-                data=prompts
-            )
-            
+            return CommandResult(success=True, data=prompts)
+
         except Exception as e:
             return CommandResult(
                 success=False,

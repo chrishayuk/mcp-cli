@@ -19,19 +19,19 @@ from chuk_term.ui import output, format_table
 
 class ToolHistoryCommand(UnifiedCommand):
     """View history of tool calls in this session."""
-    
+
     @property
     def name(self) -> str:
         return "toolhistory"
-    
+
     @property
     def aliases(self) -> List[str]:
         return ["th"]
-    
+
     @property
     def description(self) -> str:
         return "View history of tool calls in this session"
-    
+
     @property
     def help_text(self) -> str:
         return """
@@ -56,12 +56,12 @@ Examples:
 
 Note: This command is only available in chat mode.
 """
-    
+
     @property
     def modes(self) -> CommandMode:
         """This is a chat-only command."""
         return CommandMode.CHAT
-    
+
     @property
     def parameters(self) -> List[CommandParameter]:
         return [
@@ -85,7 +85,7 @@ Note: This command is only available in chat mode.
                 is_flag=True,
             ),
         ]
-    
+
     async def execute(self, **kwargs) -> CommandResult:
         """Execute the tool history command."""
         # Get chat context
@@ -95,26 +95,26 @@ Note: This command is only available in chat mode.
                 success=False,
                 error="Tool history command requires chat context.",
             )
-        
+
         # Get tool history
         if not hasattr(chat_context, "tool_history"):
             return CommandResult(
                 success=True,
                 output="No tool history available.",
             )
-        
+
         tool_history = chat_context.tool_history or []
         if not tool_history:
             return CommandResult(
                 success=True,
                 output="No tool calls have been made yet.",
             )
-        
+
         # Get parameters
         row_num = kwargs.get("row")
         limit = kwargs.get("n")
         show_json = kwargs.get("json", False)
-        
+
         # Handle positional argument for row number
         if row_num is None and "args" in kwargs:
             args_val = kwargs["args"]
@@ -128,12 +128,12 @@ Note: This command is only available in chat mode.
                     row_num = int(args_val)
                 except (ValueError, TypeError):
                     pass
-        
+
         # Apply limit if specified
         display_history = tool_history
         if limit and limit > 0:
             display_history = tool_history[-limit:]
-        
+
         # Handle JSON output
         if show_json:
             json_output = json.dumps(display_history, indent=2, default=str)
@@ -141,7 +141,7 @@ Note: This command is only available in chat mode.
                 success=True,
                 output=json_output,
             )
-        
+
         # Handle row detail view
         if row_num is not None:
             if 1 <= row_num <= len(tool_history):
@@ -151,7 +151,7 @@ Note: This command is only available in chat mode.
                     f"Arguments:\n{json.dumps(call.get('arguments', {}), indent=2)}\n"
                     f"Result:\n{json.dumps(call.get('result', 'N/A'), indent=2, default=str)}",
                     title=f"Tool Call #{row_num}",
-                    style="cyan"
+                    style="cyan",
                 )
                 return CommandResult(success=True)
             else:
@@ -159,7 +159,7 @@ Note: This command is only available in chat mode.
                     success=False,
                     error=f"Invalid row number: {row_num}. Valid range: 1-{len(tool_history)}",
                 )
-        
+
         # Default table view
         table_data = []
         for i, call in enumerate(display_history, 1):
@@ -167,22 +167,24 @@ Note: This command is only available in chat mode.
             args_str = json.dumps(call.get("arguments", {}))
             if len(args_str) > 50:
                 args_str = args_str[:47] + "..."
-            
-            table_data.append({
-                "#": str(i),
-                "Tool": call.get("tool", "unknown"),
-                "Arguments": args_str,
-                "Status": "✓" if call.get("success", True) else "✗",
-            })
-        
+
+            table_data.append(
+                {
+                    "#": str(i),
+                    "Tool": call.get("tool", "unknown"),
+                    "Arguments": args_str,
+                    "Status": "✓" if call.get("success", True) else "✗",
+                }
+            )
+
         table = format_table(
             table_data,
             title="Tool Call History",
             columns=["#", "Tool", "Arguments", "Status"],
         )
         output.print_table(table)
-        
+
         if limit and limit < len(tool_history):
             output.hint(f"Showing last {limit} of {len(tool_history)} total calls")
-        
+
         return CommandResult(success=True)

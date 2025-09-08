@@ -23,7 +23,6 @@ from mcp_cli.adapters.interactive import InteractiveCommandAdapter
 from mcp_cli.commands import register_all_commands as register_unified_commands
 
 # Keep old registry for now just for command name completion
-from mcp_cli.interactive.registry import InteractiveCommandRegistry
 
 # logger
 logger = logging.getLogger(__name__)
@@ -59,10 +58,11 @@ async def interactive_mode(
 
     # Register unified commands
     register_unified_commands()
-    
+
     # Get command names for completion
     # TODO: Get from unified registry instead
     from mcp_cli.commands.registry import registry
+
     cmd_names = registry.get_command_names(include_aliases=True)
 
     # Intro panel
@@ -127,7 +127,7 @@ async def interactive_mode(
                 # Reconstruct the command line for the adapter
                 full_cmd = " ".join([cmd_name] + args)
                 handled = await InteractiveCommandAdapter.handle_command(full_cmd)
-                
+
                 if not handled:
                     print(f"[red]Unknown command: {cmd_name}[/red]")
                     print("[dim]Type 'help' to see available commands.[/dim]")

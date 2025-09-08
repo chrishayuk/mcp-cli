@@ -11,36 +11,33 @@ from typing import List
 from mcp_cli.commands.base import (
     UnifiedCommand,
     CommandGroup,
-    CommandMode,
     CommandParameter,
     CommandResult,
 )
-from mcp_cli.context import get_context
-from chuk_term.ui import format_table
 
 
 class ModelCommand(CommandGroup):
     """Model command group."""
-    
+
     def __init__(self):
         super().__init__()
         # Add subcommands
         self.add_subcommand(ModelListCommand())
         self.add_subcommand(ModelSetCommand())
         self.add_subcommand(ModelShowCommand())
-    
+
     @property
     def name(self) -> str:
         return "models"
-    
+
     @property
     def aliases(self) -> List[str]:
         return ["model"]
-    
+
     @property
     def description(self) -> str:
         return "Manage LLM models"
-    
+
     @property
     def help_text(self) -> str:
         return """
@@ -64,14 +61,14 @@ Examples:
   /model show          - Show current model
   /model list          - List all available models
 """
-    
+
     async def execute(self, **kwargs) -> CommandResult:
         """Execute the model command - handle direct model switching."""
         from mcp_cli.commands.actions.models import model_action_async
-        
+
         # Check if we have args (could be model name or subcommand)
         args = kwargs.get("args", [])
-        
+
         if not args:
             # No arguments - show current model status
             try:
@@ -79,18 +76,26 @@ Examples:
                 return CommandResult(success=True)
             except Exception as e:
                 return CommandResult(
-                    success=False,
-                    error=f"Failed to show model status: {str(e)}"
+                    success=False, error=f"Failed to show model status: {str(e)}"
                 )
-        
+
         # Check if the first arg is a known subcommand
         first_arg = args[0] if isinstance(args, list) else str(args)
-        
+
         # Known subcommands that should be handled by subcommand classes
-        if first_arg.lower() in ["list", "ls", "set", "use", "switch", "show", "current", "status"]:
+        if first_arg.lower() in [
+            "list",
+            "ls",
+            "set",
+            "use",
+            "switch",
+            "show",
+            "current",
+            "status",
+        ]:
             # Let the parent class handle the subcommand routing
             return await super().execute(**kwargs)
-        
+
         # Otherwise, treat it as a model name to switch to
         try:
             # Pass the model name directly to switch
@@ -98,30 +103,29 @@ Examples:
                 await model_action_async(args)
             else:
                 await model_action_async([str(args)])
-            
+
             return CommandResult(success=True)
         except Exception as e:
             return CommandResult(
-                success=False,
-                error=f"Failed to switch model: {str(e)}"
+                success=False, error=f"Failed to switch model: {str(e)}"
             )
 
 
 class ModelListCommand(UnifiedCommand):
     """List available models."""
-    
+
     @property
     def name(self) -> str:
         return "list"
-    
+
     @property
     def aliases(self) -> List[str]:
         return ["ls"]
-    
+
     @property
     def description(self) -> str:
         return "List available models for the current provider"
-    
+
     @property
     def parameters(self) -> List[CommandParameter]:
         return [
@@ -139,24 +143,21 @@ class ModelListCommand(UnifiedCommand):
                 is_flag=True,
             ),
         ]
-    
+
     async def execute(self, **kwargs) -> CommandResult:
         """Execute the model list command."""
         # Import the existing model implementation
         from mcp_cli.commands.actions.models import model_action_async
-        
+
         try:
             # Use the existing enhanced implementation
             # Pass "list" as the command
             await model_action_async(["list"])
-            
+
             # The existing implementation handles all output directly
             # Just return success
-            return CommandResult(
-                success=True,
-                data={"command": "model list"}
-            )
-            
+            return CommandResult(success=True, data={"command": "model list"})
+
         except Exception as e:
             return CommandResult(
                 success=False,
@@ -166,19 +167,19 @@ class ModelListCommand(UnifiedCommand):
 
 class ModelSetCommand(UnifiedCommand):
     """Set the active model."""
-    
+
     @property
     def name(self) -> str:
         return "set"
-    
+
     @property
     def aliases(self) -> List[str]:
         return ["use", "switch"]
-    
+
     @property
     def description(self) -> str:
         return "Set the active model"
-    
+
     @property
     def parameters(self) -> List[CommandParameter]:
         return [
@@ -189,12 +190,12 @@ class ModelSetCommand(UnifiedCommand):
                 help="Name of the model to set",
             ),
         ]
-    
+
     async def execute(self, **kwargs) -> CommandResult:
         """Execute the model set command."""
         # Import the existing model implementation
         from mcp_cli.commands.actions.models import model_action_async
-        
+
         # Get model name
         model_name = kwargs.get("model_name")
         if not model_name and "args" in kwargs:
@@ -203,24 +204,21 @@ class ModelSetCommand(UnifiedCommand):
                 model_name = args_val[0] if args_val else None
             elif isinstance(args_val, str):
                 model_name = args_val
-        
+
         if not model_name:
             return CommandResult(
                 success=False,
                 error="Model name is required. Usage: /model set <name>",
             )
-        
+
         try:
             # Use the existing enhanced implementation
             # Pass the model name directly to switch to it
             await model_action_async([model_name])
-            
+
             # The existing implementation handles all output directly
-            return CommandResult(
-                success=True,
-                data={"model": model_name}
-            )
-            
+            return CommandResult(success=True, data={"model": model_name})
+
         except Exception as e:
             return CommandResult(
                 success=False,
@@ -230,35 +228,32 @@ class ModelSetCommand(UnifiedCommand):
 
 class ModelShowCommand(UnifiedCommand):
     """Show current model."""
-    
+
     @property
     def name(self) -> str:
         return "show"
-    
+
     @property
     def aliases(self) -> List[str]:
         return ["current", "status"]
-    
+
     @property
     def description(self) -> str:
         return "Show the current active model"
-    
+
     async def execute(self, **kwargs) -> CommandResult:
         """Execute the model show command."""
         # Import the existing model implementation
         from mcp_cli.commands.actions.models import model_action_async
-        
+
         try:
             # Use the existing enhanced implementation
             # Pass no arguments to show current status
             await model_action_async([])
-            
+
             # The existing implementation handles all output directly
-            return CommandResult(
-                success=True,
-                data={"command": "model show"}
-            )
-            
+            return CommandResult(success=True, data={"command": "model show"})
+
         except Exception as e:
             return CommandResult(
                 success=False,

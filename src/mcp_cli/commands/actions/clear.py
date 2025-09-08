@@ -16,12 +16,12 @@ from chuk_term.ui import output, clear_screen
 def clear_action(*, verbose: bool = False) -> None:
     """
     Clear the terminal screen.
-    
+
     Args:
         verbose: If True, print a confirmation message after clearing.
     """
     clear_screen()
-    
+
     if verbose:
         output.hint("Screen cleared.")
 

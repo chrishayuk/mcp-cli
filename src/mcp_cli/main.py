@@ -18,6 +18,7 @@ from mcp_cli.logging_config import (
     get_logger,
     setup_silent_mcp_environment,
 )
+
 # Use unified command system
 from mcp_cli.commands import register_all_commands as register_unified_commands
 

@@ -6,7 +6,7 @@ Unified tools command implementation with subcommands.
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import List
 
 from mcp_cli.commands.base import (
     UnifiedCommand,
@@ -16,32 +16,30 @@ from mcp_cli.commands.base import (
     CommandResult,
 )
 from mcp_cli.context import get_context
-from mcp_cli.ui.formatting import create_tools_table
-from chuk_term.ui import output, format_table
 
 
 class ToolsCommand(CommandGroup):
     """Tools command group."""
-    
+
     def __init__(self):
         super().__init__()
         # Add subcommands
         self.add_subcommand(ToolsListCommand())
         self.add_subcommand(ToolsCallCommand())
         self.add_subcommand(ToolsConfirmCommand())
-    
+
     @property
     def name(self) -> str:
         return "tools"
-    
+
     @property
     def aliases(self) -> List[str]:
         return []
-    
+
     @property
     def description(self) -> str:
         return "Manage and interact with MCP tools"
-    
+
     @property
     def help_text(self) -> str:
         return """
@@ -70,19 +68,19 @@ Examples:
 
 class ToolsListCommand(UnifiedCommand):
     """List available tools."""
-    
+
     @property
     def name(self) -> str:
         return "list"
-    
+
     @property
     def aliases(self) -> List[str]:
         return ["ls", "show"]
-    
+
     @property
     def description(self) -> str:
         return "List all available MCP tools"
-    
+
     @property
     def help_text(self) -> str:
         return """
@@ -102,7 +100,7 @@ Examples:
   /tools list --raw
   /tools list --details --validation
 """
-    
+
     @property
     def parameters(self) -> List[CommandParameter]:
         return [
@@ -135,17 +133,17 @@ Examples:
                 is_flag=True,
             ),
         ]
-    
+
     async def execute(self, **kwargs) -> CommandResult:
         """Execute the tools list command."""
         # Import the tools action from the actions module
         from mcp_cli.commands.actions.tools import tools_action_async
-        
+
         # Extract parameters
         show_details = kwargs.get("details", False) or kwargs.get("all", False)
         show_raw = kwargs.get("raw", False)
         show_validation = kwargs.get("validation", False) or kwargs.get("all", False)
-        
+
         try:
             # Use the existing enhanced implementation
             # It handles all the display internally
@@ -154,14 +152,11 @@ Examples:
                 show_raw=show_raw,
                 show_validation=show_validation,
             )
-            
+
             # The existing implementation handles all output directly
             # Just return success
-            return CommandResult(
-                success=True,
-                data=tools
-            )
-            
+            return CommandResult(success=True, data=tools)
+
         except Exception as e:
             return CommandResult(
                 success=False,
@@ -171,19 +166,19 @@ Examples:
 
 class ToolsCallCommand(UnifiedCommand):
     """Call a specific tool."""
-    
+
     @property
     def name(self) -> str:
         return "call"
-    
+
     @property
     def aliases(self) -> List[str]:
         return ["run", "execute"]
-    
+
     @property
     def description(self) -> str:
         return "Call a specific MCP tool"
-    
+
     @property
     def help_text(self) -> str:
         return """
@@ -201,7 +196,7 @@ Examples:
   /tools call list_directory --args '{"path": "."}'
   /tools call search --args '{"query": "test"}' --confirm
 """
-    
+
     @property
     def parameters(self) -> List[CommandParameter]:
         return [
@@ -225,7 +220,7 @@ Examples:
                 is_flag=True,
             ),
         ]
-    
+
     async def execute(self, **kwargs) -> CommandResult:
         """Execute the tool call command."""
         # Get tool manager
@@ -237,69 +232,76 @@ Examples:
                     tool_manager = context.tool_manager
             except:
                 pass
-        
+
         if not tool_manager:
             return CommandResult(
                 success=False,
                 error="No active tool manager. Please connect to a server first.",
             )
-        
+
         # Get tool name from positional args or parameter
         tool_name = kwargs.get("tool_name")
-        if not tool_name and "args" in kwargs and isinstance(kwargs["args"], (list, str)):
+        if (
+            not tool_name
+            and "args" in kwargs
+            and isinstance(kwargs["args"], (list, str))
+        ):
             # Handle positional argument
             args_val = kwargs["args"]
             if isinstance(args_val, list):
                 tool_name = args_val[0] if args_val else None
             else:
                 tool_name = args_val
-        
+
         if not tool_name:
             return CommandResult(
                 success=False,
                 error="Tool name is required. Usage: /tools call <tool_name>",
             )
-        
+
         # Parse tool arguments
         args_json = kwargs.get("args", "{}")
         if args_json == tool_name:  # If args wasn't provided separately
             args_json = "{}"
-        
+
         try:
-            tool_args = json.loads(args_json) if isinstance(args_json, str) else args_json
+            tool_args = (
+                json.loads(args_json) if isinstance(args_json, str) else args_json
+            )
         except json.JSONDecodeError as e:
             return CommandResult(
                 success=False,
                 error=f"Invalid JSON arguments: {e}",
             )
-        
+
         # Confirm if requested
         if kwargs.get("confirm", False):
             from chuk_term.ui.prompts import confirm
+
             if not confirm(f"Execute tool '{tool_name}' with args: {tool_args}?"):
                 return CommandResult(
                     success=True,
                     output="Tool execution cancelled.",
                 )
-        
+
         try:
             # Execute the tool
             result = await tool_manager.execute_tool(
                 tool_name=tool_name,
                 arguments=tool_args,
             )
-            
+
             # Format result
             if isinstance(result, dict):
                 output_text = json.dumps(result, indent=2, default=str)
             else:
                 output_text = str(result)
-            
+
             return CommandResult(
                 success=True,
                 output=f"Tool '{tool_name}' executed successfully:\n{output_text}",
             )
-            
+
         except Exception as e:
             return CommandResult(
                 success=False,
@@ -309,19 +311,19 @@ Examples:
 
 class ToolsConfirmCommand(UnifiedCommand):
     """Configure tool confirmation settings."""
-    
+
     @property
     def name(self) -> str:
         return "confirm"
-    
+
     @property
     def aliases(self) -> List[str]:
         return ["confirmation"]
-    
+
     @property
     def description(self) -> str:
         return "Configure tool execution confirmation"
-    
+
     @property
     def help_text(self) -> str:
         return """
@@ -341,7 +343,7 @@ Examples:
   /tools confirm never    - Never confirm
   /tools confirm smart    - Smart confirmation
 """
-    
+
     @property
     def parameters(self) -> List[CommandParameter]:
         return [
@@ -353,19 +355,19 @@ Examples:
                 choices=["always", "never", "smart"],
             ),
         ]
-    
+
     @property
     def modes(self) -> CommandMode:
         """This is primarily for chat and interactive modes."""
         return CommandMode.CHAT | CommandMode.INTERACTIVE
-    
+
     async def execute(self, **kwargs) -> CommandResult:
         """Execute the confirm command."""
         from mcp_cli.utils.preferences import get_preference_manager
-        
+
         pref_manager = get_preference_manager()
         mode = kwargs.get("mode")
-        
+
         # Handle positional argument
         if not mode and "args" in kwargs:
             args_val = kwargs["args"]
@@ -373,7 +375,7 @@ Examples:
                 mode = args_val[0] if args_val else None
             elif isinstance(args_val, str):
                 mode = args_val
-        
+
         if mode:
             # Set new mode
             if mode not in ["always", "never", "smart"]:
@@ -381,9 +383,9 @@ Examples:
                     success=False,
                     error=f"Invalid mode: {mode}. Must be 'always', 'never', or 'smart'.",
                 )
-            
+
             pref_manager.set_tool_confirmation_mode(mode)
-            
+
             return CommandResult(
                 success=True,
                 output=f"Tool confirmation mode set to: {mode}",

@@ -17,21 +17,21 @@ from chuk_term.ui import output, restore_terminal
 def exit_action(interactive: bool = True) -> bool:
     """
     Cleanly exit the MCP CLI session.
-    
+
     Args:
         interactive: If True, return to allow outer loop to break.
                     If False, call sys.exit(0) to terminate process.
-    
+
     Returns:
         True when interactive mode (to signal loop break).
         Never returns when non-interactive (process exits).
     """
     output.info("Exiting… Goodbye!")
     restore_terminal()
-    
+
     if not interactive:
         sys.exit(0)
-    
+
     return True
 
 

@@ -55,7 +55,7 @@ async def _show_status(model_manager: ModelManager, model: str, provider: str) -
     """Show current model status with visual appeal."""
     output.rule("[bold]🤖 Model Status[/bold]", style="primary")
     output.print()
-    
+
     # Show current status with formatting
     output.print(f"  [bold]Provider:[/bold] {provider}")
     output.print(f"  [bold]Model:[/bold]    {model}")

@@ -15,19 +15,19 @@ from mcp_cli.commands.base import (
 
 class ThemesPluralCommand(UnifiedCommand):
     """List all available themes."""
-    
+
     @property
     def name(self) -> str:
         return "themes"
-    
+
     @property
     def aliases(self) -> List[str]:
         return []  # No aliases
-    
+
     @property
     def description(self) -> str:
         return "List all available themes"
-    
+
     @property
     def help_text(self) -> str:
         return """
@@ -39,17 +39,16 @@ Usage:
 Examples:
   /themes             - Show all themes with descriptions
 """
-    
+
     async def execute(self, **kwargs) -> CommandResult:
         """Execute the themes command."""
         from mcp_cli.commands.actions.theme import theme_action_async
-        
+
         try:
             # Always show the list
             await theme_action_async([])  # Empty args = show list
             return CommandResult(success=True)
         except Exception as e:
             return CommandResult(
-                success=False,
-                error=f"Failed to list themes: {str(e)}"
+                success=False, error=f"Failed to list themes: {str(e)}"
             )

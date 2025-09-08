@@ -1,6 +1,7 @@
 # mcp_cli/interactive/commands/__init__.py
 """Interactive commands package."""
 
+
 def register_all_commands() -> None:
     """
     Legacy function for backward compatibility.

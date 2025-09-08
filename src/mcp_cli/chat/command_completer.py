@@ -13,10 +13,10 @@ class ChatCommandCompleter(Completer):
         from mcp_cli.commands.registry import UnifiedCommandRegistry
         from mcp_cli.commands.base import CommandMode
         from mcp_cli.commands import register_all_commands
-        
+
         # Ensure commands are registered
         register_all_commands()
-        
+
         txt = document.text.lstrip()
         if not txt.startswith("/"):
             return
@@ -24,26 +24,28 @@ class ChatCommandCompleter(Completer):
         # Get unified commands
         registry = UnifiedCommandRegistry()
         commands = registry.list_commands(mode=CommandMode.CHAT)
-        
+
         # Generate completions
         for cmd in commands:
             # Check if this command matches the partial text
             if f"/{cmd.name}".startswith(txt):
                 # Calculate the replacement start position
                 start_pos = -len(txt)
-                replacement = f"/{cmd.name}"[len(txt):]  # Only the part not yet typed
-                
+                replacement = f"/{cmd.name}"[len(txt) :]  # Only the part not yet typed
+
                 yield Completion(
                     replacement,
                     start_position=0,
                     display=f"/{cmd.name}",
-                    display_meta=cmd.description[:40] if len(cmd.description) > 40 else cmd.description,
+                    display_meta=cmd.description[:40]
+                    if len(cmd.description) > 40
+                    else cmd.description,
                 )
-            
+
             # Also check aliases
             for alias in cmd.aliases:
                 if f"/{alias}".startswith(txt) and alias != cmd.name:
-                    replacement = f"/{alias}"[len(txt):]
+                    replacement = f"/{alias}"[len(txt) :]
                     yield Completion(
                         replacement,
                         start_position=0,
