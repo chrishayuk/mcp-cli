@@ -115,5 +115,5 @@ async def test_tools_call_successful_execution():
 
                 # Check that the tool was called with correct arguments
                 result = mock_display.call_args[0][0]
-                assert result.tool_name == "echo"
+                assert result.tool_name == "test.echo"  # Tool has namespace
                 assert not result.is_error

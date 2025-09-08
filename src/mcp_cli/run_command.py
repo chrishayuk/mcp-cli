@@ -50,7 +50,7 @@ async def _init_tool_manager(
     tm_mod = importlib.import_module("mcp_cli.tools.manager")
     ToolManager = getattr(tm_mod, "ToolManager")  # patched in tests
 
-    tm = ToolManager(config_file, servers, server_names)  # type: ignore[call-arg]
+    tm = ToolManager(config_file, servers, server_names)
 
     # ENHANCED: Let ToolManager automatically select the namespace
     # It will use the server name for HTTP servers, "stdio" for STDIO servers

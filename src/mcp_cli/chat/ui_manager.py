@@ -15,7 +15,7 @@ import logging
 import signal
 import time
 from types import FrameType
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union, Callable
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
@@ -24,9 +24,14 @@ from prompt_toolkit.styles import Style
 
 from chuk_term.ui import output
 from chuk_term.ui import prompts
+from chuk_term.ui.theme import get_theme
+
+from mcp_cli.ui.color_converter import create_transparent_completion_style
 
 from mcp_cli.chat.command_completer import ChatCommandCompleter
-from mcp_cli.chat.commands import handle_command
+# Use unified command system through adapter
+from mcp_cli.adapters.chat import ChatCommandAdapter
+from mcp_cli.commands import register_all_commands
 from mcp_cli.utils.preferences import get_preference_manager
 from mcp_cli.tools.models import ToolInfo
 
@@ -63,8 +68,10 @@ class ChatUIManager:
         # Add console attribute for compatibility with streaming handler
         self.console = None  # Not using Rich console, using chuk-term instead
 
-        # Signal handling
-        self._prev_sigint_handler: Optional[signal.Handlers] = None
+        # Signal handling - signal.signal returns various types
+        self._prev_sigint_handler: Optional[
+            Union[Callable[[int, Optional[FrameType]], Any], int, signal.Handlers]
+        ] = None
         self._interrupt_count = 0
         self._last_interrupt_time = 0.0
 
@@ -79,16 +86,22 @@ class ChatUIManager:
         history_path = pref_manager.get_history_file()
 
         # Create prompt session with history and auto-suggestions
-        style = Style.from_dict(
-            {
-                "completion-menu": "bg:default",
-                "completion-menu.completion": "bg:default fg:goldenrod",
-                "completion-menu.completion.current": "bg:default fg:goldenrod bold",
-                "auto-suggestion": "fg:ansibrightblack",
-            }
-        )
+        # Use theme colors for autocomplete with terminal background
+        theme = get_theme()
+        
+        # Determine background color based on theme
+        # Light themes use white/light background, dark themes use black
+        if theme.name in ["light"]:
+            bg_color = "white"
+        elif theme.name in ["minimal", "terminal"]:
+            bg_color = ""  # No background
+        else:
+            bg_color = "black"  # Default for dark themes
+        
+        # Create style for autocomplete menu matching terminal background
+        style = Style.from_dict(create_transparent_completion_style(theme.colors, bg_color))
 
-        self.session = PromptSession(
+        self.session: PromptSession = PromptSession(
             history=FileHistory(str(history_path)),
             auto_suggest=AutoSuggestFromHistory(),
             completer=ChatCommandCompleter(self.context.to_dict()),
@@ -104,7 +117,7 @@ class ChatUIManager:
         try:
             msg = await self.session.prompt_async()
             self.last_input = msg.strip()
-            return self.last_input
+            return self.last_input or ""
         except (KeyboardInterrupt, EOFError):
             raise
         except Exception as exc:
@@ -168,36 +181,6 @@ class ChatUIManager:
             self._pending_tool = {"name": tool_name, "args": processed_args}
             return
 
-            # Display based on mode
-            if self.verbose_mode or self.confirm_tool_execution:
-                # Get tool description if available
-                description = ""
-                if self.verbose_mode and hasattr(self.context, "tools"):
-                    # Handle both ToolInfo objects and dicts for compatibility
-                    for tool in self.context.tools:
-                        tool_obj_name = (
-                            tool.name
-                            if isinstance(tool, ToolInfo)
-                            else tool.get("name", "")
-                        )
-                        if tool_obj_name == tool_name.split(".", 1)[-1]:
-                            description = (
-                                tool.description
-                                if isinstance(tool, ToolInfo)
-                                else tool.get("description", "")
-                            )
-                            break
-
-                # Display tool call
-                output.tool_call(tool_name, processed_args)
-
-                # Show description if available and in verbose mode
-                if description and self.verbose_mode:
-                    output.hint(description)
-            else:
-                # Compact display
-                output.print(f"Running tool: {tool_name}")
-
         except Exception as exc:
             logger.error(f"Error displaying tool call: {exc}")
             output.warning(f"Error displaying tool call: {exc}")
@@ -212,8 +195,10 @@ class ChatUIManager:
             if self.is_streaming_response:
                 logger.debug(f"Tool call during streaming: {tool_name}")
                 # Let the unified display handle it naturally
-                if hasattr(self.unified_display, "start_tool_execution"):
-                    self.unified_display.start_tool_execution(tool_name, processed_args)
+                if hasattr(self, "display") and hasattr(
+                    self.display, "start_tool_execution"
+                ):
+                    self.display.start_tool_execution(tool_name, processed_args)
             else:
                 # Not streaming, show a proper tool panel
                 output.tool_call(tool_name, processed_args)
@@ -222,7 +207,9 @@ class ChatUIManager:
             logger.warning(f"Error showing tool call: {exc}")
             logger.info(f"Tool call: {tool_name} with args: {processed_args}")
 
-    def finish_tool_execution(self, result: str = None, success: bool = True) -> None:
+    def finish_tool_execution(
+        self, result: Optional[str] = None, success: bool = True
+    ) -> None:
         """Finish tool execution in centralized display."""
         # Show pending tool if we have one (after streaming completes)
         if self._pending_tool:
@@ -265,7 +252,7 @@ class ChatUIManager:
     # ─── Tool Confirmation ───────────────────────────────────────────────
 
     def do_confirm_tool_execution(
-        self, tool_name: str = None, arguments: Any = None
+        self, tool_name: Optional[str] = None, arguments: Any = None
     ) -> bool:
         """
         Prompt user to confirm tool execution with risk information.
@@ -352,7 +339,7 @@ class ChatUIManager:
         """Set up Ctrl-C handler for tool interruption."""
         try:
 
-            def _handler(signum: int, frame: FrameType) -> None:
+            def _handler(signum: int, frame: Optional[FrameType]) -> None:
                 current_time = time.time()
 
                 # Reset counter if too much time passed
@@ -413,16 +400,25 @@ class ChatUIManager:
     async def handle_command(self, cmd: str) -> bool:
         """Process a slash command."""
         try:
-            # Build context dict
-            ctx_dict = self.context.to_dict()
-            ctx_dict["ui_manager"] = self
-
-            # Execute command
-            handled = await handle_command(cmd, ctx_dict)
-
-            # Update context
-            self.context.update_from_dict(ctx_dict)
-
+            # Ensure commands are registered
+            register_all_commands()
+            
+            # Build context for unified commands
+            context = {
+                "tool_manager": self.context.tool_manager,
+                "model_manager": self.context.model_manager,
+                "chat_handler": self,
+                "chat_context": self.context,
+                "ui_manager": self,
+            }
+            
+            # Use the unified command adapter
+            handled = await ChatCommandAdapter.handle_command(cmd, context)
+            
+            # Check if context requested exit
+            if self.context.exit_requested:
+                return True
+            
             return handled
 
         except Exception as exc:

@@ -18,8 +18,11 @@ from prompt_toolkit.completion import Completer, Completion
 # mcp cli
 from mcp_cli.tools.manager import ToolManager
 
-# commands
-from mcp_cli.interactive.commands import register_all_commands
+# Use unified command system
+from mcp_cli.adapters.interactive import InteractiveCommandAdapter
+from mcp_cli.commands import register_all_commands as register_unified_commands
+
+# Keep old registry for now just for command name completion
 from mcp_cli.interactive.registry import InteractiveCommandRegistry
 
 # logger
@@ -54,9 +57,13 @@ async def interactive_mode(
     Launch the interactive mode CLI with slash-menu autocompletion.
     """
 
-    # Register commands
-    register_all_commands()
-    cmd_names = list(InteractiveCommandRegistry.get_all_commands().keys())
+    # Register unified commands
+    register_unified_commands()
+    
+    # Get command names for completion
+    # TODO: Get from unified registry instead
+    from mcp_cli.commands.registry import registry
+    cmd_names = registry.get_command_names(include_aliases=True)
 
     # Intro panel
     print(
@@ -73,13 +80,11 @@ async def interactive_mode(
         )
     )
 
-    # Initial help listing
-    help_cmd = InteractiveCommandRegistry.get_command("help")
-    if help_cmd:
-        await help_cmd.execute([], tool_manager, server_names=server_names)
+    # Initial help listing - use unified command
+    await InteractiveCommandAdapter.handle_command("help")
 
     # Create a PromptSession with our completer
-    session = PromptSession(
+    session: PromptSession = PromptSession(
         completer=SlashCompleter(cmd_names),
         complete_while_typing=True,
     )
@@ -104,8 +109,8 @@ async def interactive_mode(
 
             # If line was just '/', show help
             if cmd_line == "":
-                if help_cmd:
-                    await help_cmd.execute([], tool_manager, server_names=server_names)
+                # Use unified help command
+                await InteractiveCommandAdapter.handle_command("help")
                 continue
 
             # Parse
@@ -117,17 +122,18 @@ async def interactive_mode(
             cmd_name = parts[0].lower()
             args = parts[1:]
 
-            # Lookup and execute
-            cmd = InteractiveCommandRegistry.get_command(cmd_name)
-            if cmd:
-                result = await cmd.execute(
-                    args, tool_manager, server_names=server_names, **kwargs
-                )
-                if result is True:
-                    return True
-            else:
-                print(f"[red]Unknown command: {cmd_name}[/red]")
-                print("[dim]Type 'help' to see available commands.[/dim]")
+            # Use unified command system
+            try:
+                # Reconstruct the command line for the adapter
+                full_cmd = " ".join([cmd_name] + args)
+                handled = await InteractiveCommandAdapter.handle_command(full_cmd)
+                
+                if not handled:
+                    print(f"[red]Unknown command: {cmd_name}[/red]")
+                    print("[dim]Type 'help' to see available commands.[/dim]")
+            except KeyboardInterrupt:
+                # Exit requested
+                return True
 
         except KeyboardInterrupt:
             print("\n[yellow]Interrupted. Type 'exit' to quit.[/yellow]")
@@ -138,4 +144,6 @@ async def interactive_mode(
             logger.exception("Error in interactive mode")
             print(f"[red]Error: {e}[/red]")
 
-    return True
+    # This line is unreachable but needed for type checker
+    # The while True loop above handles all exits
+    # return True

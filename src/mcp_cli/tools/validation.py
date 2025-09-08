@@ -6,7 +6,7 @@ SIMPLIFIED: Focus on auto-fixing rather than strict validation.
 
 import json
 import logging
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, cast
 
 logger = logging.getLogger(__name__)
 
@@ -24,10 +24,7 @@ class ToolSchemaValidator:
             Tuple of (is_valid, error_message)
         """
         try:
-            # Basic structure check
-            if not isinstance(tool_def, dict):
-                return False, "Tool definition must be a dictionary"
-
+            # Basic structure check - tool_def is already typed as Dict
             if "function" not in tool_def:
                 return False, "Tool definition missing 'function' property"
 
@@ -121,12 +118,13 @@ class ToolSchemaValidator:
         Returns:
             Fixed parameters schema
         """
-        if not isinstance(parameters, dict):
-            return parameters
+        # parameters is already typed as Dict, no need to check
+        # if not isinstance(parameters, dict):
+        #     return parameters
 
         fixed = json.loads(json.dumps(parameters))  # Deep copy
         ToolSchemaValidator._fix_array_schemas_recursive(fixed)
-        return fixed
+        return cast(Dict[str, Any], fixed)
 
     @staticmethod
     def _fix_array_schemas_recursive(obj: Any) -> None:
@@ -161,8 +159,9 @@ class ToolSchemaValidator:
         Returns:
             Fixed tool definition
         """
-        if not isinstance(tool_def, dict):
-            return tool_def
+        # tool_def is already typed as Dict, no need to check
+        # if not isinstance(tool_def, dict):
+        #     return tool_def
 
         fixed = json.loads(json.dumps(tool_def))  # Deep copy
 
@@ -213,7 +212,7 @@ class ToolSchemaValidator:
                         f"Removed unsupported parameter properties {param_removed}"
                     )
 
-        return fixed
+        return cast(Dict[str, Any], fixed)
 
     @staticmethod
     def validate_and_fix_tool(

@@ -20,7 +20,15 @@ def run_blocking(coro: Awaitable[T]) -> T:
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:  # totally sync context
-        return asyncio.run(coro)
+        # asyncio.run expects a coroutine, not just any awaitable
+        if asyncio.iscoroutine(coro):
+            return asyncio.run(coro)  # type: ignore[arg-type]
+        else:
+            # If it's not a coroutine, wrap it
+            async def _wrapper() -> T:
+                return await coro
+
+            return asyncio.run(_wrapper())
 
     if loop.is_running():
         raise RuntimeError(

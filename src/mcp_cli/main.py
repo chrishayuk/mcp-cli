@@ -8,7 +8,7 @@ import atexit
 import gc
 import signal
 import sys
-from typing import Optional
+from typing import Optional, List
 
 import typer
 
@@ -18,6 +18,10 @@ from mcp_cli.logging_config import (
     get_logger,
     setup_silent_mcp_environment,
 )
+# Use unified command system
+from mcp_cli.commands import register_all_commands as register_unified_commands
+
+# Keep old registry for now for backward compatibility with direct CLI commands
 from mcp_cli.cli.commands import register_all_commands
 from mcp_cli.cli.registry import CommandRegistry
 from mcp_cli.run_command import run_command_sync
@@ -355,8 +359,12 @@ def _interactive_command(
 # Direct command registration with proper command structure
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Register all commands in the registry first (in case some work)
-logger.debug("Registering commands from registry")
+# Register unified commands
+logger.debug("Registering unified commands")
+register_unified_commands()
+
+# Also register old commands for backward compatibility with direct CLI usage
+logger.debug("Registering CLI commands from registry")
 register_all_commands()
 
 # Try registry-based registration first for core commands
@@ -437,7 +445,7 @@ def provider_command(
     _setup_command_logging(quiet, verbose, log_level, theme)
 
     # Build arguments list for the provider action
-    args = []
+    args: List[str] = []
 
     # Handle different command patterns
     if subcommand is None:

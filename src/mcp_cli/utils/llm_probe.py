@@ -135,7 +135,7 @@ class LLMProbe:
         """
         try:
             # Validate provider exists in configuration
-            self.model_manager.get_provider_config(provider)  # ← CHANGED
+            self.model_manager.get_provider_info(provider)  # ← CHANGED
             model = self.model_manager.get_default_model(provider)  # ← CHANGED
             return await self.test_provider_model(provider, model, test_message)
         except ValueError as e:

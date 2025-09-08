@@ -42,7 +42,8 @@ class ToolInfo:
         """Get list of required parameter names."""
         if not self.parameters:
             return []
-        return self.parameters.get("required", [])
+        required = self.parameters.get("required", [])
+        return required if isinstance(required, list) else []
 
     def to_openai_format(self) -> Dict[str, Any]:
         """Convert to OpenAI function calling format."""

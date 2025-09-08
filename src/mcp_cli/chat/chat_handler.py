@@ -5,7 +5,6 @@ Clean chat handler that uses ModelManager and ChatContext with streaming support
 
 from __future__ import annotations
 
-import asyncio
 import gc
 import logging
 from typing import Optional
@@ -87,12 +86,13 @@ async def handle_chat_mode(
             await app_context.initialize()
 
         # Welcome banner
-        if not logger.debug:
+        # Clear screen unless in debug mode
+        if logger.level > logging.DEBUG:
             clear_screen()
 
         # NEW: Use the new banner function
         # Get tool count safely
-        tool_count = 0
+        tool_count: int | str = 0
         if tool_manager:
             try:
                 # Try to get tool count - ToolManager might have different ways to access this
@@ -311,9 +311,7 @@ async def _safe_cleanup(ui: ChatUIManager) -> None:
             ui.stop_tool_calls()
 
         # Standard cleanup
-        cleanup_result = ui.cleanup()
-        if asyncio.iscoroutine(cleanup_result):
-            await cleanup_result
+        ui.cleanup()
     except Exception as exc:
         logger.warning(f"Cleanup failed: {exc}")
         output.warning(f"Cleanup failed: {exc}")

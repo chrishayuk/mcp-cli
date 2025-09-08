@@ -141,25 +141,11 @@ def get_command_completions(partial_text: str) -> List[str]:
 
 def _import_submodules():
     """Import all submodules to allow them to register their commands."""
-    # Get the path of this package
-    package_path = Path(__file__).parent
-
-    # Find all modules in this package
-    for _, module_name, is_pkg in pkgutil.iter_modules([str(package_path)]):
-        if not module_name.startswith("_"):  # Skip private modules
-            try:
-                importlib.import_module(f"{__package__}.{module_name}")
-            except ImportError as e:
-                # Log but don't crash
-                print(f"Warning: Could not import command module {module_name}: {e}")
+    # DISABLED: All commands have been migrated to the unified system
+    # This function is kept for backward compatibility only
+    pass
 
 
-# Auto-import all command modules
-_import_submodules()
-
-# Explicit imports for critical modules to ensure they're loaded even if auto-discovery fails
-try:
-    from . import provider  # noqa: F401
-    from . import model  # noqa: F401
-except ImportError as e:
-    print(f"Warning: Failed to import critical command module: {e}")
+# Note: All command implementations have been migrated to the unified system
+# This module is kept for backward compatibility only
+# Actual commands are in mcp_cli.commands.impl.*

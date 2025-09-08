@@ -51,7 +51,7 @@ class SystemPromptGenerator:
         tools_json_schema = json.dumps(tools, indent=2)
 
         # perform replacements
-        prompt = self.template.replace(
+        prompt: str = self.template.replace(
             "{{ TOOL DEFINITIONS IN JSON SCHEMA }}", tools_json_schema
         )
         prompt = prompt.replace("{{ FORMATTING INSTRUCTIONS }}", "")
