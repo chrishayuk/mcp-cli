@@ -30,8 +30,9 @@ logging.basicConfig(
 def restore_terminal():
     """Restore terminal settings and clean up asyncio resources with special
     attention to subprocess transports."""
-    # Restore the terminal settings to normal.
-    os.system("stty sane")
+    # Use chuk_term's terminal restoration
+    from chuk_term.ui import restore_terminal as chuk_restore_terminal
+    chuk_restore_terminal()
 
     # First, try to explicitly clean up subprocess transports
     try:

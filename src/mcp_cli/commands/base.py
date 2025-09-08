@@ -190,6 +190,17 @@ class CommandGroup(UnifiedCommand):
             )
         
         if subcommand not in self.subcommands:
+            # Special case: if this is a model/provider command and subcommand is not recognized,
+            # treat it as a model/provider name and redirect to 'set'
+            if self.name in ['model', 'models'] and 'set' in self.subcommands:
+                # /model gpt-4 -> /model set gpt-4
+                kwargs['model_name'] = subcommand
+                return await self.subcommands['set'].execute(**kwargs)
+            elif self.name in ['provider', 'providers'] and 'set' in self.subcommands:
+                # /provider ollama -> /provider set ollama
+                kwargs['provider_name'] = subcommand
+                return await self.subcommands['set'].execute(**kwargs)
+            
             return CommandResult(
                 success=False,
                 error=f"Unknown {self.name} subcommand: {subcommand}"

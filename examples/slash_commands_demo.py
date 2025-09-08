@@ -39,19 +39,19 @@ from mcp_cli.commands.base import CommandMode, UnifiedCommand
 from mcp_cli.commands.registry import registry
 
 # Import and register all commands
-from mcp_cli.commands.impl.help import HelpCommand
-from mcp_cli.commands.impl.clear import ClearCommand
-from mcp_cli.commands.impl.theme import ThemeCommand
-from mcp_cli.commands.impl.tools import ToolsCommand
-from mcp_cli.commands.impl.servers import ServersCommand
-from mcp_cli.commands.impl.resources import ResourcesCommand
-from mcp_cli.commands.impl.provider import ProviderCommand
-from mcp_cli.commands.impl.model import ModelCommand
-from mcp_cli.commands.impl.conversation import ConversationCommand
-from mcp_cli.commands.impl.exit import ExitCommand
-from mcp_cli.commands.impl.verbose import VerboseCommand
-from mcp_cli.commands.impl.ping import PingCommand
-from mcp_cli.commands.impl.prompts import PromptsCommand
+from mcp_cli.commands.definitions.help import HelpCommand
+from mcp_cli.commands.definitions.clear import ClearCommand
+from mcp_cli.commands.definitions.theme import ThemeCommand
+from mcp_cli.commands.definitions.tools import ToolsCommand
+from mcp_cli.commands.definitions.servers import ServersCommand
+from mcp_cli.commands.definitions.resources import ResourcesCommand
+from mcp_cli.commands.definitions.providers import ProviderCommand
+from mcp_cli.commands.definitions.models import ModelCommand
+from mcp_cli.commands.definitions.conversation import ConversationCommand
+from mcp_cli.commands.definitions.exit import ExitCommand
+from mcp_cli.commands.definitions.verbose import VerboseCommand
+from mcp_cli.commands.definitions.ping import PingCommand
+from mcp_cli.commands.definitions.prompts import PromptsCommand
 
 # ============================================================================
 # Initialize Commands

@@ -25,38 +25,57 @@ def register_all_commands() -> None:
     This should be called once during application startup.
     """
     # Import all command implementations
-    from mcp_cli.commands.impl.servers import ServersCommand
-    from mcp_cli.commands.impl.help import HelpCommand
-    from mcp_cli.commands.impl.exit import ExitCommand
-    from mcp_cli.commands.impl.clear import ClearCommand
-    from mcp_cli.commands.impl.tools import ToolsCommand
-    from mcp_cli.commands.impl.provider import ProviderCommand
-    from mcp_cli.commands.impl.model import ModelCommand
-    from mcp_cli.commands.impl.ping import PingCommand
-    from mcp_cli.commands.impl.theme import ThemeCommand
-    from mcp_cli.commands.impl.resources import ResourcesCommand
-    from mcp_cli.commands.impl.prompts import PromptsCommand
-    from mcp_cli.commands.impl.conversation import ConversationCommand
-    from mcp_cli.commands.impl.verbose import VerboseCommand
+    from mcp_cli.commands.definitions.servers import ServersCommand
+    from mcp_cli.commands.definitions.server_singular import ServerSingularCommand
+    from mcp_cli.commands.definitions.help import HelpCommand
+    from mcp_cli.commands.definitions.exit import ExitCommand
+    from mcp_cli.commands.definitions.clear import ClearCommand
+    from mcp_cli.commands.definitions.tools import ToolsCommand
+    from mcp_cli.commands.definitions.providers import ProviderCommand
+    from mcp_cli.commands.definitions.provider_singular import ProviderSingularCommand
+    from mcp_cli.commands.definitions.models import ModelCommand
+    from mcp_cli.commands.definitions.ping import PingCommand
+    from mcp_cli.commands.definitions.theme import ThemeCommand
+    from mcp_cli.commands.definitions.theme_singular import ThemeSingularCommand
+    from mcp_cli.commands.definitions.themes_plural import ThemesPluralCommand
+    from mcp_cli.commands.definitions.resources import ResourcesCommand
+    from mcp_cli.commands.definitions.prompts import PromptsCommand
+    from mcp_cli.commands.definitions.conversation import ConversationCommand
+    from mcp_cli.commands.definitions.verbose import VerboseCommand
+    from mcp_cli.commands.definitions.interrupt import InterruptCommand
+    from mcp_cli.commands.definitions.tool_history import ToolHistoryCommand
     
     # Register basic commands
     registry.register(HelpCommand())
     registry.register(ExitCommand())
     registry.register(ClearCommand())
-    registry.register(ServersCommand())
+    
+    # Register server commands (singular and plural)
+    registry.register(ServerSingularCommand())  # /server <name> - show details
+    registry.register(ServersCommand())         # /servers - list all
+    
     registry.register(PingCommand())
-    registry.register(ThemeCommand())
     registry.register(ResourcesCommand())
     registry.register(PromptsCommand())
     
+    # Register theme commands (singular and plural)
+    registry.register(ThemeSingularCommand())  # /theme - show current
+    registry.register(ThemesPluralCommand())   # /themes - list all
+    # Note: Keep old ThemeCommand for backward compatibility if needed
+    
+    # Register provider commands (singular and plural)
+    registry.register(ProviderSingularCommand())  # /provider - show current
+    registry.register(ProviderCommand())          # /providers - list all
+    
     # Register command groups
     registry.register(ToolsCommand())
-    registry.register(ProviderCommand())
     registry.register(ModelCommand())
     
     # Register chat-specific commands
     registry.register(ConversationCommand())
     registry.register(VerboseCommand())
+    registry.register(InterruptCommand())
+    registry.register(ToolHistoryCommand())
     
     # All commands have been migrated!
     # - tools (with subcommands: list, call, confirm)

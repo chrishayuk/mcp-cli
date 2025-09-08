@@ -150,8 +150,13 @@ class ChatCommandAdapter:
                     # Signal chat mode to exit
                     if context and "chat_handler" in context:
                         handler = context["chat_handler"]
-                        if handler:
-                            await handler.cleanup()
+                        if handler and hasattr(handler, "cleanup"):
+                            # Check if cleanup is async
+                            import inspect
+                            if inspect.iscoroutinefunction(handler.cleanup):
+                                await handler.cleanup()
+                            else:
+                                handler.cleanup()
                     return True
                 
                 if result.should_clear:
