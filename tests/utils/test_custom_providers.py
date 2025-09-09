@@ -5,12 +5,10 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 from mcp_cli.utils.preferences import (
     CustomProvider,
     PreferenceManager,
-    get_preference_manager,
 )
 
 
@@ -25,7 +23,7 @@ class TestCustomProvider:
             models=["model1", "model2"],
             default_model="model1",
         )
-        
+
         assert provider.name == "test-provider"
         assert provider.api_base == "https://api.test.com/v1"
         assert provider.models == ["model1", "model2"]
@@ -41,7 +39,7 @@ class TestCustomProvider:
             default_model="model1",
             env_var_name="CUSTOM_API_KEY",
         )
-        
+
         result = provider.to_dict()
         assert result["name"] == "test-provider"
         assert result["api_base"] == "https://api.test.com/v1"
@@ -60,7 +58,7 @@ class TestCustomProvider:
             "default_model": "model1",
             "env_var_name": "CUSTOM_API_KEY",
         }
-        
+
         provider = CustomProvider.from_dict(data)
         assert provider.name == "test-provider"
         assert provider.api_base == "https://api.test.com/v1"
@@ -74,7 +72,7 @@ class TestCustomProvider:
             name="my-custom-ai",
             api_base="https://api.test.com/v1",
         )
-        
+
         assert provider.get_env_var_name() == "MY_CUSTOM_AI_API_KEY"
 
     def test_custom_provider_env_var_name_custom(self):
@@ -84,7 +82,7 @@ class TestCustomProvider:
             api_base="https://api.test.com/v1",
             env_var_name="CUSTOM_KEY",
         )
-        
+
         assert provider.get_env_var_name() == "CUSTOM_KEY"
 
     def test_custom_provider_env_var_name_with_special_chars(self):
@@ -93,7 +91,7 @@ class TestCustomProvider:
             name="my-special.provider_123",
             api_base="https://api.test.com/v1",
         )
-        
+
         # Should replace - with _ and handle other chars
         assert provider.get_env_var_name() == "MY_SPECIAL.PROVIDER_123_API_KEY"
 
@@ -106,7 +104,7 @@ class TestCustomProviderManagement:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir) / ".mcp-cli"
             manager = PreferenceManager(config_dir=config_dir)
-            
+
             # Add a custom provider
             manager.add_custom_provider(
                 name="localai",
@@ -114,7 +112,7 @@ class TestCustomProviderManagement:
                 models=["gpt-4", "gpt-3.5-turbo"],
                 default_model="gpt-4",
             )
-            
+
             # Check it was added
             providers = manager.get_custom_providers()
             assert "localai" in providers
@@ -127,14 +125,14 @@ class TestCustomProviderManagement:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir) / ".mcp-cli"
             manager = PreferenceManager(config_dir=config_dir)
-            
+
             # Add a custom provider
             manager.add_custom_provider(
                 name="myai",
                 api_base="https://api.myai.com/v1",
                 models=["model1"],
             )
-            
+
             # Create new manager to load from file
             new_manager = PreferenceManager(config_dir=config_dir)
             providers = new_manager.get_custom_providers()
@@ -146,14 +144,14 @@ class TestCustomProviderManagement:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir) / ".mcp-cli"
             manager = PreferenceManager(config_dir=config_dir)
-            
+
             # Add and then remove
             manager.add_custom_provider(
                 name="tempai",
                 api_base="https://api.temp.com/v1",
             )
             assert "tempai" in manager.get_custom_providers()
-            
+
             # Remove it
             result = manager.remove_custom_provider("tempai")
             assert result is True
@@ -164,7 +162,7 @@ class TestCustomProviderManagement:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir) / ".mcp-cli"
             manager = PreferenceManager(config_dir=config_dir)
-            
+
             result = manager.remove_custom_provider("nonexistent")
             assert result is False
 
@@ -173,20 +171,20 @@ class TestCustomProviderManagement:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir) / ".mcp-cli"
             manager = PreferenceManager(config_dir=config_dir)
-            
+
             # Add a provider
             manager.add_custom_provider(
                 name="testai",
                 api_base="https://api.test.com/v1",
                 models=["model1", "model2"],
             )
-            
+
             # Get it
             provider = manager.get_custom_provider("testai")
             assert provider is not None
             assert provider["api_base"] == "https://api.test.com/v1"
             assert provider["models"] == ["model1", "model2"]
-            
+
             # Try to get nonexistent
             provider = manager.get_custom_provider("nonexistent")
             assert provider is None
@@ -196,13 +194,13 @@ class TestCustomProviderManagement:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir) / ".mcp-cli"
             manager = PreferenceManager(config_dir=config_dir)
-            
+
             # Add a provider
             manager.add_custom_provider(
                 name="customai",
                 api_base="https://api.custom.com/v1",
             )
-            
+
             assert manager.is_custom_provider("customai") is True
             assert manager.is_custom_provider("openai") is False
             assert manager.is_custom_provider("nonexistent") is False
@@ -212,7 +210,7 @@ class TestCustomProviderManagement:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir) / ".mcp-cli"
             manager = PreferenceManager(config_dir=config_dir)
-            
+
             # Add a provider
             manager.add_custom_provider(
                 name="updateai",
@@ -220,7 +218,7 @@ class TestCustomProviderManagement:
                 models=["model1"],
                 default_model="model1",
             )
-            
+
             # Update it
             result = manager.update_custom_provider(
                 name="updateai",
@@ -229,7 +227,7 @@ class TestCustomProviderManagement:
                 default_model="model2",
             )
             assert result is True
-            
+
             # Check updates
             provider = manager.get_custom_provider("updateai")
             assert provider["api_base"] == "https://api.new.com/v1"
@@ -241,7 +239,7 @@ class TestCustomProviderManagement:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir) / ".mcp-cli"
             manager = PreferenceManager(config_dir=config_dir)
-            
+
             # Add a provider
             manager.add_custom_provider(
                 name="partialai",
@@ -249,13 +247,13 @@ class TestCustomProviderManagement:
                 models=["model1"],
                 default_model="model1",
             )
-            
+
             # Update only api_base
             manager.update_custom_provider(
                 name="partialai",
                 api_base="https://api.new.com/v1",
             )
-            
+
             provider = manager.get_custom_provider("partialai")
             assert provider["api_base"] == "https://api.new.com/v1"
             assert provider["models"] == ["model1"]  # Unchanged
@@ -266,7 +264,7 @@ class TestCustomProviderManagement:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir) / ".mcp-cli"
             manager = PreferenceManager(config_dir=config_dir)
-            
+
             result = manager.update_custom_provider(
                 name="nonexistent",
                 api_base="https://api.new.com/v1",
@@ -278,22 +276,22 @@ class TestCustomProviderManagement:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir) / ".mcp-cli"
             manager = PreferenceManager(config_dir=config_dir)
-            
+
             # Add a provider
             manager.add_custom_provider(
                 name="envtest",
                 api_base="https://api.test.com/v1",
             )
-            
+
             # Set environment variable
             with patch.dict(os.environ, {"ENVTEST_API_KEY": "test-key-123"}):
                 api_key = manager.get_custom_provider_api_key("envtest")
                 assert api_key == "test-key-123"
-            
+
             # Without environment variable
             api_key = manager.get_custom_provider_api_key("envtest")
             assert api_key is None
-            
+
             # Nonexistent provider
             api_key = manager.get_custom_provider_api_key("nonexistent")
             assert api_key is None
@@ -303,14 +301,14 @@ class TestCustomProviderManagement:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir) / ".mcp-cli"
             manager = PreferenceManager(config_dir=config_dir)
-            
+
             # Add a provider with custom env var
             manager.add_custom_provider(
                 name="customenv",
                 api_base="https://api.test.com/v1",
                 env_var_name="MY_CUSTOM_KEY",
             )
-            
+
             # Set the custom environment variable
             with patch.dict(os.environ, {"MY_CUSTOM_KEY": "custom-key-456"}):
                 api_key = manager.get_custom_provider_api_key("customenv")
@@ -321,7 +319,7 @@ class TestCustomProviderManagement:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir) / ".mcp-cli"
             manager = PreferenceManager(config_dir=config_dir)
-            
+
             # Add multiple providers
             manager.add_custom_provider(
                 name="provider1",
@@ -338,20 +336,20 @@ class TestCustomProviderManagement:
                 api_base="https://api3.com/v1",
                 models=["model3"],
             )
-            
+
             # Check all exist
             providers = manager.get_custom_providers()
             assert len(providers) == 3
             assert "provider1" in providers
             assert "provider2" in providers
             assert "provider3" in providers
-            
+
             # Remove one
             manager.remove_custom_provider("provider2")
             providers = manager.get_custom_providers()
             assert len(providers) == 2
             assert "provider2" not in providers
-            
+
             # Update one
             manager.update_custom_provider(
                 name="provider1",
@@ -365,13 +363,13 @@ class TestCustomProviderManagement:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir) / ".mcp-cli"
             manager = PreferenceManager(config_dir=config_dir)
-            
+
             # Add without models
             manager.add_custom_provider(
                 name="defaultmodels",
                 api_base="https://api.test.com/v1",
             )
-            
+
             provider = manager.get_custom_provider("defaultmodels")
             assert provider["models"] == ["gpt-4", "gpt-3.5-turbo"]
             assert provider["default_model"] == "gpt-4"

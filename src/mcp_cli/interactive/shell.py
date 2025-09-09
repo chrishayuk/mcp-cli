@@ -18,7 +18,10 @@ from prompt_toolkit.completion import Completer, Completion
 from mcp_cli.tools.manager import ToolManager
 
 # Use unified command system
-from mcp_cli.adapters.interactive import InteractiveCommandAdapter
+from mcp_cli.adapters.interactive import (
+    InteractiveCommandAdapter,
+    InteractiveExitException,
+)
 from mcp_cli.commands import register_all_commands as register_unified_commands
 
 # Keep old registry for now just for command name completion
@@ -123,7 +126,7 @@ async def interactive_mode(
                     cmd_name = cmd_parts[0] if cmd_parts else cmd_line
                     print(f"[red]Unknown command: {cmd_name}[/red]")
                     print("[dim]Type 'help' to see available commands.[/dim]")
-            except KeyboardInterrupt:
+            except (KeyboardInterrupt, InteractiveExitException):
                 # Exit requested
                 return True
 

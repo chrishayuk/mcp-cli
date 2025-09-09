@@ -209,11 +209,13 @@ class TestInteractiveAdapter:
     @pytest.mark.asyncio
     async def test_command_with_exit_action(self):
         """Test command that requests exit."""
+        from mcp_cli.adapters.interactive import InteractiveExitException
+
         cmd = MockCommand("exit")
         cmd.execute_mock.return_value = CommandResult(success=True, should_exit=True)
         registry.register(cmd)
 
-        with pytest.raises(KeyboardInterrupt):
+        with pytest.raises(InteractiveExitException):
             await self.adapter.handle_command("exit")
 
     @pytest.mark.asyncio

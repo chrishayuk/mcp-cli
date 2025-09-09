@@ -1,6 +1,5 @@
 """Extended coverage tests for conversation command."""
 
-import json
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -24,13 +23,8 @@ def mock_chat_context():
             "role": "assistant",
             "content": None,
             "tool_calls": [
-                {
-                    "function": {
-                        "name": "test_tool",
-                        "arguments": '{"param": "value"}'
-                    }
-                }
-            ]
+                {"function": {"name": "test_tool", "arguments": '{"param": "value"}'}}
+            ],
         },
         {"role": "tool", "content": "Tool result"},
         {"role": "system", "content": "System message"},
@@ -40,26 +34,29 @@ def mock_chat_context():
 
 
 @pytest.mark.asyncio
-async def test_conversation_detail_view_with_tool_calls(conversation_command, mock_chat_context):
+async def test_conversation_detail_view_with_tool_calls(
+    conversation_command, mock_chat_context
+):
     """Test detailed view of a message with tool calls."""
     # View the tool call message (row 3)
     result = await conversation_command.execute(
-        chat_context=mock_chat_context,
-        args=["3"]
+        chat_context=mock_chat_context, args=["3"]
     )
-    
+
     assert result.success is True
     # The panel should be displayed with tool call information
 
 
 @pytest.mark.asyncio
-async def test_conversation_detail_view_invalid_row(conversation_command, mock_chat_context):
+async def test_conversation_detail_view_invalid_row(
+    conversation_command, mock_chat_context
+):
     """Test detailed view with invalid row number."""
     result = await conversation_command.execute(
         chat_context=mock_chat_context,
-        args=["10"]  # Out of range
+        args=["10"],  # Out of range
     )
-    
+
     assert result.success is False
     assert "Invalid row number" in result.error
     assert "Valid range: 1-5" in result.error
@@ -72,12 +69,9 @@ async def test_conversation_detail_view_with_no_content(conversation_command):
     context.conversation_history = [
         {"role": "assistant", "content": None}  # No content, no tool_calls
     ]
-    
-    result = await conversation_command.execute(
-        chat_context=context,
-        args=["1"]
-    )
-    
+
+    result = await conversation_command.execute(chat_context=context, args=["1"])
+
     assert result.success is True
     # Should display "[No content]"
 
@@ -93,13 +87,13 @@ async def test_conversation_table_with_all_role_types(conversation_command):
         {"role": "tool", "content": "Tool result"},
         {"role": "unknown", "content": "Unknown role"},
     ]
-    
+
     result = await conversation_command.execute(chat_context=context)
-    
+
     assert result.success is True
     assert result.data is not None
     assert len(result.data) == 5
-    
+
     # Check role displays
     roles = [item["Role"] for item in result.data]
     assert "🔧 System" in roles
@@ -110,18 +104,20 @@ async def test_conversation_table_with_all_role_types(conversation_command):
 
 
 @pytest.mark.asyncio
-async def test_conversation_save_with_args_filename(conversation_command, mock_chat_context):
+async def test_conversation_save_with_args_filename(
+    conversation_command, mock_chat_context
+):
     """Test save with filename from args."""
     with patch("builtins.open", create=True) as mock_open:
         mock_file = MagicMock()
         mock_open.return_value.__enter__.return_value = mock_file
-        
+
         result = await conversation_command.execute(
             chat_context=mock_chat_context,
             action="save",
-            args=["save", "test_file.json"]
+            args=["save", "test_file.json"],
         )
-        
+
         assert result.success is True
         assert "saved to test_file.json" in result.output.lower()
         mock_open.assert_called_once_with("test_file.json", "w")
@@ -131,10 +127,9 @@ async def test_conversation_save_with_args_filename(conversation_command, mock_c
 async def test_conversation_save_no_filename(conversation_command, mock_chat_context):
     """Test save without filename."""
     result = await conversation_command.execute(
-        chat_context=mock_chat_context,
-        action="save"
+        chat_context=mock_chat_context, action="save"
     )
-    
+
     assert result.success is False
     assert "Filename required" in result.error
 
@@ -144,12 +139,9 @@ async def test_conversation_clear_no_method(conversation_command):
     """Test clear when context has no clear_conversation method."""
     context = MagicMock(spec=["conversation_history"])
     context.conversation_history = [{"role": "user", "content": "test"}]
-    
-    result = await conversation_command.execute(
-        chat_context=context,
-        action="clear"
-    )
-    
+
+    result = await conversation_command.execute(chat_context=context, action="clear")
+
     assert result.success is False
     assert "Cannot clear conversation" in result.error
 
@@ -158,13 +150,11 @@ async def test_conversation_clear_no_method(conversation_command):
 async def test_conversation_save_no_history_attribute(conversation_command):
     """Test save when context has no conversation_history."""
     context = MagicMock(spec=[])
-    
+
     result = await conversation_command.execute(
-        chat_context=context,
-        action="save",
-        filename="test.json"
+        chat_context=context, action="save", filename="test.json"
     )
-    
+
     assert result.success is False
     assert "Conversation history not available" in result.error
 
@@ -177,40 +167,46 @@ async def test_conversation_with_tool_calls_in_table(conversation_command):
         {
             "role": "assistant",
             "content": None,
-            "tool_calls": [{"function": {"name": "tool1"}}]
+            "tool_calls": [{"function": {"name": "tool1"}}],
         }
     ]
-    
+
     result = await conversation_command.execute(chat_context=context)
-    
+
     assert result.success is True
     assert result.data is not None
     # In test mode, should see tool call placeholder
-    assert "[Tool call - see /toolhistory]" in result.output or "Tool call" in str(result.data)
+    assert "[Tool call - see /toolhistory]" in result.output or "Tool call" in str(
+        result.data
+    )
 
 
 @pytest.mark.asyncio
-async def test_conversation_row_parsing_from_string_arg(conversation_command, mock_chat_context):
+async def test_conversation_row_parsing_from_string_arg(
+    conversation_command, mock_chat_context
+):
     """Test parsing row number from string argument."""
     result = await conversation_command.execute(
         chat_context=mock_chat_context,
-        args="2"  # String instead of list
+        args="2",  # String instead of list
     )
-    
+
     assert result.success is True
     # Should show detail view for row 2
 
 
-@pytest.mark.asyncio 
-async def test_conversation_action_from_string_arg(conversation_command, mock_chat_context):
+@pytest.mark.asyncio
+async def test_conversation_action_from_string_arg(
+    conversation_command, mock_chat_context
+):
     """Test parsing action from string argument."""
     mock_chat_context.clear_conversation = MagicMock()
-    
+
     result = await conversation_command.execute(
         chat_context=mock_chat_context,
-        args="clear"  # String action
+        args="clear",  # String action
     )
-    
+
     assert result.success is True
     assert result.output == "Conversation history cleared."
     mock_chat_context.clear_conversation.assert_called_once()
@@ -220,10 +216,9 @@ async def test_conversation_action_from_string_arg(conversation_command, mock_ch
 async def test_conversation_unknown_action(conversation_command, mock_chat_context):
     """Test with completely unknown action."""
     result = await conversation_command.execute(
-        chat_context=mock_chat_context,
-        action="unknown_action"
+        chat_context=mock_chat_context, action="unknown_action"
     )
-    
+
     assert result.success is False
     assert "Unknown action: unknown_action" in result.error
 
@@ -232,9 +227,8 @@ async def test_conversation_unknown_action(conversation_command, mock_chat_conte
 async def test_conversation_export_as_action(conversation_command, mock_chat_context):
     """Test export action (should be unknown)."""
     result = await conversation_command.execute(
-        chat_context=mock_chat_context,
-        action="export"
+        chat_context=mock_chat_context, action="export"
     )
-    
+
     assert result.success is False
     assert "Unknown action: export" in result.error

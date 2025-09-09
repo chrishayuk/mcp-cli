@@ -151,25 +151,25 @@ def main_callback(
     from mcp_cli.model_manager import ModelManager
 
     model_manager = ModelManager()
-    
+
     # Handle runtime custom provider if api_base is specified
     if api_base and provider:
         # Add as runtime provider (not persisted)
         logger.debug(f"Adding runtime provider: {provider} with base {api_base}")
-        
+
         # Parse models if provided in model string (comma-separated)
         models = None
         if model and "," in model:
             models = [m.strip() for m in model.split(",")]
             model = models[0]  # Use first as default
-        
+
         model_manager.add_runtime_provider(
             name=provider,
             api_base=api_base,
             api_key=api_key,  # Will be kept in memory only
-            models=models
+            models=models,
         )
-        
+
         output.info(f"Using runtime provider: {provider}")
         if api_key:
             output.success("API key provided (kept in memory only)")
@@ -187,7 +187,9 @@ def main_callback(
             output.error(f"Unknown provider: {provider}")
             output.info(f"Available providers: {available}")
             output.tip(f"Did you mean to run: mcp-cli provider {provider}")
-            output.tip(f"Or add a custom provider with: --provider <name> --api-base <url>")
+            output.tip(
+                "Or add a custom provider with: --provider <name> --api-base <url>"
+            )
             raise typer.Exit(1)
 
     # Smart provider/model resolution:
@@ -484,7 +486,9 @@ def provider_command(
     elif subcommand == "add":
         # add command: add <name> <api_base> [models...]
         if not provider_name or not key:
-            output.error("add command requires: provider add <name> <api_base> [model1 model2 ...]")
+            output.error(
+                "add command requires: provider add <name> <api_base> [model1 model2 ...]"
+            )
             raise typer.Exit(1)
         args = [subcommand, provider_name, key]  # key is used as api_base
         if value:

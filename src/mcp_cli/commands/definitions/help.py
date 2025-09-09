@@ -89,7 +89,9 @@ Examples:
                     )
 
                 # Display command help directly
-                help_content = f"## {command.name}\n\n{command.help_text or command.description}"
+                help_content = (
+                    f"## {command.name}\n\n{command.help_text or command.description}"
+                )
                 output.panel(
                     help_content,
                     title="Command Help",

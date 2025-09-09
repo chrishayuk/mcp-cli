@@ -19,6 +19,12 @@ from chuk_term.ui import output
 logger = logging.getLogger(__name__)
 
 
+class InteractiveExitException(Exception):
+    """Custom exception for exiting interactive mode without interfering with pytest."""
+
+    pass
+
+
 class InteractiveCommandAdapter:
     """
     Adapts unified commands for use in interactive shell mode.
@@ -101,7 +107,7 @@ class InteractiveCommandAdapter:
                 # Handle special actions
                 if result.should_exit:
                     # Signal interactive mode to exit
-                    raise KeyboardInterrupt()
+                    raise InteractiveExitException()
 
                 if result.should_clear:
                     # Clear the screen
@@ -116,6 +122,9 @@ class InteractiveCommandAdapter:
 
             return True
 
+        except InteractiveExitException:
+            # Re-raise exit exception
+            raise
         except Exception as e:
             logger.exception(f"Error executing command: {command_name}")
             output.error(f"Command error: {str(e)}")

@@ -33,7 +33,7 @@ def help_action(command_name: Optional[str] = None, console: Any = None) -> None
 
 def _get_commands() -> Dict[str, object]:
     """Get available commands from the unified registry."""
-    commands = {}
+    commands: Dict[str, object] = {}
     for cmd in registry.list_commands():
         commands[cmd.name] = cmd
     return commands
@@ -95,7 +95,7 @@ def _show_all_commands(commands: Dict[str, object]) -> None:
     output.hint(
         "\nType 'help <command>' for detailed information on a specific command."
     )
-    
+
     # Add provider management tips
     output.print()
     output.tip("💡 Provider Management:")

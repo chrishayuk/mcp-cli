@@ -25,11 +25,11 @@ class ExecuteToolCommand(UnifiedCommand):
     def __init__(self):
         """Initialize the execute tool command."""
         super().__init__()
-        self._name = "execute"
-        self._description = "Execute a tool with parameters"
-        self._modes = CommandMode.INTERACTIVE | CommandMode.CHAT
-        self._aliases = ["exec", "run"]
-        self._parameters = [
+        self._name: str = "execute"
+        self._description: str = "Execute a tool with parameters"
+        self._modes: CommandMode = CommandMode.INTERACTIVE | CommandMode.CHAT
+        self._aliases: List[str] = ["exec", "run"]
+        self._parameters: List[CommandParameter] = [
             CommandParameter(
                 name="tool",
                 type=str,
@@ -49,7 +49,7 @@ class ExecuteToolCommand(UnifiedCommand):
                 required=False,
             ),
         ]
-        self._help_text = """
+        self._help_text: str = """
 Execute a tool with JSON parameters.
 
 Usage:
@@ -75,7 +75,7 @@ Tips:
   • Use '{}' for tools with no required parameters
   • Check parameters first with: execute <tool_name>
 """
-        self._requires_context = True
+        self._requires_context: bool = True
 
     @property
     def name(self) -> str:
@@ -233,6 +233,7 @@ Tips:
 
             # Get required parameters for this tool
             from mcp_cli.tools.models import ToolInfo
+
             if isinstance(tool_info, ToolInfo) and tool_info.parameters:
                 schema = tool_info.parameters
             elif hasattr(tool_info, "parameters") and tool_info.parameters:
@@ -241,7 +242,7 @@ Tips:
                 schema = {}
 
             # Build example
-            example_params = {}
+            example_params: Dict[str, Any] = {}
             if "properties" in schema:
                 for prop_name, prop_info in schema["properties"].items():
                     if prop_name in schema.get("required", []):
@@ -327,7 +328,7 @@ Tips:
                             output.print(f"Error details: {error_msg}")
                     else:
                         output.warning("Tool returned no result")
-                elif isinstance(result, dict):
+                elif isinstance(result, dict):  # type: ignore[unreachable]
                     output.success("✅ Tool executed successfully")
                     output.print(json.dumps(result, indent=2))
                 else:
@@ -352,7 +353,9 @@ Tips:
             else:
                 output.print(f"Error: {error_str}")
 
-            return CommandResult(success=False, error=f"Failed to execute tool: {error_str}")
+            return CommandResult(
+                success=False, error=f"Failed to execute tool: {error_str}"
+            )
 
     async def _list_tools(self, tool_manager: ToolManager) -> CommandResult:
         """List available tools."""
@@ -437,7 +440,7 @@ Tips:
             output.rule("Example Usage")
 
             # Build example params
-            example_params = {}
+            example_params: Dict[str, Any] = {}
             if "properties" in schema:
                 for prop_name, prop_info in schema["properties"].items():
                     if prop_name in schema.get("required", []):
@@ -483,7 +486,7 @@ Tips:
                 # Try to parse value as JSON
                 try:
                     value = json.loads(value)
-                except:
+                except (json.JSONDecodeError, ValueError):
                     # Keep as string
                     pass
 

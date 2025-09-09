@@ -16,7 +16,9 @@ def help_command():
 @pytest.fixture
 def mock_registry():
     """Create a mock registry with various commands."""
-    with patch("mcp_cli.commands.definitions.help.UnifiedCommandRegistry") as MockRegistry:
+    with patch(
+        "mcp_cli.commands.definitions.help.UnifiedCommandRegistry"
+    ) as MockRegistry:
         mock_reg = MagicMock()
         # Create mock commands with different modes
         cmd1 = MagicMock()
@@ -25,21 +27,21 @@ def mock_registry():
         cmd1.aliases = ["t1"]
         cmd1.modes = CommandMode.CHAT
         cmd1.help_text = "Help for test1"
-        
+
         cmd2 = MagicMock()
         cmd2.name = "test2"
         cmd2.description = "Test command 2"
         cmd2.aliases = []
         cmd2.modes = CommandMode.INTERACTIVE
         cmd2.help_text = "Help for test2"
-        
+
         cmd3 = MagicMock()
         cmd3.name = "test3"
         cmd3.description = "Test command 3"
         cmd3.aliases = ["t3", "test_three"]
         cmd3.modes = CommandMode.CHAT | CommandMode.INTERACTIVE
         cmd3.help_text = "Help for test3"
-        
+
         mock_reg.get_all_commands.return_value = [cmd1, cmd2, cmd3]
         mock_reg.get.side_effect = lambda name, mode=None: {
             "test1": cmd1,
@@ -49,22 +51,27 @@ def mock_registry():
             "t3": cmd3,
             "test_three": cmd3,
         }.get(name)
-        
+
         # Setup list_commands to filter by mode
         def list_commands(mode=None):
             all_cmds = [cmd1, cmd2, cmd3]
             if mode:
                 from mcp_cli.commands.base import CommandMode
+
                 if isinstance(mode, str):
-                    mode = CommandMode[mode.upper()] if mode.upper() in CommandMode.__members__ else CommandMode.CHAT
+                    mode = (
+                        CommandMode[mode.upper()]
+                        if mode.upper() in CommandMode.__members__
+                        else CommandMode.CHAT
+                    )
                 return [cmd for cmd in all_cmds if cmd.modes & mode]
             return all_cmds
-        
+
         mock_reg.list_commands.side_effect = list_commands
-        
+
         # Make the MockRegistry return our mock_reg instance
         MockRegistry.return_value = mock_reg
-        
+
         yield mock_reg
 
 
@@ -72,7 +79,7 @@ def mock_registry():
 async def test_help_specific_command(help_command, mock_registry):
     """Test help for a specific command."""
     result = await help_command.execute(command="test1")
-    
+
     assert result.success is True
     assert "test1" in result.output
     assert "Help for test1" in result.output
@@ -82,7 +89,7 @@ async def test_help_specific_command(help_command, mock_registry):
 async def test_help_command_not_found(help_command, mock_registry):
     """Test help for non-existent command."""
     result = await help_command.execute(command="nonexistent")
-    
+
     assert result.success is False
     assert "Unknown command: nonexistent" in result.error
 
@@ -91,7 +98,7 @@ async def test_help_command_not_found(help_command, mock_registry):
 async def test_help_command_from_args(help_command, mock_registry):
     """Test getting command name from args."""
     result = await help_command.execute(args=["test2"])
-    
+
     assert result.success is True
     assert "test2" in result.output
     assert "Help for test2" in result.output
@@ -101,7 +108,7 @@ async def test_help_command_from_args(help_command, mock_registry):
 async def test_help_command_from_args_list(help_command, mock_registry):
     """Test getting command name from args as list."""
     result = await help_command.execute(args=["test3", "extra"])
-    
+
     assert result.success is True
     assert "test3" in result.output
 
@@ -110,7 +117,7 @@ async def test_help_command_from_args_list(help_command, mock_registry):
 async def test_help_interactive_mode(help_command, mock_registry):
     """Test help in interactive mode."""
     result = await help_command.execute(mode=CommandMode.INTERACTIVE)
-    
+
     assert result.success is True
     # Should show commands available in interactive mode
     assert "test2" in result.output  # Interactive only
@@ -121,7 +128,7 @@ async def test_help_interactive_mode(help_command, mock_registry):
 async def test_help_chat_mode(help_command, mock_registry):
     """Test help in chat mode."""
     result = await help_command.execute(mode="chat")
-    
+
     assert result.success is True
     # Should show commands available in chat mode
     assert "test1" in result.output  # Chat only
@@ -132,7 +139,7 @@ async def test_help_chat_mode(help_command, mock_registry):
 async def test_help_all_commands(help_command, mock_registry):
     """Test showing all commands in default (CHAT) mode."""
     result = await help_command.execute()
-    
+
     assert result.success is True
     assert "test1" in result.output  # CHAT mode
     assert "test2" not in result.output  # INTERACTIVE only, shouldn't appear
@@ -143,7 +150,7 @@ async def test_help_all_commands(help_command, mock_registry):
 async def test_help_command_with_aliases(help_command, mock_registry):
     """Test help shows command aliases."""
     result = await help_command.execute(command="test3")
-    
+
     assert result.success is True
     assert "t3" in result.output or "test_three" in result.output
 
@@ -152,7 +159,7 @@ async def test_help_command_with_aliases(help_command, mock_registry):
 async def test_help_alias_lookup(help_command, mock_registry):
     """Test help works with command alias."""
     result = await help_command.execute(command="t1")
-    
+
     assert result.success is True
     assert "test1" in result.output
 
@@ -161,7 +168,7 @@ async def test_help_alias_lookup(help_command, mock_registry):
 async def test_help_format_output(help_command, mock_registry):
     """Test help output formatting."""
     result = await help_command.execute()
-    
+
     assert result.success is True
     # Should return formatted output
     assert result.output is not None
@@ -172,13 +179,15 @@ async def test_help_format_output(help_command, mock_registry):
 @pytest.mark.asyncio
 async def test_help_empty_registry(help_command):
     """Test help with no commands registered."""
-    with patch("mcp_cli.commands.definitions.help.UnifiedCommandRegistry") as MockRegistry:
+    with patch(
+        "mcp_cli.commands.definitions.help.UnifiedCommandRegistry"
+    ) as MockRegistry:
         mock_reg = MagicMock()
         mock_reg.list_commands.return_value = []
         MockRegistry.return_value = mock_reg
-        
+
         result = await help_command.execute()
-        
+
         assert result.success is True
         assert "No commands available" in result.output
 
@@ -188,7 +197,7 @@ async def test_help_command_mode_filtering(help_command, mock_registry):
     """Test that mode filtering works correctly."""
     # Get only interactive commands
     result = await help_command.execute(mode="interactive")
-    
+
     assert result.success is True
     # test1 is chat-only, should not appear
     assert "test1" not in result.output or "Chat" in result.output
@@ -199,8 +208,8 @@ async def test_help_with_context(help_command, mock_registry):
     """Test help command with context parameter."""
     mock_context = MagicMock()
     mock_context.mode = "chat"
-    
+
     result = await help_command.execute(context=mock_context)
-    
+
     assert result.success is True
     # Should use context mode for filtering if provided

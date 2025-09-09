@@ -50,7 +50,7 @@ async def demo_unified_commands():
         try:
             json_obj = json.loads(parts[2])
             output.success(f"  ✅ Valid JSON: {json_obj}")
-        except:
+        except (json.JSONDecodeError, ValueError):
             output.error("  ❌ Invalid JSON")
 
     output.print("")

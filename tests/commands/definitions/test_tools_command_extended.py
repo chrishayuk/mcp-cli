@@ -30,17 +30,17 @@ class TestToolsCommand:
         mock_tool.description = "Test tool description"
         mock_tool.fully_qualified_name = "test_server.test_tool"
         mock_tool.parameters = {}
-        
+
         mock_tm = MagicMock()
         mock_tm.get_unique_tools = AsyncMock(return_value=[mock_tool])
-        
+
         with patch("mcp_cli.commands.definitions.tools.get_context") as mock_get_ctx:
             mock_ctx = MagicMock()
             mock_ctx.tool_manager = mock_tm
             mock_get_ctx.return_value = mock_ctx
-            
+
             result = await command.execute()
-            
+
             assert result.success is True
             mock_tm.get_unique_tools.assert_called_once()
 
@@ -54,24 +54,24 @@ class TestToolsCommand:
         mock_tool1.description = "Tool 1"
         mock_tool1.fully_qualified_name = "server1.tool1"
         mock_tool1.parameters = {}
-        
+
         mock_tool2 = MagicMock()
         mock_tool2.name = "tool2"
         mock_tool2.namespace = "server2"
         mock_tool2.description = "Tool 2"
         mock_tool2.fully_qualified_name = "server2.tool2"
         mock_tool2.parameters = {}
-        
+
         mock_tm = MagicMock()
         mock_tm.get_unique_tools = AsyncMock(return_value=[mock_tool1, mock_tool2])
-        
+
         with patch("mcp_cli.commands.definitions.tools.get_context") as mock_get_ctx:
             mock_ctx = MagicMock()
             mock_ctx.tool_manager = mock_tm
             mock_get_ctx.return_value = mock_ctx
-            
+
             result = await command.execute(args=["server1"])
-            
+
             assert result.success is True
             mock_tm.get_unique_tools.assert_called_once()
 
@@ -91,19 +91,19 @@ class TestToolsCommand:
                     "description": "First parameter",
                 }
             },
-            "required": ["param1"]
+            "required": ["param1"],
         }
-        
+
         mock_tm = MagicMock()
         mock_tm.get_unique_tools = AsyncMock(return_value=[mock_tool])
-        
+
         with patch("mcp_cli.commands.definitions.tools.get_context") as mock_get_ctx:
             mock_ctx = MagicMock()
             mock_ctx.tool_manager = mock_tm
             mock_get_ctx.return_value = mock_ctx
-            
+
             result = await command.execute(args=["test_tool"])
-            
+
             assert result.success is True
             mock_tm.get_unique_tools.assert_called_once()
 
@@ -112,9 +112,9 @@ class TestToolsCommand:
         """Test when no tool manager is available."""
         with patch("mcp_cli.commands.definitions.tools.get_context") as mock_get_ctx:
             mock_get_ctx.return_value = None
-            
+
             result = await command.execute()
-            
+
             assert result.success is False
             assert "No tool manager available" in result.error
 
@@ -127,17 +127,17 @@ class TestToolsCommand:
         mock_tool.description = "Test tool"
         mock_tool.fully_qualified_name = "test_server.test_tool"
         mock_tool.parameters = {}
-        
+
         mock_tm = MagicMock()
         mock_tm.get_unique_tools = AsyncMock(return_value=[mock_tool])
-        
+
         with patch("mcp_cli.commands.definitions.tools.get_context") as mock_get_ctx:
             mock_ctx = MagicMock()
             mock_ctx.tool_manager = mock_tm
             mock_get_ctx.return_value = mock_ctx
-            
+
             result = await command.execute(args=["nonexistent"])
-            
+
             assert result.success is False
             assert "No tool or server found" in result.error
 
@@ -150,17 +150,17 @@ class TestToolsCommand:
         mock_tool.description = "Test tool"
         mock_tool.fully_qualified_name = "test_server.test_tool"
         mock_tool.parameters = {}
-        
+
         mock_tm = MagicMock()
         mock_tm.get_unique_tools = AsyncMock(return_value=[mock_tool])
-        
+
         with patch("mcp_cli.commands.definitions.tools.get_context") as mock_get_ctx:
             mock_ctx = MagicMock()
             mock_ctx.tool_manager = mock_tm
             mock_get_ctx.return_value = mock_ctx
-            
+
             result = await command.execute(raw=True)
-            
+
             assert result.success is True
             assert result.data is not None
 
@@ -174,16 +174,16 @@ class TestToolsCommand:
         mock_tool.description = "A" * 100  # Long description
         mock_tool.fully_qualified_name = "test_server.test_tool"
         mock_tool.parameters = {}
-        
+
         mock_tm = MagicMock()
         mock_tm.get_unique_tools = AsyncMock(return_value=[mock_tool])
-        
+
         with patch("mcp_cli.commands.definitions.tools.get_context") as mock_get_ctx:
             mock_ctx = MagicMock()
             mock_ctx.tool_manager = mock_tm
             mock_get_ctx.return_value = mock_ctx
-            
+
             result = await command.execute(details=True)
-            
+
             assert result.success is True
             mock_tm.get_unique_tools.assert_called_once()

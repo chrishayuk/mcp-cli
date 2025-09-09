@@ -91,19 +91,19 @@ class UIPreferences:
 @dataclass
 class CustomProvider:
     """Custom OpenAI-compatible provider configuration.
-    
+
     API keys are stored in environment variables following the pattern:
     {PROVIDER_NAME_UPPER}_API_KEY
-    
+
     For example, a provider named "myai" would use MYAI_API_KEY
     """
-    
+
     name: str
     api_base: str
     default_model: str = "gpt-4"
     models: List[str] = field(default_factory=lambda: ["gpt-4", "gpt-3.5-turbo"])
     env_var_name: Optional[str] = None  # Optional custom env var name
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary (no API key stored)."""
         return {
@@ -111,9 +111,9 @@ class CustomProvider:
             "api_base": self.api_base,
             "default_model": self.default_model,
             "models": self.models,
-            "env_var_name": self.env_var_name
+            "env_var_name": self.env_var_name,
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "CustomProvider":
         """Create from dictionary."""
@@ -122,9 +122,9 @@ class CustomProvider:
             api_base=data["api_base"],
             default_model=data.get("default_model", "gpt-4"),
             models=data.get("models", ["gpt-4", "gpt-3.5-turbo"]),
-            env_var_name=data.get("env_var_name")
+            env_var_name=data.get("env_var_name"),
         )
-    
+
     def get_env_var_name(self) -> str:
         """Get the environment variable name for this provider's API key."""
         if self.env_var_name:
@@ -140,7 +140,9 @@ class ProviderPreferences:
     active_provider: Optional[str] = None
     active_model: Optional[str] = None
     provider_settings: Dict[str, Any] = field(default_factory=dict)
-    custom_providers: Dict[str, Dict[str, Any]] = field(default_factory=dict)  # Custom OpenAI-compatible providers
+    custom_providers: Dict[str, Dict[str, Any]] = field(
+        default_factory=dict
+    )  # Custom OpenAI-compatible providers
 
 
 @dataclass
@@ -562,20 +564,20 @@ class PreferenceManager:
     def is_runtime_server(self, name: str) -> bool:
         """Check if a server is a runtime server."""
         return name in self.preferences.servers.runtime_servers
-    
+
     def add_custom_provider(
-        self, 
-        name: str, 
-        api_base: str, 
+        self,
+        name: str,
+        api_base: str,
         default_model: str = "gpt-4",
         models: Optional[List[str]] = None,
-        env_var_name: Optional[str] = None
+        env_var_name: Optional[str] = None,
     ) -> None:
         """Add a custom OpenAI-compatible provider.
-        
+
         API keys should be set via environment variables.
         Default env var pattern: {PROVIDER_NAME}_API_KEY
-        
+
         Args:
             name: Provider name (must be unique)
             api_base: API base URL (e.g., https://api.example.com)
@@ -585,24 +587,24 @@ class PreferenceManager:
         """
         if not models:
             models = ["gpt-4", "gpt-3.5-turbo"]
-        
+
         provider = CustomProvider(
             name=name,
             api_base=api_base,
             default_model=default_model,
             models=models,
-            env_var_name=env_var_name
+            env_var_name=env_var_name,
         )
-        
+
         self.preferences.provider.custom_providers[name] = provider.to_dict()
         self.save_preferences()
-    
+
     def remove_custom_provider(self, name: str) -> bool:
         """Remove a custom provider.
-        
+
         Args:
             name: Provider name to remove
-            
+
         Returns:
             True if provider was removed, False if not found
         """
@@ -611,44 +613,44 @@ class PreferenceManager:
             self.save_preferences()
             return True
         return False
-    
+
     def get_custom_providers(self) -> Dict[str, Dict[str, Any]]:
         """Get all custom providers."""
         return self.preferences.provider.custom_providers.copy()
-    
+
     def get_custom_provider(self, name: str) -> Optional[Dict[str, Any]]:
         """Get a specific custom provider configuration."""
         return self.preferences.provider.custom_providers.get(name)
-    
+
     def is_custom_provider(self, name: str) -> bool:
         """Check if a provider is a custom provider."""
         return name in self.preferences.provider.custom_providers
-    
+
     def update_custom_provider(
         self,
         name: str,
         api_base: Optional[str] = None,
         default_model: Optional[str] = None,
         models: Optional[List[str]] = None,
-        env_var_name: Optional[str] = None
+        env_var_name: Optional[str] = None,
     ) -> bool:
         """Update an existing custom provider.
-        
+
         Args:
             name: Provider name to update
             api_base: New API base URL (optional)
             default_model: New default model (optional)
             models: New list of models (optional)
             env_var_name: New environment variable name (optional)
-            
+
         Returns:
             True if provider was updated, False if not found
         """
         if name not in self.preferences.provider.custom_providers:
             return False
-        
+
         provider_data = self.preferences.provider.custom_providers[name]
-        
+
         if api_base is not None:
             provider_data["api_base"] = api_base
         if default_model is not None:
@@ -657,31 +659,31 @@ class PreferenceManager:
             provider_data["models"] = models
         if env_var_name is not None:
             provider_data["env_var_name"] = env_var_name
-        
+
         self.save_preferences()
         return True
-    
+
     def get_custom_provider_api_key(self, name: str) -> Optional[str]:
         """Get the API key for a custom provider from environment variables.
-        
+
         Args:
             name: Provider name
-            
+
         Returns:
             API key from environment variable, or None if not set
         """
         import os
-        
+
         provider_data = self.get_custom_provider(name)
         if not provider_data:
             return None
-        
+
         # Get the environment variable name
         env_var = provider_data.get("env_var_name")
         if not env_var:
             # Use default pattern
             env_var = f"{name.upper().replace('-', '_')}_API_KEY"
-        
+
         return os.environ.get(env_var)
 
 

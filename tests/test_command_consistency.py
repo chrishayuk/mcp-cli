@@ -64,6 +64,7 @@ class TestCommandConsistency:
             result = await ChatCommandAdapter.handle_command(
                 '/execute echo_text \'{"message": "hello world"}\'', context
             )
+            assert result is not None  # Use the result to avoid F841
 
             # Verify shlex.split was called with the command minus the slash
             mock_split.assert_called_once_with(
@@ -80,7 +81,7 @@ class TestCommandConsistency:
         # Initialize the context first
         from mcp_cli.context import initialize_context
 
-        app_context = initialize_context(
+        _ = initialize_context(  # Unused but required for initialization
             tool_manager=mock_tool_manager, provider="openai", model="gpt-4o-mini"
         )
 
@@ -90,7 +91,9 @@ class TestCommandConsistency:
         with patch(
             "mcp_cli.commands.definitions.execute_tool.ExecuteToolCommand.execute"
         ) as mock_exec:
-            mock_exec.return_value = MagicMock(success=True)
+            from mcp_cli.commands.base import CommandResult
+
+            mock_exec.return_value = CommandResult(success=True)
 
             # Interactive adapter should preserve the original command
             result = await InteractiveCommandAdapter.handle_command(command)
@@ -145,6 +148,7 @@ class TestCommandConsistency:
             tool="test_tool",
             params='{"message": "hello world"}',
         )
+        assert result is not None  # Use the result to avoid F841
 
         # Should attempt to execute (will fail on actual execution but that's ok)
         assert mock_tool_manager.get_all_tools.called
@@ -171,7 +175,9 @@ class TestCommandConsistency:
         mock_tool_manager.get_all_tools = AsyncMock(return_value=[mock_tool])
 
         # Test with plain string (common mistake)
-        with patch("chuk_term.ui.output.error") as mock_error:
+        with patch(
+            "mcp_cli.commands.definitions.execute_tool.output.error"
+        ) as mock_error:
             result = await cmd.execute(
                 tool_manager=mock_tool_manager,
                 tool="echo_text",

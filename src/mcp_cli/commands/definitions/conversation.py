@@ -130,7 +130,7 @@ Examples:
                 msg = history[row_num - 1]
                 role = msg.get("role", "unknown")
                 content = msg.get("content", "")
-                
+
                 # Handle None content
                 if content is None:
                     if "tool_calls" in msg:
@@ -173,7 +173,7 @@ Examples:
                 for i, msg in enumerate(history, 1):
                     role = msg.get("role", "unknown")
                     content = msg.get("content", "")
-                    
+
                     # Handle None content (e.g., from tool calls)
                     if content is None:
                         # Check if this is a tool call message
@@ -213,8 +213,9 @@ Examples:
 
                 # Check if we're in a test environment (no interactive display)
                 import sys
-                is_test = 'pytest' in sys.modules
-                
+
+                is_test = "pytest" in sys.modules
+
                 if not is_test:
                     # Display table for interactive use
                     output.rule("[bold]Conversation History[/bold]", style="primary")
@@ -230,14 +231,14 @@ Examples:
                     output.tip(
                         "💡 Use: /conversation <number> to see full message  |  /conversation clear to reset"
                     )
-                    
+
                     # Return success without output to avoid duplication
                     return CommandResult(success=True, data=table_data)
                 else:
                     # For tests, return output for assertions
                     test_lines = ["Conversation History", ""]
                     for i in range(len(history)):
-                        content = history[i].get('content')
+                        content = history[i].get("content")
                         if content is not None:
                             # Apply truncation for test output too
                             if len(content) > 100:
@@ -245,7 +246,9 @@ Examples:
                             test_lines.append("")  # Empty line before each message
                             test_lines.append(content)
                     test_output = "\n".join(test_lines)
-                    return CommandResult(success=True, output=test_output, data=table_data)
+                    return CommandResult(
+                        success=True, output=test_output, data=table_data
+                    )
             else:
                 return CommandResult(
                     success=False,
@@ -337,13 +340,15 @@ Examples:
         else:
             # Check if action looks like it might be a number that failed to parse
             try:
-                int(action)
-                return CommandResult(
-                    success=False,
-                    error=f"Invalid row number: {action}.",
-                )
+                if action is not None:
+                    int(action)
+                    return CommandResult(
+                        success=False,
+                        error=f"Invalid row number: {action}.",
+                    )
             except (ValueError, TypeError):
-                return CommandResult(
-                    success=False,
-                    error=f"Unknown action: {action}. Use a row number, clear, save, or load.",
-                )
+                pass
+            return CommandResult(
+                success=False,
+                error=f"Unknown action: {action}. Use a row number, clear, save, or load.",
+            )

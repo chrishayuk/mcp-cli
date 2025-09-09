@@ -221,8 +221,16 @@ def test_show_all_commands(mock_commands):
         assert table_data[1]["Aliases"] == "tc, test"
 
         mock_output.print_table.assert_called_once_with(mock_table)
-        mock_output.hint.assert_called_once_with(
-            "\nType 'help <command>' for detailed information on a specific command."
+        # Check that hint was called with the expected messages
+        hint_calls = mock_output.hint.call_args_list
+        assert len(hint_calls) == 2
+        assert (
+            hint_calls[0][0][0]
+            == "\nType 'help <command>' for detailed information on a specific command."
+        )
+        assert (
+            hint_calls[1][0][0]
+            == "Custom providers need API keys as environment variables:"
         )
 
 
