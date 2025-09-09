@@ -702,7 +702,7 @@ def servers_command(
         server, disable_filesystem, provider, model, config_file, quiet=quiet
     )
 
-    from mcp_cli.commands.servers import servers_action_async
+    from mcp_cli.commands.actions.servers import servers_action_async
 
     async def _servers_wrapper(**params):
         return await servers_action_async(

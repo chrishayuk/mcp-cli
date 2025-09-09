@@ -48,10 +48,12 @@ class TestServersCommand:
 
             # Verify the action was called
             mock_action.assert_called_once_with(
+                args=[],
                 detailed=False,
                 show_capabilities=False,
                 show_transport=False,
                 output_format="table",
+                ping_servers=False,
             )
 
             # Check result
@@ -79,10 +81,12 @@ class TestServersCommand:
 
             # Verify the action was called with detailed=True
             mock_action.assert_called_once_with(
+                args=[],
                 detailed=True,
                 show_capabilities=True,
                 show_transport=True,
                 output_format="table",
+                ping_servers=False,
             )
 
             assert result.success is True
@@ -99,10 +103,12 @@ class TestServersCommand:
             result = await command.execute(raw=True)
 
             mock_action.assert_called_with(
+                args=[],
                 detailed=False,
                 show_capabilities=False,
                 show_transport=False,
                 output_format="json",
+                ping_servers=False,
             )
 
             assert result.success is True

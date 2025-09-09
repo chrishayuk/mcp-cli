@@ -122,32 +122,31 @@ class TestServerSingularCommandCoverage:
     async def test_server_details_string_args(self, command):
         """Test server details with string args."""
         with patch(
-            "mcp_cli.commands.actions.servers.server_details_async"
+            "mcp_cli.commands.actions.servers.servers_action_async"
         ) as mock_action:
-            with patch("chuk_term.ui.output"):
-                mock_action.return_value = None
-                result = await command.execute(args="test-server")
-                assert result.success is True
-                mock_action.assert_called_once_with("test-server")
+            mock_action.return_value = []
+            result = await command.execute(args="test-server")
+            assert result.success is True
+            mock_action.assert_called_once_with(args=["test-server"])
 
     @pytest.mark.asyncio
     async def test_server_details_error(self, command):
         """Test server details error."""
         with patch(
-            "mcp_cli.commands.actions.servers.server_details_async"
+            "mcp_cli.commands.actions.servers.servers_action_async"
         ) as mock_action:
-            with patch("chuk_term.ui.output"):
-                mock_action.side_effect = Exception("Not found")
-                result = await command.execute(args=["bad-server"])
-                assert result.success is False
-                assert "Failed to get server details" in result.error
+            mock_action.side_effect = Exception("Not found")
+            result = await command.execute(args=["bad-server"])
+            assert result.success is False
+            assert "Failed to execute server command" in result.error
 
     @pytest.mark.asyncio
     async def test_server_no_args(self, command):
-        """Test server with no args."""
-        with patch("chuk_term.ui.output") as mock_output:
+        """Test server with no args - should list servers."""
+        with patch(
+            "mcp_cli.commands.actions.servers.servers_action_async"
+        ) as mock_action:
+            mock_action.return_value = []
             result = await command.execute()
-            assert result.success is False
-            assert result.error == "Server name required"
-            mock_output.error.assert_called()
-            mock_output.hint.assert_called()
+            assert result.success is True
+            mock_action.assert_called_once_with()

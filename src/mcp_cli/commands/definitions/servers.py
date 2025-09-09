@@ -37,17 +37,21 @@ class ServersCommand(UnifiedCommand):
 List connected MCP servers and their status.
 
 Usage:
-  /servers              - List all servers (chat mode)
-  servers               - List all servers (interactive mode)
-  mcp-cli servers       - List all servers (CLI mode)
+  /servers              - List all connected servers
+  /servers --detailed   - Show detailed server information
+  /servers --ping       - Test server connectivity
   
 Options:
   --detailed            - Show detailed server information
   --format [table|json] - Output format (default: table)
+  --ping                - Test server connectivity
 
 Examples:
-  /servers --detailed
-  servers --format json
+  /servers              - Show server status table
+  /servers --detailed   - Show full server details
+  /servers --ping       - Check server connectivity
+
+Note: For server management (add/remove/enable/disable), use /server command
 """
 
     @property
@@ -84,15 +88,21 @@ Examples:
         # Extract parameters for the existing implementation
         detailed = kwargs.get("detailed", False)
         show_raw = kwargs.get("raw", False)
+        ping_servers = kwargs.get("ping", False)
+
+        # Check if there are additional arguments for management commands
+        args = kwargs.get("args", [])
 
         try:
             # Use the existing enhanced implementation
             # It handles all the display internally
             server_info = await servers_action_async(
+                args=args if args else [],  # Pass args for management commands
                 detailed=detailed,
                 show_capabilities=detailed,
                 show_transport=detailed,
                 output_format="json" if show_raw else "table",
+                ping_servers=ping_servers,
             )
 
             # The existing implementation handles all output directly via output.print
@@ -102,5 +112,5 @@ Examples:
         except Exception as e:
             return CommandResult(
                 success=False,
-                error=f"Failed to get server information: {str(e)}",
+                error=f"Failed to execute server command: {str(e)}",
             )

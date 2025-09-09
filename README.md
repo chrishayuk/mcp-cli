@@ -337,6 +337,36 @@ mcp-cli --server sqlite --provider anthropic --model claude-4-1-opus
 /th --json                        # Full history as JSON
 ```
 
+#### Server Management (Runtime Configuration)
+```bash
+/server                            # List all configured servers
+/server list                       # List servers (alias)
+/server list all                   # Include disabled servers
+
+# Add servers at runtime (persists in ~/.mcp-cli/preferences.json)
+/server add <name> stdio <command> [args...]
+/server add sqlite stdio uvx mcp-server-sqlite --db-path test.db
+/server add playwright stdio npx @playwright/mcp@latest
+/server add time stdio uvx mcp-server-time
+/server add fs stdio npx @modelcontextprotocol/server-filesystem /path/to/dir
+
+# HTTP/SSE server examples with authentication
+/server add github --transport http --header "Authorization: Bearer ghp_token" -- https://api.github.com/mcp
+/server add myapi --transport http --env API_KEY=secret -- https://api.example.com/mcp
+/server add events --transport sse -- https://events.example.com/sse
+
+# Manage server state
+/server enable <name>              # Enable a disabled server
+/server disable <name>             # Disable without removing
+/server remove <name>              # Remove user-added server
+/server ping <name>                # Test server connectivity
+
+# Server details
+/server <name>                     # Show server configuration details
+```
+
+**Note**: Servers added via `/server add` are stored in `~/.mcp-cli/preferences.json` and persist across sessions. Project servers remain in `server_config.json`.
+
 #### Conversation Management
 ```bash
 /conversation                      # Show conversation history
@@ -365,7 +395,7 @@ mcp-cli --server sqlite --provider anthropic --model claude-4-1-opus
 /verbose                          # Toggle verbose/compact display (Default: Enabled)
 /confirm                          # Toggle tool call confirmation (Default: Enabled)
 /interrupt                        # Stop running operations
-/servers                          # List connected servers
+/server                           # Manage MCP servers (see Server Management above)
 /help                            # Show all commands
 /help tools                       # Help for specific command
 /exit                            # Exit chat mode
@@ -592,6 +622,13 @@ GROQ_API_KEY=your-groq-key
 
 ## 📂 Server Configuration
 
+MCP CLI supports two types of server configurations:
+
+1. **Project Servers** (`server_config.json`): Shared project-level configurations
+2. **User Servers** (`~/.mcp-cli/preferences.json`): Personal runtime-added servers that persist across sessions
+
+### Project Configuration
+
 Create a `server_config.json` file with your MCP server configurations:
 
 ```json
@@ -619,6 +656,38 @@ Create a `server_config.json` file with your MCP server configurations:
   }
 }
 ```
+
+### Runtime Server Management
+
+Add servers dynamically during runtime without editing configuration files:
+
+```bash
+# Add STDIO servers (most common)
+mcp-cli
+> /server add sqlite stdio uvx mcp-server-sqlite --db-path mydata.db
+> /server add playwright stdio npx @playwright/mcp@latest
+> /server add time stdio uvx mcp-server-time
+
+# Add HTTP servers with authentication
+> /server add github --transport http --header "Authorization: Bearer ghp_token" -- https://api.github.com/mcp
+> /server add myapi --transport http --env API_KEY=secret -- https://api.example.com/mcp
+
+# Add SSE (Server-Sent Events) servers
+> /server add events --transport sse -- https://events.example.com/sse
+
+# Manage servers
+> /server list                     # Show all servers
+> /server disable sqlite           # Temporarily disable
+> /server enable sqlite            # Re-enable
+> /server remove myapi             # Remove user-added server
+```
+
+**Key Points:**
+- User-added servers persist in `~/.mcp-cli/preferences.json`
+- Survive application restarts
+- Can be enabled/disabled without removal
+- Support STDIO, HTTP, and SSE transports
+- Environment variables and headers for authentication
 
 ## 📈 Advanced Usage Examples
 
