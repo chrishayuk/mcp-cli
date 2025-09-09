@@ -169,7 +169,7 @@ class CommandGroup(UnifiedCommand):
         for alias in command.aliases:
             self.subcommands[alias] = command
 
-    async def execute(self, subcommand: str = None, **kwargs) -> CommandResult:
+    async def execute(self, subcommand: str | None = None, **kwargs) -> CommandResult:
         """
         Execute a subcommand or the default action.
         """

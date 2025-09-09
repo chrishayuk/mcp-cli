@@ -23,11 +23,12 @@ def _human_size(size: int | None) -> str:
     """Convert size in bytes to human-readable string (KB/MB/GB)."""
     if size is None or size < 0:
         return "-"
+    current_size: float = float(size)
     for unit in ("B", "KB", "MB", "GB"):
-        if size < 1024:
-            return f"{size:.0f} {unit}"
-        size /= 1024
-    return f"{size:.1f} TB"
+        if current_size < 1024:
+            return f"{current_size:.0f} {unit}"
+        current_size = current_size / 1024
+    return f"{current_size:.1f} TB"
 
 
 async def resources_action_async() -> List[Dict[str, Any]]:
@@ -46,7 +47,7 @@ async def resources_action_async() -> List[Dict[str, Any]]:
 
     try:
         maybe = tm.list_resources()
-        resources = await maybe if inspect.isawaitable(maybe) else maybe  # type: ignore[arg-type]
+        resources = await maybe if inspect.isawaitable(maybe) else maybe
     except Exception as exc:  # noqa: BLE001
         output.error(f"{exc}")
         return []

@@ -6,6 +6,7 @@ FIXED: Updated to work with the new OpenAI client universal tool compatibility s
 import time
 import asyncio
 import logging
+from typing import Optional
 from chuk_term.ui import output
 
 # mcp cli imports
@@ -222,13 +223,14 @@ class ConversationProcessor:
         completion["elapsed_time"] = elapsed
         completion["streaming"] = False
 
-        return completion
+        result: dict = completion
+        return result
 
     def _validate_streaming_tool_call(self, tool_call: dict) -> bool:
         """Validate that a tool call from streaming has the required structure."""
         try:
             if not isinstance(tool_call, dict):
-                return False
+                return False  # type: ignore[unreachable]
 
             # Check for required fields
             if "function" not in tool_call:
@@ -265,7 +267,7 @@ class ConversationProcessor:
             log.error(f"Error validating streaming tool call: {e}")
             return False
 
-    def _fix_tool_call_structure(self, tool_call: dict) -> dict:
+    def _fix_tool_call_structure(self, tool_call: dict) -> Optional[dict]:
         """Try to fix common issues with tool call structure from streaming."""
         try:
             fixed = dict(tool_call)  # Make a copy

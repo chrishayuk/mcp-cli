@@ -244,7 +244,7 @@ def convert_to_openai_tools(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     openai_tools: List[Dict[str, Any]] = []
     for tool in tools:
         if not isinstance(tool, dict):  # skip un-recognised entries
-            continue
+            continue  # type: ignore[unreachable]
 
         openai_tools.append(
             {

@@ -49,7 +49,7 @@ class TestCommandParameter:
         )
 
         assert param.name == "test"
-        assert param.type == str
+        assert param.type is str
         assert param.default == "default"
         assert param.required is True
         assert param.help == "Test parameter"
@@ -61,7 +61,7 @@ class TestCommandParameter:
         param = CommandParameter(name="test")
 
         assert param.name == "test"
-        assert param.type == str
+        assert param.type is str
         assert param.default is None
         assert param.required is False
         assert param.help == ""
@@ -119,15 +119,15 @@ class DummyCommand(UnifiedCommand):
     @property
     def description(self) -> str:
         return self._description
-    
+
     @property
     def parameters(self) -> List[CommandParameter]:
         return self._parameters
-    
+
     @property
     def aliases(self) -> List[str]:
         return self._aliases
-    
+
     @aliases.setter
     def aliases(self, value: List[str]):
         self._aliases = value

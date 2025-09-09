@@ -28,7 +28,7 @@ class TestClearCommand:
                 # Mock get_context from the context module
                 with patch("mcp_cli.context.get_context") as mock_context:
                     mock_context.return_value = None
-                    
+
                     result = await command.execute()
 
                     # Verify clear_screen was called
@@ -47,14 +47,18 @@ class TestClearCommand:
             with patch("chuk_term.ui.display_chat_banner") as mock_banner:
                 # Mock get_context from the context module
                 with patch("mcp_cli.context.get_context") as mock_context:
-                    mock_ctx = type('Context', (), {})()
-                    mock_ctx.model_manager = type('ModelManager', (), {})()
+                    mock_ctx = type("Context", (), {})()
+                    mock_ctx.model_manager = type("ModelManager", (), {})()
                     mock_ctx.model_manager.get_active_provider = lambda: "ollama"
                     mock_ctx.model_manager.get_active_model = lambda: "gpt-oss"
-                    mock_ctx.tool_manager = type('ToolManager', (), {})()
-                    mock_ctx.tool_manager.list_tools = lambda: ["tool1", "tool2", "tool3"]
+                    mock_ctx.tool_manager = type("ToolManager", (), {})()
+                    mock_ctx.tool_manager.list_tools = lambda: [
+                        "tool1",
+                        "tool2",
+                        "tool3",
+                    ]
                     mock_context.return_value = mock_ctx
-                    
+
                     result = await command.execute(verbose=True)
 
                     # Verify clear_screen was called
@@ -63,7 +67,7 @@ class TestClearCommand:
                     mock_banner.assert_called_once_with(
                         provider="ollama",
                         model="gpt-oss",
-                        additional_info={"Tools": "3"}
+                        additional_info={"Tools": "3"},
                     )
 
                     # Check result

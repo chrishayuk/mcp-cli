@@ -71,7 +71,7 @@ class TestProviderCommand:
         ) as mock_action:
             # Simulate the action failing for an invalid provider
             mock_action.side_effect = Exception("Provider not found: invalid")
-            
+
             result = await command.execute(args=["invalid"])
 
             assert result.success is False

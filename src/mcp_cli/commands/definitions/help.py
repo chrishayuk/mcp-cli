@@ -135,7 +135,7 @@ Examples:
                         row["Aliases"] = ", ".join(cmd.aliases)
 
                     # Add subcommands info if available
-                    if has_subcommands:
+                    if has_subcommands and isinstance(cmd, CommandGroup):
                         subcommand_names = list(cmd.subcommands.keys())
                         if len(subcommand_names) <= 3:
                             row["Subcommands"] = ", ".join(subcommand_names)

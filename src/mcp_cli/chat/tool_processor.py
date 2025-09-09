@@ -130,7 +130,7 @@ class ToolProcessor:
                     llm_tool_name = f"unknown_tool_{idx}"
 
                 if not isinstance(llm_tool_name, str):
-                    log.error(f"Tool name is not a string: {llm_tool_name}")
+                    log.error(f"Tool name is not a string: {llm_tool_name}")  # type: ignore[unreachable]
                     llm_tool_name = f"unknown_tool_{idx}"
 
                 # Map LLM tool name to execution tool name
@@ -235,9 +235,11 @@ class ToolProcessor:
             if isinstance(raw_arguments, str):
                 if not raw_arguments.strip():
                     return {}
-                return json.loads(raw_arguments)
+                parsed: Dict[str, Any] = json.loads(raw_arguments)
+                return parsed
             else:
-                return raw_arguments or {}
+                result: Dict[str, Any] = raw_arguments or {}
+                return result
         except json.JSONDecodeError as e:
             log.warning(f"Invalid JSON in arguments: {e}")
             return {}

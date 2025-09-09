@@ -62,7 +62,7 @@ Examples:
   /model list          - List all available models
 """
 
-    async def execute(self, **kwargs) -> CommandResult:
+    async def execute(self, subcommand: str | None = None, **kwargs) -> CommandResult:
         """Execute the model command - handle direct model switching."""
         from mcp_cli.commands.actions.models import model_action_async
 

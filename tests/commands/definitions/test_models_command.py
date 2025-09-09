@@ -30,9 +30,7 @@ class TestModelCommand:
     async def test_execute_no_subcommand(self, command):
         """Test executing models without a subcommand."""
         # When no subcommand is provided, it should use the default (list)
-        with patch(
-            "mcp_cli.commands.actions.models.model_action_async"
-        ) as mock_action:
+        with patch("mcp_cli.commands.actions.models.model_action_async") as mock_action:
             mock_action.return_value = {
                 "models": [{"name": "gpt-4", "provider": "openai"}]
             }
@@ -49,9 +47,7 @@ class TestModelCommand:
         list_cmd = command.subcommands.get("list")
         assert list_cmd is not None
 
-        with patch(
-            "mcp_cli.commands.actions.models.model_action_async"
-        ) as mock_action:
+        with patch("mcp_cli.commands.actions.models.model_action_async") as mock_action:
             mock_action.return_value = {
                 "models": [{"name": "gpt-4", "provider": "openai"}]
             }
@@ -66,12 +62,10 @@ class TestModelCommand:
         """Test executing with an invalid subcommand."""
         # The ModelCommand treats unknown subcommands as model names
         # So we need to test with args that would be an invalid model
-        with patch(
-            "mcp_cli.commands.actions.models.model_action_async"
-        ) as mock_action:
+        with patch("mcp_cli.commands.actions.models.model_action_async") as mock_action:
             # Simulate the action failing for an invalid model
             mock_action.side_effect = Exception("Model not found: invalid")
-            
+
             result = await command.execute(args=["invalid"])
 
             assert result.success is False

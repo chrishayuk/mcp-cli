@@ -66,10 +66,16 @@ Examples:
             # If it's a known subcommand, handle it
             if first_arg.lower() in ["list", "ls", "set"]:
                 # Delegate to the action
-                if isinstance(args, list):
-                    await provider_action_async(args)
-                else:
-                    await provider_action_async([str(args)])
+                try:
+                    if isinstance(args, list):
+                        await provider_action_async(args)
+                    else:
+                        await provider_action_async([str(args)])
+                    return CommandResult(success=True)
+                except Exception as e:
+                    return CommandResult(
+                        success=False, error=f"Command failed: {str(e)}"
+                    )
             else:
                 # Treat as provider name to switch to
                 try:

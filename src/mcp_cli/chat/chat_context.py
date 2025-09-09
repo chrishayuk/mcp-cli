@@ -192,10 +192,8 @@ class ChatContext:
                 self.tool_name_mapping = {}
         except Exception as exc:
             logger.warning(f"Error adapting tools: {exc}")
-            # Final fallback - use basic conversion
-            from mcp_cli.tools.manager import ToolManager
-
-            self.openai_tools = ToolManager.convert_to_openai_tools(self.tools)
+            # Final fallback - use the raw tool format
+            self.openai_tools = await self.tool_manager.get_tools_for_llm()
             self.tool_name_mapping = {}
 
     def _initialize_conversation(self) -> None:
@@ -398,7 +396,7 @@ class TestChatContext(ChatContext):
     def __init__(self, stream_manager: Any, model_manager: ModelManager):
         """Create test context with stream_manager."""
         # Initialize base attributes without calling super().__init__
-        self.tool_manager = None  # Tests don't use ToolManager
+        self.tool_manager = None  # type: ignore[assignment]  # Tests don't use ToolManager
         self.stream_manager = stream_manager
         self.model_manager = model_manager
 
@@ -448,14 +446,30 @@ class TestChatContext(ChatContext):
 
         # Build mappings
         self.tool_to_server_map = {
-            t["name"]: self.stream_manager.get_server_for_tool(t["name"])
+            (
+                t["name"] if isinstance(t, dict) else t.name
+            ): self.stream_manager.get_server_for_tool(
+                t["name"] if isinstance(t, dict) else t.name
+            )
             for t in self.tools
         }
 
-        # Use basic tool conversion for tests
-        from mcp_cli.tools.manager import ToolManager
-
-        self.openai_tools = ToolManager.convert_to_openai_tools(self.tools)
+        # Convert tools to OpenAI format for tests
+        self.openai_tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": t.get("name", "unknown") if isinstance(t, dict) else t.name,
+                    "description": t.get("description", "")
+                    if isinstance(t, dict)
+                    else t.description,
+                    "parameters": t.get("parameters", {})
+                    if isinstance(t, dict)
+                    else t.parameters,
+                },
+            }
+            for t in self.tools
+        ]
         self.tool_name_mapping = {}
 
         # Copy for system prompt

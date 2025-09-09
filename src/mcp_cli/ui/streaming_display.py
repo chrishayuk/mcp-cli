@@ -7,7 +7,7 @@ content type detection, and smooth progressive rendering.
 """
 
 import time
-from typing import Generator, List
+from typing import Generator, List, Optional
 from rich.console import Group
 from rich.live import Live
 from rich.panel import Panel
@@ -59,7 +59,7 @@ class CompactStreamingDisplay:
         self.spinner_index = 0
         self.preview_captured = False
         self.max_preview_lines = 4
-        self.detected_type = None
+        self.detected_type: Optional[str] = None
         self.content = ""  # Store full content
 
     def detect_content_type(self, text: str):
@@ -313,6 +313,9 @@ class CompactStreamingDisplay:
             should_render_markdown = True
 
         # Try to render as markdown if appropriate
+        from typing import Union
+
+        content_display: Union[Markdown, Text]
         if should_render_markdown:
             try:
                 content_display = Markdown(self.content)
@@ -379,7 +382,7 @@ class StreamingContext:
         self.display.add_content(content)
         elapsed = time.time() - self.start_time
         if self.live:
-            self.live.update(self.display.get_panel(elapsed))
+            self.live.update(self.display.get_panel(elapsed))  # type: ignore[unreachable]
 
     @property
     def content(self):

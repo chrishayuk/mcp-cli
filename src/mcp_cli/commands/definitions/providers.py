@@ -61,7 +61,7 @@ Examples:
   /provider list         - List all available providers
 """
 
-    async def execute(self, **kwargs) -> CommandResult:
+    async def execute(self, subcommand: str | None = None, **kwargs) -> CommandResult:
         """Execute the provider command - handle direct provider switching."""
         from mcp_cli.commands.actions.providers import provider_action_async
 

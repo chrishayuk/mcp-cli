@@ -197,7 +197,7 @@ class ChatCommandAdapter:
         - Options: --option value
         - Positional args (if command expects them)
         """
-        kwargs = {}
+        kwargs: Dict[str, Any] = {}
         i = 0
 
         while i < len(args):
@@ -255,6 +255,9 @@ class ChatCommandAdapter:
         partial = partial_text[1:]  # Remove leading slash
         parts = partial.split(maxsplit=1)
 
+        # Get registry
+        registry = UnifiedCommandRegistry()
+
         if len(parts) == 0 or (len(parts) == 1 and not partial.endswith(" ")):
             # Complete command names
             command_part = parts[0] if parts else ""
@@ -294,6 +297,7 @@ class ChatCommandAdapter:
         Returns:
             List of command names with descriptions.
         """
+        registry = UnifiedCommandRegistry()
         commands = []
         for cmd in registry.list_commands(mode=CommandMode.CHAT):
             commands.append(f"/{cmd.name} - {cmd.description}")

@@ -222,12 +222,13 @@ async def _enter_interactive_mode(
     """
     from mcp_cli.commands.interactive import interactive_mode
 
-    return await interactive_mode(
+    result: bool = await interactive_mode(
         stream_manager=tool_manager.stream_manager,
         tool_manager=tool_manager,
         provider=provider,
         model=model,
     )
+    return result
 
 
 # --------------------------------------------------------------------------- #

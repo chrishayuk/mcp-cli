@@ -1,3 +1,4 @@
+# src/mcp_cli/ui/color_converter.py
 """
 Color Converter
 ===============

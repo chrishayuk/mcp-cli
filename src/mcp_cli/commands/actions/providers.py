@@ -9,7 +9,7 @@ import subprocess
 from typing import Dict, List, Any
 from mcp_cli.model_manager import ModelManager
 from chuk_term.ui import output, format_table
-from mcp_cli.context import get_context
+from mcp_cli.context import get_context, ApplicationContext
 
 
 def _check_ollama_running() -> tuple[bool, int]:
@@ -299,7 +299,7 @@ def _switch_provider_enhanced(
     model_manager: ModelManager,
     provider_name: str,
     model_name: str | None,
-    context: Dict,
+    context: ApplicationContext,
 ) -> None:
     """Enhanced provider switching with better validation and feedback."""
 
@@ -370,9 +370,9 @@ def _switch_provider_enhanced(
 
     # Update context (ApplicationContext object)
     try:
-        context.set("provider", provider_name)
-        context.set("model", target_model)
-        context.set("client", model_manager.get_client())
+        context.provider = provider_name
+        context.model = target_model
+        # context doesn't have a client attribute, but it has model_manager
         context.model_manager = model_manager
     except Exception as e:
         output.warning(f"Could not update client context: {e}")
@@ -386,8 +386,12 @@ async def provider_action_async(
 ) -> None:
     """Enhanced provider action with all optimizations applied."""
     # Get context and model manager
-    context = get_context()
+    context: ApplicationContext = get_context()
     model_manager = context.model_manager
+
+    if not model_manager:
+        output.error("Model manager not available")
+        return
 
     def _show_status() -> None:
         provider, model = model_manager.get_active_provider_and_model()
@@ -477,7 +481,9 @@ def _render_config(model_manager: ModelManager) -> None:
     pass
 
 
-def _mutate(model_manager: ModelManager, provider: str, key: str, value: str) -> None:
+def _mutate(
+    model_manager: ModelManager, provider: str, key: str, value: str | None
+) -> None:
     """Update provider configuration - keeping your existing implementation."""
     # ... existing implementation
     pass

@@ -38,7 +38,7 @@ class InteractiveCommandRegistry:
         """Return the mapping of all registered commands."""
         if not isinstance(cls._commands, dict):
             # print("[DEBUG] InteractiveCommandRegistry._commands polluted! Type:", type(cls._commands))
-            cls._commands = {}
+            cls._commands = {}  # type: ignore[unreachable]
         return cls._commands
 
 

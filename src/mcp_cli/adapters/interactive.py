@@ -120,9 +120,9 @@ class InteractiveCommandAdapter:
         - Options: --option value or --option=value
         - Positional arguments
         """
-        kwargs = {}
+        kwargs: Dict[str, Any] = {}
         i = 0
-        positional = []
+        positional: List[str] = []
 
         while i < len(args):
             arg = args[i]
@@ -235,7 +235,8 @@ class InteractiveCommandAdapter:
                 param_name = option_name[2:]
 
                 param = next(
-                    (p for p in command.parameters if p.name == param_name), None
+                    (p for p in command.parameters if p.name == param_name),
+                    None,  # type: ignore[arg-type]
                 )
 
                 if param and param.choices:

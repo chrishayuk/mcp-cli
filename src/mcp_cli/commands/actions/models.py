@@ -11,13 +11,13 @@ Commands:
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import List
 
 from chuk_term.ui import output, format_table
 from mcp_cli.model_manager import ModelManager
 from mcp_cli.utils.async_utils import run_blocking
 from mcp_cli.utils.llm_probe import LLMProbe
-from mcp_cli.context import get_context
+from mcp_cli.context import get_context, ApplicationContext
 
 
 async def model_action_async(args: List[str]) -> None:
@@ -30,6 +30,10 @@ async def model_action_async(args: List[str]) -> None:
     # Get context and model manager
     context = get_context()
     model_manager = context.model_manager
+
+    if not model_manager:
+        output.error("Model manager not available")
+        return
 
     provider = model_manager.get_active_provider()
     current_model = model_manager.get_active_model()
@@ -109,7 +113,7 @@ async def _list_models(
     table_data = []
 
     # Get local Ollama models if applicable
-    local_models = []
+    local_models: List[str] = []
     if provider.lower() == "ollama":
         ollama_running, local_models = await _check_local_ollama()
 
@@ -193,7 +197,7 @@ async def _switch_model(
     model_manager: ModelManager,
     provider: str,
     current_model: str,
-    context: Dict[str, Any],
+    context: ApplicationContext,
 ) -> None:
     """Attempt to switch to a new model."""
     with output.loading(f"Testing model '{new_model}'..."):
@@ -220,9 +224,9 @@ async def _switch_model(
             if result.success:
                 # Switch successful
                 model_manager.set_active_model(new_model)
-                # Use the ApplicationContext's set method
-                context.set("model", new_model)
-                context.set("client", result.client)
+                # Update the ApplicationContext attributes directly
+                context.model = new_model
+                # context doesn't have a client attribute
                 context.model_manager = model_manager
                 output.success(f"Switched to model: {new_model}")
             else:

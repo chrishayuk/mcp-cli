@@ -193,7 +193,8 @@ class LLMProbe:
                 pass
 
         # Fallback: return the response text (might be verbose but informative)
-        return response_text
+        result: str = response_text
+        return result
 
 
 # Convenience functions for common use cases
@@ -214,7 +215,8 @@ async def test_model_availability(
         ProbeResult indicating success/failure
     """
     async with LLMProbe(model_manager, suppress_logging) as probe:
-        return await probe.test_model(model)
+        result: ProbeResult = await probe.test_model(model)
+        return result
 
 
 async def test_provider_availability(
@@ -234,4 +236,5 @@ async def test_provider_availability(
         ProbeResult indicating success/failure
     """
     async with LLMProbe(model_manager, suppress_logging) as probe:
-        return await probe.test_provider(provider)
+        result: ProbeResult = await probe.test_provider(provider)
+        return result

@@ -112,7 +112,7 @@ async def servers_action_async(
         return []
 
     # Process server data using ServerInfo model
-    server_data = []
+    server_data: List[Dict[str, Any]] = []
     for idx, server in enumerate(servers):
         # ServerInfo is a dataclass with these attributes
         name = server.name
@@ -129,7 +129,7 @@ async def servers_action_async(
                 if hasattr(tm, "ping_server"):
                     await tm.ping_server(idx)
                 ping_ms = (time.perf_counter() - start) * 1000
-            except:
+            except Exception:
                 ping_ms = None
 
         # Build clean server info dict for display
@@ -153,19 +153,21 @@ async def servers_action_async(
         if ping_servers:
             columns.append("Ping")
 
-        table_data = []
-        for server in server_data:
-            icon = _get_server_icon(server["capabilities"], server["tool_count"])
-            row = {
+        table_data: List[Dict[str, Any]] = []
+        for server_dict in server_data:
+            icon = _get_server_icon(
+                server_dict["capabilities"], server_dict["tool_count"]
+            )
+            row: Dict[str, Any] = {
                 "Icon": icon,
-                "Server": server["name"],
-                "Transport": server["transport"],
-                "Tools": str(server["tool_count"]),
-                "Capabilities": _format_capabilities(server["capabilities"]),
+                "Server": server_dict["name"],
+                "Transport": server_dict["transport"],
+                "Tools": str(server_dict["tool_count"]),
+                "Capabilities": _format_capabilities(server_dict["capabilities"]),
             }
 
             if ping_servers:
-                perf_icon, perf_text = _format_performance(server["ping_ms"])
+                perf_icon, perf_text = _format_performance(server_dict["ping_ms"])
                 row["Ping"] = f"{perf_icon} {perf_text}"
 
             table_data.append(row)
@@ -249,7 +251,7 @@ async def server_details_async(server_name: str) -> None:
             await tm.ping_server(server_idx)
         ping_ms = (time.perf_counter() - start) * 1000
         ping_status = f"✅ Online ({ping_ms:.1f}ms)"
-    except:
+    except Exception:
         ping_status = "❓ Unknown"
 
     # Display with visual formatting
@@ -277,7 +279,7 @@ async def server_details_async(server_name: str) -> None:
                 for tool in tools[:10]:
                     tool_name = tool.name if hasattr(tool, "name") else str(tool)
                     output.print(f"    • {tool_name}")
-        except:
+        except Exception:
             pass
 
     # Show tip with spacing

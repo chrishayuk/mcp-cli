@@ -36,7 +36,7 @@ async def prompts_action_async() -> List[Dict[str, Any]]:
 
     try:
         maybe = tm.list_prompts()
-        prompts = await maybe if inspect.isawaitable(maybe) else maybe  # type: ignore[arg-type]
+        prompts = await maybe if inspect.isawaitable(maybe) else maybe
     except Exception as exc:  # noqa: BLE001
         output.error(f"{exc}")
         return []

@@ -349,7 +349,7 @@ class ToolManager:
         if not self._registry:
             return []
 
-        tools = []
+        tools = []  # type: ignore[unreachable]
         try:
             registry_items = await asyncio.wait_for(
                 self._registry.list_tools(), timeout=30.0
@@ -407,7 +407,7 @@ class ToolManager:
         if not self._registry:
             return None
 
-        if namespace:
+        if namespace:  # type: ignore[unreachable]
             try:
                 metadata = await asyncio.wait_for(
                     self._registry.get_metadata(tool_name, namespace), timeout=5.0
@@ -440,7 +440,7 @@ class ToolManager:
     ) -> ToolCallResult:
         """Execute a tool and return the result."""
         if not isinstance(arguments, dict):
-            return ToolCallResult(tool_name, False, error="Arguments must be a dict")
+            return ToolCallResult(tool_name, False, error="Arguments must be a dict")  # type: ignore[unreachable]
 
         # Check if tool is enabled
         if not self.tool_filter.is_tool_enabled(tool_name):
@@ -482,6 +482,11 @@ class ToolManager:
 
         try:
             import time
+
+            if not self._executor:
+                return ToolCallResult(
+                    tool_name, False, error="Tool executor not initialized"
+                )
 
             logger.info("EXECUTION: Calling executor.execute() with call")
             start_time = time.time()
@@ -534,7 +539,7 @@ class ToolManager:
             logger.debug("No registry available")
             return "", ""
 
-        try:
+        try:  # type: ignore[unreachable]
             # Get all available tools from registry
             registry_items = await asyncio.wait_for(
                 self._registry.list_tools(), timeout=10.0
@@ -602,8 +607,13 @@ class ToolManager:
             timeout=timeout or self.tool_timeout,
         )
 
-        async for result in self._executor.stream_execute([call]):
-            yield result
+        if self._executor:
+            async for result in self._executor.stream_execute([call]):
+                yield result
+        else:
+            yield ToolCallResult(
+                tool_name, False, error="Tool executor not initialized"
+            )
 
     async def process_tool_calls(
         self,
@@ -691,6 +701,9 @@ class ToolManager:
                 )
 
         # Execute tool calls
+        if not self._executor:
+            # Return empty results if executor not available
+            return []
         results = await self._executor.execute(chuk_calls)
 
         # Process results
@@ -715,7 +728,8 @@ class ToolManager:
                     }
                 )
 
-        return results
+        typed_results: List[ToolResult] = results
+        return typed_results
 
     # Server helpers
     async def get_server_info(self) -> List[ServerInfo]:

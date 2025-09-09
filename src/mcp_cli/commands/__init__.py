@@ -35,7 +35,6 @@ def register_all_commands() -> None:
     from mcp_cli.commands.definitions.provider_singular import ProviderSingularCommand
     from mcp_cli.commands.definitions.models import ModelCommand
     from mcp_cli.commands.definitions.ping import PingCommand
-    from mcp_cli.commands.definitions.theme import ThemeCommand
     from mcp_cli.commands.definitions.theme_singular import ThemeSingularCommand
     from mcp_cli.commands.definitions.themes_plural import ThemesPluralCommand
     from mcp_cli.commands.definitions.resources import ResourcesCommand

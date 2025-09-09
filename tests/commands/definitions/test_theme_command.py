@@ -30,10 +30,12 @@ class TestThemeSingularCommand:
             # Mock the entire ui module to avoid import issues
             mock_ui.output = Mock()
             mock_ui.theme = Mock()
-            mock_ui.theme.get_theme.return_value = Mock(name="dark", description="Dark theme")
-            
+            mock_ui.theme.get_theme.return_value = Mock(
+                name="dark", description="Dark theme"
+            )
+
             result = await command.execute()
-            
+
             # We just care that it executes successfully
             assert result.success is True
 
@@ -78,7 +80,9 @@ class TestThemesPluralCommand:
         """Test listing available themes."""
         with patch("mcp_cli.commands.actions.theme.theme_action_async") as mock_action:
             # Mock the theme action
-            mock_action.return_value = None  # theme_action_async doesn't return anything
+            mock_action.return_value = (
+                None  # theme_action_async doesn't return anything
+            )
 
             result = await command.execute()
 

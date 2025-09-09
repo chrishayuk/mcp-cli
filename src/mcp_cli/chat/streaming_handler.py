@@ -38,8 +38,8 @@ class StreamingResponseHandler:
         self._interrupted = False
 
         # Tool call tracking for streaming
-        self._accumulated_tool_calls = []
-        self._current_tool_call = None
+        self._accumulated_tool_calls: List[Dict[str, Any]] = []
+        self._current_tool_call: Optional[Dict[str, Any]] = None
 
         # Track previous response to detect accumulated vs delta
         self._previous_response_field = ""
@@ -136,7 +136,7 @@ class StreamingResponseHandler:
         **kwargs,
     ) -> Dict[str, Any]:
         """Handle chuk-llm's streaming with proper tool call accumulation."""
-        tool_calls = []
+        tool_calls: List[Dict[str, Any]] = []
 
         # Start live display
         self._start_live_display()
@@ -194,7 +194,7 @@ class StreamingResponseHandler:
         **kwargs,
     ) -> Dict[str, Any]:
         """Handle alternative stream_completion method."""
-        tool_calls = []
+        tool_calls: List[Dict[str, Any]] = []
 
         # Start live display
         self._start_live_display()
@@ -372,7 +372,7 @@ class StreamingResponseHandler:
                     if "delta" in choice and "content" in choice["delta"]:
                         delta_content = choice["delta"]["content"]
                         return str(delta_content) if delta_content is not None else ""
-            elif isinstance(chunk, str):
+            elif isinstance(chunk, str):  # type: ignore[unreachable]
                 return chunk
 
         except Exception as e:
@@ -391,7 +391,8 @@ class StreamingResponseHandler:
                     logger.debug(
                         f"Found direct tool_calls in chunk: {chunk['tool_calls']}"
                     )
-                    return chunk["tool_calls"]
+                    result: Optional[Dict[str, Any]] = chunk["tool_calls"]
+                    return result
 
                 # OpenAI-style delta format
                 if "choices" in chunk and chunk["choices"]:
@@ -402,7 +403,8 @@ class StreamingResponseHandler:
                             logger.debug(
                                 f"Found tool_calls in delta: {delta['tool_calls']}"
                             )
-                            return delta["tool_calls"]
+                            delta_result: Optional[Dict[str, Any]] = delta["tool_calls"]
+                            return delta_result
                         # Sometimes tool_calls come in function_call format
                         if "function_call" in delta:
                             logger.debug(
@@ -427,9 +429,9 @@ class StreamingResponseHandler:
     ):
         """Process tool call chunk data and accumulate complete tool calls."""
         try:
-            if isinstance(tool_call_data, list):
+            if isinstance(tool_call_data, list):  # type: ignore[unreachable]
                 # Array of tool calls
-                for tc_item in tool_call_data:
+                for tc_item in tool_call_data:  # type: ignore[unreachable]
                     self._accumulate_tool_call(tc_item, tool_calls)
             elif isinstance(tool_call_data, dict):
                 # Single tool call or function call

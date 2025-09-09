@@ -34,7 +34,7 @@ class TestToolsCommandGroup:
             mock_action.return_value = {
                 "tools": [{"name": "test_tool", "description": "Test"}]
             }
-            
+
             result = await command.execute()
 
             # Should default to list subcommand for tools

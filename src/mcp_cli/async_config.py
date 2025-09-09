@@ -45,7 +45,8 @@ async def load_server_config(
             }
 
         # Return entire config for processing multiple servers
-        return config
+        result: Dict[str, Any] = config
+        return result
 
     except FileNotFoundError:
         logging.error(f"Configuration file not found: {config_path}")

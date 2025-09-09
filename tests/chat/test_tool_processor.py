@@ -22,6 +22,10 @@ class DummyUIManager:
         # Add method that tool processor expects
         pass
 
+    def do_confirm_tool_execution(self, tool_name, arguments):
+        # Mock confirmation - always return True for tests
+        return True
+
 
 class DummyStreamManager:
     def __init__(self, return_result=None, raise_exception=False):

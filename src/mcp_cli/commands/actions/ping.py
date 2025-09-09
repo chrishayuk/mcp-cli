@@ -121,7 +121,8 @@ def _get_server_name(
         return explicit_names[idx]
 
     if idx < len(server_infos):
-        return server_infos[idx].name
+        name: str = server_infos[idx].name
+        return name
 
     return f"server-{idx}"
 

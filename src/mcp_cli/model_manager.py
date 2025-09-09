@@ -329,7 +329,7 @@ class ModelManager:
                     "claude-3-opus",
                 ]
 
-            return models
+            return list(models) if models else []
 
         except Exception as e:
             logger.error(f"Failed to get models for {target_provider}: {e}")
@@ -370,7 +370,8 @@ class ModelManager:
         try:
             from chuk_llm.llm.client import list_available_providers
 
-            return list_available_providers()
+            result: Dict[str, Any] = list_available_providers()
+            return result
         except Exception as e:
             logger.error(f"Failed to get detailed provider info: {e}")
             # Fallback to basic info
@@ -512,7 +513,7 @@ class ModelManager:
                 provider_config = self._chuk_config.get_provider(provider)
                 default = provider_config.default_model
                 if default:
-                    return default
+                    return str(default)
 
             # Fallback: get first available model
             available_models = self.get_available_models(provider)
@@ -600,7 +601,8 @@ class ModelManager:
         """Get information about a model"""
         try:
             client = self.get_client(provider, model)
-            return client.get_model_info()
+            info: Dict[str, Any] = client.get_model_info()
+            return info
         except Exception as e:
             logger.error(f"Failed to get model info: {e}")
             return {"error": str(e)}
@@ -610,7 +612,8 @@ class ModelManager:
         try:
             from chuk_llm.llm.client import get_provider_info
 
-            return get_provider_info(provider)
+            info: Dict[str, Any] = get_provider_info(provider)
+            return info
         except Exception as e:
             logger.error(f"Failed to get provider info for {provider}: {e}")
             return {"error": str(e)}

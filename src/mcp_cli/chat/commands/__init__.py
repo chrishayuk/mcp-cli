@@ -4,9 +4,6 @@ Command handling system for the MCP CLI chat interface.
 """
 
 from typing import Dict, List, Any, Callable, Awaitable
-import importlib
-import pkgutil
-from pathlib import Path
 
 # Type for command handlers
 CommandHandler = Callable[[List[str]], Awaitable[bool]]
@@ -18,7 +15,7 @@ _COMMAND_ALIASES: Dict[str, str] = {}
 
 
 def register_command(
-    command: str, handler: CommandHandler, completions: List[str] = None
+    command: str, handler: CommandHandler, completions: List[str] | None = None
 ) -> None:
     """
     Register a command handler.
@@ -60,7 +57,9 @@ def register_alias(alias: str, target: str) -> None:
         _COMMAND_COMPLETIONS[alias] = _COMMAND_COMPLETIONS[target]
 
 
-async def handle_command(command_text: str, context: Dict[str, Any] = None) -> bool:
+async def handle_command(
+    command_text: str, context: Dict[str, Any] | None = None
+) -> bool:
     """
     Handle a command and return whether it was handled.
 

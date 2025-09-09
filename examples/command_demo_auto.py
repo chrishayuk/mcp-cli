@@ -205,7 +205,7 @@ class AutoCommandDemo:
                     console=console,
                     transient=True,
                 ) as progress:
-                    task = progress.add_task("Executing...", total=None)
+                    progress.add_task("Executing...", total=None)
                     output = self.execute_command(command)
                     progress.stop()
 

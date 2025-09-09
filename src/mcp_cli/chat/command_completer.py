@@ -29,9 +29,8 @@ class ChatCommandCompleter(Completer):
         for cmd in commands:
             # Check if this command matches the partial text
             if f"/{cmd.name}".startswith(txt):
-                # Calculate the replacement start position
-                start_pos = -len(txt)
-                replacement = f"/{cmd.name}"[len(txt) :]  # Only the part not yet typed
+                # Calculate the replacement text (only the part not yet typed)
+                replacement = f"/{cmd.name}"[len(txt) :]
 
                 yield Completion(
                     replacement,

@@ -93,7 +93,9 @@ def get_available_models_quick(provider: str = "ollama") -> List[str]:
         from chuk_llm.llm.client import list_available_providers
 
         providers = list_available_providers()
-        return providers.get(provider, {}).get("models", [])
+        provider_info = providers.get(provider, {})
+        models = provider_info.get("models", [])
+        return list(models)  # Ensure it's a list
     except Exception as e:
         logger.debug(f"Could not get models for {provider}: {e}")
         return []
@@ -111,12 +113,13 @@ def validate_provider_exists(provider: str) -> bool:
         return False
 
 
-def load_config(config_file: str) -> Optional[dict]:
+def load_config(config_file: str) -> Optional[Dict[Any, Any]]:
     """Load MCP server config file."""
     try:
         if Path(config_file).is_file():
             with open(config_file, "r", encoding="utf-8") as fh:
-                return json.load(fh)
+                data: Dict[Any, Any] = json.load(fh)
+                return data
     except (json.JSONDecodeError, OSError) as exc:
         logger.error("Error loading config file '%s': %s", config_file, exc)
     return None
@@ -238,7 +241,7 @@ def validate_server_config(cfg: dict, servers: List[str]) -> Tuple[bool, List[st
     return len(errors) == 0, errors
 
 
-def inject_logging_env_vars(cfg: dict, quiet: bool = False) -> dict:
+def inject_logging_env_vars(cfg: Dict[Any, Any], quiet: bool = False) -> Dict[Any, Any]:
     """Inject logging environment variables into MCP server configs."""
     if not cfg or "mcpServers" not in cfg:
         return cfg
@@ -251,7 +254,7 @@ def inject_logging_env_vars(cfg: dict, quiet: bool = False) -> dict:
         "MCP_LOG_LEVEL": log_level,
     }
 
-    modified_cfg = json.loads(json.dumps(cfg))  # Deep copy
+    modified_cfg: Dict[Any, Any] = json.loads(json.dumps(cfg))  # Deep copy
 
     for server_name, server_config in modified_cfg["mcpServers"].items():
         # Only inject env vars for STDIO servers (those with 'command')

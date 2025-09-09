@@ -51,13 +51,11 @@ class UnifiedCommandRegistry:
         if group:
             # Register as a subcommand in a group
             if group not in self._groups:
-                # Create the group if it doesn't exist
-                # We'll need to import the group class dynamically or create a generic one
-                self._groups[group] = CommandGroup()
-                self._groups[group].name = group
-                self._groups[group].description = f"{group.capitalize()} commands"
-                # Register the group itself as a command
-                self._commands[group] = self._groups[group]
+                # Groups must be pre-registered, cannot create them dynamically
+                logger.warning(
+                    f"Group '{group}' not found for command '{command.name}'"
+                )
+                return
 
             self._groups[group].add_subcommand(command)
             logger.debug(f"Registered subcommand: {group} {command.name}")

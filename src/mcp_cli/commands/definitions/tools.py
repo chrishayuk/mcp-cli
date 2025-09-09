@@ -230,7 +230,7 @@ Examples:
                 context = get_context()
                 if context:
                     tool_manager = context.tool_manager
-            except:
+            except Exception:
                 pass
 
         if not tool_manager:

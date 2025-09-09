@@ -11,10 +11,19 @@ from typing import Dict, Optional, Any
 from chuk_term.ui import output, format_table
 
 # Try interactive registry first, fall back to CLI registry
+from typing import Type, Union
+
 try:
-    from mcp_cli.interactive.registry import InteractiveCommandRegistry as Registry
+    from mcp_cli.interactive.registry import InteractiveCommandRegistry
+    from mcp_cli.cli.registry import CommandRegistry
+
+    Registry: Type[Union[InteractiveCommandRegistry, CommandRegistry]] = (
+        InteractiveCommandRegistry
+    )
 except ImportError:
-    from mcp_cli.cli.registry import CommandRegistry as Registry
+    from mcp_cli.cli.registry import CommandRegistry
+
+    Registry = CommandRegistry
 
 
 def help_action(command_name: Optional[str] = None, console: Any = None) -> None:
@@ -38,15 +47,19 @@ def help_action(command_name: Optional[str] = None, console: Any = None) -> None
 
 def _get_commands() -> Dict[str, object]:
     """Get available commands from the registry."""
-    if hasattr(Registry, "get_all_commands"):
-        result = Registry.get_all_commands()
+    registry_instance = Registry()
+    if hasattr(registry_instance, "get_all_commands"):
+        result = registry_instance.get_all_commands()
         # CLI registry returns a list, Interactive registry returns a dict
         if isinstance(result, list):
             # Convert list to dict using command.name as key
-            return {getattr(cmd, "name", str(i)): cmd for i, cmd in enumerate(result)}
-        return result
-    elif hasattr(Registry, "_commands"):
-        return Registry._commands
+            converted: Dict[str, object] = {
+                getattr(cmd, "name", str(i)): cmd for i, cmd in enumerate(result)
+            }
+            return converted
+        return result  # type: ignore[return-value]
+    elif hasattr(registry_instance, "_commands"):
+        return getattr(registry_instance, "_commands", {})
     return {}
 
 
