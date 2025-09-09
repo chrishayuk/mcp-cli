@@ -750,6 +750,169 @@ class TestPreferenceManagerExtended:
             manager.remove_custom_provider("test2")
             manager.remove_custom_provider("another_ai")
 
+    def test_additional_coverage(self):
+        """Test additional methods for complete coverage."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dir = Path(tmpdir) / ".mcp-cli"
+            manager = PreferenceManager(config_dir=config_dir)
+
+            # Test get_runtime_server (covers line 562)
+            manager.add_runtime_server("test_srv", {"command": "test"})
+            server = manager.get_runtime_server("test_srv")
+            assert server is not None
+            assert server["command"] == "test"
+
+            # Non-existent server
+            assert manager.get_runtime_server("nonexistent") is None
+
+            # Test is_custom_provider (covers line 627)
+            manager.add_custom_provider("custom", "http://api.test", "model1")
+            assert manager.is_custom_provider("custom") is True
+            assert manager.is_custom_provider("nonexistent") is False
+
+            # Test update_custom_provider for non-existent provider (covers line 650)
+            result = manager.update_custom_provider(
+                "nonexistent", api_base="http://new.api"
+            )
+            assert result is False
+
+            # Test update with only api_base (covers line 655)
+            result = manager.update_custom_provider(
+                "custom", api_base="http://updated.api"
+            )
+            assert result is True
+            provider = manager.get_custom_provider("custom")
+            assert provider["api_base"] == "http://updated.api"
+
+            # Test update with only models (covers line 659)
+            result = manager.update_custom_provider(
+                "custom", models=["new-model-1", "new-model-2"]
+            )
+            assert result is True
+            provider = manager.get_custom_provider("custom")
+            assert provider["models"] == ["new-model-1", "new-model-2"]
+
+            # Test get_custom_provider_api_key (covers lines 675-687)
+            import os
+
+            # Test with provider that doesn't exist
+            assert manager.get_custom_provider_api_key("nonexistent") is None
+
+            # Test with default env var name pattern
+            os.environ["CUSTOM_API_KEY"] = "test-key-default"
+            api_key = manager.get_custom_provider_api_key("custom")
+            assert api_key == "test-key-default"
+
+            # Test with custom env_var_name
+            manager.update_custom_provider("custom", env_var_name="MY_CUSTOM_KEY")
+            os.environ["MY_CUSTOM_KEY"] = "test-key-custom"
+            api_key = manager.get_custom_provider_api_key("custom")
+            assert api_key == "test-key-custom"
+
+            # Clean up env vars
+            del os.environ["CUSTOM_API_KEY"]
+            del os.environ["MY_CUSTOM_KEY"]
+
+    def test_custom_provider_from_dict(self):
+        """Test CustomProvider.from_dict method (covers lines 120-133)."""
+        from mcp_cli.utils.preferences import CustomProvider
+
+        # Test with minimal data
+        data = {
+            "name": "test_provider",
+            "api_base": "http://test.api",
+        }
+        provider = CustomProvider.from_dict(data)
+        assert provider.name == "test_provider"
+        assert provider.api_base == "http://test.api"
+        assert provider.default_model == "gpt-4"  # Default
+        assert provider.models == ["gpt-4", "gpt-3.5-turbo"]  # Default
+        assert provider.env_var_name is None
+
+        # Test get_env_var_name with no env_var_name set (covers lines 130-133)
+        env_var = provider.get_env_var_name()
+        assert env_var == "TEST_PROVIDER_API_KEY"
+
+        # Test with full data
+        data_full = {
+            "name": "another-provider",
+            "api_base": "http://another.api",
+            "default_model": "custom-model",
+            "models": ["model1", "model2"],
+            "env_var_name": "CUSTOM_ENV_VAR",
+        }
+        provider_full = CustomProvider.from_dict(data_full)
+        assert provider_full.default_model == "custom-model"
+        assert provider_full.models == ["model1", "model2"]
+        assert provider_full.env_var_name == "CUSTOM_ENV_VAR"
+
+        # Test get_env_var_name with custom env_var_name
+        env_var = provider_full.get_env_var_name()
+        assert env_var == "CUSTOM_ENV_VAR"
+
+    def test_update_custom_provider_env_var_coverage(self):
+        """Test updating custom provider with env_var_name to cover line 661."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dir = Path(tmpdir) / ".mcp-cli"
+            manager = PreferenceManager(config_dir=config_dir)
+
+            # Add a provider
+            manager.add_custom_provider(
+                name="test_provider",
+                api_base="https://api.test.ai",
+                default_model="test-model",
+            )
+
+            # Update with env_var_name (covers line 661)
+            result = manager.update_custom_provider(
+                name="test_provider",
+                env_var_name="TEST_PROVIDER_KEY",
+            )
+            assert result is True
+
+            provider = manager.get_custom_provider("test_provider")
+            assert provider["env_var_name"] == "TEST_PROVIDER_KEY"
+
+    def test_get_runtime_servers_copy(self):
+        """Test that get_runtime_servers returns a copy to cover line 558."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dir = Path(tmpdir) / ".mcp-cli"
+            manager = PreferenceManager(config_dir=config_dir)
+
+            # Add runtime server
+            manager.add_runtime_server(
+                "test_server", {"command": "test", "args": ["arg1"]}
+            )
+
+            # Get runtime servers (covers line 558)
+            servers = manager.get_runtime_servers()
+            assert "test_server" in servers
+
+            # Verify it's a shallow copy - can add/remove servers without affecting original
+            servers["new_server"] = {"command": "new"}
+
+            # Original should not have the new server
+            original_servers = manager.get_runtime_servers()
+            assert "new_server" not in original_servers
+
+            # But the method does return shallow copy, so nested changes will affect original
+            # This is the actual behavior of the code
+
+    def test_should_confirm_tool_default_true(self):
+        """Test that should_confirm_tool returns True by default to cover line 391."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dir = Path(tmpdir) / ".mcp-cli"
+            manager = PreferenceManager(config_dir=config_dir)
+
+            # Directly set an invalid mode in preferences to bypass validation
+            # This simulates corrupted/manually edited preferences
+            manager.preferences.ui.tool_confirmation.mode = "invalid_mode"
+
+            # This should hit the default return True at line 391
+            # because the mode is not recognized
+            result = manager.should_confirm_tool("some_tool")
+            assert result is True
+
     def test_load_preferences_with_errors(self):
         """Test loading preferences with file errors."""
         with tempfile.TemporaryDirectory() as tmpdir:
