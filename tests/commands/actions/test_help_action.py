@@ -100,51 +100,56 @@ def test_help_action_with_console_param(mock_commands):
 
 
 def test_get_commands_interactive_registry():
-    """Test _get_commands with InteractiveCommandRegistry."""
-    mock_registry = MagicMock()
-    mock_registry.get_all_commands.return_value = {"cmd1": "obj1", "cmd2": "obj2"}
-
-    with patch("mcp_cli.commands.actions.help.Registry", return_value=mock_registry):
-        result = _get_commands()
-
-        assert result == {"cmd1": "obj1", "cmd2": "obj2"}
-
-
-def test_get_commands_cli_registry_list():
-    """Test _get_commands with CLI registry returning list."""
+    """Test _get_commands with unified registry."""
     mock_cmd1 = MagicMock()
     mock_cmd1.name = "cmd1"
     mock_cmd2 = MagicMock()
     mock_cmd2.name = "cmd2"
 
     mock_registry = MagicMock()
-    mock_registry.get_all_commands.return_value = [mock_cmd1, mock_cmd2]
+    mock_registry.list_commands.return_value = [mock_cmd1, mock_cmd2]
 
-    with patch("mcp_cli.commands.actions.help.Registry", return_value=mock_registry):
+    with patch("mcp_cli.commands.actions.help.registry", mock_registry):
         result = _get_commands()
 
         assert result == {"cmd1": mock_cmd1, "cmd2": mock_cmd2}
 
 
-def test_get_commands_fallback_commands_attr():
-    """Test _get_commands fallback to _commands attribute."""
+def test_get_commands_cli_registry_list():
+    """Test _get_commands with empty list."""
     mock_registry = MagicMock()
-    del mock_registry.get_all_commands  # Remove method
-    mock_registry._commands = {"cmd1": "obj1"}
+    mock_registry.list_commands.return_value = []
 
-    with patch("mcp_cli.commands.actions.help.Registry", return_value=mock_registry):
+    with patch("mcp_cli.commands.actions.help.registry", mock_registry):
         result = _get_commands()
 
-        assert result == {"cmd1": "obj1"}
+        assert result == {}
+
+
+def test_get_commands_fallback_commands_attr():
+    """Test _get_commands with multiple commands."""
+    mock_cmd1 = MagicMock()
+    mock_cmd1.name = "cmd1"
+    mock_cmd1.hidden = False
+    mock_cmd2 = MagicMock()
+    mock_cmd2.name = "cmd2"
+    mock_cmd2.hidden = True  # Hidden command should not appear
+
+    mock_registry = MagicMock()
+    mock_registry.list_commands.return_value = [mock_cmd1]  # Only non-hidden
+
+    with patch("mcp_cli.commands.actions.help.registry", mock_registry):
+        result = _get_commands()
+
+        assert result == {"cmd1": mock_cmd1}
 
 
 def test_get_commands_empty_fallback():
     """Test _get_commands when no commands available."""
     mock_registry = MagicMock()
-    del mock_registry.get_all_commands
-    del mock_registry._commands
+    mock_registry.list_commands.return_value = []
 
-    with patch("mcp_cli.commands.actions.help.Registry", return_value=mock_registry):
+    with patch("mcp_cli.commands.actions.help.registry", mock_registry):
         result = _get_commands()
 
         assert result == {}

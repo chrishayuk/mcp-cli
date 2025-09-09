@@ -204,6 +204,15 @@ class ToolProcessor:
                 self._add_tool_call_to_history(
                     llm_tool_name, call_id, arguments, content
                 )
+                
+                # Add to tool history (for /toolhistory command)
+                if hasattr(self.context, 'tool_history'):
+                    self.context.tool_history.append({
+                        'tool': execution_tool_name,
+                        'arguments': arguments,
+                        'result': tool_result.result if tool_result.success else tool_result.error,
+                        'success': tool_result.success,
+                    })
 
                 # Finish tool execution in unified display
                 self.ui_manager.finish_tool_execution(

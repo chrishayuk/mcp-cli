@@ -9,21 +9,7 @@ from __future__ import annotations
 from typing import Dict, Optional, Any
 
 from chuk_term.ui import output, format_table
-
-# Try interactive registry first, fall back to CLI registry
-from typing import Type, Union
-
-try:
-    from mcp_cli.interactive.registry import InteractiveCommandRegistry
-    from mcp_cli.cli.registry import CommandRegistry
-
-    Registry: Type[Union[InteractiveCommandRegistry, CommandRegistry]] = (
-        InteractiveCommandRegistry
-    )
-except ImportError:
-    from mcp_cli.cli.registry import CommandRegistry
-
-    Registry = CommandRegistry
+from mcp_cli.commands.registry import registry
 
 
 def help_action(command_name: Optional[str] = None, console: Any = None) -> None:
@@ -46,21 +32,11 @@ def help_action(command_name: Optional[str] = None, console: Any = None) -> None
 
 
 def _get_commands() -> Dict[str, object]:
-    """Get available commands from the registry."""
-    registry_instance = Registry()
-    if hasattr(registry_instance, "get_all_commands"):
-        result = registry_instance.get_all_commands()
-        # CLI registry returns a list, Interactive registry returns a dict
-        if isinstance(result, list):
-            # Convert list to dict using command.name as key
-            converted: Dict[str, object] = {
-                getattr(cmd, "name", str(i)): cmd for i, cmd in enumerate(result)
-            }
-            return converted
-        return result  # type: ignore[return-value]
-    elif hasattr(registry_instance, "_commands"):
-        return getattr(registry_instance, "_commands", {})
-    return {}
+    """Get available commands from the unified registry."""
+    commands = {}
+    for cmd in registry.list_commands():
+        commands[cmd.name] = cmd
+    return commands
 
 
 def _show_command_help(command_name: str, commands: Dict[str, object]) -> None:

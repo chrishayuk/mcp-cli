@@ -44,6 +44,7 @@ class ChatContext:
         # Conversation state
         self.exit_requested = False
         self.conversation_history: List[Dict[str, Any]] = []
+        self.tool_history: List[Dict[str, Any]] = []  # Track tool execution history
 
         # Tool state (filled during initialization)
         self.tools: List[ToolInfo] = []

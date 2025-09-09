@@ -39,19 +39,19 @@ Inspect the history of tool calls executed during this chat session.
 
 Usage:
   /toolhistory              - Show all tool calls in a table
-  /toolhistory -n 10        - Show last 10 calls only
   /toolhistory <row>        - Show detailed view of specific call
+  /toolhistory -n 10        - Show last 10 calls only
   /toolhistory --json       - Export as JSON
   
 Options:
+  <row>         - Row number for detailed view (e.g., 1, 2, 3)
   -n <count>    - Limit to last N entries
   --json        - Output as JSON
-  <row>         - Row number for detailed view
 
 Examples:
   /toolhistory              - Table of all calls
-  /toolhistory -n 5         - Last five calls
   /toolhistory 3            - Full details for call #3
+  /toolhistory -n 5         - Last five calls
   /toolhistory --json       - JSON dump of all calls
 
 Note: This command is only available in chat mode.

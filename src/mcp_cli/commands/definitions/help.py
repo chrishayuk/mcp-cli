@@ -89,16 +89,18 @@ Examples:
                     )
 
                 # Display command help directly
+                help_content = f"## {command.name}\n\n{command.help_text or command.description}"
                 output.panel(
-                    f"## {command.name}\n\n{command.help_text or command.description}",
+                    help_content,
                     title="Command Help",
                     style="cyan",
                 )
 
                 if command.aliases:
                     output.print(f"\n[dim]Aliases: {', '.join(command.aliases)}[/dim]")
+                    help_content += f"\n\nAliases: {', '.join(command.aliases)}"
 
-                return CommandResult(success=True)
+                return CommandResult(success=True, output=help_content)
 
             else:
                 # List all available commands
@@ -177,7 +179,10 @@ Examples:
 
                 output.hint("\n" + " | ".join(hints))
 
-                return CommandResult(success=True)
+                # Build output string for result
+                command_names = [cmd.name for cmd in commands]
+                output_str = f"Available Commands ({len(commands)} commands): {', '.join(command_names)}"
+                return CommandResult(success=True, output=output_str)
 
         except Exception as e:
             return CommandResult(success=False, error=f"Failed to show help: {str(e)}")

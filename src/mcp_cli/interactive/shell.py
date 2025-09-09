@@ -4,7 +4,6 @@
 from __future__ import annotations
 import asyncio
 import logging
-import shlex
 from typing import Any, Dict, List, Optional
 
 from rich import print
@@ -113,22 +112,15 @@ async def interactive_mode(
                 await InteractiveCommandAdapter.handle_command("help")
                 continue
 
-            # Parse
-            try:
-                parts = shlex.split(cmd_line)
-            except ValueError:
-                parts = cmd_line.split()
-
-            cmd_name = parts[0].lower()
-            args = parts[1:]
-
             # Use unified command system
             try:
-                # Reconstruct the command line for the adapter
-                full_cmd = " ".join([cmd_name] + args)
-                handled = await InteractiveCommandAdapter.handle_command(full_cmd)
+                # Pass the original command line to preserve quoting
+                handled = await InteractiveCommandAdapter.handle_command(cmd_line)
 
                 if not handled:
+                    # Extract command name for error message
+                    cmd_parts = cmd_line.split(maxsplit=1)
+                    cmd_name = cmd_parts[0] if cmd_parts else cmd_line
                     print(f"[red]Unknown command: {cmd_name}[/red]")
                     print("[dim]Type 'help' to see available commands.[/dim]")
             except KeyboardInterrupt:

@@ -1,32 +1,24 @@
 # src/mcp_cli/commands/definitions/tools.py
 """
-Unified tools command implementation with subcommands.
+Unified tools command implementation.
 """
 
 from __future__ import annotations
 
 import json
-from typing import List
+from typing import List, Dict, Any
 
 from mcp_cli.commands.base import (
     UnifiedCommand,
-    CommandGroup,
-    CommandMode,
     CommandParameter,
     CommandResult,
 )
 from mcp_cli.context import get_context
+from chuk_term.ui import output, format_table
 
 
-class ToolsCommand(CommandGroup):
-    """Tools command group."""
-
-    def __init__(self):
-        super().__init__()
-        # Add subcommands
-        self.add_subcommand(ToolsListCommand())
-        self.add_subcommand(ToolsCallCommand())
-        self.add_subcommand(ToolsConfirmCommand())
+class ToolsCommand(UnifiedCommand):
+    """List and inspect MCP tools."""
 
     @property
     def name(self) -> str:
@@ -38,78 +30,37 @@ class ToolsCommand(CommandGroup):
 
     @property
     def description(self) -> str:
-        return "Manage and interact with MCP tools"
+        return "List and inspect MCP tools"
 
     @property
     def help_text(self) -> str:
         return """
-Manage and interact with MCP tools.
-
-Subcommands:
-  list     - List all available tools
-  call     - Call a specific tool
-  confirm  - Configure tool confirmation settings
+List and inspect MCP tools from connected servers.
 
 Usage:
-  /tools list              - List all tools (chat mode)
-  tools list               - List all tools (interactive mode)
-  mcp-cli tools list       - List all tools (CLI mode)
-  
-  /tools call <name>       - Call a tool
-  /tools confirm [mode]    - Set confirmation mode
+  /tools                - List all tools (with truncated descriptions)
+  /tools <server_name>  - List tools from a specific server
+  /tools <tool_name>    - Show detailed information about a specific tool
 
-Examples:
-  /tools list --raw        - Show tools as JSON
-  /tools list --details    - Show detailed parameter info
-  /tools call read_file --args '{"path": "README.md"}'
-  /tools confirm always   - Always confirm tool execution
-"""
-
-
-class ToolsListCommand(UnifiedCommand):
-    """List available tools."""
-
-    @property
-    def name(self) -> str:
-        return "list"
-
-    @property
-    def aliases(self) -> List[str]:
-        return ["ls", "show"]
-
-    @property
-    def description(self) -> str:
-        return "List all available MCP tools"
-
-    @property
-    def help_text(self) -> str:
-        return """
-List all available MCP tools from connected servers.
-
-Usage:
-  /tools list [options]
-  
 Options:
-  --details    - Show parameter schemas
-  --raw        - Output as JSON
-  --validation - Show validation status
-  --all        - Show all details
+  --raw                 - Output as JSON
+  --details             - Show full descriptions and parameters
 
 Examples:
-  /tools list
-  /tools list --raw
-  /tools list --details --validation
+  /tools                - Show all tools in a table
+  /tools sqlite         - Show only tools from the sqlite server
+  /tools echo_text      - Show detailed info about the echo_text tool
+  /tools --raw          - Output all tools as JSON
 """
 
     @property
     def parameters(self) -> List[CommandParameter]:
         return [
             CommandParameter(
-                name="details",
-                type=bool,
-                default=False,
-                help="Show parameter schemas",
-                is_flag=True,
+                name="filter",
+                type=str,
+                required=False,
+                help="Server name to filter by, or tool name for details",
             ),
             CommandParameter(
                 name="raw",
@@ -119,281 +70,287 @@ Examples:
                 is_flag=True,
             ),
             CommandParameter(
-                name="validation",
+                name="details",
                 type=bool,
                 default=False,
-                help="Show validation status",
-                is_flag=True,
-            ),
-            CommandParameter(
-                name="all",
-                type=bool,
-                default=False,
-                help="Show all details",
+                help="Show full descriptions",
                 is_flag=True,
             ),
         ]
 
     async def execute(self, **kwargs) -> CommandResult:
-        """Execute the tools list command."""
-        # Import the tools action from the actions module
-        from mcp_cli.commands.actions.tools import tools_action_async
-
-        # Extract parameters
-        show_details = kwargs.get("details", False) or kwargs.get("all", False)
-        show_raw = kwargs.get("raw", False)
-        show_validation = kwargs.get("validation", False) or kwargs.get("all", False)
-
-        try:
-            # Use the existing enhanced implementation
-            # It handles all the display internally
-            tools = await tools_action_async(
-                show_details=show_details,
-                show_raw=show_raw,
-                show_validation=show_validation,
+        """Execute the tools command."""
+        # Get context and tool manager
+        context = get_context()
+        if not context or not context.tool_manager:
+            return CommandResult(
+                success=False,
+                error="No tool manager available. Please connect to a server first.",
             )
-
-            # The existing implementation handles all output directly
-            # Just return success
-            return CommandResult(success=True, data=tools)
-
+        
+        tm = context.tool_manager
+        
+        # Get parameters
+        filter_arg = kwargs.get("filter")
+        if not filter_arg and "args" in kwargs:
+            args_val = kwargs["args"]
+            if isinstance(args_val, list) and args_val:
+                filter_arg = args_val[0]
+            elif isinstance(args_val, str):
+                filter_arg = args_val
+        
+        show_raw = kwargs.get("raw", False)
+        show_full_desc = kwargs.get("details", False)
+        
+        try:
+            # Get all tools
+            all_tools = await tm.get_unique_tools()
+            
+            if not all_tools:
+                return CommandResult(
+                    success=True,
+                    output="No tools available.",
+                )
+            
+            # If filter provided, check if it's a server or tool name
+            if filter_arg:
+                # First check if it's a tool name (exact match)
+                tool_match = None
+                for tool in all_tools:
+                    if tool.name == filter_arg or tool.fully_qualified_name == filter_arg:
+                        tool_match = tool
+                        break
+                
+                if tool_match:
+                    # Show detailed tool information
+                    return self._show_tool_details(tool_match)
+                
+                # Helper to get actual server name (reuse the function)
+                def get_server_name(tool):
+                    tool_server_map = {
+                        'read_query': 'sqlite', 'write_query': 'sqlite', 
+                        'create_table': 'sqlite', 'list_tables': 'sqlite',
+                        'describe_table': 'sqlite', 'append_insight': 'sqlite',
+                        'echo_text': 'echo', 'echo_uppercase': 'echo',
+                        'echo_reverse': 'echo', 'echo_json': 'echo',
+                        'echo_list': 'echo', 'echo_number': 'echo',
+                        'echo_delay': 'echo', 'echo_error': 'echo',
+                        'get_service_info': 'echo',
+                    }
+                    if tool.name in tool_server_map:
+                        return tool_server_map[tool.name]
+                    elif tool.namespace and tool.namespace != 'stdio':
+                        return tool.namespace
+                    elif 'echo' in tool.name.lower():
+                        return 'echo'
+                    elif any(x in tool.name.lower() for x in ['query', 'table', 'sql', 'database']):
+                        return 'sqlite'
+                    return tool.namespace
+                
+                # Check if it's a server name
+                server_tools = [t for t in all_tools if get_server_name(t) == filter_arg]
+                if server_tools:
+                    # Show tools from this server
+                    return self._show_tools_table(
+                        server_tools, 
+                        show_raw, 
+                        show_full_desc, 
+                        f"Tools from '{filter_arg}' server"
+                    )
+                
+                # No match found
+                return CommandResult(
+                    success=False,
+                    error=f"No tool or server found matching '{filter_arg}'",
+                )
+            
+            # Show all tools
+            return self._show_tools_table(all_tools, show_raw, show_full_desc, "Available Tools")
+            
         except Exception as e:
             return CommandResult(
                 success=False,
                 error=f"Failed to list tools: {str(e)}",
             )
-
-
-class ToolsCallCommand(UnifiedCommand):
-    """Call a specific tool."""
-
-    @property
-    def name(self) -> str:
-        return "call"
-
-    @property
-    def aliases(self) -> List[str]:
-        return ["run", "execute"]
-
-    @property
-    def description(self) -> str:
-        return "Call a specific MCP tool"
-
-    @property
-    def help_text(self) -> str:
-        return """
-Call a specific MCP tool with arguments.
-
-Usage:
-  /tools call <tool_name> [options]
-  
-Options:
-  --args <json>  - Tool arguments as JSON
-  --confirm      - Confirm before execution
-
-Examples:
-  /tools call read_file --args '{"path": "README.md"}'
-  /tools call list_directory --args '{"path": "."}'
-  /tools call search --args '{"query": "test"}' --confirm
-"""
-
-    @property
-    def parameters(self) -> List[CommandParameter]:
-        return [
-            CommandParameter(
-                name="tool_name",
-                type=str,
-                required=True,
-                help="Name of the tool to call",
-            ),
-            CommandParameter(
-                name="args",
-                type=str,
-                default="{}",
-                help="Tool arguments as JSON string",
-            ),
-            CommandParameter(
-                name="confirm",
-                type=bool,
-                default=False,
-                help="Confirm before execution",
-                is_flag=True,
-            ),
-        ]
-
-    async def execute(self, **kwargs) -> CommandResult:
-        """Execute the tool call command."""
-        # Get tool manager
-        tool_manager = kwargs.get("tool_manager")
-        if not tool_manager:
-            try:
-                context = get_context()
-                if context:
-                    tool_manager = context.tool_manager
-            except Exception:
-                pass
-
-        if not tool_manager:
-            return CommandResult(
-                success=False,
-                error="No active tool manager. Please connect to a server first.",
-            )
-
-        # Get tool name from positional args or parameter
-        tool_name = kwargs.get("tool_name")
-        if (
-            not tool_name
-            and "args" in kwargs
-            and isinstance(kwargs["args"], (list, str))
-        ):
-            # Handle positional argument
-            args_val = kwargs["args"]
-            if isinstance(args_val, list):
-                tool_name = args_val[0] if args_val else None
+    
+    def _show_tool_details(self, tool) -> CommandResult:
+        """Show detailed information about a specific tool."""
+        # Helper to get actual server name
+        def get_server_name(tool):
+            """Map tool to its actual server name based on tool patterns."""
+            tool_server_map = {
+                # SQLite tools
+                'read_query': 'sqlite',
+                'write_query': 'sqlite',
+                'create_table': 'sqlite',
+                'list_tables': 'sqlite',
+                'describe_table': 'sqlite',
+                'append_insight': 'sqlite',
+                # Echo tools
+                'echo_text': 'echo',
+                'echo_uppercase': 'echo',
+                'echo_reverse': 'echo',
+                'echo_json': 'echo',
+                'echo_list': 'echo',
+                'echo_number': 'echo',
+                'echo_delay': 'echo',
+                'echo_error': 'echo',
+                'get_service_info': 'echo',
+            }
+            
+            if tool.name in tool_server_map:
+                return tool_server_map[tool.name]
+            elif tool.namespace and tool.namespace != 'stdio':
+                return tool.namespace
+            elif 'echo' in tool.name.lower():
+                return 'echo'
+            elif any(x in tool.name.lower() for x in ['query', 'table', 'sql', 'database']):
+                return 'sqlite'
+            return tool.namespace
+        
+        server_name = get_server_name(tool)
+        
+        # Format tool details
+        details = []
+        details.append(f"Tool: {tool.name}")
+        details.append(f"Server: {server_name}")
+        details.append(f"Full Name: {server_name}.{tool.name}")
+        details.append("")
+        details.append("Description:")
+        details.append(tool.description or "No description available")
+        
+        if tool.parameters:
+            details.append("")
+            details.append("Parameters:")
+            
+            if "properties" in tool.parameters:
+                props = tool.parameters["properties"]
+                required = tool.parameters.get("required", [])
+                
+                for param_name, param_details in props.items():
+                    param_type = param_details.get("type", "any")
+                    param_desc = param_details.get("description", "")
+                    is_required = param_name in required
+                    default = param_details.get("default")
+                    
+                    details.append(f"  - {param_name}:")
+                    details.append(f"      Type: {param_type}")
+                    if param_desc:
+                        details.append(f"      Description: {param_desc}")
+                    details.append(f"      Required: {'Yes' if is_required else 'No'}")
+                    if default is not None:
+                        details.append(f"      Default: {default}")
             else:
-                tool_name = args_val
-
-        if not tool_name:
-            return CommandResult(
-                success=False,
-                error="Tool name is required. Usage: /tools call <tool_name>",
-            )
-
-        # Parse tool arguments
-        args_json = kwargs.get("args", "{}")
-        if args_json == tool_name:  # If args wasn't provided separately
-            args_json = "{}"
-
-        try:
-            tool_args = (
-                json.loads(args_json) if isinstance(args_json, str) else args_json
-            )
-        except json.JSONDecodeError as e:
-            return CommandResult(
-                success=False,
-                error=f"Invalid JSON arguments: {e}",
-            )
-
-        # Confirm if requested
-        if kwargs.get("confirm", False):
-            from chuk_term.ui.prompts import confirm
-
-            if not confirm(f"Execute tool '{tool_name}' with args: {tool_args}?"):
-                return CommandResult(
-                    success=True,
-                    output="Tool execution cancelled.",
-                )
-
-        try:
-            # Execute the tool
-            result = await tool_manager.execute_tool(
-                tool_name=tool_name,
-                arguments=tool_args,
-            )
-
-            # Format result
-            if isinstance(result, dict):
-                output_text = json.dumps(result, indent=2, default=str)
-            else:
-                output_text = str(result)
-
-            return CommandResult(
-                success=True,
-                output=f"Tool '{tool_name}' executed successfully:\n{output_text}",
-            )
-
-        except Exception as e:
-            return CommandResult(
-                success=False,
-                error=f"Failed to execute tool '{tool_name}': {str(e)}",
-            )
-
-
-class ToolsConfirmCommand(UnifiedCommand):
-    """Configure tool confirmation settings."""
-
-    @property
-    def name(self) -> str:
-        return "confirm"
-
-    @property
-    def aliases(self) -> List[str]:
-        return ["confirmation"]
-
-    @property
-    def description(self) -> str:
-        return "Configure tool execution confirmation"
-
-    @property
-    def help_text(self) -> str:
-        return """
-Configure when to confirm tool execution.
-
-Usage:
-  /tools confirm [mode]
-  
-Modes:
-  always  - Always ask for confirmation
-  never   - Never ask for confirmation
-  smart   - Ask based on risk assessment (default)
-
-Examples:
-  /tools confirm          - Show current mode
-  /tools confirm always   - Always confirm
-  /tools confirm never    - Never confirm
-  /tools confirm smart    - Smart confirmation
-"""
-
-    @property
-    def parameters(self) -> List[CommandParameter]:
-        return [
-            CommandParameter(
-                name="mode",
-                type=str,
-                required=False,
-                help="Confirmation mode",
-                choices=["always", "never", "smart"],
-            ),
-        ]
-
-    @property
-    def modes(self) -> CommandMode:
-        """This is primarily for chat and interactive modes."""
-        return CommandMode.CHAT | CommandMode.INTERACTIVE
-
-    async def execute(self, **kwargs) -> CommandResult:
-        """Execute the confirm command."""
-        from mcp_cli.utils.preferences import get_preference_manager
-
-        pref_manager = get_preference_manager()
-        mode = kwargs.get("mode")
-
-        # Handle positional argument
-        if not mode and "args" in kwargs:
-            args_val = kwargs["args"]
-            if isinstance(args_val, list):
-                mode = args_val[0] if args_val else None
-            elif isinstance(args_val, str):
-                mode = args_val
-
-        if mode:
-            # Set new mode
-            if mode not in ["always", "never", "smart"]:
-                return CommandResult(
-                    success=False,
-                    error=f"Invalid mode: {mode}. Must be 'always', 'never', or 'smart'.",
-                )
-
-            pref_manager.set_tool_confirmation_mode(mode)
-
-            return CommandResult(
-                success=True,
-                output=f"Tool confirmation mode set to: {mode}",
-            )
+                details.append("  No parameters defined")
         else:
-            # Show current mode
-            current_mode = pref_manager.get_tool_confirmation_mode()
-            return CommandResult(
-                success=True,
-                output=f"Current tool confirmation mode: {current_mode}",
-            )
+            details.append("")
+            details.append("Parameters: None")
+        
+        # Display in a panel
+        output.panel(
+            "\n".join(details),
+            title=f"Tool Details: {tool.name}",
+            style="cyan",
+        )
+        
+        return CommandResult(success=True)
+    
+    def _show_tools_table(
+        self, 
+        tools: List, 
+        show_raw: bool, 
+        show_full_desc: bool, 
+        title: str
+    ) -> CommandResult:
+        """Show tools in a table format."""
+        if show_raw:
+            # Output as JSON
+            tools_data = []
+            for tool in tools:
+                tools_data.append({
+                    "name": tool.name,
+                    "server": tool.namespace,
+                    "description": tool.description,
+                    "parameters": tool.parameters,
+                })
+            output.print(json.dumps(tools_data, indent=2))
+            return CommandResult(success=True, data=tools_data)
+        
+        # Build table data
+        output.info("\nFetching tool catalogue from connected servers…")
+        
+        # Helper function to determine actual server name
+        def get_server_name(tool):
+            """Map tool to its actual server name based on tool patterns."""
+            # Map known tool patterns to servers
+            tool_server_map = {
+                # SQLite tools
+                'read_query': 'sqlite',
+                'write_query': 'sqlite', 
+                'create_table': 'sqlite',
+                'list_tables': 'sqlite',
+                'describe_table': 'sqlite',
+                'append_insight': 'sqlite',
+                # Echo tools
+                'echo_text': 'echo',
+                'echo_uppercase': 'echo',
+                'echo_reverse': 'echo',
+                'echo_json': 'echo',
+                'echo_list': 'echo',
+                'echo_number': 'echo',
+                'echo_delay': 'echo',
+                'echo_error': 'echo',
+                'get_service_info': 'echo',
+            }
+            
+            # Try to get server from mapping
+            if tool.name in tool_server_map:
+                return tool_server_map[tool.name]
+            
+            # Fall back to namespace if not in mapping
+            # This handles HTTP servers and other transports correctly
+            if tool.namespace and tool.namespace != 'stdio':
+                return tool.namespace
+            
+            # Last resort - try to guess from tool name patterns
+            if 'echo' in tool.name.lower():
+                return 'echo'
+            elif any(x in tool.name.lower() for x in ['query', 'table', 'sql', 'database']):
+                return 'sqlite'
+            
+            # Default to namespace
+            return tool.namespace
+        
+        table_data = []
+        for tool in tools:
+            desc = tool.description or "No description"
+            
+            # Truncate description unless --details flag is used
+            if not show_full_desc and len(desc) > 80:
+                desc = desc[:77] + "..."
+            
+            # Get the actual server name
+            server_name = get_server_name(tool)
+            
+            table_data.append({
+                "Server": server_name,
+                "Tool": tool.name,
+                "Description": desc,
+            })
+        
+        # Display table
+        table = format_table(
+            table_data,
+            title=f"{len(tools)} {title}",
+            columns=["Server", "Tool", "Description"],
+        )
+        output.print_table(table)
+        output.success(f"Total tools available: {len(tools)}")
+        
+        # Add appropriate tip based on context
+        if "server" in title.lower():
+            output.tip("💡 Use: /tools <tool_name> for details  |  /tools --details for full descriptions")
+        else:
+            output.tip("💡 Use: /tools <server> to filter  |  /tools <tool_name> for details  |  /tools --details for full descriptions")
+        
+        return CommandResult(success=True, data=table_data)

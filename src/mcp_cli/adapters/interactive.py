@@ -54,7 +54,18 @@ class InteractiveCommandAdapter:
             return False
 
         command_name = parts[0]
+
+        # Handle slash commands - strip the leading slash if present
+        if command_name.startswith("/"):
+            command_name = command_name[1:]
+
         args = parts[1:] if len(parts) > 1 else []
+
+        # Debug: log what we parsed
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Parsed command: {command_name}, args: {args}")
 
         # Look up command in registry
         command = registry.get(command_name, mode=CommandMode.INTERACTIVE)

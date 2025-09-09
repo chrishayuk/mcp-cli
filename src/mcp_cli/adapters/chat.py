@@ -82,8 +82,17 @@ class ChatCommandAdapter:
         if not command_text.startswith("/"):
             return False
 
-        # Parse command and arguments
-        parts = command_text[1:].split()  # Remove leading slash
+        # Parse command and arguments using shlex for proper quote handling
+        import shlex
+
+        # Remove leading slash and parse with proper quote handling
+        try:
+            parts = shlex.split(command_text[1:])
+        except ValueError as e:
+            # Handle unmatched quotes
+            output.error(f"Invalid command format: {e}")
+            return False
+
         if not parts:
             # Just "/" typed - show command menu
             return await ChatCommandAdapter._show_command_menu(context)

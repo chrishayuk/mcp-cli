@@ -43,6 +43,7 @@ def register_all_commands() -> None:
     from mcp_cli.commands.definitions.verbose import VerboseCommand
     from mcp_cli.commands.definitions.interrupt import InterruptCommand
     from mcp_cli.commands.definitions.tool_history import ToolHistoryCommand
+    from mcp_cli.commands.definitions.execute_tool import ExecuteToolCommand
 
     # Register basic commands
     registry.register(HelpCommand())
@@ -75,6 +76,9 @@ def register_all_commands() -> None:
     registry.register(VerboseCommand())
     registry.register(InterruptCommand())
     registry.register(ToolHistoryCommand())
+
+    # Register tool execution command for interactive mode
+    registry.register(ExecuteToolCommand())
 
     # All commands have been migrated!
     # - tools (with subcommands: list, call, confirm)

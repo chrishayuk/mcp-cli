@@ -21,10 +21,8 @@ from mcp_cli.logging_config import (
 
 # Use unified command system
 from mcp_cli.commands import register_all_commands as register_unified_commands
-
-# Keep old registry for now for backward compatibility with direct CLI commands
-from mcp_cli.cli.commands import register_all_commands
-from mcp_cli.cli.registry import CommandRegistry
+from mcp_cli.commands.registry import registry
+from mcp_cli.commands.base import CommandMode
 from mcp_cli.run_command import run_command_sync
 from chuk_term.ui import (
     output,
@@ -364,27 +362,22 @@ def _interactive_command(
 logger.debug("Registering unified commands")
 register_unified_commands()
 
-# Also register old commands for backward compatibility with direct CLI usage
-logger.debug("Registering CLI commands from registry")
-register_all_commands()
+# Register CLI commands from unified registry
 
-# Try registry-based registration first for core commands
-core_commands = ["chat", "cmd", "ping"]  # Remove "provider" from registry
+logger.debug("Registering CLI commands from unified registry")
+# Don't register all commands here - let each mode handle its own
+# CLICommandAdapter.register_with_typer(app)
+
+# Try unified registry for core commands
+core_commands = ["chat", "cmd", "ping"]
 registry_registered = []
 
 for command_name in core_commands:
-    cmd = CommandRegistry.get_command(command_name)
+    cmd = registry.get(command_name, mode=CommandMode.CLI)
     if cmd:
-        try:
-            cmd.register(app, run_command_sync)
-            registry_registered.append(command_name)
-            logger.debug(
-                f"Successfully registered command via registry: {command_name}"
-            )
-        except Exception as e:
-            logger.warning(
-                f"Failed to register command '{command_name}' via registry: {e}"
-            )
+        # For now, we'll handle these directly through existing subcommands
+        registry_registered.append(command_name)
+        logger.debug(f"Successfully found command in unified registry: {command_name}")
 
 # Direct registration of tool-related commands
 direct_registered = []
