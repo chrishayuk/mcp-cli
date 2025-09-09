@@ -312,6 +312,11 @@ mcp-cli --server sqlite --provider anthropic --model claude-4-1-opus
 /provider anthropic                # Switch to Anthropic (requires API key)
 /provider openai gpt-5             # Switch to OpenAI GPT-5
 
+# Custom Provider Management
+/provider custom                   # List custom providers
+/provider add localai http://localhost:8080/v1 gpt-4  # Add custom provider
+/provider remove localai           # Remove custom provider
+
 /model                             # Show current model (default: gpt-oss)
 /model llama3.3                    # Switch to different Ollama model
 /model gpt-5                       # Switch to GPT-5 (if using OpenAI)
@@ -515,6 +520,35 @@ mcp-cli provider set groq api_key your-groq-key
 mcp-cli provider diagnostic openai
 mcp-cli provider diagnostic anthropic
 ```
+
+### Custom OpenAI-Compatible Providers
+
+MCP CLI supports adding custom OpenAI-compatible providers (LocalAI, custom proxies, etc.):
+
+```bash
+# Add a custom provider (persisted across sessions)
+mcp-cli provider add localai http://localhost:8080/v1 gpt-4 gpt-3.5-turbo
+mcp-cli provider add myproxy https://proxy.example.com/v1 custom-model-1 custom-model-2
+
+# Set API key via environment variable (never stored in config)
+export LOCALAI_API_KEY=your-api-key
+export MYPROXY_API_KEY=your-api-key
+
+# List custom providers
+mcp-cli provider custom
+
+# Use custom provider
+mcp-cli --provider localai --server sqlite
+mcp-cli --provider myproxy --model custom-model-1 --server sqlite
+
+# Remove custom provider
+mcp-cli provider remove localai
+
+# Runtime provider (session-only, not persisted)
+mcp-cli --provider temp-ai --api-base https://api.temp.com/v1 --api-key test-key --server sqlite
+```
+
+**Security Note**: API keys are NEVER stored in configuration files. Use environment variables following the pattern `{PROVIDER_NAME}_API_KEY` or pass via `--api-key` for session-only use.
 
 ### Manual Configuration
 
@@ -850,18 +884,29 @@ pip install -e ".[cli,dev]"
 pre-commit install
 ```
 
-### UI Demo Scripts
+### Demo Scripts
 
-Explore the UI capabilities powered by chuk-term:
+Explore the capabilities of MCP CLI:
 
 ```bash
-# Terminal management features
+# Custom Provider Management Demos
+
+# Interactive walkthrough demo (educational)
+uv run examples/custom_provider_demo.py
+
+# Working demo with actual inference (requires OPENAI_API_KEY)
+uv run examples/custom_provider_working_demo.py
+
+# Simple shell script demo (requires OPENAI_API_KEY)
+bash examples/custom_provider_simple_demo.sh
+
+# Terminal management features (chuk-term)
 uv run examples/ui_terminal_demo.py
 
-# Output system with themes
+# Output system with themes (chuk-term)
 uv run examples/ui_output_demo.py
 
-# Streaming UI capabilities
+# Streaming UI capabilities (chuk-term)
 uv run examples/ui_streaming_demo.py
 ```
 

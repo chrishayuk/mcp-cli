@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import atexit
 import gc
+import os
 import signal
 import sys
 from typing import Optional, List
@@ -129,7 +130,7 @@ def main_callback(
         output.info(f"Running: provider {provider}")
 
         # Execute the provider command
-        from mcp_cli.commands.provider import provider_action_async
+        from mcp_cli.commands.actions.providers import provider_action_async
         from mcp_cli.context import initialize_context
 
         # Initialize context for the provider command
@@ -150,14 +151,43 @@ def main_callback(
     from mcp_cli.model_manager import ModelManager
 
     model_manager = ModelManager()
+    
+    # Handle runtime custom provider if api_base is specified
+    if api_base and provider:
+        # Add as runtime provider (not persisted)
+        logger.debug(f"Adding runtime provider: {provider} with base {api_base}")
+        
+        # Parse models if provided in model string (comma-separated)
+        models = None
+        if model and "," in model:
+            models = [m.strip() for m in model.split(",")]
+            model = models[0]  # Use first as default
+        
+        model_manager.add_runtime_provider(
+            name=provider,
+            api_base=api_base,
+            api_key=api_key,  # Will be kept in memory only
+            models=models
+        )
+        
+        output.info(f"Using runtime provider: {provider}")
+        if api_key:
+            output.success("API key provided (kept in memory only)")
+        else:
+            env_var = f"{provider.upper().replace('-', '_')}_API_KEY"
+            if os.environ.get(env_var):
+                output.success(f"Using API key from {env_var}")
+            else:
+                output.warning(f"No API key found. Set {env_var} environment variable.")
 
     # Validate provider if specified
-    if provider:
+    elif provider:
         if not model_manager.validate_provider(provider):
             available = ", ".join(model_manager.list_providers())
             output.error(f"Unknown provider: {provider}")
             output.info(f"Available providers: {available}")
             output.tip(f"Did you mean to run: mcp-cli provider {provider}")
+            output.tip(f"Or add a custom provider with: --provider <name> --api-base <url>")
             raise typer.Exit(1)
 
     # Smart provider/model resolution:
@@ -386,7 +416,7 @@ direct_registered = []
 # Shared provider command function
 def _run_provider_command(args, log_prefix="Provider command"):
     """Shared function to run provider commands."""
-    from mcp_cli.commands.provider import provider_action_async
+    from mcp_cli.commands.actions.providers import provider_action_async
 
     # Initialize context for the provider command
     initialize_context()
@@ -445,12 +475,26 @@ def provider_command(
     if subcommand is None:
         # No arguments - show status
         args = []
-    elif subcommand in ["list", "config", "diagnostic"]:
+    elif subcommand in ["list", "config", "diagnostic", "custom"]:
         # Command without provider name
         args = [subcommand]
         if provider_name and subcommand == "diagnostic":
             # diagnostic can take a provider name
             args.append(provider_name)
+    elif subcommand == "add":
+        # add command: add <name> <api_base> [models...]
+        if not provider_name or not key:
+            output.error("add command requires: provider add <name> <api_base> [model1 model2 ...]")
+            raise typer.Exit(1)
+        args = [subcommand, provider_name, key]  # key is used as api_base
+        if value:
+            args.append(value)  # value is the first model
+    elif subcommand == "remove":
+        # remove command: remove <name>
+        if not provider_name:
+            output.error("remove command requires: provider remove <name>")
+            raise typer.Exit(1)
+        args = [subcommand, provider_name]
     elif subcommand == "set":
         # set command: set <provider> <key> <value>
         if not provider_name or not key or not value:

@@ -5,7 +5,7 @@ Now properly handles the updated OpenAI client with universal tool compatibility
 """
 
 import logging
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,10 @@ class ModelManager:
         self._active_model = None
         self._discovery_triggered = False
         self._client_cache = {}  # Cache clients to avoid recreation
+        self._custom_providers = {}  # Custom OpenAI-compatible providers
+        self._runtime_api_keys = {}  # Temporary API keys for runtime providers
         self._initialize_chuk_llm()
+        self._load_custom_providers()
 
     def _initialize_chuk_llm(self):
         """Initialize chuk_llm configuration and trigger discovery"""
@@ -82,6 +85,21 @@ class ModelManager:
             self._active_provider = "ollama"
             self._active_model = "gpt-oss"
 
+    def _load_custom_providers(self):
+        """Load custom providers from preferences."""
+        try:
+            from mcp_cli.utils.preferences import get_preference_manager
+            
+            prefs = get_preference_manager()
+            custom_providers = prefs.get_custom_providers()
+            
+            for name, provider_data in custom_providers.items():
+                self._custom_providers[name] = provider_data
+                logger.debug(f"Loaded custom provider: {name}")
+                
+        except Exception as e:
+            logger.warning(f"Failed to load custom providers: {e}")
+    
     def _trigger_discovery(self):
         """Trigger discovery to ensure all models are available"""
         if self._discovery_triggered:
@@ -133,43 +151,58 @@ class ModelManager:
         return self.refresh_models(provider) > 0
 
     def get_available_providers(self) -> List[str]:
-        """Get list of available providers from chuk_llm"""
-        if not self._chuk_config:
-            return ["ollama"]  # Safe fallback
-
-        try:
-            # Get all configured providers
-            all_providers = self._chuk_config.get_all_providers()
-
-            # CHANGED: Put ollama first in the preferred order
-            preferred_order = [
-                "ollama",
-                "openai",
-                "anthropic",
-                "gemini",
-                "groq",
-                "mistral",
-            ]
-            available = []
-
-            # Add providers in preferred order
-            for provider in preferred_order:
-                if provider in all_providers:
-                    available.append(provider)
-
-            # Add any other providers not in preferred list
-            for provider in all_providers:
-                if provider not in available:
-                    available.append(provider)
-
-            return available
-
-        except Exception as e:
-            logger.error(f"Failed to get available providers: {e}")
-            return ["ollama"]  # Safe fallback
+        """Get list of available providers from chuk_llm and custom providers"""
+        providers = []
+        
+        # Get chuk_llm providers
+        if self._chuk_config:
+            try:
+                # Get all configured providers
+                all_providers = self._chuk_config.get_all_providers()
+                
+                # CHANGED: Put ollama first in the preferred order
+                preferred_order = [
+                    "ollama",
+                    "openai",
+                    "anthropic",
+                    "gemini",
+                    "groq",
+                    "mistral",
+                ]
+                
+                # Add providers in preferred order
+                for provider in preferred_order:
+                    if provider in all_providers:
+                        providers.append(provider)
+                
+                # Add any other providers not in preferred list
+                for provider in all_providers:
+                    if provider not in providers:
+                        providers.append(provider)
+                        
+            except Exception as e:
+                logger.error(f"Failed to get chuk_llm providers: {e}")
+                providers = ["ollama"]  # Safe fallback
+        else:
+            providers = ["ollama"]  # Safe fallback
+        
+        # Add custom providers
+        for custom_name in self._custom_providers.keys():
+            if custom_name not in providers:
+                providers.append(custom_name)
+        
+        return providers
 
     def get_available_models(self, provider: str | None = None) -> List[str]:
         """Get available models for a provider (including discovered ones)"""
+        target_provider = provider or self._active_provider
+        if not target_provider:
+            return []
+        
+        # Check if it's a custom provider first
+        if target_provider in self._custom_providers:
+            return self._custom_providers[target_provider].get("models", ["gpt-4", "gpt-3.5-turbo"])
+        
         if not self._chuk_config:
             # Return default models even without config
             if provider == "ollama":
@@ -367,42 +400,61 @@ class ModelManager:
 
     def list_available_providers(self) -> Dict[str, Any]:
         """Get detailed provider information (matches ChukLLM API)"""
+        result = {}
+        
+        # Get chuk_llm providers
         try:
             from chuk_llm.llm.client import list_available_providers
 
-            result: Dict[str, Any] = list_available_providers()
-            return result
+            chuk_providers: Dict[str, Any] = list_available_providers()
+            result.update(chuk_providers)
         except Exception as e:
-            logger.error(f"Failed to get detailed provider info: {e}")
-            # Fallback to basic info
-            basic_info = {}
-            for provider in self.get_available_providers():
-                try:
-                    models = self.get_available_models(provider)
-                    has_api_key = (
-                        self._chuk_config.get_api_key(provider) is not None
-                        if self._chuk_config
-                        else False
-                    )
+            logger.error(f"Failed to get chuk_llm provider info: {e}")
+            # Fallback to basic info for built-in providers
+            for provider in ["ollama", "openai", "anthropic"]:
+                if provider in self.get_available_providers():
+                    try:
+                        models = self.get_available_models(provider)
+                        has_api_key = (
+                            self._chuk_config.get_api_key(provider) is not None
+                            if self._chuk_config
+                            else False
+                        )
 
-                    # CHANGED: Set gpt-oss as default for ollama
-                    default_model = (
-                        "gpt-oss"
-                        if provider == "ollama"
-                        else (models[0] if models else None)
-                    )
+                        # CHANGED: Set gpt-oss as default for ollama
+                        default_model = (
+                            "gpt-oss"
+                            if provider == "ollama"
+                            else (models[0] if models else None)
+                        )
 
-                    basic_info[provider] = {
-                        "models": models,
-                        "model_count": len(models),
-                        "has_api_key": has_api_key,
-                        "baseline_features": ["text"],  # Safe default
-                        "default_model": default_model,
-                    }
-                except Exception:
-                    basic_info[provider] = {"error": "Could not get provider info"}
+                        result[provider] = {
+                            "models": models,
+                            "model_count": len(models),
+                            "has_api_key": has_api_key,
+                            "baseline_features": ["text"],  # Safe default
+                            "default_model": default_model,
+                        }
+                    except Exception:
+                        result[provider] = {"error": "Could not get provider info"}
+        
+        # Add custom providers
+        import os
+        for name, provider_data in self._custom_providers.items():
+            env_var = provider_data.get("env_var_name") or f"{name.upper().replace('-', '_')}_API_KEY"
+            has_api_key = bool(os.environ.get(env_var) or self._runtime_api_keys.get(name))
+            
+            result[name] = {
+                "models": provider_data.get("models", ["gpt-4", "gpt-3.5-turbo"]),
+                "model_count": len(provider_data.get("models", ["gpt-4", "gpt-3.5-turbo"])),
+                "has_api_key": has_api_key,
+                "baseline_features": ["streaming", "tools", "text"],  # OpenAI-compatible
+                "default_model": provider_data.get("default_model", "gpt-4"),
+                "api_base": provider_data.get("api_base"),
+                "is_custom": True
+            }
 
-            return basic_info
+        return result
 
     def get_active_provider(self) -> str:
         """Get current active provider"""
@@ -537,11 +589,15 @@ class ModelManager:
         Get a chuk_llm client for the specified or active provider/model.
         FIXED: Now uses caching and properly handles the updated OpenAI client.
         """
+        target_provider = provider or self._active_provider
+        target_model = model or self._active_model
+        
+        # Check if it's a custom provider
+        if target_provider in self._custom_providers:
+            return self._get_custom_provider_client(target_provider, target_model)
+        
         try:
             from chuk_llm.llm.client import get_client
-
-            target_provider = provider or self._active_provider
-            target_model = model or self._active_model
 
             # Use cache key to avoid recreating clients
             cache_key = f"{target_provider}:{target_model}"
@@ -559,6 +615,37 @@ class ModelManager:
                 f"Failed to get client for {target_provider}:{target_model}: {e}"
             )
             raise
+    
+    def _get_custom_provider_client(self, provider: str, model: str | None = None):
+        """Get a client for a custom OpenAI-compatible provider."""
+        import os
+        from openai import OpenAI
+        
+        provider_data = self._custom_providers.get(provider)
+        if not provider_data:
+            raise ValueError(f"Custom provider {provider} not found")
+        
+        # Get API key from runtime storage or environment
+        api_key = self._runtime_api_keys.get(provider)
+        if not api_key:
+            env_var = provider_data.get("env_var_name") or f"{provider.upper().replace('-', '_')}_API_KEY"
+            api_key = os.environ.get(env_var)
+        
+        if not api_key:
+            raise ValueError(f"No API key found for provider {provider}. Set environment variable or pass via CLI.")
+        
+        cache_key = f"custom:{provider}:{model or 'default'}"
+        
+        if cache_key not in self._client_cache:
+            # Create OpenAI-compatible client
+            client = OpenAI(
+                api_key=api_key,
+                base_url=provider_data["api_base"]
+            )
+            self._client_cache[cache_key] = client
+            logger.debug(f"Created custom OpenAI client for {provider}")
+        
+        return self._client_cache[cache_key]
 
     def get_client_for_provider(self, provider: str, model: str | None = None):
         """Get a client for a specific provider (alias for get_client)"""
@@ -667,6 +754,42 @@ class ModelManager:
                 "discovery_triggered": self._discovery_triggered,
                 "ollama_enabled": True,  # Safe default
             }
+
+    def add_runtime_provider(
+        self, 
+        name: str, 
+        api_base: str, 
+        api_key: Optional[str] = None,
+        models: Optional[List[str]] = None
+    ) -> None:
+        """Add a provider at runtime (not persisted).
+        
+        Args:
+            name: Provider name
+            api_base: API base URL
+            api_key: API key (kept in memory only)
+            models: List of available models
+        """
+        self._custom_providers[name] = {
+            "name": name,
+            "api_base": api_base,
+            "models": models or ["gpt-4", "gpt-3.5-turbo"],
+            "default_model": models[0] if models else "gpt-4",
+            "is_runtime": True
+        }
+        
+        if api_key:
+            self._runtime_api_keys[name] = api_key
+        
+        logger.info(f"Added runtime provider: {name}")
+    
+    def is_custom_provider(self, name: str) -> bool:
+        """Check if a provider is custom (either from preferences or runtime)."""
+        return name in self._custom_providers
+    
+    def is_runtime_provider(self, name: str) -> bool:
+        """Check if a provider was added at runtime."""
+        return name in self._custom_providers and self._custom_providers[name].get("is_runtime", False)
 
     def __str__(self):
         return f"ModelManager(provider={self._active_provider}, model={self._active_model})"

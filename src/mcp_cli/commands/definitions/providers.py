@@ -44,21 +44,48 @@ class ProviderCommand(CommandGroup):
 Manage LLM providers for the MCP CLI.
 
 Subcommands:
-  list  - List available providers
-  set   - Set the active provider
-  show  - Show current provider
+  list    - List all available providers
+  custom  - List custom OpenAI-compatible providers
+  add     - Add a custom provider
+  remove  - Remove a custom provider
+  set     - Configure provider settings
+  show    - Show current provider status
+
+Custom Provider Management:
+  /provider add <name> <api_base> [models...]
+    Add a custom OpenAI-compatible provider (LocalAI, proxies, etc.)
+    
+  /provider remove <name>
+    Remove a custom provider
+    
+  /provider custom
+    List all custom providers
 
 Usage:
   /provider              - Show current provider status
   /providers             - List all providers (preferred)
   /provider <name>       - Switch to a different provider
-  /provider list         - List all providers (alternative)
+  /provider list         - List all providers
   
 Examples:
+  # Switch providers
   /provider ollama       - Switch to Ollama provider
   /provider openai       - Switch to OpenAI provider
-  /provider set anthropic - Explicitly set to Anthropic
-  /provider list         - List all available providers
+  
+  # Add custom providers
+  /provider add localai http://localhost:8080/v1 gpt-4 gpt-3.5-turbo
+  /provider add myproxy https://proxy.example.com/v1 custom-model
+  
+  # Use custom provider (after setting API key)
+  export LOCALAI_API_KEY=your-key
+  /provider localai
+  
+  # Remove custom provider
+  /provider remove localai
+
+Note: API keys are NEVER stored in config. Use environment variables:
+  Pattern: {PROVIDER_NAME}_API_KEY
+  Example: LOCALAI_API_KEY, MYPROXY_API_KEY
 """
 
     async def execute(self, subcommand: str | None = None, **kwargs) -> CommandResult:

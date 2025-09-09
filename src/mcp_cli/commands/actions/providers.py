@@ -194,18 +194,56 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
     )
     output.print_table(table)
     output.print()
-    output.tip("💡 Use '/provider <name>' to switch providers")
-
+    
+    # Show comprehensive tips for provider management
+    output.tip("💡 Provider Management:")
+    output.info("  • Switch: /provider <name>")
+    output.info("  • Add custom: /provider add <name> <api_base> [model]")  
+    output.info("  • Remove: /provider remove <name>")
+    output.info("  • List custom: /provider custom")
+    output.hint("  Custom providers use env vars: {NAME}_API_KEY (e.g., LOCALAI_API_KEY)")
+    
     # Show helpful tips based on current state
     inactive_providers = []
+    inactive_custom_providers = []
+    custom_count = 0
     for name, info in all_providers_info.items():
+        if info.get("is_custom"):
+            custom_count += 1
         if "error" not in info:
             status_icon, _, _ = _get_provider_status_enhanced(name, info)
             if status_icon == "❌":
                 inactive_providers.append(name)
+                if info.get("is_custom"):
+                    inactive_custom_providers.append(name)
 
-    if inactive_providers:
-        output.hint("Configure providers with: /provider set <name> api_key <key>")
+    # Prioritize showing custom provider hints if any are unconfigured
+    if inactive_custom_providers:
+        # Show hint for custom provider
+        first_custom = inactive_custom_providers[0]
+        output.hint(f"Configure API key: export {first_custom.upper().replace('-', '_')}_API_KEY=your-key")
+    elif inactive_providers:
+        # Show hint for built-in provider
+        first_inactive = inactive_providers[0]
+        env_var_map = {
+            "anthropic": "ANTHROPIC_API_KEY",
+            "openai": "OPENAI_API_KEY", 
+            "gemini": "GEMINI_API_KEY",
+            "groq": "GROQ_API_KEY",
+            "mistral": "MISTRAL_API_KEY",
+            "perplexity": "PERPLEXITY_API_KEY",
+            "openrouter": "OPENROUTER_API_KEY",
+            "togetherai": "TOGETHER_API_KEY",
+            "deepseek": "DEEPSEEK_API_KEY",
+            "azure_openai": "AZURE_OPENAI_API_KEY",
+            "watsonx": "WATSONX_API_KEY",
+        }
+        env_var = env_var_map.get(first_inactive, f"{first_inactive.upper()}_API_KEY")
+        output.hint(f"Configure API key: export {env_var}=your-key")
+    
+    # Suggest adding custom providers if none exist
+    if custom_count == 0:
+        output.hint("Add OpenAI-compatible providers: /provider add localai http://localhost:8080/v1")
 
 
 def _render_diagnostic_optimized(
@@ -452,6 +490,24 @@ async def provider_action_async(
     if sub == "list":
         _render_list_optimized(model_manager)
         return
+    
+    if sub == "custom":
+        _list_custom_providers()
+        return
+    
+    if sub == "add" and len(rest) >= 2:
+        # /provider add <name> <api_base> [model1 model2 ...]
+        name = rest[0]
+        api_base = rest[1]
+        models = rest[2:] if len(rest) > 2 else None
+        _add_custom_provider(name, api_base, models)
+        return
+    
+    if sub == "remove" and rest:
+        # /provider remove <name>
+        name = rest[0]
+        _remove_custom_provider(name)
+        return
 
     if sub == "config":
         _render_config(model_manager)
@@ -479,6 +535,95 @@ def _render_config(model_manager: ModelManager) -> None:
     """Show detailed configuration - keeping your existing implementation."""
     # ... existing implementation
     pass
+
+
+def _add_custom_provider(name: str, api_base: str, models: List[str] | None = None) -> None:
+    """Add a custom OpenAI-compatible provider."""
+    from mcp_cli.utils.preferences import get_preference_manager
+    import os
+    
+    prefs = get_preference_manager()
+    
+    # Check if provider already exists
+    if prefs.is_custom_provider(name):
+        output.error(f"Provider '{name}' already exists. Use 'update' to modify it.")
+        return
+    
+    # Add the provider
+    prefs.add_custom_provider(
+        name=name,
+        api_base=api_base,
+        models=models or ["gpt-4", "gpt-3.5-turbo"],
+        default_model=models[0] if models else "gpt-4"
+    )
+    
+    # Get the expected env var name
+    env_var = f"{name.upper().replace('-', '_')}_API_KEY"
+    
+    output.success(f"✅ Added provider '{name}'")
+    output.info(f"   API Base: {api_base}")
+    output.info(f"   Models: {', '.join(models or ['gpt-4', 'gpt-3.5-turbo'])}")
+    
+    # Check if API key is set
+    if not os.environ.get(env_var):
+        output.warning(f"\n⚠️  API key required. Set it with:")
+        output.print(f"   [bold]export {env_var}=your-api-key[/bold]")
+        output.info(f"\n   The environment variable name is based on your provider name:")
+        output.info(f"   Provider '{name}' → {env_var}")
+    else:
+        output.success(f"   API Key: ✅ Found in {env_var}")
+
+
+def _remove_custom_provider(name: str) -> None:
+    """Remove a custom provider."""
+    from mcp_cli.utils.preferences import get_preference_manager
+    
+    prefs = get_preference_manager()
+    
+    if not prefs.is_custom_provider(name):
+        output.error(f"Provider '{name}' is not a custom provider or doesn't exist.")
+        return
+    
+    if prefs.remove_custom_provider(name):
+        output.success(f"✅ Removed provider '{name}'")
+    else:
+        output.error(f"Failed to remove provider '{name}'")
+
+
+def _list_custom_providers() -> None:
+    """List all custom providers."""
+    from mcp_cli.utils.preferences import get_preference_manager
+    import os
+    
+    prefs = get_preference_manager()
+    custom_providers = prefs.get_custom_providers()
+    
+    if not custom_providers:
+        output.info("No custom providers configured.")
+        output.tip("Add one with: /provider add <name> <api_base> [models...]")
+        return
+    
+    output.rule("[bold]🔧 Custom Providers[/bold]", style="primary")
+    
+    table_data = []
+    for name, provider_data in custom_providers.items():
+        env_var = provider_data.get("env_var_name") or f"{name.upper().replace('-', '_')}_API_KEY"
+        has_key = "✅" if os.environ.get(env_var) else "❌"
+        
+        table_data.append({
+            "Provider": name,
+            "API Base": provider_data["api_base"],
+            "Models": ", ".join(provider_data.get("models", [])),
+            "Default": provider_data.get("default_model", "gpt-4"),
+            "API Key": f"{has_key} ({env_var})"
+        })
+    
+    table = format_table(
+        table_data,
+        title=None,
+        columns=["Provider", "API Base", "Models", "Default", "API Key"]
+    )
+    output.print_table(table)
 
 
 def _mutate(

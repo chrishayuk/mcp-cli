@@ -95,6 +95,19 @@ def _show_all_commands(commands: Dict[str, object]) -> None:
     output.hint(
         "\nType 'help <command>' for detailed information on a specific command."
     )
+    
+    # Add provider management tips
+    output.print()
+    output.tip("💡 Provider Management:")
+    output.info("  • List all: /providers")
+    output.info("  • Add custom: /provider add <name> <api_base> [model]")
+    output.info("  • Switch: /provider <name>")
+    output.info("  • Remove: /provider remove <name>")
+    output.print()
+    output.hint("Custom providers need API keys as environment variables:")
+    output.info("  Pattern: {PROVIDER_NAME}_API_KEY")
+    output.info("  Example: 'localai' → export LOCALAI_API_KEY=your-key")
+    output.info("  Example: 'my-llm' → export MY_LLM_API_KEY=your-key")
 
 
 def _extract_description(help_text: Optional[str]) -> str:
