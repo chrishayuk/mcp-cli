@@ -349,7 +349,7 @@ async def analyze_real_servers():
         if temp_config_file:
             try:
                 os.unlink(temp_config_file)
-            except:
+            except Exception:
                 pass
 
         return analysis_results
@@ -927,7 +927,7 @@ async def test_single_runtime_server(
         if not server_config:
             print(f"      ❌ Server '{server_name}' not found in preferences")
             return False
-            
+
         # Add only this server to the config
         if server_config.get("transport") == "stdio":
             temp_config["mcpServers"][server_name] = {
@@ -959,8 +959,12 @@ async def test_single_runtime_server(
                 print("      ⏱️  Connection timed out (server may not be installed)")
                 return False
             except asyncio.CancelledError:
-                print("      ⚠️  Connection timeout (uvx servers work but may need manual testing)")
-                print("      💡 To test manually: mcp-cli tools --server time-test --config-file <config>")
+                print(
+                    "      ⚠️  Connection timeout (uvx servers work but may need manual testing)"
+                )
+                print(
+                    "      💡 To test manually: mcp-cli tools --server time-test --config-file <config>"
+                )
                 return False
             except Exception as e:
                 print(f"      ❌ Connection failed: {str(e)[:80]}")
@@ -1039,7 +1043,7 @@ async def test_single_runtime_server(
                     # Cleanup
                     try:
                         await asyncio.wait_for(tm.close(), timeout=2.0)
-                    except:
+                    except Exception:
                         pass  # Ignore cleanup errors
 
                     return True
@@ -1062,7 +1066,7 @@ async def test_single_runtime_server(
 
             try:
                 os.unlink(temp_config_file)
-            except:
+            except Exception:
                 pass
 
     except ImportError:
@@ -1191,35 +1195,35 @@ async def test_runtime_server_management():
 
             try:
                 print(f"    Testing server: {server_name}")
-                
+
                 # First check if the server command is available
                 check_cmd = None
                 if server_name == "test-time-runtime":
                     check_cmd = ["uvx", "mcp-server-time", "--help"]
                 elif server_name == "test-sqlite-runtime":
                     check_cmd = ["uvx", "mcp-server-sqlite", "--help"]
-                
+
                 if check_cmd:
                     import subprocess
+
                     try:
                         # Quick check if server is available
-                        print(f"      Checking server availability...")
+                        print("      Checking server availability...")
                         result = subprocess.run(
-                            check_cmd,
-                            capture_output=True,
-                            timeout=5,
-                            text=True
+                            check_cmd, capture_output=True, timeout=5, text=True
                         )
                         if result.returncode != 0:
-                            print(f"      ℹ️  Server not available via uvx (exit code: {result.returncode})")
+                            print(
+                                f"      ℹ️  Server not available via uvx (exit code: {result.returncode})"
+                            )
                             continue
                         else:
-                            print(f"      ✅ Server is available via uvx")
+                            print("      ✅ Server is available via uvx")
                     except subprocess.TimeoutExpired:
-                        print(f"      ⏱️  Check timed out")
+                        print("      ⏱️  Check timed out")
                         continue
                     except FileNotFoundError:
-                        print(f"      ❌ uvx command not found")
+                        print("      ❌ uvx command not found")
                         continue
                     except Exception as e:
                         print(f"      ❌ Check failed: {str(e)[:50]}")
@@ -1255,7 +1259,7 @@ async def test_runtime_server_management():
             try:
                 if pref_manager.remove_runtime_server(server_name):
                     print(f"    ✅ Removed '{server_name}'")
-            except:
+            except Exception:
                 pass  # Ignore cleanup errors
 
         # Also check for any lingering test servers from previous runs
@@ -1265,7 +1269,7 @@ async def test_runtime_server_management():
                 try:
                     pref_manager.remove_runtime_server(server_name)
                     print(f"    ✅ Removed lingering test server '{server_name}'")
-                except:
+                except Exception:
                     pass
 
         if not test_passed:

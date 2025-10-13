@@ -62,8 +62,7 @@ class TestSystemPromptGenerator:
         assert gen.default_tool_config not in prompt
 
 
-# Fix: Import format_tool_response from the correct location (ToolManager)
-from mcp_cli.tools.manager import ToolManager
+from mcp_cli.tools.manager import ToolManager  # noqa: E402
 
 
 class TestFormatToolResponse:

@@ -15,13 +15,13 @@ logger = logging.getLogger(__name__)
 class ToolFilter:
     """Manages tool filtering and disabling based on various criteria."""
 
-    def __init__(self):
-        self.disabled_tools: set = set()
-        self.disabled_by_validation: set = set()
-        self.disabled_by_user: set = set()
+    def __init__(self) -> None:
+        self.disabled_tools: set[str] = set()
+        self.disabled_by_validation: set[str] = set()
+        self.disabled_by_user: set[str] = set()
         self.auto_fix_enabled: bool = True
         self._validation_cache: Dict[str, Tuple[bool, Optional[str]]] = {}
-        self._fix_stats = {"attempted": 0, "successful": 0, "failed": 0}
+        self._fix_stats: Dict[str, int] = {"attempted": 0, "successful": 0, "failed": 0}
 
     def is_tool_enabled(self, tool_name: str) -> bool:
         """Check if a tool is enabled (not disabled)."""
@@ -167,8 +167,10 @@ class ToolFilter:
     def _extract_tool_name(self, tool: Dict[str, Any]) -> str:
         """Extract tool name from tool definition."""
         if "function" in tool:
-            return tool["function"].get("name", "unknown")
-        return tool.get("name", "unknown")
+            func_name: str = tool["function"].get("name", "unknown")
+            return func_name
+        tool_name: str = tool.get("name", "unknown")
+        return tool_name
 
     def _try_fix_tool(
         self, tool: Dict[str, Any], provider: str
@@ -209,7 +211,8 @@ class ToolFilter:
 
     def get_fix_statistics(self) -> Dict[str, int]:
         """Get auto-fix statistics."""
-        return self._fix_stats.copy()
+        stats: Dict[str, int] = self._fix_stats.copy()
+        return stats
 
     def reset_statistics(self) -> None:
         """Reset fix statistics."""

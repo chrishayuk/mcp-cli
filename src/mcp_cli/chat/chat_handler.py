@@ -5,7 +5,6 @@ Clean chat handler that uses ModelManager and ChatContext with streaming support
 
 from __future__ import annotations
 
-import asyncio
 import gc
 import logging
 from typing import Optional
@@ -23,6 +22,8 @@ from mcp_cli.chat.chat_context import ChatContext, TestChatContext
 from mcp_cli.chat.ui_manager import ChatUIManager
 from mcp_cli.chat.conversation import ConversationProcessor
 from mcp_cli.tools.manager import ToolManager
+from mcp_cli.context import initialize_context
+from mcp_cli.config import initialize_config
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -30,10 +31,11 @@ logger = logging.getLogger(__name__)
 
 async def handle_chat_mode(
     tool_manager: ToolManager,
-    provider: str = None,
-    model: str = None,
-    api_base: str = None,
-    api_key: str = None,
+    provider: str | None = None,
+    model: str | None = None,
+    api_base: str | None = None,
+    api_key: str | None = None,
+    confirm_mode: str | None = None,
 ) -> bool:
     """
     Launch the interactive chat loop with streaming support.
@@ -44,6 +46,7 @@ async def handle_chat_mode(
         model: Model to use (optional, uses ModelManager active if None)
         api_base: API base URL override (optional)
         api_key: API key override (optional)
+        confirm_mode: Tool confirmation mode override (optional)
 
     Returns:
         True if session ended normally, False on failure
@@ -51,6 +54,20 @@ async def handle_chat_mode(
     ui: Optional[ChatUIManager] = None
 
     try:
+        # Initialize configuration manager
+        from pathlib import Path
+
+        initialize_config(Path("server_config.json"))
+
+        # Initialize global context manager for commands to work
+        app_context = initialize_context(
+            tool_manager=tool_manager,
+            provider=provider or "openai",
+            model=model or "gpt-4",
+            api_base=api_base,
+            api_key=api_key,
+        )
+
         # Create chat context using clean factory
         with output.loading("Initializing chat context..."):
             ctx = ChatContext.create(
@@ -65,13 +82,17 @@ async def handle_chat_mode(
                 output.error("Failed to initialize chat context.")
                 return False
 
+            # Update global context with initialized data
+            await app_context.initialize()
+
         # Welcome banner
-        if not logger.debug:
+        # Clear screen unless in debug mode
+        if logger.level > logging.DEBUG:
             clear_screen()
 
         # NEW: Use the new banner function
         # Get tool count safely
-        tool_count = 0
+        tool_count: int | str = 0
         if tool_manager:
             try:
                 # Try to get tool count - ToolManager might have different ways to access this
@@ -141,8 +162,8 @@ async def handle_chat_mode(
 
 async def handle_chat_mode_for_testing(
     stream_manager,
-    provider: str = None,
-    model: str = None,
+    provider: str | None = None,
+    model: str | None = None,
 ) -> bool:
     """
     Launch chat mode for testing with stream_manager.
@@ -219,7 +240,7 @@ async def _run_enhanced_chat_loop(
             if not user_msg:
                 continue
 
-            # Handle exit commands
+            # Handle plain exit commands (without slash)
             if user_msg.lower() in ("exit", "quit"):
                 output.panel("Exiting chat mode.", style="red", title="Goodbye")
                 break
@@ -290,9 +311,7 @@ async def _safe_cleanup(ui: ChatUIManager) -> None:
             ui.stop_tool_calls()
 
         # Standard cleanup
-        cleanup_result = ui.cleanup()
-        if asyncio.iscoroutine(cleanup_result):
-            await cleanup_result
+        ui.cleanup()
     except Exception as exc:
         logger.warning(f"Cleanup failed: {exc}")
         output.warning(f"Cleanup failed: {exc}")
@@ -334,8 +353,8 @@ async def handle_chat_mode_legacy(
     manager,  # ToolManager or stream_manager
     provider: str = "openai",
     model: str = "gpt-4o-mini",
-    api_base: str = None,
-    api_key: str = None,
+    api_base: str | None = None,
+    api_key: str | None = None,
     **kwargs,  # Ignore other legacy parameters
 ) -> bool:
     """

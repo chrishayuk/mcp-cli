@@ -4,10 +4,9 @@ Command handling system for the MCP CLI chat interface.
 """
 
 from typing import Dict, List, Any, Callable, Awaitable
-import re
 
 # Type for command handlers
-CommandHandler = Callable[[List[str], Dict[str, Any]], Awaitable[bool]]
+CommandHandler = Callable[[List[str]], Awaitable[bool]]
 
 # Global registries
 _COMMAND_HANDLERS: Dict[str, CommandHandler] = {}
@@ -16,7 +15,7 @@ _COMMAND_ALIASES: Dict[str, str] = {}
 
 
 def register_command(
-    command: str, handler: CommandHandler, completions: List[str] = None
+    command: str, handler: CommandHandler, completions: List[str] | None = None
 ) -> None:
     """
     Register a command handler.
@@ -58,13 +57,15 @@ def register_alias(alias: str, target: str) -> None:
         _COMMAND_COMPLETIONS[alias] = _COMMAND_COMPLETIONS[target]
 
 
-async def handle_command(command_text: str, context: Dict[str, Any]) -> bool:
+async def handle_command(
+    command_text: str, context: Dict[str, Any] | None = None
+) -> bool:
     """
     Handle a command and return whether it was handled.
 
     Args:
         command_text: The full command text (starting with /).
-        context: The context dictionary to pass to the handler.
+        context: Optional context dictionary for backwards compatibility.
 
     Returns:
         bool: True if the command was handled, False otherwise.
@@ -87,8 +88,8 @@ async def handle_command(command_text: str, context: Dict[str, Any]) -> bool:
     if not handler:
         return False
 
-    # Call the handler with args and context
-    return await handler(parts, context)
+    # Call the handler with just args (no context parameter)
+    return await handler(parts)
 
 
 def get_command_completions(partial_text: str) -> List[str]:
@@ -135,33 +136,15 @@ def get_command_completions(partial_text: str) -> List[str]:
 
 # Import any built-in command modules here
 # This allows them to self-register their commands
-import importlib
-import pkgutil
-import sys
-from pathlib import Path
 
 
 def _import_submodules():
     """Import all submodules to allow them to register their commands."""
-    # Get the path of this package
-    package_path = Path(__file__).parent
-
-    # Find all modules in this package
-    for _, module_name, is_pkg in pkgutil.iter_modules([str(package_path)]):
-        if not module_name.startswith("_"):  # Skip private modules
-            try:
-                importlib.import_module(f"{__package__}.{module_name}")
-            except ImportError as e:
-                # Log but don't crash
-                print(f"Warning: Could not import command module {module_name}: {e}")
+    # DISABLED: All commands have been migrated to the unified system
+    # This function is kept for backward compatibility only
+    pass
 
 
-# Auto-import all command modules
-_import_submodules()
-
-# Explicit imports for critical modules to ensure they're loaded even if auto-discovery fails
-try:
-    from . import provider
-    from . import model
-except ImportError as e:
-    print(f"Warning: Failed to import critical command module: {e}")
+# Note: All command implementations have been migrated to the unified system
+# This module is kept for backward compatibility only
+# Actual commands are in mcp_cli.commands.impl.*

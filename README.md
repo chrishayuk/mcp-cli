@@ -312,6 +312,11 @@ mcp-cli --server sqlite --provider anthropic --model claude-4-1-opus
 /provider anthropic                # Switch to Anthropic (requires API key)
 /provider openai gpt-5             # Switch to OpenAI GPT-5
 
+# Custom Provider Management
+/provider custom                   # List custom providers
+/provider add localai http://localhost:8080/v1 gpt-4  # Add custom provider
+/provider remove localai           # Remove custom provider
+
 /model                             # Show current model (default: gpt-oss)
 /model llama3.3                    # Switch to different Ollama model
 /model gpt-5                       # Switch to GPT-5 (if using OpenAI)
@@ -331,6 +336,36 @@ mcp-cli --server sqlite --provider anthropic --model claude-4-1-opus
 /th 3                             # Details for call #3
 /th --json                        # Full history as JSON
 ```
+
+#### Server Management (Runtime Configuration)
+```bash
+/server                            # List all configured servers
+/server list                       # List servers (alias)
+/server list all                   # Include disabled servers
+
+# Add servers at runtime (persists in ~/.mcp-cli/preferences.json)
+/server add <name> stdio <command> [args...]
+/server add sqlite stdio uvx mcp-server-sqlite --db-path test.db
+/server add playwright stdio npx @playwright/mcp@latest
+/server add time stdio uvx mcp-server-time
+/server add fs stdio npx @modelcontextprotocol/server-filesystem /path/to/dir
+
+# HTTP/SSE server examples with authentication
+/server add github --transport http --header "Authorization: Bearer ghp_token" -- https://api.github.com/mcp
+/server add myapi --transport http --env API_KEY=secret -- https://api.example.com/mcp
+/server add events --transport sse -- https://events.example.com/sse
+
+# Manage server state
+/server enable <name>              # Enable a disabled server
+/server disable <name>             # Disable without removing
+/server remove <name>              # Remove user-added server
+/server ping <name>                # Test server connectivity
+
+# Server details
+/server <name>                     # Show server configuration details
+```
+
+**Note**: Servers added via `/server add` are stored in `~/.mcp-cli/preferences.json` and persist across sessions. Project servers remain in `server_config.json`.
 
 #### Conversation Management
 ```bash
@@ -360,7 +395,7 @@ mcp-cli --server sqlite --provider anthropic --model claude-4-1-opus
 /verbose                          # Toggle verbose/compact display (Default: Enabled)
 /confirm                          # Toggle tool call confirmation (Default: Enabled)
 /interrupt                        # Stop running operations
-/servers                          # List connected servers
+/server                           # Manage MCP servers (see Server Management above)
 /help                            # Show all commands
 /help tools                       # Help for specific command
 /exit                            # Exit chat mode
@@ -516,6 +551,35 @@ mcp-cli provider diagnostic openai
 mcp-cli provider diagnostic anthropic
 ```
 
+### Custom OpenAI-Compatible Providers
+
+MCP CLI supports adding custom OpenAI-compatible providers (LocalAI, custom proxies, etc.):
+
+```bash
+# Add a custom provider (persisted across sessions)
+mcp-cli provider add localai http://localhost:8080/v1 gpt-4 gpt-3.5-turbo
+mcp-cli provider add myproxy https://proxy.example.com/v1 custom-model-1 custom-model-2
+
+# Set API key via environment variable (never stored in config)
+export LOCALAI_API_KEY=your-api-key
+export MYPROXY_API_KEY=your-api-key
+
+# List custom providers
+mcp-cli provider custom
+
+# Use custom provider
+mcp-cli --provider localai --server sqlite
+mcp-cli --provider myproxy --model custom-model-1 --server sqlite
+
+# Remove custom provider
+mcp-cli provider remove localai
+
+# Runtime provider (session-only, not persisted)
+mcp-cli --provider temp-ai --api-base https://api.temp.com/v1 --api-key test-key --server sqlite
+```
+
+**Security Note**: API keys are NEVER stored in configuration files. Use environment variables following the pattern `{PROVIDER_NAME}_API_KEY` or pass via `--api-key` for session-only use.
+
 ### Manual Configuration
 
 The `chuk_llm` library configuration in `~/.chuk_llm/config.yaml`:
@@ -558,6 +622,13 @@ GROQ_API_KEY=your-groq-key
 
 ## 📂 Server Configuration
 
+MCP CLI supports two types of server configurations:
+
+1. **Project Servers** (`server_config.json`): Shared project-level configurations
+2. **User Servers** (`~/.mcp-cli/preferences.json`): Personal runtime-added servers that persist across sessions
+
+### Project Configuration
+
 Create a `server_config.json` file with your MCP server configurations:
 
 ```json
@@ -585,6 +656,38 @@ Create a `server_config.json` file with your MCP server configurations:
   }
 }
 ```
+
+### Runtime Server Management
+
+Add servers dynamically during runtime without editing configuration files:
+
+```bash
+# Add STDIO servers (most common)
+mcp-cli
+> /server add sqlite stdio uvx mcp-server-sqlite --db-path mydata.db
+> /server add playwright stdio npx @playwright/mcp@latest
+> /server add time stdio uvx mcp-server-time
+
+# Add HTTP servers with authentication
+> /server add github --transport http --header "Authorization: Bearer ghp_token" -- https://api.github.com/mcp
+> /server add myapi --transport http --env API_KEY=secret -- https://api.example.com/mcp
+
+# Add SSE (Server-Sent Events) servers
+> /server add events --transport sse -- https://events.example.com/sse
+
+# Manage servers
+> /server list                     # Show all servers
+> /server disable sqlite           # Temporarily disable
+> /server enable sqlite            # Re-enable
+> /server remove myapi             # Remove user-added server
+```
+
+**Key Points:**
+- User-added servers persist in `~/.mcp-cli/preferences.json`
+- Survive application restarts
+- Can be enabled/disabled without removal
+- Support STDIO, HTTP, and SSE transports
+- Environment variables and headers for authentication
 
 ## 📈 Advanced Usage Examples
 
@@ -850,18 +953,29 @@ pip install -e ".[cli,dev]"
 pre-commit install
 ```
 
-### UI Demo Scripts
+### Demo Scripts
 
-Explore the UI capabilities powered by chuk-term:
+Explore the capabilities of MCP CLI:
 
 ```bash
-# Terminal management features
+# Custom Provider Management Demos
+
+# Interactive walkthrough demo (educational)
+uv run examples/custom_provider_demo.py
+
+# Working demo with actual inference (requires OPENAI_API_KEY)
+uv run examples/custom_provider_working_demo.py
+
+# Simple shell script demo (requires OPENAI_API_KEY)
+bash examples/custom_provider_simple_demo.sh
+
+# Terminal management features (chuk-term)
 uv run examples/ui_terminal_demo.py
 
-# Output system with themes
+# Output system with themes (chuk-term)
 uv run examples/ui_output_demo.py
 
-# Streaming UI capabilities
+# Streaming UI capabilities (chuk-term)
 uv run examples/ui_streaming_demo.py
 ```
 

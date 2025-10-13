@@ -37,14 +37,14 @@ def format_tool_response(response_content: Union[List[Dict[str, Any]], Any]) -> 
             # Return a JSON representation that preserves all data
             try:
                 return json.dumps(response_content, indent=2)
-            except:
+            except (TypeError, ValueError):
                 # Fallback if JSON serialization fails
                 return str(response_content)
     elif isinstance(response_content, dict):
         # Single dictionary - return as JSON
         try:
             return json.dumps(response_content, indent=2)
-        except:
+        except (TypeError, ValueError):
             return str(response_content)
     else:
         # Default case - convert to string
@@ -244,7 +244,7 @@ def convert_to_openai_tools(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     openai_tools: List[Dict[str, Any]] = []
     for tool in tools:
         if not isinstance(tool, dict):  # skip un-recognised entries
-            continue
+            continue  # type: ignore[unreachable]
 
         openai_tools.append(
             {

@@ -54,28 +54,56 @@ class DummyToolManagerBase:
 class DummyToolManager(DummyToolManagerBase):
     """Successful ToolManager (default)."""
 
+    async def get_server_info(self):
+        """Mock method for context initialization."""
+        return []
+
+    async def get_all_tools(self):
+        """Mock method for context initialization."""
+        return []
+
 
 class DummyInitFailToolManager(DummyToolManagerBase):
     async def initialize(self, namespace: str = "stdio"):  # noqa: D401
         self.initialized = True
         return False  # trigger RuntimeError in run_command
 
+    async def get_server_info(self):
+        """Mock method for context initialization."""
+        return []
+
+    async def get_all_tools(self):
+        """Mock method for context initialization."""
+        return []
+
 
 # --------------------------------------------------------------------------- #
 # Simple async / sync command callables to run
 # --------------------------------------------------------------------------- #
-async def dummy_async_command(tool_manager, *, extra_arg: str | None = None):
+async def dummy_async_command(*, extra_arg: str | None = None):
     """Return a string proving param injection worked."""
+    # Commands now use context manager, no tool_manager parameter
+    from mcp_cli.context import get_context
+
+    get_context()
     suffix = "" if extra_arg is None else f"-{extra_arg}"
     return f"ok{suffix}"
 
 
-def dummy_sync_command(tool_manager, *, extra_arg: str | None = None):
+def dummy_sync_command(*, extra_arg: str | None = None):
+    # Commands now use context manager, no tool_manager parameter
+    from mcp_cli.context import get_context
+
+    get_context()
     suffix = "" if extra_arg is None else f"-{extra_arg}"
     return f"ok{suffix}"
 
 
-async def failing_async_command(tool_manager):
+async def failing_async_command():
+    # Commands now use context manager, no tool_manager parameter
+    from mcp_cli.context import get_context
+
+    get_context()
     raise RuntimeError("Command failure")
 
 

@@ -6,7 +6,8 @@ FIXED: Updated to work with the new OpenAI client universal tool compatibility s
 import time
 import asyncio
 import logging
-from rich import print
+from typing import Optional
+from chuk_term.ui import output
 
 # mcp cli imports
 from mcp_cli.chat.tool_processor import ToolProcessor
@@ -78,8 +79,8 @@ class ConversationProcessor:
                             log.warning(
                                 f"Streaming failed, falling back to regular completion: {e}"
                             )
-                            print(
-                                f"[yellow]Streaming failed, falling back to regular completion: {e}[/yellow]"
+                            output.warning(
+                                f"Streaming failed, falling back to regular completion: {e}"
                             )
                             completion = await self._handle_regular_completion()
                     else:
@@ -90,7 +91,7 @@ class ConversationProcessor:
                     tool_calls = completion.get("tool_calls", [])
 
                     # If model requested tool calls, execute them
-                    if tool_calls:
+                    if tool_calls and len(tool_calls) > 0:
                         log.debug(f"Processing {len(tool_calls)} tool calls from LLM")
 
                         # Log the tool calls for debugging
@@ -116,8 +117,12 @@ class ConversationProcessor:
                             response_content, elapsed
                         )
                     else:
-                        # Streaming response was already displayed, just notify UI it's complete
+                        # Streaming response - final display already handled by finish_streaming()
+                        # Just mark streaming as stopped and clean up
                         self.ui_manager.stop_streaming_response()
+                        # Clear streaming handler reference
+                        if hasattr(self.ui_manager, "streaming_handler"):
+                            self.ui_manager.streaming_handler = None
 
                     # Add to conversation history
                     self.context.conversation_history.append(
@@ -128,7 +133,7 @@ class ConversationProcessor:
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
-                    print(f"[red]Error during conversation processing:[/red] {exc}")
+                    output.error(f"Error during conversation processing: {exc}")
                     import traceback
 
                     traceback.print_exc()
@@ -150,7 +155,9 @@ class ConversationProcessor:
         self.ui_manager.start_streaming_response()
 
         # Set the streaming handler reference in UI manager for interruption support
-        streaming_handler = StreamingResponseHandler(self.ui_manager.console)
+        streaming_handler = StreamingResponseHandler(
+            console=self.ui_manager.console, chat_display=self.ui_manager.display
+        )
         self.ui_manager.streaming_handler = streaming_handler
 
         try:
@@ -185,8 +192,9 @@ class ConversationProcessor:
             return completion
 
         finally:
-            # Clear the streaming handler reference
-            self.ui_manager.streaming_handler = None
+            # Keep streaming handler reference for finalization
+            # Will be cleared after finalization in main conversation loop
+            pass
 
     async def _handle_regular_completion(self) -> dict:
         """Handle regular (non-streaming) completion."""
@@ -202,8 +210,8 @@ class ConversationProcessor:
             err = str(e)
             if "Invalid 'tools" in err:
                 log.error(f"Tool definition error: {err}")
-                print(
-                    "[yellow]Warning: tool definitions rejected by model, retrying without tools...[/yellow]"
+                output.warning(
+                    "Tool definitions rejected by model, retrying without tools..."
                 )
                 completion = await self.context.client.create_completion(
                     messages=self.context.conversation_history
@@ -215,13 +223,14 @@ class ConversationProcessor:
         completion["elapsed_time"] = elapsed
         completion["streaming"] = False
 
-        return completion
+        result: dict = completion
+        return result
 
     def _validate_streaming_tool_call(self, tool_call: dict) -> bool:
         """Validate that a tool call from streaming has the required structure."""
         try:
             if not isinstance(tool_call, dict):
-                return False
+                return False  # type: ignore[unreachable]
 
             # Check for required fields
             if "function" not in tool_call:
@@ -258,7 +267,7 @@ class ConversationProcessor:
             log.error(f"Error validating streaming tool call: {e}")
             return False
 
-    def _fix_tool_call_structure(self, tool_call: dict) -> dict:
+    def _fix_tool_call_structure(self, tool_call: dict) -> Optional[dict]:
         """Try to fix common issues with tool call structure from streaming."""
         try:
             fixed = dict(tool_call)  # Make a copy

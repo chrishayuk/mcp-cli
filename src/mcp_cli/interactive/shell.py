@@ -4,11 +4,9 @@
 from __future__ import annotations
 import asyncio
 import logging
-import shlex
 from typing import Any, Dict, List, Optional
 
 from rich import print
-from chuk_term.ui import output
 from rich.markdown import Markdown
 from rich.panel import Panel
 
@@ -19,9 +17,14 @@ from prompt_toolkit.completion import Completer, Completion
 # mcp cli
 from mcp_cli.tools.manager import ToolManager
 
-# commands
-from mcp_cli.interactive.commands import register_all_commands
-from mcp_cli.interactive.registry import InteractiveCommandRegistry
+# Use unified command system
+from mcp_cli.adapters.interactive import (
+    InteractiveCommandAdapter,
+    InteractiveExitException,
+)
+from mcp_cli.commands import register_all_commands as register_unified_commands
+
+# Keep old registry for now just for command name completion
 
 # logger
 logger = logging.getLogger(__name__)
@@ -54,11 +57,15 @@ async def interactive_mode(
     """
     Launch the interactive mode CLI with slash-menu autocompletion.
     """
-    console = output._console
 
-    # Register commands
-    register_all_commands()
-    cmd_names = list(InteractiveCommandRegistry.get_all_commands().keys())
+    # Register unified commands
+    register_unified_commands()
+
+    # Get command names for completion
+    # TODO: Get from unified registry instead
+    from mcp_cli.commands.registry import registry
+
+    cmd_names = registry.get_command_names(include_aliases=True)
 
     # Intro panel
     print(
@@ -75,13 +82,11 @@ async def interactive_mode(
         )
     )
 
-    # Initial help listing
-    help_cmd = InteractiveCommandRegistry.get_command("help")
-    if help_cmd:
-        await help_cmd.execute([], tool_manager, server_names=server_names)
+    # Initial help listing - use unified command
+    await InteractiveCommandAdapter.handle_command("help")
 
     # Create a PromptSession with our completer
-    session = PromptSession(
+    session: PromptSession = PromptSession(
         completer=SlashCompleter(cmd_names),
         complete_while_typing=True,
     )
@@ -106,30 +111,24 @@ async def interactive_mode(
 
             # If line was just '/', show help
             if cmd_line == "":
-                if help_cmd:
-                    await help_cmd.execute([], tool_manager, server_names=server_names)
+                # Use unified help command
+                await InteractiveCommandAdapter.handle_command("help")
                 continue
 
-            # Parse
+            # Use unified command system
             try:
-                parts = shlex.split(cmd_line)
-            except ValueError:
-                parts = cmd_line.split()
+                # Pass the original command line to preserve quoting
+                handled = await InteractiveCommandAdapter.handle_command(cmd_line)
 
-            cmd_name = parts[0].lower()
-            args = parts[1:]
-
-            # Lookup and execute
-            cmd = InteractiveCommandRegistry.get_command(cmd_name)
-            if cmd:
-                result = await cmd.execute(
-                    args, tool_manager, server_names=server_names, **kwargs
-                )
-                if result is True:
-                    return True
-            else:
-                print(f"[red]Unknown command: {cmd_name}[/red]")
-                print("[dim]Type 'help' to see available commands.[/dim]")
+                if not handled:
+                    # Extract command name for error message
+                    cmd_parts = cmd_line.split(maxsplit=1)
+                    cmd_name = cmd_parts[0] if cmd_parts else cmd_line
+                    print(f"[red]Unknown command: {cmd_name}[/red]")
+                    print("[dim]Type 'help' to see available commands.[/dim]")
+            except (KeyboardInterrupt, InteractiveExitException):
+                # Exit requested
+                return True
 
         except KeyboardInterrupt:
             print("\n[yellow]Interrupted. Type 'exit' to quit.[/yellow]")
@@ -140,4 +139,6 @@ async def interactive_mode(
             logger.exception("Error in interactive mode")
             print(f"[red]Error: {e}[/red]")
 
-    return True
+    # This line is unreachable but needed for type checker
+    # The while True loop above handles all exits
+    # return True

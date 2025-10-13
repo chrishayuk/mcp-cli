@@ -74,14 +74,14 @@ class ToolManager:
         self._executor: Optional[ToolExecutor] = None
 
         # Server type detection
-        self._http_servers = []
-        self._stdio_servers = []
-        self._sse_servers = []
-        self._config_cache = None
+        self._http_servers: List[Any] = []
+        self._stdio_servers: List[Any] = []
+        self._sse_servers: List[Any] = []
+        self._config_cache: Optional[Dict[str, Any]] = None
 
         # ENHANCED: Tool validation and filtering
         self.tool_filter = ToolFilter()
-        self.validation_results: Dict[str, Dict[str, Any]] = {}
+        self.validation_results: Dict[str, Any] = {}
         self.last_validation_provider: Optional[str] = None
 
     def _determine_timeout(self, explicit_timeout: Optional[float]) -> float:
@@ -349,7 +349,7 @@ class ToolManager:
         if not self._registry:
             return []
 
-        tools = []
+        tools = []  # type: ignore[unreachable]
         try:
             registry_items = await asyncio.wait_for(
                 self._registry.list_tools(), timeout=30.0
@@ -401,13 +401,13 @@ class ToolManager:
         return unique
 
     async def get_tool_by_name(
-        self, tool_name: str, namespace: str = None
+        self, tool_name: str, namespace: str | None = None
     ) -> Optional[ToolInfo]:
         """Get tool info by name and optional namespace."""
         if not self._registry:
             return None
 
-        if namespace:
+        if namespace:  # type: ignore[unreachable]
             try:
                 metadata = await asyncio.wait_for(
                     self._registry.get_metadata(tool_name, namespace), timeout=5.0
@@ -440,7 +440,7 @@ class ToolManager:
     ) -> ToolCallResult:
         """Execute a tool and return the result."""
         if not isinstance(arguments, dict):
-            return ToolCallResult(tool_name, False, error="Arguments must be a dict")
+            return ToolCallResult(tool_name, False, error="Arguments must be a dict")  # type: ignore[unreachable]
 
         # Check if tool is enabled
         if not self.tool_filter.is_tool_enabled(tool_name):
@@ -482,6 +482,11 @@ class ToolManager:
 
         try:
             import time
+
+            if not self._executor:
+                return ToolCallResult(
+                    tool_name, False, error="Tool executor not initialized"
+                )
 
             logger.info("EXECUTION: Calling executor.execute() with call")
             start_time = time.time()
@@ -534,7 +539,7 @@ class ToolManager:
             logger.debug("No registry available")
             return "", ""
 
-        try:
+        try:  # type: ignore[unreachable]
             # Get all available tools from registry
             registry_items = await asyncio.wait_for(
                 self._registry.list_tools(), timeout=10.0
@@ -602,8 +607,13 @@ class ToolManager:
             timeout=timeout or self.tool_timeout,
         )
 
-        async for result in self._executor.stream_execute([call]):
-            yield result
+        if self._executor:
+            async for result in self._executor.stream_execute([call]):
+                yield result
+        else:
+            yield ToolCallResult(
+                tool_name, False, error="Tool executor not initialized"
+            )
 
     async def process_tool_calls(
         self,
@@ -691,6 +701,9 @@ class ToolManager:
                 )
 
         # Execute tool calls
+        if not self._executor:
+            # Return empty results if executor not available
+            return []
         results = await self._executor.execute(chuk_calls)
 
         # Process results
@@ -715,7 +728,8 @@ class ToolManager:
                     }
                 )
 
-        return results
+        typed_results: List[ToolResult] = results
+        return typed_results
 
     # Server helpers
     async def get_server_info(self) -> List[ServerInfo]:
@@ -741,6 +755,10 @@ class ToolManager:
                         namespace=raw.get("name", "").split("_")[0]
                         if "_" in raw.get("name", "")
                         else raw.get("name", ""),
+                        enabled=raw.get("enabled", True),
+                        connected=raw.get("connected", False),
+                        transport=raw.get("type", "stdio"),
+                        capabilities=raw.get("capabilities", {}),
                     )
                     for raw in raw_infos
                 ]
@@ -905,7 +923,7 @@ class ToolManager:
         summary.update(self.validation_results)
         return summary
 
-    async def revalidate_tools(self, provider: str = None) -> Dict[str, Any]:
+    async def revalidate_tools(self, provider: str | None = None) -> Dict[str, Any]:
         """
         Re-run validation on all tools.
 

@@ -23,7 +23,7 @@ dummy_base.InteractiveCommand = InteractiveCommand
 sys.modules["mcp_cli.interactive.commands.base"] = dummy_base
 
 # ─── Now import the function under test ───────────────────────────────────
-from mcp_cli.interactive.shell import interactive_mode
+from mcp_cli.interactive.shell import interactive_mode  # noqa: E402
 
 
 def test_interactive_mode_is_callable():

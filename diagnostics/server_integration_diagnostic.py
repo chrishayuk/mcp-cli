@@ -82,7 +82,7 @@ async def test_server_integration(server_name: Optional[str] = None):
 
         if protocol_version != "unknown":
             print(f"📋 Protocol version: {protocol_version}")
-    except:
+    except Exception:
         pass
 
     # Discover tools

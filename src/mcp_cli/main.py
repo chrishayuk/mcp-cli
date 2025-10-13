@@ -6,44 +6,43 @@ from __future__ import annotations
 import asyncio
 import atexit
 import gc
+import os
 import signal
 import sys
-from typing import Optional
+from typing import Optional, List
 
 import typer
 
-# ──────────────────────────────────────────────────────────────────────────────
-# CRITICAL: Set up silent environment IMMEDIATELY before any other imports
-# This prevents MCP server noise from appearing during module imports
-# ──────────────────────────────────────────────────────────────────────────────
+# Module imports
 from mcp_cli.logging_config import (
     setup_logging,
     get_logger,
     setup_silent_mcp_environment,
 )
 
+# Use unified command system
+from mcp_cli.commands import register_all_commands as register_unified_commands
+from mcp_cli.commands.registry import registry
+from mcp_cli.commands.base import CommandMode
+from mcp_cli.run_command import run_command_sync
+from chuk_term.ui import (
+    output,
+    restore_terminal,
+)
+from chuk_term.ui.theme import set_theme
+from mcp_cli.cli_options import process_options
+from mcp_cli.context import initialize_context
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CRITICAL: Set up silent environment IMMEDIATELY after imports
+# This prevents MCP server noise from appearing during module imports
+# ──────────────────────────────────────────────────────────────────────────────
 # FIRST: Set environment variables to silence MCP servers before they start
 setup_silent_mcp_environment()
 
 # THEN: Set up default clean logging immediately
 # This will be overridden later if user specifies different options
 setup_logging(level="ERROR", quiet=False, verbose=False)
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Now safe to import components that might start MCP servers
-# ──────────────────────────────────────────────────────────────────────────────
-from mcp_cli.cli.commands import register_all_commands
-from mcp_cli.cli.registry import CommandRegistry
-from mcp_cli.run_command import run_command_sync
-
-# Import UI components from chuk_term
-from chuk_term.ui import (
-    output,
-    restore_terminal,
-)
-from chuk_term.ui.theme import set_theme
-
-from mcp_cli.cli_options import process_options
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Module logger
@@ -83,16 +82,30 @@ def main_callback(
     theme: str = typer.Option(
         "default", "--theme", help="UI theme (default, dark, light, minimal, terminal)"
     ),
+    confirm_mode: str = typer.Option(
+        None,
+        "--confirm-mode",
+        help="Tool confirmation mode: always, never, or smart (risk-based)",
+    ),
 ) -> None:
     """MCP CLI - If no subcommand is given, start chat mode."""
 
     # Re-configure logging based on user options (this overrides the default ERROR level)
     setup_logging(level=log_level, quiet=quiet, verbose=verbose)
 
-    # Set UI theme - use preference if not specified
+    # Set UI theme and confirmation mode - use preference if not specified
     from mcp_cli.utils.preferences import get_preference_manager
 
     pref_manager = get_preference_manager()
+
+    # Set confirmation mode if specified
+    if confirm_mode:
+        if confirm_mode.lower() in ["always", "never", "smart"]:
+            pref_manager.set_tool_confirmation_mode(confirm_mode.lower())
+        else:
+            output.print(f"[red]Invalid confirmation mode: {confirm_mode}[/red]")
+            output.print("[dim]Valid modes: always, never, smart[/dim]")
+            raise typer.Exit(1)
 
     if theme and theme != "default":
         # User specified theme via command line
@@ -117,13 +130,14 @@ def main_callback(
         output.info(f"Running: provider {provider}")
 
         # Execute the provider command
-        from mcp_cli.commands.provider import provider_action_async
-        from mcp_cli.model_manager import ModelManager
+        from mcp_cli.commands.actions.providers import provider_action_async
+        from mcp_cli.context import initialize_context
 
-        context = {"model_manager": ModelManager()}
+        # Initialize context for the provider command
+        initialize_context()
 
         try:
-            asyncio.run(provider_action_async([provider], context=context))
+            asyncio.run(provider_action_async([provider]))
         except Exception as e:
             output.error(f"Error: {e}")
         finally:
@@ -138,13 +152,44 @@ def main_callback(
 
     model_manager = ModelManager()
 
+    # Handle runtime custom provider if api_base is specified
+    if api_base and provider:
+        # Add as runtime provider (not persisted)
+        logger.debug(f"Adding runtime provider: {provider} with base {api_base}")
+
+        # Parse models if provided in model string (comma-separated)
+        models = None
+        if model and "," in model:
+            models = [m.strip() for m in model.split(",")]
+            model = models[0]  # Use first as default
+
+        model_manager.add_runtime_provider(
+            name=provider,
+            api_base=api_base,
+            api_key=api_key,  # Will be kept in memory only
+            models=models,
+        )
+
+        output.info(f"Using runtime provider: {provider}")
+        if api_key:
+            output.success("API key provided (kept in memory only)")
+        else:
+            env_var = f"{provider.upper().replace('-', '_')}_API_KEY"
+            if os.environ.get(env_var):
+                output.success(f"Using API key from {env_var}")
+            else:
+                output.warning(f"No API key found. Set {env_var} environment variable.")
+
     # Validate provider if specified
-    if provider:
+    elif provider:
         if not model_manager.validate_provider(provider):
             available = ", ".join(model_manager.list_providers())
             output.error(f"Unknown provider: {provider}")
             output.info(f"Available providers: {available}")
             output.tip(f"Did you mean to run: mcp-cli provider {provider}")
+            output.tip(
+                "Or add a custom provider with: --provider <name> --api-base <url>"
+            )
             raise typer.Exit(1)
 
     # Smart provider/model resolution:
@@ -244,10 +289,27 @@ def _interactive_command(
     theme: str = typer.Option(
         "default", "--theme", help="UI theme (default, dark, light, minimal, terminal)"
     ),
+    confirm_mode: str = typer.Option(
+        None,
+        "--confirm-mode",
+        help="Tool confirmation mode: always, never, or smart (risk-based)",
+    ),
 ) -> None:
     """Start interactive command mode."""
     # Re-configure logging based on user options
     setup_logging(level=log_level, quiet=quiet, verbose=verbose)
+
+    # Set confirmation mode if specified
+    if confirm_mode:
+        from mcp_cli.utils.preferences import get_preference_manager
+
+        pref_manager = get_preference_manager()
+        if confirm_mode.lower() in ["always", "never", "smart"]:
+            pref_manager.set_tool_confirmation_mode(confirm_mode.lower())
+        else:
+            output.print(f"[red]Invalid confirmation mode: {confirm_mode}[/red]")
+            output.print("[dim]Valid modes: always, never, smart[/dim]")
+            raise typer.Exit(1)
 
     # Set UI theme - use preference if not specified
     from mcp_cli.utils.preferences import get_preference_manager
@@ -328,27 +390,26 @@ def _interactive_command(
 # Direct command registration with proper command structure
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Register all commands in the registry first (in case some work)
-logger.debug("Registering commands from registry")
-register_all_commands()
+# Register unified commands
+logger.debug("Registering unified commands")
+register_unified_commands()
 
-# Try registry-based registration first for core commands
-core_commands = ["chat", "cmd", "ping"]  # Remove "provider" from registry
+# Register CLI commands from unified registry
+
+logger.debug("Registering CLI commands from unified registry")
+# Don't register all commands here - let each mode handle its own
+# CLICommandAdapter.register_with_typer(app)
+
+# Try unified registry for core commands
+core_commands = ["chat", "cmd", "ping"]
 registry_registered = []
 
 for command_name in core_commands:
-    cmd = CommandRegistry.get_command(command_name)
+    cmd = registry.get(command_name, mode=CommandMode.CLI)
     if cmd:
-        try:
-            cmd.register(app, run_command_sync)
-            registry_registered.append(command_name)
-            logger.debug(
-                f"Successfully registered command via registry: {command_name}"
-            )
-        except Exception as e:
-            logger.warning(
-                f"Failed to register command '{command_name}' via registry: {e}"
-            )
+        # For now, we'll handle these directly through existing subcommands
+        registry_registered.append(command_name)
+        logger.debug(f"Successfully found command in unified registry: {command_name}")
 
 # Direct registration of tool-related commands
 direct_registered = []
@@ -357,13 +418,13 @@ direct_registered = []
 # Shared provider command function
 def _run_provider_command(args, log_prefix="Provider command"):
     """Shared function to run provider commands."""
-    from mcp_cli.commands.provider import provider_action_async
-    from mcp_cli.model_manager import ModelManager
+    from mcp_cli.commands.actions.providers import provider_action_async
 
-    context = {"model_manager": ModelManager()}
+    # Initialize context for the provider command
+    initialize_context()
 
     try:
-        asyncio.run(provider_action_async(args, context=context))
+        asyncio.run(provider_action_async(args))
     except Exception as e:
         output.error(f"Error: {e}")
         raise typer.Exit(1)
@@ -410,18 +471,34 @@ def provider_command(
     _setup_command_logging(quiet, verbose, log_level, theme)
 
     # Build arguments list for the provider action
-    args = []
+    args: List[str] = []
 
     # Handle different command patterns
     if subcommand is None:
         # No arguments - show status
         args = []
-    elif subcommand in ["list", "config", "diagnostic"]:
+    elif subcommand in ["list", "config", "diagnostic", "custom"]:
         # Command without provider name
         args = [subcommand]
         if provider_name and subcommand == "diagnostic":
             # diagnostic can take a provider name
             args.append(provider_name)
+    elif subcommand == "add":
+        # add command: add <name> <api_base> [models...]
+        if not provider_name or not key:
+            output.error(
+                "add command requires: provider add <name> <api_base> [model1 model2 ...]"
+            )
+            raise typer.Exit(1)
+        args = [subcommand, provider_name, key]  # key is used as api_base
+        if value:
+            args.append(value)  # value is the first model
+    elif subcommand == "remove":
+        # remove command: remove <name>
+        if not provider_name:
+            output.error("remove command requires: provider remove <name>")
+            raise typer.Exit(1)
+        args = [subcommand, provider_name]
     elif subcommand == "set":
         # set command: set <provider> <key> <value>
         if not provider_name or not key or not value:
@@ -541,9 +618,8 @@ def tools_command(
     from mcp_cli.commands.tools import tools_action_async
 
     # Execute via run_command_sync with async wrapper
-    async def _tools_wrapper(tool_manager, **params):
+    async def _tools_wrapper(**params):
         return await tools_action_async(
-            tool_manager,
             show_details=params.get("all", False),
             show_raw=params.get("raw", False),
         )
@@ -626,11 +702,10 @@ def servers_command(
         server, disable_filesystem, provider, model, config_file, quiet=quiet
     )
 
-    from mcp_cli.commands.servers import servers_action_async
+    from mcp_cli.commands.actions.servers import servers_action_async
 
-    async def _servers_wrapper(tool_manager, **params):
+    async def _servers_wrapper(**params):
         return await servers_action_async(
-            tool_manager,
             detailed=params.get("detailed", False),
             show_capabilities=params.get("capabilities", False),
             show_transport=params.get("transport", False),
@@ -681,8 +756,8 @@ def resources_command(
 
     from mcp_cli.commands.resources import resources_action_async
 
-    async def _resources_wrapper(tool_manager, **params):
-        return await resources_action_async(tool_manager)
+    async def _resources_wrapper(**params):
+        return await resources_action_async()
 
     run_command_sync(
         _resources_wrapper,
@@ -722,8 +797,8 @@ def prompts_command(
 
     from mcp_cli.commands.prompts import prompts_action_async
 
-    async def _prompts_wrapper(tool_manager, **params):
-        return await prompts_action_async(tool_manager)
+    async def _prompts_wrapper(**params):
+        return await prompts_action_async()
 
     run_command_sync(
         _prompts_wrapper,

@@ -83,8 +83,6 @@ class ChainedToolCallDiagnostic:
         # Import MCP components
         try:
             from mcp_cli.tools.manager import ToolManager
-            from mcp_cli.chat.chat_context import ChatContext
-            from mcp_cli.model_manager import ModelManager
         except ImportError as e:
             self.log_error(f"Failed to import MCP CLI components: {e}")
             return False

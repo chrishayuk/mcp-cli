@@ -3,10 +3,10 @@ import logging
 import sys
 import typer
 import atexit
-import os
 import asyncio
 import signal
 import gc
+from typing import Optional
 
 # Updated imports for new chuk-mcp APIs
 
@@ -30,8 +30,10 @@ logging.basicConfig(
 def restore_terminal():
     """Restore terminal settings and clean up asyncio resources with special
     attention to subprocess transports."""
-    # Restore the terminal settings to normal.
-    os.system("stty sane")
+    # Use chuk_term's terminal restoration
+    from chuk_term.ui import restore_terminal as chuk_restore_terminal
+
+    chuk_restore_terminal()
 
     # First, try to explicitly clean up subprocess transports
     try:
@@ -124,9 +126,9 @@ def setup_signal_handlers():
 def common_options(
     ctx: typer.Context,
     config_file: str = "server_config.json",
-    server: str = None,
+    server: Optional[str] = None,
     provider: str = "openai",
-    model: str = None,
+    model: Optional[str] = None,
     disable_filesystem: bool = True,
 ):
     """
@@ -136,7 +138,7 @@ def common_options(
     If no subcommand is provided, chat mode is launched by default.
     """
     # Process the options, getting the servers, etc.
-    servers, user_specified = process_options(
+    servers, user_specified, server_names = process_options(
         server, disable_filesystem, provider, model
     )
 
