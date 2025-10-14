@@ -27,11 +27,19 @@ class ConversationProcessor:
         self.ui_manager = ui_manager
         self.tool_processor = ToolProcessor(context, ui_manager)
 
-    async def process_conversation(self):
-        """Process the conversation loop, handling tool calls and responses with streaming."""
+    async def process_conversation(self, max_turns: int = 10):
+        """Process the conversation loop, handling tool calls and responses with streaming.
+
+        Args:
+            max_turns: Maximum number of conversation turns before forcing exit (default: 10)
+        """
+        turn_count = 0
+        last_tool_signature = None  # Track last tool call to detect duplicates
+        tools_for_completion = None  # Will be set based on context
         try:
-            while True:
+            while turn_count < max_turns:
                 try:
+                    turn_count += 1
                     start_time = time.time()
 
                     # Skip slash commands (already handled by UI)
@@ -50,6 +58,10 @@ class ConversationProcessor:
 
                     # REMOVED: Sanitization logic - now handled by universal tool compatibility
                     # The OpenAI client automatically handles tool name sanitization and restoration
+
+                    # Always pass tools - let the model decide what to do
+                    tools_for_completion = self.context.openai_tools
+                    log.debug(f"Passing {len(tools_for_completion) if tools_for_completion else 0} tools to completion")
 
                     # Check if client supports streaming
                     client = self.context.client
@@ -74,7 +86,7 @@ class ConversationProcessor:
                     if supports_streaming:
                         # Use streaming response handler
                         try:
-                            completion = await self._handle_streaming_completion()
+                            completion = await self._handle_streaming_completion(tools=tools_for_completion)
                         except Exception as e:
                             log.warning(
                                 f"Streaming failed, falling back to regular completion: {e}"
@@ -82,10 +94,10 @@ class ConversationProcessor:
                             output.warning(
                                 f"Streaming failed, falling back to regular completion: {e}"
                             )
-                            completion = await self._handle_regular_completion()
+                            completion = await self._handle_regular_completion(tools=tools_for_completion)
                     else:
                         # Regular completion
-                        completion = await self._handle_regular_completion()
+                        completion = await self._handle_regular_completion(tools=tools_for_completion)
 
                     response_content = completion.get("response", "No response")
                     tool_calls = completion.get("tool_calls", [])
@@ -93,6 +105,45 @@ class ConversationProcessor:
                     # If model requested tool calls, execute them
                     if tool_calls and len(tool_calls) > 0:
                         log.debug(f"Processing {len(tool_calls)} tool calls from LLM")
+
+                        # Check if we're at max turns
+                        if turn_count >= max_turns:
+                            output.warning(
+                                f"Maximum conversation turns ({max_turns}) reached. Stopping to prevent infinite loop."
+                            )
+                            self.context.conversation_history.append(
+                                {
+                                    "role": "assistant",
+                                    "content": "I've reached the maximum number of conversation turns. The tool results have been provided above.",
+                                }
+                            )
+                            break
+
+                        # Create signature to detect duplicate tool calls
+                        import json
+                        current_signature = []
+                        for tc in tool_calls:
+                            if hasattr(tc, "function"):
+                                name = getattr(tc.function, "name", "")
+                                args = getattr(tc.function, "arguments", "")
+                            elif isinstance(tc, dict) and "function" in tc:
+                                name = tc["function"].get("name", "")
+                                args = tc["function"].get("arguments", "")
+                            else:
+                                continue
+                            if isinstance(args, dict):
+                                args = json.dumps(args, sort_keys=True)
+                            current_signature.append(f"{name}:{args}")
+
+                        current_sig_str = "|".join(sorted(current_signature))
+
+                        # If this is a duplicate, stop looping and return control to user
+                        if last_tool_signature and current_sig_str == last_tool_signature:
+                            log.warning(f"Duplicate tool call detected: {current_sig_str}")
+                            output.info("Tool has already been executed. Results are shown above.")
+                            break
+
+                        last_tool_signature = current_sig_str
 
                         # Log the tool calls for debugging
                         for i, tc in enumerate(tool_calls):
@@ -107,6 +158,9 @@ class ConversationProcessor:
                             tool_calls, name_mapping
                         )
                         continue
+
+                    # Reset duplicate tracking on text response
+                    last_tool_signature = None
 
                     # Display assistant response (if not already displayed by streaming)
                     elapsed = completion.get("elapsed_time", time.time() - start_time)
@@ -147,8 +201,12 @@ class ConversationProcessor:
         except asyncio.CancelledError:
             raise
 
-    async def _handle_streaming_completion(self) -> dict:
-        """Handle streaming completion with UI integration."""
+    async def _handle_streaming_completion(self, tools: Optional[list] = None) -> dict:
+        """Handle streaming completion with UI integration.
+
+        Args:
+            tools: Tool definitions to pass to the LLM, or None to disable tools
+        """
         from mcp_cli.chat.streaming_handler import StreamingResponseHandler
 
         # Signal UI that streaming is starting
@@ -164,7 +222,7 @@ class ConversationProcessor:
             completion = await streaming_handler.stream_response(
                 client=self.context.client,
                 messages=self.context.conversation_history,
-                tools=self.context.openai_tools,
+                tools=tools,
             )
 
             # Enhanced tool call validation and logging
@@ -196,14 +254,18 @@ class ConversationProcessor:
             # Will be cleared after finalization in main conversation loop
             pass
 
-    async def _handle_regular_completion(self) -> dict:
-        """Handle regular (non-streaming) completion."""
+    async def _handle_regular_completion(self, tools: Optional[list] = None) -> dict:
+        """Handle regular (non-streaming) completion.
+
+        Args:
+            tools: Tool definitions to pass to the LLM, or None to disable tools
+        """
         start_time = time.time()
 
         try:
             completion = await self.context.client.create_completion(
                 messages=self.context.conversation_history,
-                tools=self.context.openai_tools,
+                tools=tools,
             )
         except Exception as e:
             # If tools spec invalid, retry without tools

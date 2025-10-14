@@ -8,6 +8,7 @@ instead of loading JSON files all over the place.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -54,11 +55,18 @@ class ServerConfig:
     @classmethod
     def from_dict(cls, name: str, data: Dict[str, Any]) -> ServerConfig:
         """Create from dictionary format."""
+        # Get env from config
+        env = data.get("env", {}).copy()
+
+        # Ensure PATH is inherited from current environment if not explicitly set
+        if "PATH" not in env:
+            env["PATH"] = os.environ.get("PATH", "")
+
         return cls(
             name=name,
             command=data.get("command"),
             args=data.get("args", []),
-            env=data.get("env", {}),
+            env=env,
             url=data.get("url"),
             disabled=data.get("disabled", False),
         )

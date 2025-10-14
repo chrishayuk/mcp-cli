@@ -259,7 +259,7 @@ class ToolManager:
 
             self.processor, self.stream_manager = await asyncio.wait_for(
                 setup_mcp_stdio(
-                    config_file=str(self.config_file),
+                    config_file=self.config_file,
                     servers=self._stdio_servers,
                     server_names=self.server_names,
                     namespace=namespace,
