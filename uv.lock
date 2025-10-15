@@ -403,16 +403,16 @@ all = [
 
 [[package]]
 name = "chuk-mcp"
-version = "0.5.2"
+version = "0.5.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
     { name = "httpx" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/05/28/308c448fb91a46a15b5efd154a588196eab7d554fa70595c74cb7e7b01a5/chuk_mcp-0.5.2.tar.gz", hash = "sha256:9f553ca3ed503f356a550ad6e6bfe7b29f2964071cf9273bce8ab34ef685a405", size = 104360 }
+sdist = { url = "https://files.pythonhosted.org/packages/c0/38/48c08751bc10472253c388356c20522561e649ec249c7a3e7705f0234a5b/chuk_mcp-0.5.3.tar.gz", hash = "sha256:0bb95c13f0f2df2453e37db61adba35ed8add6ddbe035537e48556a58614a83d", size = 105485 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/69/2d/4746de13cb1cd2d1e0c049b449f0558f9894090410e31fbecdcb0532be55/chuk_mcp-0.5.2-py3-none-any.whl", hash = "sha256:f7e4e513c509202017050e1688138f1dc3df1c1cd145a1a1cbf102af29b7b97d", size = 126877 },
+    { url = "https://files.pythonhosted.org/packages/cf/14/e83c02069aa19025b8dc6c7fd0fe97ad7bc9dcd06c261aa79cfffe82910e/chuk_mcp-0.5.3-py3-none-any.whl", hash = "sha256:a6a595a964b5333697f858669131f749f973c9b84a79812d7120a717b00aa0d4", size = 128502 },
 ]
 
 [[package]]
@@ -447,7 +447,7 @@ wheels = [
 
 [[package]]
 name = "chuk-tool-processor"
-version = "0.6.15"
+version = "0.6.17"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "chuk-mcp" },
@@ -456,9 +456,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "uuid" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7c/e4/38fd48a9e9f508e3af84b9654cea5e1a0b97d2e0a60733ee18710a6006fe/chuk_tool_processor-0.6.15.tar.gz", hash = "sha256:6d82e58dc86e71be3892daadbefa81ff4766d7a216004aa8f60f45fc47927bab", size = 97090 }
+sdist = { url = "https://files.pythonhosted.org/packages/50/08/b674e2fbbe8e6066212b833db8d670d7cd5831fb0c8bca9a68a015fb651a/chuk_tool_processor-0.6.17.tar.gz", hash = "sha256:d3061b86077437e17b773e8bfdf10760248d61769cadb7828370531f951b5e11", size = 97549 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4d/08/10c83ca5a559e31fe89ddbff3088b6f4f6814481b47a01b262e681994703/chuk_tool_processor-0.6.15-py3-none-any.whl", hash = "sha256:ab62b0da3603714a16f03473394d75978e4f2a843d27ffaefdab0e37ed878a76", size = 120410 },
+    { url = "https://files.pythonhosted.org/packages/39/5a/aecb803312661204d25881d45a396da2d581e0945280c830d45c52839d97/chuk_tool_processor-0.6.17-py3-none-any.whl", hash = "sha256:6a34df886ef0a0c54e094a673bbe04c0d94fc9f989abc0ae9e822e5cc119eeef", size = 120840 },
 ]
 
 [[package]]
@@ -1294,7 +1294,7 @@ wheels = [
 
 [[package]]
 name = "mcp-cli"
-version = "0.8"
+version = "0.8.2"
 source = { editable = "." }
 dependencies = [
     { name = "asyncio" },
@@ -1336,9 +1336,9 @@ requires-dist = [
     { name = "asyncio", specifier = ">=3.4.3" },
     { name = "asyncio", marker = "extra == 'dev'", specifier = ">=3.4.3" },
     { name = "chuk-llm", extras = ["all"], specifier = ">=0.12.7" },
-    { name = "chuk-mcp", specifier = "==0.5.2" },
+    { name = "chuk-mcp", specifier = ">=0.5.3" },
     { name = "chuk-term", specifier = ">=0.1.3" },
-    { name = "chuk-tool-processor", specifier = ">=0.6.15" },
+    { name = "chuk-tool-processor", specifier = ">=0.6.17" },
     { name = "cryptography", specifier = ">=44.0.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "hvac", marker = "extra == 'vault'", specifier = ">=2.0.0" },
