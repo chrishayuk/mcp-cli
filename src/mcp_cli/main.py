@@ -932,6 +932,93 @@ def theme_command(
 
 direct_registered.append("theme")
 
+
+# Token command - manage stored tokens and credentials
+@app.command("token", help="Manage stored tokens and credentials")
+def token_command(
+    action: str = typer.Argument(..., help="Action: list, set, get, delete, clear, backends"),
+    name: Optional[str] = typer.Argument(None, help="Token name (for set/get/delete)"),
+    token_type: str = typer.Option("bearer", "--type", "-t", help="Token type (bearer, api-key, generic)"),
+    value: Optional[str] = typer.Option(None, "--value", help="Token value"),
+    provider: Optional[str] = typer.Option(None, "--provider", "-p", help="Provider name (for API keys)"),
+    namespace: Optional[str] = typer.Option(None, "--namespace", "-n", help="Storage namespace"),
+    show_oauth: bool = typer.Option(True, "--show-oauth/--no-oauth", help="Show OAuth tokens (list)"),
+    show_bearer: bool = typer.Option(True, "--show-bearer/--no-bearer", help="Show bearer tokens (list)"),
+    show_api_keys: bool = typer.Option(True, "--show-api-keys/--no-api-keys", help="Show API keys (list)"),
+    is_oauth: bool = typer.Option(False, "--is-oauth", help="Delete OAuth token (delete)"),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation (clear)"),
+    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
+    verbose: bool = typer.Option(False, "--verbose", help="Enable verbose logging"),
+    log_level: str = typer.Option("WARNING", "--log-level", help="Set log level"),
+) -> None:
+    """Manage stored tokens and credentials."""
+    # Configure logging for this command
+    _setup_command_logging(quiet, verbose, log_level, "default")
+
+    from mcp_cli.commands.actions.token import (
+        token_list_action_async,
+        token_set_action_async,
+        token_get_action_async,
+        token_delete_action_async,
+        token_clear_action_async,
+        token_backends_action_async,
+    )
+    import asyncio
+
+    async def _token_wrapper():
+        if action == "list":
+            return await token_list_action_async(
+                namespace=namespace,
+                show_oauth=show_oauth,
+                show_bearer=show_bearer,
+                show_api_keys=show_api_keys,
+            )
+        elif action == "set":
+            if not name:
+                output.error("Token name is required for 'set' action")
+                raise typer.Exit(1)
+            return await token_set_action_async(
+                name=name,
+                token_type=token_type,
+                value=value,
+                provider=provider,
+                namespace=namespace or "generic",
+            )
+        elif action == "get":
+            if not name:
+                output.error("Token name is required for 'get' action")
+                raise typer.Exit(1)
+            return await token_get_action_async(
+                name=name,
+                namespace=namespace or "generic",
+            )
+        elif action == "delete":
+            if not name:
+                output.error("Token name is required for 'delete' action")
+                raise typer.Exit(1)
+            return await token_delete_action_async(
+                name=name,
+                namespace=namespace,
+                oauth=is_oauth,
+            )
+        elif action == "clear":
+            return await token_clear_action_async(
+                namespace=namespace,
+                force=force,
+            )
+        elif action == "backends":
+            return await token_backends_action_async()
+        else:
+            output.error(f"Unknown action: {action}")
+            output.hint("Valid actions: list, set, get, delete, clear, backends")
+            raise typer.Exit(1)
+
+    # Run the async function
+    asyncio.run(_token_wrapper())
+
+
+direct_registered.append("token")
+
 # Show what we actually registered
 all_registered = registry_registered + direct_registered
 output.success("✓ MCP CLI ready")

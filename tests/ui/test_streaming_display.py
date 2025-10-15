@@ -331,9 +331,12 @@ class TestStreamingContext:
     @pytest.fixture
     def console(self):
         """Create a properly configured mock console."""
+        from threading import RLock
         console = Mock()
         # Add required Rich Console attributes and methods
         console.is_jupyter = False
+        console.is_terminal = True
+        console.is_dumb_terminal = False
         console.set_live = Mock()
         console.clear_live = Mock()
         console.show_cursor = Mock()
@@ -341,30 +344,53 @@ class TestStreamingContext:
         console.pop_render_hook = Mock()
         console.set_alt_screen = Mock(return_value=False)
         console.print = Mock()
-        console._lock = Mock()
+        console._lock = RLock()
         console._live = None
+        console.options = Mock()
+        console.options.max_width = 80
+        # Make console subscriptable for Rich internals
+        console.__getitem__ = Mock(return_value=None)
         # Make it support context manager protocol
         console.__enter__ = Mock(return_value=console)
         console.__exit__ = Mock(return_value=None)
         return console
 
-    def test_context_manager_basic(self, console):
+    @patch("mcp_cli.ui.streaming_display.Live")
+    def test_context_manager_basic(self, mock_live_class, console):
         """Test basic context manager functionality."""
+        mock_live = Mock()
+        mock_live.__enter__ = Mock(return_value=mock_live)
+        mock_live.__exit__ = Mock(return_value=None)
+        mock_live_class.return_value = mock_live
+
         with StreamingContext(console) as ctx:
             assert ctx is not None
             assert ctx.display is not None
             assert ctx.live is not None
 
-    def test_context_manager_with_content(self, console):
+    @patch("mcp_cli.ui.streaming_display.Live")
+    def test_context_manager_with_content(self, mock_live_class, console):
         """Test context manager with content updates."""
+        mock_live = Mock()
+        mock_live.__enter__ = Mock(return_value=mock_live)
+        mock_live.__exit__ = Mock(return_value=None)
+        mock_live.update = Mock()
+        mock_live_class.return_value = mock_live
+
         with StreamingContext(console, title="Test") as ctx:
             ctx.update("Hello")
             ctx.update(" world")
 
             assert ctx.content == "Hello world"
 
-    def test_context_manager_custom_params(self, console):
+    @patch("mcp_cli.ui.streaming_display.Live")
+    def test_context_manager_custom_params(self, mock_live_class, console):
         """Test context manager with custom parameters."""
+        mock_live = Mock()
+        mock_live.__enter__ = Mock(return_value=mock_live)
+        mock_live.__exit__ = Mock(return_value=None)
+        mock_live_class.return_value = mock_live
+
         with StreamingContext(
             console,
             title="Custom Title",
@@ -395,17 +421,31 @@ class TestStreamingContext:
         mock_live.__exit__.assert_called_once()
         mock_live.update.assert_called()
 
-    def test_content_property(self, console):
+    @patch("mcp_cli.ui.streaming_display.Live")
+    def test_content_property(self, mock_live_class, console):
         """Test content property access."""
+        mock_live = Mock()
+        mock_live.__enter__ = Mock(return_value=mock_live)
+        mock_live.__exit__ = Mock(return_value=None)
+        mock_live.update = Mock()
+        mock_live_class.return_value = mock_live
+
         with StreamingContext(console) as ctx:
             assert ctx.content == ""
 
             ctx.update("test")
             assert ctx.content == "test"
 
+    @patch("mcp_cli.ui.streaming_display.Live")
     @patch("mcp_cli.ui.streaming_display.time.time")
-    def test_elapsed_time_tracking(self, mock_time, console):
+    def test_elapsed_time_tracking(self, mock_time, mock_live_class, console):
         """Test elapsed time is tracked correctly."""
+        mock_live = Mock()
+        mock_live.__enter__ = Mock(return_value=mock_live)
+        mock_live.__exit__ = Mock(return_value=None)
+        mock_live.update = Mock()
+        mock_live_class.return_value = mock_live
+
         # Mock time progression
         mock_time.side_effect = [100.0, 100.5, 101.0]  # start, update, end
 
@@ -433,8 +473,15 @@ class TestStreamingContext:
                 assert mock_live.update.call_count >= 2
                 assert ctx.content == "first second"
 
-    def test_final_panel_display(self, console):
+    @patch("mcp_cli.ui.streaming_display.Live")
+    def test_final_panel_display(self, mock_live_class, console):
         """Test final panel is displayed after context exit."""
+        mock_live = Mock()
+        mock_live.__enter__ = Mock(return_value=mock_live)
+        mock_live.__exit__ = Mock(return_value=None)
+        mock_live.update = Mock()
+        mock_live_class.return_value = mock_live
+
         with StreamingContext(console) as ctx:
             ctx.update("Final content")
 
@@ -448,8 +495,14 @@ class TestStreamingContext:
         printed_obj = args[0]
         assert hasattr(printed_obj, "title") or isinstance(printed_obj, Panel)
 
-    def test_no_final_panel_without_content(self, console):
+    @patch("mcp_cli.ui.streaming_display.Live")
+    def test_no_final_panel_without_content(self, mock_live_class, console):
         """Test no final panel is shown if no content was added."""
+        mock_live = Mock()
+        mock_live.__enter__ = Mock(return_value=mock_live)
+        mock_live.__exit__ = Mock(return_value=None)
+        mock_live_class.return_value = mock_live
+
         with StreamingContext(console):
             pass  # No content added
 

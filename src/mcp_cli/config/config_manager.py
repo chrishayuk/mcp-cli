@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from mcp_cli.auth.oauth_config import OAuthConfig
 from mcp_cli.tools.models import ServerInfo
 
 
@@ -25,6 +26,7 @@ class ServerConfig:
     args: List[str] = field(default_factory=list)
     env: Dict[str, str] = field(default_factory=dict)
     url: Optional[str] = None  # For HTTP/SSE servers
+    oauth: Optional[OAuthConfig] = None  # OAuth configuration
     disabled: bool = False
 
     @property
@@ -48,6 +50,8 @@ class ServerConfig:
             config["env"] = self.env
         if self.url:
             config["url"] = self.url
+        if self.oauth:
+            config["oauth"] = self.oauth.to_dict()
         if self.disabled:
             config["disabled"] = self.disabled
         return config
@@ -62,12 +66,18 @@ class ServerConfig:
         if "PATH" not in env:
             env["PATH"] = os.environ.get("PATH", "")
 
+        # Parse OAuth config if present
+        oauth = None
+        if "oauth" in data:
+            oauth = OAuthConfig.from_dict(data["oauth"])
+
         return cls(
             name=name,
             command=data.get("command"),
             args=data.get("args", []),
             env=env,
             url=data.get("url"),
+            oauth=oauth,
             disabled=data.get("disabled", False),
         )
 
@@ -100,6 +110,15 @@ class MCPConfig:
     verbose: bool = True
     confirm_tools: bool = True
 
+    # Token storage configuration
+    token_store_backend: str = "auto"  # auto, keychain, windows, secretservice, vault, encrypted
+    token_store_password: Optional[str] = None
+    vault_url: Optional[str] = None
+    vault_token: Optional[str] = None
+    vault_mount_point: str = "secret"
+    vault_path_prefix: str = "mcp-cli/oauth"
+    vault_namespace: Optional[str] = None
+
     @classmethod
     def load_from_file(cls, config_path: Path) -> MCPConfig:
         """Load configuration from JSON file."""
@@ -124,6 +143,18 @@ class MCPConfig:
             config.verbose = data.get("verbose", True)
             config.confirm_tools = data.get("confirmTools", True)
 
+            # Load token storage configuration
+            token_storage = data.get("tokenStorage", {})
+            config.token_store_backend = token_storage.get("backend", "auto")
+            config.token_store_password = token_storage.get("password")
+            config.vault_url = token_storage.get("vaultUrl")
+            config.vault_token = token_storage.get("vaultToken")
+            config.vault_mount_point = token_storage.get("vaultMountPoint", "secret")
+            config.vault_path_prefix = token_storage.get(
+                "vaultPathPrefix", "mcp-cli/oauth"
+            )
+            config.vault_namespace = token_storage.get("vaultNamespace")
+
         except Exception as e:
             # Log error but return empty config
             print(f"Error loading config: {e}")
@@ -142,6 +173,26 @@ class MCPConfig:
             "verbose": self.verbose,
             "confirmTools": self.confirm_tools,
         }
+
+        # Add token storage configuration if non-default
+        token_storage: Dict[str, Any] = {}
+        if self.token_store_backend != "auto":
+            token_storage["backend"] = self.token_store_backend
+        if self.token_store_password:
+            token_storage["password"] = self.token_store_password
+        if self.vault_url:
+            token_storage["vaultUrl"] = self.vault_url
+        if self.vault_token:
+            token_storage["vaultToken"] = self.vault_token
+        if self.vault_mount_point != "secret":
+            token_storage["vaultMountPoint"] = self.vault_mount_point
+        if self.vault_path_prefix != "mcp-cli/oauth":
+            token_storage["vaultPathPrefix"] = self.vault_path_prefix
+        if self.vault_namespace:
+            token_storage["vaultNamespace"] = self.vault_namespace
+
+        if token_storage:
+            data["tokenStorage"] = token_storage
 
         with open(config_path, "w") as f:
             json.dump(data, f, indent=2)
