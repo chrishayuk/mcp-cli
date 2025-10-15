@@ -44,7 +44,7 @@ async def prompts_action_async() -> List[Dict[str, Any]]:
     prompts = prompts or []
     if not prompts:
         output.info("No prompts recorded.")
-        return prompts
+        return []
 
     # Build table data
     table_data = []
@@ -62,7 +62,7 @@ async def prompts_action_async() -> List[Dict[str, Any]]:
     # Display table
     table = format_table(table_data, title="Prompts", columns=columns)
     output.print_table(table)
-    return prompts
+    return list(prompts)
 
 
 def prompts_action() -> List[Dict[str, Any]]:

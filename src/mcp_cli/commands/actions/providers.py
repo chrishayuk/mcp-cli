@@ -48,6 +48,7 @@ def _get_provider_status_enhanced(
 
     # For API-based providers, check configuration
     has_api_key = info.get("has_api_key", False)
+    token_source = info.get("token_source", "none")
 
     if not has_api_key:
         return "❌", "Not Configured", "No API key"
@@ -56,10 +57,18 @@ def _get_provider_status_enhanced(
     models = info.get("models", info.get("available_models", []))
     model_count = len(models) if isinstance(models, list) else 0
 
-    if model_count == 0:
-        return "⚠️", "Partial Setup", "API key set but no models found"
+    # Create status reason with token source info
+    if token_source == "env":
+        source_info = " (env)"
+    elif token_source == "storage":
+        source_info = " (storage)"
+    else:
+        source_info = ""
 
-    return "✅", "Ready", f"Configured ({model_count} models)"
+    if model_count == 0:
+        return "⚠️", "Partial Setup", f"API key set but no models found{source_info}"
+
+    return "✅", "Ready", f"Configured ({model_count} models){source_info}"
 
 
 def _get_model_count_display_enhanced(provider_name: str, info: Dict[str, Any]) -> str:
@@ -114,7 +123,14 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
     Optimized provider list that handles all the edge cases correctly.
     """
     table_data = []
-    columns = ["Provider", "Status", "Default Model", "Models Available", "Features"]
+    columns = [
+        "Provider",
+        "Status",
+        "Token",
+        "Default Model",
+        "Models Available",
+        "Features",
+    ]
 
     current_provider = model_manager.get_active_provider()
 
@@ -141,6 +157,7 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
                 {
                     "Provider": provider_name,
                     "Status": "Error",
+                    "Token": "-",
                     "Default Model": "-",
                     "Models Available": "-",
                     "Features": provider_info["error"][:20] + "...",
@@ -163,6 +180,17 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
         # Format status text
         status_display = f"{status_icon} {status_text}"
 
+        # Get token source for display
+        token_source = provider_info.get("token_source", "none")
+        if provider_name.lower() == "ollama":
+            token_display = "-"
+        elif token_source == "env":
+            token_display = "🌍 env"
+        elif token_source == "storage":
+            token_display = "🔐 storage"
+        else:
+            token_display = "❌ none"
+
         # Default model with proper fallback
         default_model = provider_info.get("default_model", "-")
         if not default_model or default_model in ("None", "null"):
@@ -178,6 +206,7 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
             {
                 "Provider": display_name,
                 "Status": status_display,
+                "Token": token_display,
                 "Default Model": default_model,
                 "Models Available": models_display,
                 "Features": features_display,
@@ -603,7 +632,8 @@ def _remove_custom_provider(name: str) -> None:
 def _list_custom_providers() -> None:
     """List all custom providers."""
     from mcp_cli.utils.preferences import get_preference_manager
-    import os
+    from mcp_cli.auth.provider_tokens import get_provider_token_display_status
+    from mcp_cli.auth.token_manager import TokenManager
 
     prefs = get_preference_manager()
     custom_providers = prefs.get_custom_providers()
@@ -615,13 +645,26 @@ def _list_custom_providers() -> None:
 
     output.rule("[bold]🔧 Custom Providers[/bold]", style="primary")
 
+    try:
+        token_manager = TokenManager()
+    except Exception:
+        token_manager = None
+
     table_data = []
     for name, provider_data in custom_providers.items():
-        env_var = (
-            provider_data.get("env_var_name")
-            or f"{name.upper().replace('-', '_')}_API_KEY"
-        )
-        has_key = "✅" if os.environ.get(env_var) else "❌"
+        # Handle custom env var name if specified
+        custom_env_var = provider_data.get("env_var_name")
+        if custom_env_var:
+            # Use custom env var name instead of default
+            import os
+
+            if os.environ.get(custom_env_var):
+                token_status = f"✅ {custom_env_var}"
+            else:
+                token_status = f"❌ {custom_env_var} not set"
+        else:
+            # Use standard hierarchical token status display
+            token_status = get_provider_token_display_status(name, token_manager)
 
         table_data.append(
             {
@@ -629,14 +672,14 @@ def _list_custom_providers() -> None:
                 "API Base": provider_data["api_base"],
                 "Models": ", ".join(provider_data.get("models", [])),
                 "Default": provider_data.get("default_model", "gpt-4"),
-                "API Key": f"{has_key} ({env_var})",
+                "Token": token_status,
             }
         )
 
     table = format_table(
         table_data,
         title=None,
-        columns=["Provider", "API Base", "Models", "Default", "API Key"],
+        columns=["Provider", "API Base", "Models", "Default", "Token"],
     )
     output.print_table(table)
 

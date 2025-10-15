@@ -55,7 +55,7 @@ async def resources_action_async() -> List[Dict[str, Any]]:
     resources = resources or []
     if not resources:
         output.info("No resources recorded.")
-        return resources
+        return []
 
     # Build table data
     table_data = []
@@ -74,7 +74,7 @@ async def resources_action_async() -> List[Dict[str, Any]]:
     # Display table
     table = format_table(table_data, title="Resources", columns=columns)
     output.print_table(table)
-    return resources
+    return list(resources)
 
 
 def resources_action() -> List[Dict[str, Any]]:

@@ -30,6 +30,7 @@ from chuk_tool_processor.execution.strategies.inprocess_strategy import (
 )
 from chuk_tool_processor.execution.tool_executor import ToolExecutor
 
+from mcp_cli.auth.oauth_handler import OAuthHandler
 from mcp_cli.tools.models import ServerInfo, ToolCallResult, ToolInfo
 from mcp_cli.tools.validation import ToolSchemaValidator
 from mcp_cli.tools.filter import ToolFilter
@@ -78,6 +79,9 @@ class ToolManager:
         self._stdio_servers: List[Any] = []
         self._sse_servers: List[Any] = []
         self._config_cache: Optional[Dict[str, Any]] = None
+
+        # OAuth support
+        self.oauth_handler = OAuthHandler()
 
         # ENHANCED: Tool validation and filtering
         self.tool_filter = ToolFilter()
@@ -137,22 +141,26 @@ class ToolManager:
             transport_type = server_config.get("transport", "").lower()
 
             if transport_type == "sse":
-                self._sse_servers.append(
-                    {
-                        "name": server,
-                        "url": server_config["url"],
-                        "headers": server_config.get("headers", {}),
-                    }
-                )
+                server_entry = {
+                    "name": server,
+                    "url": server_config["url"],
+                    "headers": server_config.get("headers", {}),
+                }
+                # Mark if OAuth is configured (will be processed during initialization)
+                if "oauth" in server_config:
+                    server_entry["oauth"] = server_config["oauth"]
+                self._sse_servers.append(server_entry)
                 logger.debug(f"Detected SSE server: {server}")
             elif "url" in server_config:
-                self._http_servers.append(
-                    {
-                        "name": server,
-                        "url": server_config["url"],
-                        "headers": server_config.get("headers", {}),
-                    }
-                )
+                server_entry = {
+                    "name": server,
+                    "url": server_config["url"],
+                    "headers": server_config.get("headers", {}),
+                }
+                # Mark if OAuth is configured (will be processed during initialization)
+                if "oauth" in server_config:
+                    server_entry["oauth"] = server_config["oauth"]
+                self._http_servers.append(server_entry)
                 logger.debug(f"Detected HTTP server: {server}")
             else:
                 self._stdio_servers.append(server)
@@ -162,12 +170,62 @@ class ToolManager:
             f"Detected {len(self._http_servers)} HTTP, {len(self._sse_servers)} SSE, {len(self._stdio_servers)} STDIO servers"
         )
 
+    async def _process_oauth_for_servers(self, servers: List[Dict[str, Any]]) -> None:
+        """Process OAuth authentication for servers that require it."""
+        from mcp_cli.config.config_manager import initialize_config
+
+        # Initialize config manager if not already initialized
+        config = initialize_config(Path(self.config_file))
+
+        for server_entry in servers:
+            server_name = server_entry["name"]
+            server_config = config.get_server(server_name)
+
+            if not server_config:
+                continue
+
+            # Remote MCP servers (with URL) automatically use MCP OAuth
+            # Servers with explicit oauth config use that config
+            is_remote_mcp = server_config.url and not server_config.command
+            has_explicit_oauth = server_config.oauth is not None
+
+            if not is_remote_mcp and not has_explicit_oauth:
+                # Skip servers that don't need OAuth
+                continue
+
+            try:
+                # Perform OAuth and get authorization header
+                headers = await self.oauth_handler.prepare_server_headers(server_config)
+
+                # Merge OAuth headers with existing headers
+                if "headers" not in server_entry:
+                    server_entry["headers"] = {}
+                server_entry["headers"].update(headers)
+
+                print(
+                    f"✓ Headers set for {server_name}: {list(server_entry['headers'].keys())}"
+                )
+                logger.info(f"OAuth authentication completed for {server_name}")
+                logger.info(
+                    f"Headers for {server_name}: {list(server_entry['headers'].keys())}"
+                )
+                logger.debug(f"Full server entry: {server_entry}")
+            except Exception as e:
+                logger.error(f"OAuth failed for {server_name}: {e}")
+                raise
+
     async def initialize(self, namespace: str = "stdio") -> bool:
         """Connect to MCP servers and initialize the tool registry."""
         try:
             logger.info(f"Initializing ToolManager with {len(self.servers)} servers")
 
             self._detect_server_types()
+
+            # Process OAuth for HTTP/SSE servers before connecting
+            if self._http_servers:
+                await self._process_oauth_for_servers(self._http_servers)
+            if self._sse_servers:
+                await self._process_oauth_for_servers(self._sse_servers)
 
             # Try transports in priority order: SSE > HTTP > STDIO
             success = False

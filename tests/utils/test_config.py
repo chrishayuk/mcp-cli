@@ -43,7 +43,10 @@ async def test_initialize_config_success(tmp_path):
     server_config = config.servers["TestServer"]
     assert server_config.command == "dummy_command"
     assert server_config.args == ["--dummy"]
-    assert server_config.env == {"VAR": "value"}
+    # env should contain VAR and PATH (inherited from environment)
+    assert "VAR" in server_config.env
+    assert server_config.env["VAR"] == "value"
+    assert "PATH" in server_config.env  # PATH is auto-inherited
 
 
 @pytest.mark.asyncio

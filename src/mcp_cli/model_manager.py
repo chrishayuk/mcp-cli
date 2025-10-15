@@ -403,47 +403,24 @@ class ModelManager:
 
     def list_available_providers(self) -> Dict[str, Any]:
         """Get detailed provider information (matches ChukLLM API)"""
-        result = {}
-
-        # Get chuk_llm providers
-        try:
-            from chuk_llm.llm.client import list_available_providers
-
-            chuk_providers: Dict[str, Any] = list_available_providers()
-            result.update(chuk_providers)
-        except Exception as e:
-            logger.error(f"Failed to get chuk_llm provider info: {e}")
-            # Fallback to basic info for built-in providers
-            for provider in ["ollama", "openai", "anthropic"]:
-                if provider in self.get_available_providers():
-                    try:
-                        models = self.get_available_models(provider)
-                        has_api_key = (
-                            self._chuk_config.get_api_key(provider) is not None
-                            if self._chuk_config
-                            else False
-                        )
-
-                        # CHANGED: Set gpt-oss as default for ollama
-                        default_model = (
-                            "gpt-oss"
-                            if provider == "ollama"
-                            else (models[0] if models else None)
-                        )
-
-                        result[provider] = {
-                            "models": models,
-                            "model_count": len(models),
-                            "has_api_key": has_api_key,
-                            "baseline_features": ["text"],  # Safe default
-                            "default_model": default_model,
-                        }
-                    except Exception:
-                        result[provider] = {"error": "Could not get provider info"}
-
-        # Add custom providers
+        from chuk_llm.llm.client import list_available_providers
         import os
 
+        # Get all providers from chuk_llm
+        result = list_available_providers()
+
+        # Enhance all providers with hierarchical token status
+        for provider_name in list(result.keys()):
+            if "error" not in result[provider_name]:
+                # Use hierarchical token resolution
+                result[provider_name]["has_api_key"] = self._check_provider_has_api_key(
+                    provider_name
+                )
+                result[provider_name]["token_source"] = self._get_provider_token_source(
+                    provider_name
+                )
+
+        # Add custom providers
         for name, provider_data in self._custom_providers.items():
             env_var = (
                 provider_data.get("env_var_name")
@@ -459,6 +436,9 @@ class ModelManager:
                     provider_data.get("models", ["gpt-4", "gpt-3.5-turbo"])
                 ),
                 "has_api_key": has_api_key,
+                "token_source": "env"
+                if os.environ.get(env_var)
+                else ("runtime" if self._runtime_api_keys.get(name) else "none"),
                 "baseline_features": [
                     "streaming",
                     "tools",
@@ -469,7 +449,65 @@ class ModelManager:
                 "is_custom": True,
             }
 
-        return result
+        return dict(result)
+
+    def _check_provider_has_api_key(self, provider_name: str) -> bool:
+        """
+        Check if a provider has an API key using hierarchical resolution.
+
+        Checks: environment variables > token storage
+
+        Args:
+            provider_name: Provider name
+
+        Returns:
+            True if API key is available, False otherwise
+        """
+        # Special case: Ollama doesn't need API keys
+        if provider_name.lower() == "ollama":
+            return True
+
+        try:
+            from mcp_cli.auth.provider_tokens import get_provider_token_with_hierarchy
+            from mcp_cli.auth.token_manager import TokenManager
+
+            # Get token manager
+            token_manager = TokenManager()
+
+            # Check hierarchically (env vars > storage)
+            api_key, source = get_provider_token_with_hierarchy(
+                provider_name, token_manager
+            )
+            return api_key is not None
+
+        except Exception as e:
+            logger.debug(f"Error checking provider API key: {e}")
+            return False
+
+    def _get_provider_token_source(self, provider_name: str) -> str:
+        """
+        Get the source of a provider's token.
+
+        Args:
+            provider_name: Provider name
+
+        Returns:
+            'env', 'storage', 'config', or 'none'
+        """
+        # Special case: Ollama doesn't need API keys
+        if provider_name.lower() == "ollama":
+            return "none"
+
+        try:
+            from mcp_cli.auth.provider_tokens import get_provider_token_with_hierarchy
+            from mcp_cli.auth.token_manager import TokenManager
+
+            token_manager = TokenManager()
+            _, source = get_provider_token_with_hierarchy(provider_name, token_manager)
+            return source
+
+        except Exception:
+            return "none"
 
     def get_active_provider(self) -> str:
         """Get current active provider"""
@@ -603,6 +641,7 @@ class ModelManager:
         """
         Get a chuk_llm client for the specified or active provider/model.
         FIXED: Now uses caching and properly handles the updated OpenAI client.
+        Enhanced: Uses hierarchical token resolution (env vars > storage > config)
         """
         target_provider = provider or self._active_provider
         target_model = model or self._active_model
@@ -613,6 +652,9 @@ class ModelManager:
 
         try:
             from chuk_llm.llm.client import get_client
+
+            # Before creating client, ensure API key is available via hierarchical resolution
+            self._ensure_provider_api_key(target_provider)
 
             # Use cache key to avoid recreating clients
             cache_key = f"{target_provider}:{target_model}"
@@ -631,27 +673,83 @@ class ModelManager:
             )
             raise
 
+    def _ensure_provider_api_key(self, provider_name: str) -> None:
+        """
+        Ensure provider has API key configured using hierarchical resolution.
+        Injects token from storage into chuk_llm config if needed.
+
+        Args:
+            provider_name: Provider name
+        """
+        # Skip for providers that don't need API keys
+        if provider_name.lower() == "ollama":
+            return
+
+        try:
+            from mcp_cli.auth.provider_tokens import get_provider_token_with_hierarchy
+            from mcp_cli.auth.token_manager import TokenManager
+            import os
+
+            # Check if env var is already set (highest priority)
+            from mcp_cli.auth.provider_tokens import get_provider_env_var_name
+
+            env_var = get_provider_env_var_name(provider_name)
+            if os.environ.get(env_var):
+                # Env var is set, chuk_llm will use it
+                logger.debug(f"Using {env_var} from environment for {provider_name}")
+                return
+
+            # Get token from storage
+            token_manager = TokenManager()
+            api_key, source = get_provider_token_with_hierarchy(
+                provider_name, token_manager
+            )
+
+            if api_key and source == "storage":
+                # Inject into chuk_llm config temporarily via environment
+                # This ensures chuk_llm can use the stored token
+                os.environ[env_var] = api_key
+                logger.debug(
+                    f"Injected stored token for {provider_name} into environment"
+                )
+
+        except Exception as e:
+            logger.debug(f"Could not ensure API key for {provider_name}: {e}")
+
     def _get_custom_provider_client(self, provider: str, model: str | None = None):
         """Get a client for a custom OpenAI-compatible provider."""
-        import os
         from openai import OpenAI
 
         provider_data = self._custom_providers.get(provider)
         if not provider_data:
             raise ValueError(f"Custom provider {provider} not found")
 
-        # Get API key from runtime storage or environment
+        # Use hierarchical token resolution for custom providers too
+        from mcp_cli.auth.provider_tokens import get_provider_token_with_hierarchy
+        from mcp_cli.auth.token_manager import TokenManager
+
+        # Check runtime keys first
         api_key = self._runtime_api_keys.get(provider)
+
+        if not api_key:
+            # Use hierarchical resolution (env vars > storage)
+            try:
+                token_manager = TokenManager()
+                api_key, source = get_provider_token_with_hierarchy(
+                    provider, token_manager
+                )
+                if api_key:
+                    logger.debug(f"Using {provider} API key from {source}")
+            except Exception as e:
+                logger.debug(f"Token resolution failed for {provider}: {e}")
+
         if not api_key:
             env_var = (
                 provider_data.get("env_var_name")
                 or f"{provider.upper().replace('-', '_')}_API_KEY"
             )
-            api_key = os.environ.get(env_var)
-
-        if not api_key:
             raise ValueError(
-                f"No API key found for provider {provider}. Set environment variable or pass via CLI."
+                f"No API key found for provider {provider}. Use 'mcp-cli token set-provider {provider}' or set {env_var}"
             )
 
         cache_key = f"custom:{provider}:{model or 'default'}"
