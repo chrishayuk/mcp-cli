@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from .token_types import TokenType
 
@@ -31,14 +31,15 @@ class TokenRegistry:
         # Load existing registry
         self._entries: Dict[str, Dict] = self._load_registry()
 
-    def _load_registry(self) -> Dict[str, Dict]:
+    def _load_registry(self) -> Dict[str, Dict[Any, Any]]:
         """Load registry from file."""
         if not self.registry_path.exists():
             return {}
 
         try:
             with open(self.registry_path, "r") as f:
-                return json.load(f)
+                data: Dict[str, Dict[Any, Any]] = json.load(f)
+                return data
         except (json.JSONDecodeError, FileNotFoundError):
             return {}
 
@@ -49,6 +50,7 @@ class TokenRegistry:
 
         # Set restrictive permissions
         import os
+
         os.chmod(self.registry_path, 0o600)
 
     def _make_key(self, namespace: str, name: str) -> str:
@@ -76,7 +78,9 @@ class TokenRegistry:
         key = self._make_key(namespace, name)
         self._entries[key] = {
             "name": name,
-            "type": token_type.value if isinstance(token_type, TokenType) else token_type,
+            "type": token_type.value
+            if isinstance(token_type, TokenType)
+            else token_type,
             "namespace": namespace,
             "registered_at": time.time(),
             "metadata": metadata or {},
@@ -172,7 +176,8 @@ class TokenRegistry:
             Number of tokens cleared
         """
         keys_to_remove = [
-            key for key, entry in self._entries.items()
+            key
+            for key, entry in self._entries.items()
             if entry.get("namespace") == namespace
         ]
 

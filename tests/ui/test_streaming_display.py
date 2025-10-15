@@ -332,6 +332,7 @@ class TestStreamingContext:
     def console(self):
         """Create a properly configured mock console."""
         from threading import RLock
+
         console = Mock()
         # Add required Rich Console attributes and methods
         console.is_jupyter = False

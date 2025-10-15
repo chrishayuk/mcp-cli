@@ -219,13 +219,13 @@ class TestCustomProviderCommands:
         assert table_data[0]["API Base"] == "https://api1.com/v1"
         assert table_data[0]["Models"] == "model1, model2"
         assert table_data[0]["Default"] == "model1"
-        assert "✅" in table_data[0]["API Key"]  # Has key
-        assert "PROVIDER1_API_KEY" in table_data[0]["API Key"]
+        assert "✅" in table_data[0]["Token"]  # Has key
+        assert "PROVIDER1_API_KEY" in table_data[0]["Token"]
 
         # Check second provider
         assert table_data[1]["Provider"] == "provider2"
-        assert "❌" in table_data[1]["API Key"]  # No key
-        assert "CUSTOM_KEY" in table_data[1]["API Key"]  # Custom env var
+        assert "❌" in table_data[1]["Token"]  # No key
+        assert "CUSTOM_KEY" in table_data[1]["Token"]  # Custom env var
 
     @pytest.mark.asyncio
     @patch("mcp_cli.commands.actions.providers.get_context")

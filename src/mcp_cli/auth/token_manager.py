@@ -95,6 +95,7 @@ class TokenManager:
         if tokens.expires_in:
             # Calculate expiration timestamp
             import time
+
             if tokens.issued_at:
                 metadata["expires_at"] = tokens.issued_at + tokens.expires_in
             else:

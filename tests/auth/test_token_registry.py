@@ -1,8 +1,6 @@
 """Tests for TokenRegistry."""
 
 import json
-import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -39,7 +37,7 @@ class TestTokenRegistry:
             name="test-token",
             token_type=TokenType.BEARER,
             namespace="test",
-            metadata={"foo": "bar"}
+            metadata={"foo": "bar"},
         )
 
         # Check registry file was created
@@ -47,6 +45,7 @@ class TestTokenRegistry:
 
         # Check file permissions
         import stat
+
         mode = temp_registry_path.stat().st_mode
         assert stat.S_IMODE(mode) == 0o600
 
@@ -115,10 +114,7 @@ class TestTokenRegistry:
     def test_get_entry(self, registry):
         """Test getting a specific entry."""
         registry.register(
-            "test-token",
-            TokenType.BEARER,
-            "test",
-            metadata={"key": "value"}
+            "test-token", TokenType.BEARER, "test", metadata={"key": "value"}
         )
 
         entry = registry.get_entry("test-token", "test")
@@ -171,18 +167,11 @@ class TestTokenRegistry:
     def test_update_metadata(self, registry):
         """Test updating token metadata."""
         registry.register(
-            "test-token",
-            TokenType.BEARER,
-            "test",
-            metadata={"key1": "value1"}
+            "test-token", TokenType.BEARER, "test", metadata={"key1": "value1"}
         )
 
         # Update metadata
-        result = registry.update_metadata(
-            "test-token",
-            "test",
-            {"key2": "value2"}
-        )
+        result = registry.update_metadata("test-token", "test", {"key2": "value2"})
         assert result is True
 
         # Check metadata was merged

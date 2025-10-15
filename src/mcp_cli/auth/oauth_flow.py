@@ -32,7 +32,9 @@ class OAuthFlow:
     def _generate_pkce_pair(self) -> tuple[str, str]:
         """Generate PKCE code verifier and challenge."""
         # Generate random code verifier
-        code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode("utf-8")
+        code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode(
+            "utf-8"
+        )
         code_verifier = code_verifier.rstrip("=")
 
         # Generate code challenge from verifier
@@ -205,7 +207,7 @@ class OAuthFlow:
         # Get authorization URL
         auth_url = self.get_authorization_url()
 
-        print(f"\nOpening browser for authorization...")
+        print("\nOpening browser for authorization...")
         print(f"If browser doesn't open, visit: {auth_url}\n")
 
         # Open browser

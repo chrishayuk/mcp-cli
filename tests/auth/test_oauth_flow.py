@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from mcp_cli.auth.oauth_config import OAuthConfig, OAuthTokens
+from mcp_cli.auth.oauth_config import OAuthConfig
 from mcp_cli.auth.oauth_flow import OAuthFlow
 
 
@@ -356,7 +356,7 @@ class TestOAuthFlowCallbackHandlerDetailed:
     def test_callback_handler_with_error(self):
         """Test callback handler receiving error."""
         from io import BytesIO
-        
+
         config = OAuthConfig(
             client_id="test-client",
             authorization_url="https://example.com/authorize",
@@ -365,12 +365,14 @@ class TestOAuthFlowCallbackHandlerDetailed:
         )
         flow = OAuthFlow(config)
         handler_class = flow._create_callback_handler()
-        
+
         # Create mock request with error
         class MockSocket:
             def makefile(self, mode, buffsize=-1):
-                if 'r' in mode:
-                    return BytesIO(b'GET /?error=access_denied&error_description=User+denied HTTP/1.1\r\nHost: localhost\r\n\r\n')
+                if "r" in mode:
+                    return BytesIO(
+                        b"GET /?error=access_denied&error_description=User+denied HTTP/1.1\r\nHost: localhost\r\n\r\n"
+                    )
                 else:
                     return BytesIO()
 
@@ -382,22 +384,22 @@ class TestOAuthFlowCallbackHandlerDetailed:
 
             def setsockopt(self, level, optname, value):
                 pass
-        
+
         mock_request = MockSocket()
         mock_server = Mock()
-        mock_server.server_name = 'localhost'
+        mock_server.server_name = "localhost"
         mock_server.server_port = 8080
-        
-        handler = handler_class(mock_request, ('127.0.0.1', 12345), mock_server)
-        
+
+        _ = handler_class(mock_request, ("127.0.0.1", 12345), mock_server)
+
         # Check that error was captured
         assert flow._auth_result is not None
-        assert 'error' in flow._auth_result
+        assert "error" in flow._auth_result
 
     def test_callback_handler_with_code(self):
         """Test callback handler receiving authorization code."""
         from io import BytesIO
-        
+
         config = OAuthConfig(
             client_id="test-client",
             authorization_url="https://example.com/authorize",
@@ -406,12 +408,14 @@ class TestOAuthFlowCallbackHandlerDetailed:
         )
         flow = OAuthFlow(config)
         handler_class = flow._create_callback_handler()
-        
+
         # Create mock request with code
         class MockSocket:
             def makefile(self, mode, buffsize=-1):
-                if 'r' in mode:
-                    return BytesIO(b'GET /?code=test-auth-code&state=test-state HTTP/1.1\r\nHost: localhost\r\n\r\n')
+                if "r" in mode:
+                    return BytesIO(
+                        b"GET /?code=test-auth-code&state=test-state HTTP/1.1\r\nHost: localhost\r\n\r\n"
+                    )
                 else:
                     return BytesIO()
 
@@ -423,23 +427,23 @@ class TestOAuthFlowCallbackHandlerDetailed:
 
             def setsockopt(self, level, optname, value):
                 pass
-        
+
         mock_request = MockSocket()
         mock_server = Mock()
-        mock_server.server_name = 'localhost'
+        mock_server.server_name = "localhost"
         mock_server.server_port = 8080
-        
-        handler = handler_class(mock_request, ('127.0.0.1', 12345), mock_server)
-        
+
+        _ = handler_class(mock_request, ("127.0.0.1", 12345), mock_server)
+
         # Check that code was captured
         assert flow._auth_result is not None
-        assert 'code' in flow._auth_result
-        assert flow._auth_result['code'] == 'test-auth-code'
+        assert "code" in flow._auth_result
+        assert flow._auth_result["code"] == "test-auth-code"
 
     def test_callback_handler_no_code_no_error(self):
         """Test callback handler with neither code nor error."""
         from io import BytesIO
-        
+
         config = OAuthConfig(
             client_id="test-client",
             authorization_url="https://example.com/authorize",
@@ -448,12 +452,14 @@ class TestOAuthFlowCallbackHandlerDetailed:
         )
         flow = OAuthFlow(config)
         handler_class = flow._create_callback_handler()
-        
+
         # Create mock request without code or error
         class MockSocket:
             def makefile(self, mode, buffsize=-1):
-                if 'r' in mode:
-                    return BytesIO(b'GET /?state=test-state HTTP/1.1\r\nHost: localhost\r\n\r\n')
+                if "r" in mode:
+                    return BytesIO(
+                        b"GET /?state=test-state HTTP/1.1\r\nHost: localhost\r\n\r\n"
+                    )
                 else:
                     return BytesIO()
 
@@ -465,17 +471,17 @@ class TestOAuthFlowCallbackHandlerDetailed:
 
             def setsockopt(self, level, optname, value):
                 pass
-        
+
         mock_request = MockSocket()
         mock_server = Mock()
-        mock_server.server_name = 'localhost'
+        mock_server.server_name = "localhost"
         mock_server.server_port = 8080
-        
-        handler = handler_class(mock_request, ('127.0.0.1', 12345), mock_server)
-        
+
+        _ = handler_class(mock_request, ("127.0.0.1", 12345), mock_server)
+
         # Should set error result
         assert flow._auth_result is not None
-        assert 'error' in flow._auth_result
+        assert "error" in flow._auth_result
 
 
 class TestOAuthFlowCallbackServer:
@@ -491,17 +497,17 @@ class TestOAuthFlowCallbackServer:
             redirect_uri="http://localhost:8080/callback",
         )
         flow = OAuthFlow(config)
-        
+
         # Simulate receiving result
         async def simulate_callback():
             await asyncio.sleep(0.1)
-            flow._auth_result = {'code': 'test-code'}
-        
+            flow._auth_result = {"code": "test-code"}
+
         callback_task = asyncio.create_task(simulate_callback())
         server_task = asyncio.create_task(flow._run_callback_server(18890))
-        
+
         await asyncio.gather(callback_task, server_task)
-        
+
         assert flow._auth_result is not None
 
     @pytest.mark.asyncio
@@ -514,21 +520,21 @@ class TestOAuthFlowCallbackServer:
             redirect_uri="http://localhost:8080/callback",
         )
         flow = OAuthFlow(config)
-        
+
         # Mock asyncio.sleep to simulate quick timeout
-        call_count = {'count': 0}
+        call_count = {"count": 0}
         original_sleep = asyncio.sleep
-        
+
         async def mock_sleep(duration):
-            call_count['count'] += 1
-            if call_count['count'] > 5:
+            call_count["count"] += 1
+            if call_count["count"] > 5:
                 flow._auth_result = {}  # Exit condition
             await original_sleep(0.01)
-        
-        with patch('asyncio.sleep', mock_sleep):
+
+        with patch("asyncio.sleep", mock_sleep):
             await flow._run_callback_server(18891)
-        
-        assert call_count['count'] > 0
+
+        assert call_count["count"] > 0
 
 
 class TestOAuthFlowAuthorize:
@@ -544,13 +550,13 @@ class TestOAuthFlowAuthorize:
             redirect_uri="http://localhost:8080/callback",
         )
         flow = OAuthFlow(config)
-        
+
         token_response = {
             "access_token": "test-access-token",
             "token_type": "Bearer",
             "expires_in": 3600,
         }
-        
+
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = mock_client_class.return_value.__aenter__.return_value
             mock_response = Mock()
@@ -558,15 +564,18 @@ class TestOAuthFlowAuthorize:
             mock_response.status_code = 200
             mock_response.json.return_value = token_response
             mock_client.post = AsyncMock(return_value=mock_response)
-            
-            with patch('webbrowser.open'):
+
+            with patch("webbrowser.open"):
+
                 async def mock_run_callback_server(port):
                     await asyncio.sleep(0.1)
-                    flow._auth_result = {'code': 'test-code'}
-                
-                with patch.object(flow, '_run_callback_server', mock_run_callback_server):
+                    flow._auth_result = {"code": "test-code"}
+
+                with patch.object(
+                    flow, "_run_callback_server", mock_run_callback_server
+                ):
                     tokens = await flow.authorize()
-                    
+
                     assert tokens.access_token == "test-access-token"
 
     @pytest.mark.asyncio
@@ -579,13 +588,14 @@ class TestOAuthFlowAuthorize:
             redirect_uri="http://localhost:8080/callback",
         )
         flow = OAuthFlow(config)
-        
-        with patch('webbrowser.open'):
+
+        with patch("webbrowser.open"):
+
             async def mock_run_callback_server(port):
                 await asyncio.sleep(0.1)
                 # Don't set _auth_result - simulate timeout
-            
-            with patch.object(flow, '_run_callback_server', mock_run_callback_server):
+
+            with patch.object(flow, "_run_callback_server", mock_run_callback_server):
                 with pytest.raises(Exception, match="Authorization timed out"):
                     await flow.authorize()
 
@@ -599,13 +609,14 @@ class TestOAuthFlowAuthorize:
             redirect_uri="http://localhost:8080/callback",
         )
         flow = OAuthFlow(config)
-        
-        with patch('webbrowser.open'):
+
+        with patch("webbrowser.open"):
+
             async def mock_run_callback_server(port):
                 await asyncio.sleep(0.1)
-                flow._auth_result = {'error': 'access_denied'}
-            
-            with patch.object(flow, '_run_callback_server', mock_run_callback_server):
+                flow._auth_result = {"error": "access_denied"}
+
+            with patch.object(flow, "_run_callback_server", mock_run_callback_server):
                 with pytest.raises(Exception, match="Authorization failed"):
                     await flow.authorize()
 
@@ -619,12 +630,13 @@ class TestOAuthFlowAuthorize:
             redirect_uri="http://localhost:8080/callback",
         )
         flow = OAuthFlow(config)
-        
-        with patch('webbrowser.open'):
+
+        with patch("webbrowser.open"):
+
             async def mock_run_callback_server(port):
                 raise Exception("Server error")
-            
-            with patch.object(flow, '_run_callback_server', mock_run_callback_server):
+
+            with patch.object(flow, "_run_callback_server", mock_run_callback_server):
                 with pytest.raises(Exception, match="Callback server error"):
                     await flow.authorize()
 
@@ -638,12 +650,12 @@ class TestOAuthFlowAuthorize:
             redirect_uri="http://localhost:9000/callback",
         )
         flow = OAuthFlow(config)
-        
+
         token_response = {
             "access_token": "test-access-token",
             "token_type": "Bearer",
         }
-        
+
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = mock_client_class.return_value.__aenter__.return_value
             mock_response = Mock()
@@ -651,12 +663,15 @@ class TestOAuthFlowAuthorize:
             mock_response.status_code = 200
             mock_response.json.return_value = token_response
             mock_client.post = AsyncMock(return_value=mock_response)
-            
-            with patch('webbrowser.open'):
+
+            with patch("webbrowser.open"):
+
                 async def mock_run_callback_server(port):
                     assert port == 9000  # Should use custom port
                     await asyncio.sleep(0.1)
-                    flow._auth_result = {'code': 'test-code'}
-                
-                with patch.object(flow, '_run_callback_server', mock_run_callback_server):
+                    flow._auth_result = {"code": "test-code"}
+
+                with patch.object(
+                    flow, "_run_callback_server", mock_run_callback_server
+                ):
                     await flow.authorize()

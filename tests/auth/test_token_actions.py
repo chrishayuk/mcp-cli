@@ -1,8 +1,7 @@
 """Tests for token command actions."""
 
 import json
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -95,9 +94,7 @@ class TestTokenListAction:
             mock_output.print_table.assert_called()
 
     @pytest.mark.asyncio
-    async def test_list_filter_by_type(
-        self, mock_token_manager, sample_oauth_tokens
-    ):
+    async def test_list_filter_by_type(self, mock_token_manager, sample_oauth_tokens):
         """Test filtering tokens by type."""
         # Store different token types
         mock_token_manager.save_tokens("server1", sample_oauth_tokens)
@@ -145,7 +142,10 @@ class TestTokenSetAction:
         """Test storing bearer token."""
         with patch("mcp_cli.commands.actions.token.output") as mock_output:
             await token_set_action_async(
-                name="my-token", token_type="bearer", value="token123", namespace="bearer"
+                name="my-token",
+                token_type="bearer",
+                value="token123",
+                namespace="bearer",
             )
 
             # Should show success
@@ -238,7 +238,7 @@ class TestTokenGetAction:
     async def test_get_existing_token(self, mock_token_manager):
         """Test getting token information."""
         # Store token
-        from mcp_cli.auth.token_types import BearerToken, StoredToken
+        from mcp_cli.auth.token_types import BearerToken
 
         bearer = BearerToken(token="token123")
         stored = bearer.to_stored_token("my-token")
@@ -265,7 +265,7 @@ class TestTokenGetAction:
     @pytest.mark.asyncio
     async def test_get_with_different_namespace(self, mock_token_manager):
         """Test getting token from specific namespace."""
-        from mcp_cli.auth.token_types import APIKeyToken, StoredToken
+        from mcp_cli.auth.token_types import APIKeyToken
 
         api_key = APIKeyToken(provider="openai", key="sk-123")
         stored = api_key.to_stored_token("openai")
@@ -415,7 +415,6 @@ class TestTokenBackendsAction:
     @pytest.mark.asyncio
     async def test_backends_shows_detected(self):
         """Test that detected backend is indicated."""
-        from mcp_cli.auth.token_store_factory import TokenStoreFactory
 
         with patch("mcp_cli.commands.actions.token.output") as mock_output:
             await token_backends_action_async()

@@ -16,12 +16,11 @@ class SecretServiceTokenStore(SecureTokenStore):
     def __init__(self):
         """Initialize Secret Service token store."""
         if platform.system() != "Linux":
-            raise TokenStorageError(
-                "Secret Service storage is only available on Linux"
-            )
+            raise TokenStorageError("Secret Service storage is only available on Linux")
 
         try:
             import keyring
+
             self.keyring = keyring
         except ImportError:
             raise TokenStorageError(
@@ -44,6 +43,7 @@ class SecretServiceTokenStore(SecureTokenStore):
             # Add issued_at timestamp if not present
             if tokens.issued_at is None:
                 import time
+
                 tokens.issued_at = time.time()
 
             # Serialize tokens to JSON
@@ -88,9 +88,7 @@ class SecretServiceTokenStore(SecureTokenStore):
             self.keyring.delete_password(self.SERVICE_NAME, safe_name)
             return True
         except Exception as e:
-            raise TokenStorageError(
-                f"Failed to delete token from Secret Service: {e}"
-            )
+            raise TokenStorageError(f"Failed to delete token from Secret Service: {e}")
 
     def has_token(self, server_name: str) -> bool:
         """Check if tokens exist in Secret Service."""
@@ -114,9 +112,12 @@ class SecretServiceTokenStore(SecureTokenStore):
         """Retrieve raw string value from Secret Service."""
         try:
             safe_key = self._sanitize_name(key)
-            return self.keyring.get_password(self.SERVICE_NAME, safe_key)
+            result = self.keyring.get_password(self.SERVICE_NAME, safe_key)
+            return str(result) if result is not None else None
         except Exception as e:
-            raise TokenStorageError(f"Failed to retrieve value from Secret Service: {e}")
+            raise TokenStorageError(
+                f"Failed to retrieve value from Secret Service: {e}"
+            )
 
     def _delete_raw(self, key: str) -> bool:
         """Delete raw value from Secret Service."""

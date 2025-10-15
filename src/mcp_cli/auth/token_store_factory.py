@@ -176,7 +176,7 @@ class TokenStoreFactory:
         # Check for Vault
         if os.getenv("VAULT_ADDR") and os.getenv("VAULT_TOKEN"):
             try:
-                import hvac
+                import hvac  # noqa: F401
 
                 available.append(TokenStoreBackend.VAULT)
             except ImportError:
@@ -184,7 +184,7 @@ class TokenStoreFactory:
 
         # Encrypted file is always available (fallback)
         try:
-            from cryptography.fernet import Fernet
+            from cryptography.fernet import Fernet  # noqa: F401
 
             available.append(TokenStoreBackend.ENCRYPTED_FILE)
         except ImportError:

@@ -1,6 +1,5 @@
 """OAuth handler for MCP server connections."""
 
-import asyncio
 import logging
 from typing import Dict, Optional
 
@@ -228,7 +227,7 @@ class OAuthHandler:
         # Determine if this is a remote MCP server (has URL, no command)
         is_remote_mcp = server_config.url and not server_config.command
 
-        if is_remote_mcp:
+        if is_remote_mcp and server_config.url:
             # Use MCP OAuth specification for remote servers
             try:
                 tokens = await self.ensure_authenticated_mcp(
@@ -238,8 +237,12 @@ class OAuthHandler:
                 )
                 auth_header = tokens.get_authorization_header()
                 headers["Authorization"] = auth_header
-                print(f"✓ Added Authorization header for {server_config.name}: {auth_header[:30]}...")
-                logger.info(f"Added Authorization header for {server_config.name}: {auth_header[:20]}...")
+                print(
+                    f"✓ Added Authorization header for {server_config.name}: {auth_header[:30]}..."
+                )
+                logger.info(
+                    f"Added Authorization header for {server_config.name}: {auth_header[:20]}..."
+                )
             except Exception as e:
                 logger.error(
                     f"MCP OAuth authentication failed for {server_config.name}: {e}"
@@ -253,7 +256,9 @@ class OAuthHandler:
                 )
                 headers["Authorization"] = tokens.get_authorization_header()
             except Exception as e:
-                logger.error(f"OAuth authentication failed for {server_config.name}: {e}")
+                logger.error(
+                    f"OAuth authentication failed for {server_config.name}: {e}"
+                )
                 raise
 
         # Merge with any existing headers from env

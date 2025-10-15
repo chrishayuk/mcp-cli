@@ -1,9 +1,7 @@
 """Tests for token storage backends."""
 
-import json
-import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -24,8 +22,7 @@ class TestEncryptedFileTokenStore:
     def store(self, token_dir):
         """Provide EncryptedFileTokenStore instance."""
         return EncryptedFileTokenStore(
-            token_dir=token_dir,
-            password="test-password-123"
+            token_dir=token_dir, password="test-password-123"
         )
 
     def test_init_with_default_token_dir(self):
@@ -58,15 +55,12 @@ class TestEncryptedFileTokenStore:
             access_token="test-access-token",
             refresh_token="test-refresh-token",
             expires_in=3600,
-            token_type="Bearer"
+            token_type="Bearer",
         )
 
     def test_init_creates_directory(self, token_dir):
         """Test that initialization creates token directory."""
-        store = EncryptedFileTokenStore(
-            token_dir=token_dir,
-            password="test-password"
-        )
+        _ = EncryptedFileTokenStore(token_dir=token_dir, password="test-password")
 
         assert token_dir.exists()
         assert token_dir.stat().st_mode & 0o777 == 0o700
@@ -158,17 +152,11 @@ class TestEncryptedFileTokenStore:
     def test_encryption_with_different_passwords(self, token_dir):
         """Test that different passwords can't decrypt each other's data."""
         # Store with first password
-        store1 = EncryptedFileTokenStore(
-            token_dir=token_dir,
-            password="password1"
-        )
+        store1 = EncryptedFileTokenStore(token_dir=token_dir, password="password1")
         store1._store_raw("test-key", "test-value")
 
         # Try to retrieve with different password
-        store2 = EncryptedFileTokenStore(
-            token_dir=token_dir,
-            password="password2"
-        )
+        store2 = EncryptedFileTokenStore(token_dir=token_dir, password="password2")
 
         with pytest.raises(TokenStorageError):
             store2._retrieve_raw("test-key")
@@ -197,6 +185,7 @@ class TestEncryptedFileTokenStore:
 
         # Check file permissions are user-only read/write
         import stat
+
         mode = file_path.stat().st_mode
         assert stat.S_IMODE(mode) == 0o600
 
@@ -225,6 +214,7 @@ class TestEncryptedFileTokenStore:
 
     def test_store_token_error_handling(self, store, sample_tokens, monkeypatch):
         """Test error handling when storing token fails."""
+
         def mock_open_error(*args, **kwargs):
             raise PermissionError("Permission denied")
 
@@ -255,17 +245,19 @@ class TestEncryptedFileTokenStore:
 
         # Create new store with different password
         store2 = EncryptedFileTokenStore(
-            token_dir=token_dir,
-            password="different-password"
+            token_dir=token_dir, password="different-password"
         )
 
-        with pytest.raises(TokenStorageError, match="Failed to retrieve encrypted token"):
+        with pytest.raises(
+            TokenStorageError, match="Failed to retrieve encrypted token"
+        ):
             store2.retrieve_token("test-server")
 
     def test_delete_token_error_handling(self, store, monkeypatch):
         """Test error handling when deleting token fails."""
         # Create a token first
         from mcp_cli.auth.oauth_config import OAuthTokens
+
         tokens = OAuthTokens(access_token="test", expires_in=3600, token_type="Bearer")
         store.store_token("test-server", tokens)
 
@@ -279,6 +271,7 @@ class TestEncryptedFileTokenStore:
 
     def test_store_raw_error_handling(self, store, monkeypatch):
         """Test error handling when storing raw value fails."""
+
         def mock_open_error(*args, **kwargs):
             raise IOError("Disk full")
 
@@ -294,11 +287,12 @@ class TestEncryptedFileTokenStore:
 
         # Create new store with different password to cause decrypt error
         store2 = EncryptedFileTokenStore(
-            token_dir=token_dir,
-            password="different-password"
+            token_dir=token_dir, password="different-password"
         )
 
-        with pytest.raises(TokenStorageError, match="Failed to retrieve encrypted value"):
+        with pytest.raises(
+            TokenStorageError, match="Failed to retrieve encrypted value"
+        ):
             store2._retrieve_raw("test-key")
 
     def test_delete_raw_error_handling(self, store, monkeypatch):
@@ -321,8 +315,7 @@ class TestTokenStoreInterface:
     def store(self, tmp_path):
         """Provide a concrete store implementation."""
         return EncryptedFileTokenStore(
-            token_dir=tmp_path / "tokens",
-            password="test-password"
+            token_dir=tmp_path / "tokens", password="test-password"
         )
 
     def test_store_and_retrieve_oauth_tokens(self, store):
@@ -331,7 +324,7 @@ class TestTokenStoreInterface:
             access_token="access-123",
             refresh_token="refresh-456",
             expires_in=3600,
-            token_type="Bearer"
+            token_type="Bearer",
         )
 
         store.store_token("test-server", tokens)
@@ -357,8 +350,9 @@ class TestTokenStoreInterface:
 
 
 @pytest.mark.skipif(
-    not hasattr(__import__("sys"), "platform") or __import__("sys").platform != "darwin",
-    reason="Keychain tests only run on macOS"
+    not hasattr(__import__("sys"), "platform")
+    or __import__("sys").platform != "darwin",
+    reason="Keychain tests only run on macOS",
 )
 class TestKeychainStoreIntegration:
     """Integration tests for Keychain store (macOS only)."""
@@ -367,6 +361,7 @@ class TestKeychainStoreIntegration:
         """Test that keyring library is available."""
         try:
             import keyring
+
             assert keyring is not None
         except ImportError:
             pytest.skip("keyring library not available")
@@ -375,6 +370,7 @@ class TestKeychainStoreIntegration:
         """Test creating a Keychain store."""
         try:
             from mcp_cli.auth.stores.keychain_store import KeychainTokenStore
+
             store = KeychainTokenStore()
             assert store is not None
         except ImportError:
@@ -395,13 +391,13 @@ class TestTokenStoreFactory:
         """Test creating encrypted file store."""
         from mcp_cli.auth.token_store_factory import (
             TokenStoreBackend,
-            TokenStoreFactory
+            TokenStoreFactory,
         )
 
         store = TokenStoreFactory.create(
             backend=TokenStoreBackend.ENCRYPTED_FILE,
             token_dir=tmp_path / "tokens",
-            password="test-password"
+            password="test-password",
         )
 
         assert isinstance(store, EncryptedFileTokenStore)
@@ -415,7 +411,9 @@ class TestTokenStoreFactory:
         # Encrypted file should always be available
         assert any("encrypted" in str(b).lower() for b in backends)
 
-    @patch.dict("os.environ", {"VAULT_ADDR": "http://vault:8200", "VAULT_TOKEN": "test"})
+    @patch.dict(
+        "os.environ", {"VAULT_ADDR": "http://vault:8200", "VAULT_TOKEN": "test"}
+    )
     def test_vault_detection(self):
         """Test that Vault is detected when env vars are set."""
         from mcp_cli.auth.token_store_factory import TokenStoreFactory

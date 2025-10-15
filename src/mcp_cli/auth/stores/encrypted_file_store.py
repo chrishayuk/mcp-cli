@@ -12,7 +12,9 @@ from ..secure_token_store import SecureTokenStore, TokenStorageError
 class EncryptedFileTokenStore(SecureTokenStore):
     """Token storage using encrypted files (fallback when OS keyring unavailable)."""
 
-    def __init__(self, token_dir: Optional[Path] = None, password: Optional[str] = None):
+    def __init__(
+        self, token_dir: Optional[Path] = None, password: Optional[str] = None
+    ):
         """
         Initialize encrypted file token store.
 
@@ -51,7 +53,6 @@ class EncryptedFileTokenStore(SecureTokenStore):
 
     def _initialize_key(self, password: Optional[str] = None) -> None:
         """Initialize or load encryption key."""
-        key_file = self.token_dir / ".key"
         salt_file = self.token_dir / ".salt"
 
         # Get or create salt
@@ -102,6 +103,7 @@ class EncryptedFileTokenStore(SecureTokenStore):
             # Add issued_at timestamp if not present
             if tokens.issued_at is None:
                 import time
+
                 tokens.issued_at = time.time()
 
             # Serialize to JSON
@@ -197,7 +199,8 @@ class EncryptedFileTokenStore(SecureTokenStore):
 
             # Decrypt
             decrypted_data = self.fernet.decrypt(encrypted_data)
-            return decrypted_data.decode()
+            result: str = decrypted_data.decode()
+            return result
         except Exception as e:
             raise TokenStorageError(f"Failed to retrieve encrypted value: {e}")
 

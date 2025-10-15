@@ -1,7 +1,7 @@
 """Tests for OAuthHandler."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from mcp_cli.auth.oauth_config import OAuthConfig, OAuthTokens
 from mcp_cli.auth.oauth_handler import OAuthHandler
@@ -64,9 +64,12 @@ class TestOAuthHandlerMCPAuth:
         assert handler._active_tokens["test-server"] == sample_tokens
 
     @pytest.mark.asyncio
-    async def test_ensure_authenticated_mcp_refresh_failure_falls_through(self, handler, sample_tokens):
+    async def test_ensure_authenticated_mcp_refresh_failure_falls_through(
+        self, handler, sample_tokens
+    ):
         """Test that refresh failure falls through to full auth."""
         import time
+
         # Expired token - set issued_at in the past
         expired_tokens = OAuthTokens(
             access_token="old-token",
@@ -84,12 +87,16 @@ class TestOAuthHandlerMCPAuth:
             mock_client = mock_client_class.return_value
             mock_client.discover_authorization_server = AsyncMock()
             # Make refresh fail
-            mock_client.refresh_token = AsyncMock(side_effect=Exception("Refresh failed"))
+            mock_client.refresh_token = AsyncMock(
+                side_effect=Exception("Refresh failed")
+            )
             # But full auth succeeds
             mock_client.authorize = AsyncMock(return_value=sample_tokens)
             mock_client._client_registration = MagicMock()
 
-            result = await handler.ensure_authenticated_mcp("test-server", "http://server")
+            result = await handler.ensure_authenticated_mcp(
+                "test-server", "http://server"
+            )
 
             # Should get tokens from full auth flow
             assert result == sample_tokens
@@ -105,7 +112,9 @@ class TestOAuthHandlerMCPAuth:
             mock_client.authorize = AsyncMock(return_value=sample_tokens)
             mock_client._client_registration = MagicMock()
 
-            result = await handler.ensure_authenticated_mcp("test-server", "http://server")
+            result = await handler.ensure_authenticated_mcp(
+                "test-server", "http://server"
+            )
 
             assert result == sample_tokens
             mock_client.authorize.assert_called_once()
@@ -159,7 +168,9 @@ class TestOAuthHandlerLegacyAuth:
         )
 
     @pytest.mark.asyncio
-    async def test_ensure_authenticated_cached(self, handler, oauth_config, sample_tokens):
+    async def test_ensure_authenticated_cached(
+        self, handler, oauth_config, sample_tokens
+    ):
         """Test cached tokens are returned."""
         handler._active_tokens["test-server"] = sample_tokens
 
@@ -168,7 +179,9 @@ class TestOAuthHandlerLegacyAuth:
         assert result == sample_tokens
 
     @pytest.mark.asyncio
-    async def test_ensure_authenticated_from_storage(self, handler, oauth_config, sample_tokens):
+    async def test_ensure_authenticated_from_storage(
+        self, handler, oauth_config, sample_tokens
+    ):
         """Test loading from storage."""
         handler.token_manager.load_tokens.return_value = sample_tokens
 
@@ -190,10 +203,14 @@ class TestOAuthHandlerLegacyAuth:
             mock_flow = mock_flow_class.return_value
             mock_flow.refresh_token = AsyncMock(return_value=new_tokens)
 
-            result = await handler._refresh_tokens("test-server", oauth_config, "refresh-token")
+            result = await handler._refresh_tokens(
+                "test-server", oauth_config, "refresh-token"
+            )
 
             assert result == new_tokens
-            handler.token_manager.save_tokens.assert_called_once_with("test-server", new_tokens)
+            handler.token_manager.save_tokens.assert_called_once_with(
+                "test-server", new_tokens
+            )
             assert handler._active_tokens["test-server"] == new_tokens
 
     @pytest.mark.asyncio
@@ -210,9 +227,12 @@ class TestOAuthHandlerLegacyAuth:
             assert handler._active_tokens["test-server"] == sample_tokens
 
     @pytest.mark.asyncio
-    async def test_ensure_authenticated_refresh_failure_falls_through(self, handler, oauth_config, sample_tokens):
+    async def test_ensure_authenticated_refresh_failure_falls_through(
+        self, handler, oauth_config, sample_tokens
+    ):
         """Test that refresh failure falls through to full auth."""
         import time
+
         expired_tokens = OAuthTokens(
             access_token="old-token",
             refresh_token="refresh-token",
@@ -383,7 +403,11 @@ class TestOAuthHandlerPrepareHeaders:
         )
 
         # Mock ensure_authenticated_mcp to raise error
-        with patch.object(handler, 'ensure_authenticated_mcp', AsyncMock(side_effect=Exception("Auth failed"))):
+        with patch.object(
+            handler,
+            "ensure_authenticated_mcp",
+            AsyncMock(side_effect=Exception("Auth failed")),
+        ):
             with pytest.raises(Exception, match="Auth failed"):
                 await handler.prepare_server_headers(server_config)
 
@@ -404,6 +428,10 @@ class TestOAuthHandlerPrepareHeaders:
         )
 
         # Mock ensure_authenticated to raise error
-        with patch.object(handler, 'ensure_authenticated', AsyncMock(side_effect=Exception("Auth failed"))):
+        with patch.object(
+            handler,
+            "ensure_authenticated",
+            AsyncMock(side_effect=Exception("Auth failed")),
+        ):
             with pytest.raises(Exception, match="Auth failed"):
                 await handler.prepare_server_headers(server_config)

@@ -22,6 +22,7 @@ class CredentialManagerTokenStore(SecureTokenStore):
 
         try:
             import keyring
+
             self.keyring = keyring
         except ImportError:
             raise TokenStorageError(
@@ -36,6 +37,7 @@ class CredentialManagerTokenStore(SecureTokenStore):
             # Add issued_at timestamp if not present
             if tokens.issued_at is None:
                 import time
+
                 tokens.issued_at = time.time()
 
             # Serialize tokens to JSON
@@ -44,9 +46,7 @@ class CredentialManagerTokenStore(SecureTokenStore):
             # Store in Credential Manager
             self.keyring.set_password(self.SERVICE_NAME, safe_name, token_json)
         except Exception as e:
-            raise TokenStorageError(
-                f"Failed to store token in Credential Manager: {e}"
-            )
+            raise TokenStorageError(f"Failed to store token in Credential Manager: {e}")
 
     def retrieve_token(self, server_name: str) -> Optional[OAuthTokens]:
         """Retrieve tokens from Windows Credential Manager."""
@@ -108,9 +108,12 @@ class CredentialManagerTokenStore(SecureTokenStore):
         """Retrieve raw string value from Credential Manager."""
         try:
             safe_key = self._sanitize_name(key)
-            return self.keyring.get_password(self.SERVICE_NAME, safe_key)
+            result = self.keyring.get_password(self.SERVICE_NAME, safe_key)
+            return str(result) if result is not None else None
         except Exception as e:
-            raise TokenStorageError(f"Failed to retrieve value from Credential Manager: {e}")
+            raise TokenStorageError(
+                f"Failed to retrieve value from Credential Manager: {e}"
+            )
 
     def _delete_raw(self, key: str) -> bool:
         """Delete raw value from Credential Manager."""
@@ -121,4 +124,6 @@ class CredentialManagerTokenStore(SecureTokenStore):
             self.keyring.delete_password(self.SERVICE_NAME, safe_key)
             return True
         except Exception as e:
-            raise TokenStorageError(f"Failed to delete value from Credential Manager: {e}")
+            raise TokenStorageError(
+                f"Failed to delete value from Credential Manager: {e}"
+            )

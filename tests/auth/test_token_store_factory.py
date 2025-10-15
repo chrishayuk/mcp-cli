@@ -1,7 +1,6 @@
 """Tests for TokenStoreFactory."""
 
 import os
-from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -71,7 +70,9 @@ class TestTokenStoreFactoryCreate:
     def test_create_windows_backend_with_mocking(self, temp_dir):
         """Test creating Windows backend with proper mocking."""
         # Mock the Windows store at its actual import path
-        with patch("mcp_cli.auth.stores.windows_store.CredentialManagerTokenStore") as mock_store:
+        with patch(
+            "mcp_cli.auth.stores.windows_store.CredentialManagerTokenStore"
+        ) as mock_store:
             mock_instance = MagicMock()
             mock_store.return_value = mock_instance
 
@@ -85,7 +86,9 @@ class TestTokenStoreFactoryCreate:
     def test_create_linux_backend_with_mocking(self, temp_dir):
         """Test creating Linux backend with proper mocking."""
         # Mock the Linux store at its actual import path
-        with patch("mcp_cli.auth.stores.linux_store.SecretServiceTokenStore") as mock_store:
+        with patch(
+            "mcp_cli.auth.stores.linux_store.SecretServiceTokenStore"
+        ) as mock_store:
             mock_instance = MagicMock()
             mock_store.return_value = mock_instance
 
@@ -143,6 +146,7 @@ class TestTokenStoreFactoryCreate:
 
     def test_create_unknown_backend_raises_error(self, temp_dir):
         """Test that unknown backend raises TokenStorageError then falls back."""
+
         # Create a custom backend value that will hit the else clause
         class FakeBackend:
             pass
@@ -157,12 +161,15 @@ class TestTokenStoreFactoryCreate:
         )
 
         from mcp_cli.auth.stores.encrypted_file_store import EncryptedFileTokenStore
+
         assert isinstance(store, EncryptedFileTokenStore)
 
     def test_create_fallback_to_encrypted_file(self, temp_dir):
         """Test fallback to encrypted file when backend fails."""
         # Mock KeychainTokenStore to raise TokenStorageError
-        with patch("mcp_cli.auth.stores.keychain_store.KeychainTokenStore") as mock_store:
+        with patch(
+            "mcp_cli.auth.stores.keychain_store.KeychainTokenStore"
+        ) as mock_store:
             mock_store.side_effect = TokenStorageError("Keychain not available")
 
             store = TokenStoreFactory.create(
@@ -172,6 +179,7 @@ class TestTokenStoreFactoryCreate:
             )
 
             from mcp_cli.auth.stores.encrypted_file_store import EncryptedFileTokenStore
+
             assert isinstance(store, EncryptedFileTokenStore)
 
     def test_create_encrypted_file_failure_raises(self, temp_dir):
@@ -278,6 +286,7 @@ class TestTokenStoreFactoryGetAvailableBackends:
     def test_get_available_on_macos_without_keyring(self, mock_platform):
         """Test getting available backends on macOS without keyring."""
         import sys
+
         with patch.dict(os.environ, {}, clear=True):
             # Temporarily remove keyring from sys.modules
             keyring_backup = sys.modules.get("keyring")
@@ -312,6 +321,7 @@ class TestTokenStoreFactoryGetAvailableBackends:
     def test_get_available_on_windows_without_keyring(self, mock_platform):
         """Test getting available backends on Windows without keyring."""
         import sys
+
         with patch.dict(os.environ, {}, clear=True):
             # Temporarily remove keyring from sys.modules
             keyring_backup = sys.modules.get("keyring")
@@ -370,7 +380,9 @@ class TestTokenStoreFactoryGetAvailableBackends:
 
     @pytest.mark.skip(reason="Requires hvac library to be installed")
     @patch.dict(os.environ, {"VAULT_ADDR": "http://vault:8200", "VAULT_TOKEN": "test"})
-    @patch("platform.system", return_value="FreeBSD")  # Use platform without specific backend
+    @patch(
+        "platform.system", return_value="FreeBSD"
+    )  # Use platform without specific backend
     def test_get_available_with_vault(self, mock_platform):
         """Test getting available backends with Vault configured."""
         backends = TokenStoreFactory.get_available_backends()
@@ -382,6 +394,7 @@ class TestTokenStoreFactoryGetAvailableBackends:
     def test_get_available_with_vault_but_no_hvac(self):
         """Test Vault backend not available without hvac library."""
         import sys
+
         # Temporarily remove hvac from sys.modules
         hvac_backup = sys.modules.get("hvac")
         if "hvac" in sys.modules:
@@ -404,6 +417,7 @@ class TestTokenStoreFactoryGetAvailableBackends:
     def test_get_available_without_cryptography(self):
         """Test getting available backends without cryptography."""
         import sys
+
         with patch.dict(os.environ, {}, clear=True):
             # Temporarily remove cryptography from sys.modules
             crypto_modules_backup = {}

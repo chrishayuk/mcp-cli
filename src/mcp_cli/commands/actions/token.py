@@ -28,6 +28,7 @@ async def token_list_action_async(
     show_oauth: bool = True,
     show_bearer: bool = True,
     show_api_keys: bool = True,
+    show_providers: bool = True,
 ) -> None:
     """
     List all stored tokens (metadata only, no sensitive data).
@@ -37,12 +38,61 @@ async def token_list_action_async(
         show_oauth: Show OAuth tokens
         show_bearer: Show bearer tokens
         show_api_keys: Show API keys
+        show_providers: Show provider API keys with env var status
     """
     try:
         manager = _get_token_manager()
-        store = manager.token_store
 
         output.rule("[bold]🔐 Stored Tokens[/bold]", style="primary")
+
+        # Track if we showed any provider tokens
+        provider_tokens = {}
+
+        # Show provider tokens with hierarchical status
+        if show_providers and (namespace is None or namespace == "provider"):
+            from mcp_cli.auth.provider_tokens import (
+                list_all_provider_tokens,
+            )
+
+            provider_tokens = list_all_provider_tokens(manager)
+
+            if provider_tokens:
+                output.print(
+                    "\n[bold]Provider API Keys (Stored in Secure Storage):[/bold]"
+                )
+                provider_table_data = []
+
+                for provider_name, status_info in provider_tokens.items():
+                    env_var = status_info["env_var"]
+
+                    # These are all storage tokens
+                    status_display = "🔐 storage"
+
+                    # Note if env var also exists (shows hierarchy)
+                    if status_info["in_env"]:
+                        note = f"(overridden by {env_var})"
+                    else:
+                        note = "active"
+
+                    provider_table_data.append(
+                        {
+                            "Provider": provider_name,
+                            "Status": status_display,
+                            "Env Var": env_var,
+                            "Note": note,
+                        }
+                    )
+
+                provider_table = format_table(
+                    provider_table_data,
+                    title=None,
+                    columns=["Provider", "Status", "Env Var", "Note"],
+                )
+                output.print_table(provider_table)
+                output.info(
+                    "💡 Environment variables take precedence over stored tokens"
+                )
+                output.print()
 
         # List OAuth tokens note
         if show_oauth:
@@ -52,7 +102,7 @@ async def token_list_action_async(
             )
             output.print()
 
-        # List tokens from registry
+        # List tokens from registry (non-provider tokens)
         registry = manager.registry
         registered_tokens = registry.list_tokens(namespace=namespace)
 
@@ -61,6 +111,10 @@ async def token_list_action_async(
             token_type = entry.get("type", "unknown")
             token_name = entry.get("name", "unknown")
             token_namespace = entry.get("namespace", "unknown")
+
+            # Skip provider namespace if show_providers is True (already shown above)
+            if show_providers and token_namespace == "provider":
+                continue
 
             # Filter by type
             if token_type == TokenType.BEARER.value and not show_bearer:
@@ -76,7 +130,7 @@ async def token_list_action_async(
             created = "-"
             if registered_at:
                 dt = datetime.fromtimestamp(registered_at)
-                created = dt.strftime('%Y-%m-%d')
+                created = dt.strftime("%Y-%m-%d")
 
             # Get expires info from metadata
             metadata = entry.get("metadata", {})
@@ -87,7 +141,7 @@ async def token_list_action_async(
                 if time.time() > expires:
                     expires = f"{exp_dt.strftime('%Y-%m-%d')} ⚠️"
                 else:
-                    expires = exp_dt.strftime('%Y-%m-%d')
+                    expires = exp_dt.strftime("%Y-%m-%d")
 
             # Build details (provider, namespace if not generic)
             details = []
@@ -107,18 +161,20 @@ async def token_list_action_async(
             )
 
         if table_data:
+            output.print("\n[bold]Other Tokens:[/bold]")
             table = format_table(
                 table_data,
                 title=None,
                 columns=["Type", "Name", "Created", "Expires", "Details"],
             )
             output.print_table(table)
-        else:
+        elif not show_providers or not provider_tokens:
             output.warning("No tokens found.")
 
         output.print()
         output.tip("💡 Token Management:")
-        output.info("  • Store: mcp-cli token set <name> --type bearer")
+        output.info("  • Store provider key: mcp-cli token set-provider <provider>")
+        output.info("  • Store bearer token: mcp-cli token set <name> --type bearer")
         output.info("  • View: mcp-cli token get <name>")
         output.info("  • Delete: mcp-cli token delete <name>")
 
@@ -190,18 +246,14 @@ async def token_set_action_async(
             registry.register(
                 name, TokenType.API_KEY, namespace, metadata={"provider": provider}
             )
-            output.success(
-                f"API key '{name}' for '{provider}' stored successfully"
-            )
+            output.success(f"API key '{name}' for '{provider}' stored successfully")
 
         elif token_type == "generic":
             store.store_generic(name, value, namespace)
 
             # Register in index
             registry.register(name, TokenType.BEARER, namespace, metadata={})
-            output.success(
-                f"Token '{name}' stored in namespace '{namespace}'"
-            )
+            output.success(f"Token '{name}' stored in namespace '{namespace}'")
 
         else:
             output.error(f"Unknown token type: {token_type}")
@@ -212,9 +264,7 @@ async def token_set_action_async(
         raise
 
 
-async def token_get_action_async(
-    name: str, namespace: str = "generic"
-) -> None:
+async def token_get_action_async(name: str, namespace: str = "generic") -> None:
     """
     Get information about a stored token.
 
@@ -228,9 +278,7 @@ async def token_get_action_async(
 
         raw_data = store._retrieve_raw(f"{namespace}:{name}")
         if not raw_data:
-            output.warning(
-                f"Token '{name}' not found in namespace '{namespace}'"
-            )
+            output.warning(f"Token '{name}' not found in namespace '{namespace}'")
             return
 
         try:
@@ -290,9 +338,7 @@ async def token_delete_action_async(
             if store.delete_generic(name, ns):
                 # Unregister from index
                 registry.unregister(name, ns)
-                output.success(
-                    f"Token '{name}' deleted from namespace '{ns}'"
-                )
+                output.success(f"Token '{name}' deleted from namespace '{ns}'")
                 deleted = True
                 break
 
@@ -301,6 +347,146 @@ async def token_delete_action_async(
 
     except Exception as e:
         output.error(f"Error deleting token: {e}")
+        raise
+
+
+async def token_set_provider_action_async(
+    provider: str,
+    api_key: Optional[str] = None,
+) -> None:
+    """
+    Store a provider API key in secure storage.
+
+    Args:
+        provider: Provider name (e.g., 'openai', 'anthropic')
+        api_key: API key value (will prompt if not provided)
+    """
+    try:
+        from mcp_cli.auth.provider_tokens import (
+            set_provider_token,
+            get_provider_env_var_name,
+        )
+        import os
+
+        manager = _get_token_manager()
+
+        # Prompt for api_key if not provided
+        if api_key is None:
+            from getpass import getpass
+
+            api_key = getpass(f"Enter API key for '{provider}': ")
+
+        if not api_key:
+            output.error("API key is required")
+            return
+
+        # Store the token
+        if set_provider_token(provider, api_key, manager):
+            output.success(f"✅ Stored API key for provider '{provider}'")
+
+            # Show hierarchy info
+            env_var = get_provider_env_var_name(provider)
+            output.print()
+            output.info("📋 Token Hierarchy:")
+            output.info(f"  1. Environment variable: {env_var} (highest priority)")
+            output.info("  2. Secure storage: 🔐 (currently set)")
+
+            # Check if env var is also set
+            if os.environ.get(env_var):
+                output.warning(
+                    f"\n⚠️  Note: {env_var} is set in environment and will take precedence"
+                )
+        else:
+            output.error(f"Failed to store API key for provider '{provider}'")
+
+    except Exception as e:
+        output.error(f"Error storing provider token: {e}")
+        raise
+
+
+async def token_get_provider_action_async(provider: str) -> None:
+    """
+    Get information about a provider's API key.
+
+    Args:
+        provider: Provider name
+    """
+    try:
+        from mcp_cli.auth.provider_tokens import (
+            check_provider_token_status,
+        )
+
+        manager = _get_token_manager()
+        status = check_provider_token_status(provider, manager)
+
+        output.rule(f"[bold]Provider Token: {provider}[/bold]", style="primary")
+
+        # Display status
+        if status["has_token"]:
+            output.success("✅ API key is configured")
+            output.info(f"   Source: {status['source']}")
+        else:
+            output.warning("❌ No API key configured")
+
+        output.print()
+        output.info("Token Status:")
+        output.info(
+            f"  • Environment variable ({status['env_var']}): {'✅ set' if status['in_env'] else '❌ not set'}"
+        )
+        output.info(
+            f"  • Secure storage: {'✅ set' if status['in_storage'] else '❌ not set'}"
+        )
+
+        output.print()
+        output.tip("Hierarchy: Environment variables take precedence over storage")
+
+        if not status["has_token"]:
+            output.print()
+            output.info("To set API key:")
+            output.info(f"  • Via storage: mcp-cli token set-provider {provider}")
+            output.info(f"  • Via environment: export {status['env_var']}=your-key")
+
+    except Exception as e:
+        output.error(f"Error retrieving provider token info: {e}")
+        raise
+
+
+async def token_delete_provider_action_async(provider: str) -> None:
+    """
+    Delete a provider API key from secure storage.
+
+    Note: This only removes from storage, not environment variables.
+
+    Args:
+        provider: Provider name
+    """
+    try:
+        from mcp_cli.auth.provider_tokens import (
+            delete_provider_token,
+            get_provider_env_var_name,
+        )
+        import os
+
+        manager = _get_token_manager()
+        env_var = get_provider_env_var_name(provider)
+
+        if delete_provider_token(provider, manager):
+            output.success(f"✅ Deleted API key for provider '{provider}' from storage")
+
+            # Check if env var is still set
+            if os.environ.get(env_var):
+                output.warning(f"\n⚠️  Note: {env_var} is still set in environment")
+                output.info(f"   To fully remove, unset: unset {env_var}")
+        else:
+            output.warning(f"No API key found in storage for provider '{provider}'")
+
+            # Check if env var is set
+            if os.environ.get(env_var):
+                output.info(f"\n💡 {env_var} is set in environment")
+                output.info(f"   To remove: unset {env_var}")
+
+    except Exception as e:
+        output.error(f"Error deleting provider token: {e}")
         raise
 
 
@@ -344,7 +530,11 @@ async def token_clear_action_async(
         for entry in tokens_to_clear:
             token_name = entry.get("name")
             token_namespace = entry.get("namespace")
-            if store.delete_generic(token_name, token_namespace):
+            if (
+                token_name
+                and token_namespace
+                and store.delete_generic(token_name, token_namespace)
+            ):
                 count += 1
 
         # Clear from registry

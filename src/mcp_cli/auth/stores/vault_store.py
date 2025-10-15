@@ -34,6 +34,7 @@ class VaultTokenStore(SecureTokenStore):
         """
         try:
             import hvac
+
             self.hvac = hvac
         except ImportError:
             raise TokenStorageError(
@@ -86,6 +87,7 @@ class VaultTokenStore(SecureTokenStore):
             # Add issued_at timestamp if not present
             if tokens.issued_at is None:
                 import time
+
                 tokens.issued_at = time.time()
 
             # Prepare token data
@@ -225,7 +227,8 @@ class VaultTokenStore(SecureTokenStore):
                     path=path,
                     mount_point=self.mount_point,
                 )
-                return response["data"]["data"].get("value")
+                result = response["data"]["data"].get("value")
+                return str(result) if result is not None else None
             except self.hvac.exceptions.InvalidPath:
                 # Fallback to KV v1
                 try:
@@ -233,7 +236,8 @@ class VaultTokenStore(SecureTokenStore):
                         path=path,
                         mount_point=self.mount_point,
                     )
-                    return response["data"].get("value")
+                    result = response["data"].get("value")
+                    return str(result) if result is not None else None
                 except self.hvac.exceptions.InvalidPath:
                     return None
         except Exception as e:

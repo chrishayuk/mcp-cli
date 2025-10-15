@@ -1,8 +1,5 @@
 """Integration tests for complete token management workflow."""
 
-import json
-import tempfile
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -170,7 +167,10 @@ class TestMultipleTokenTypes:
 
             # Generic token
             await token_set_action_async(
-                name="custom", token_type="generic", value="custom123", namespace="custom"
+                name="custom",
+                token_type="generic",
+                value="custom123",
+                namespace="custom",
             )
 
         # OAuth token
@@ -305,7 +305,6 @@ class TestPersistenceAndRecovery:
     async def test_persistence_across_sessions(self, tmp_path):
         """Test tokens persist across manager instances."""
         token_dir = tmp_path / "tokens"
-        registry_path = tmp_path / "registry.json"
 
         # First session - store token
         manager1 = TokenManager(
@@ -393,7 +392,10 @@ class TestPersistenceAndRecovery:
         ):
             with patch("mcp_cli.commands.actions.token.output"):
                 await token_set_action_async(
-                    name="secure", token_type="bearer", value="value123", namespace="bearer"
+                    name="secure",
+                    token_type="bearer",
+                    value="value123",
+                    namespace="bearer",
                 )
 
         # Check token directory permissions
@@ -455,12 +457,13 @@ class TestSecurityFeatures:
     @pytest.mark.asyncio
     async def test_token_values_never_displayed(self, integration_env):
         """Test that token values are never displayed."""
-        manager = integration_env["manager"]
-
         # Store token
         with patch("mcp_cli.commands.actions.token.output"):
             await token_set_action_async(
-                name="secret", token_type="bearer", value="supersecret123", namespace="bearer"
+                name="secret",
+                token_type="bearer",
+                value="supersecret123",
+                namespace="bearer",
             )
 
         # Get token info - should not show value
@@ -488,7 +491,6 @@ class TestSecurityFeatures:
     async def test_encryption_isolation(self, tmp_path):
         """Test that different passwords can't decrypt each other's data."""
         token_dir = tmp_path / "tokens"
-        registry_path = tmp_path / "registry.json"
 
         # Store with password1
         manager1 = TokenManager(

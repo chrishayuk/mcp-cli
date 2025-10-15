@@ -111,7 +111,9 @@ class MCPConfig:
     confirm_tools: bool = True
 
     # Token storage configuration
-    token_store_backend: str = "auto"  # auto, keychain, windows, secretservice, vault, encrypted
+    token_store_backend: str = (
+        "auto"  # auto, keychain, windows, secretservice, vault, encrypted
+    )
     token_store_password: Optional[str] = None
     vault_url: Optional[str] = None
     vault_token: Optional[str] = None

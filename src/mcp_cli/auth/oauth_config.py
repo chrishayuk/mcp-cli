@@ -104,6 +104,7 @@ class OAuthTokens:
             return False
 
         import time
+
         age = time.time() - self.issued_at
         # Consider expired if within 5 minutes of expiry
         return age >= (self.expires_in - 300)
@@ -111,5 +112,9 @@ class OAuthTokens:
     def get_authorization_header(self) -> str:
         """Get the Authorization header value."""
         # Ensure Bearer is capitalized per RFC 6750
-        token_type = self.token_type.capitalize() if self.token_type.lower() == "bearer" else self.token_type
+        token_type = (
+            self.token_type.capitalize()
+            if self.token_type.lower() == "bearer"
+            else self.token_type
+        )
         return f"{token_type} {self.access_token}"

@@ -1,7 +1,6 @@
 """Tests for token types and models."""
 
 import time
-from unittest.mock import patch
 
 import pytest
 
@@ -515,6 +514,7 @@ class TestBasicAuthToken:
 
         # Decode and verify
         import base64
+
         encoded = header.replace("Basic ", "")
         decoded = base64.b64decode(encoded).decode()
         assert decoded == "testuser:testpass"
@@ -530,6 +530,7 @@ class TestBasicAuthToken:
 
         # Decode and verify
         import base64
+
         encoded = header.replace("Basic ", "")
         decoded = base64.b64decode(encoded).decode()
         assert decoded == "test@user.com:p@ss:w0rd!"

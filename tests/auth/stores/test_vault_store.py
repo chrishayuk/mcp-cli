@@ -1,6 +1,5 @@
 """Tests for VaultTokenStore."""
 
-import json
 import os
 from unittest.mock import MagicMock, Mock, patch
 
@@ -275,7 +274,9 @@ class TestVaultTokenStoreOperations:
             Exception("Vault error")
         )
 
-        with pytest.raises(TokenStorageError, match="Failed to delete token from Vault"):
+        with pytest.raises(
+            TokenStorageError, match="Failed to delete token from Vault"
+        ):
             store.delete_token("test-server")
 
     def test_has_token_exists_kv_v2(self, store):
@@ -475,5 +476,7 @@ class TestVaultTokenStoreRawOperations:
             Exception("Vault error")
         )
 
-        with pytest.raises(TokenStorageError, match="Failed to delete value from Vault"):
+        with pytest.raises(
+            TokenStorageError, match="Failed to delete value from Vault"
+        ):
             store._delete_raw("test-key")

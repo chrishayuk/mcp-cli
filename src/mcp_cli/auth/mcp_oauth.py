@@ -16,7 +16,7 @@ import webbrowser
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 from urllib.parse import urljoin
 
 import httpx
@@ -31,10 +31,10 @@ class MCPAuthorizationMetadata:
     authorization_endpoint: str
     token_endpoint: str
     registration_endpoint: Optional[str] = None
-    scopes_supported: list[str] = None
-    response_types_supported: list[str] = None
-    grant_types_supported: list[str] = None
-    code_challenge_methods_supported: list[str] = None
+    scopes_supported: Optional[list[str]] = None
+    response_types_supported: Optional[list[str]] = None
+    grant_types_supported: Optional[list[str]] = None
+    code_challenge_methods_supported: Optional[list[str]] = None
 
     @classmethod
     def from_dict(cls, data: Dict) -> "MCPAuthorizationMetadata":
@@ -73,9 +73,9 @@ class DynamicClientRegistration:
             client_secret_expires_at=data.get("client_secret_expires_at", 0),
         )
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage."""
-        result = {"client_id": self.client_id}
+        result: Dict[str, Any] = {"client_id": self.client_id}
         if self.client_secret:
             result["client_secret"] = self.client_secret
         if self.client_id_issued_at:
@@ -88,7 +88,9 @@ class DynamicClientRegistration:
 class MCPOAuthClient:
     """MCP OAuth client following the MCP authorization specification."""
 
-    def __init__(self, server_url: str, redirect_uri: str = "http://localhost:8080/callback"):
+    def __init__(
+        self, server_url: str, redirect_uri: str = "http://localhost:8080/callback"
+    ):
         """
         Initialize MCP OAuth client.
 
@@ -143,7 +145,7 @@ class MCPOAuthClient:
         if not self._auth_metadata:
             await self.discover_authorization_server()
 
-        if not self._auth_metadata.registration_endpoint:
+        if not self._auth_metadata or not self._auth_metadata.registration_endpoint:
             raise ValueError("Server does not support dynamic client registration")
 
         if redirect_uris is None:
@@ -170,7 +172,9 @@ class MCPOAuthClient:
 
     def _generate_pkce_pair(self) -> tuple[str, str]:
         """Generate PKCE code verifier and challenge."""
-        code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode("utf-8")
+        code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode(
+            "utf-8"
+        )
         code_verifier = code_verifier.rstrip("=")
 
         challenge_bytes = hashlib.sha256(code_verifier.encode("utf-8")).digest()
@@ -237,7 +241,9 @@ class MCPOAuthClient:
                 # Only set _auth_result if we haven't already got a successful result
                 if oauth_client._auth_result is None:
                     if "error" in params:
-                        error_description = params.get("error_description", params["error"])
+                        error_description = params.get(
+                            "error_description", params["error"]
+                        )
                         oauth_client._auth_result = {"error": error_description}
                         response = f"<html><body><h1>Authorization Failed</h1><p>{error_description}</p></body></html>"
                         self.send_response(400)
@@ -245,7 +251,9 @@ class MCPOAuthClient:
                         oauth_client._auth_result = params
                         response = "<html><body><h1>Authorization Successful</h1><p>You can close this window and return to the terminal.</p></body></html>"
                         self.send_response(200)
-                        print(f"[Callback Server] Authorization successful, code received")
+                        print(
+                            "[Callback Server] Authorization successful, code received"
+                        )
                     else:
                         # Invalid callback request (no code, no error)
                         response = "<html><body><h1>Invalid Callback</h1><p>No authorization code received</p></body></html>"
@@ -269,7 +277,7 @@ class MCPOAuthClient:
         print(f"[Callback Server] Starting server on localhost:{port}")
         server_thread = Thread(target=server.serve_forever, daemon=True)
         server_thread.start()
-        print(f"[Callback Server] Server started, waiting for callback...")
+        print("[Callback Server] Server started, waiting for callback...")
 
         # Wait for callback or timeout (5 minutes)
         timeout_seconds = 300
@@ -287,9 +295,9 @@ class MCPOAuthClient:
         if self._auth_result is None:
             print(f"[Callback Server] Timeout after {timeout_seconds} seconds")
 
-        print(f"[Callback Server] Shutting down server...")
+        print("[Callback Server] Shutting down server...")
         server.shutdown()
-        print(f"[Callback Server] Server stopped")
+        print("[Callback Server] Server stopped")
 
     async def exchange_code_for_token(self, code: str) -> OAuthTokens:
         """

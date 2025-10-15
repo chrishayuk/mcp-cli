@@ -36,6 +36,8 @@ async def load_config(config_path: str, server_name: str = None) -> Dict[str, An
                 "command": server_config["command"],
                 "args": server_config.get("args", []),
                 "env": server_config.get("env", {}),
+                "cwd": server_config.get("cwd"),
+                "timeout": server_config.get("timeout"),
             }
 
         # Return entire config

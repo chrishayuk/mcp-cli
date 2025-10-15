@@ -61,7 +61,9 @@ class ConversationProcessor:
 
                     # Always pass tools - let the model decide what to do
                     tools_for_completion = self.context.openai_tools
-                    log.debug(f"Passing {len(tools_for_completion) if tools_for_completion else 0} tools to completion")
+                    log.debug(
+                        f"Passing {len(tools_for_completion) if tools_for_completion else 0} tools to completion"
+                    )
 
                     # Check if client supports streaming
                     client = self.context.client
@@ -86,7 +88,9 @@ class ConversationProcessor:
                     if supports_streaming:
                         # Use streaming response handler
                         try:
-                            completion = await self._handle_streaming_completion(tools=tools_for_completion)
+                            completion = await self._handle_streaming_completion(
+                                tools=tools_for_completion
+                            )
                         except Exception as e:
                             log.warning(
                                 f"Streaming failed, falling back to regular completion: {e}"
@@ -94,10 +98,14 @@ class ConversationProcessor:
                             output.warning(
                                 f"Streaming failed, falling back to regular completion: {e}"
                             )
-                            completion = await self._handle_regular_completion(tools=tools_for_completion)
+                            completion = await self._handle_regular_completion(
+                                tools=tools_for_completion
+                            )
                     else:
                         # Regular completion
-                        completion = await self._handle_regular_completion(tools=tools_for_completion)
+                        completion = await self._handle_regular_completion(
+                            tools=tools_for_completion
+                        )
 
                     response_content = completion.get("response", "No response")
                     tool_calls = completion.get("tool_calls", [])
@@ -121,6 +129,7 @@ class ConversationProcessor:
 
                         # Create signature to detect duplicate tool calls
                         import json
+
                         current_signature = []
                         for tc in tool_calls:
                             if hasattr(tc, "function"):
@@ -138,9 +147,16 @@ class ConversationProcessor:
                         current_sig_str = "|".join(sorted(current_signature))
 
                         # If this is a duplicate, stop looping and return control to user
-                        if last_tool_signature and current_sig_str == last_tool_signature:
-                            log.warning(f"Duplicate tool call detected: {current_sig_str}")
-                            output.info("Tool has already been executed. Results are shown above.")
+                        if (
+                            last_tool_signature
+                            and current_sig_str == last_tool_signature  # type: ignore[unreachable]
+                        ):
+                            log.warning(  # type: ignore[unreachable]
+                                f"Duplicate tool call detected: {current_sig_str}"
+                            )
+                            output.info(
+                                "Tool has already been executed. Results are shown above."
+                            )
                             break
 
                         last_tool_signature = current_sig_str

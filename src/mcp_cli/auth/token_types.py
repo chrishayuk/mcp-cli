@@ -44,7 +44,7 @@ class StoredToken:
 
     def get_display_info(self) -> Dict[str, Any]:
         """Get safe display information (no sensitive data)."""
-        info = {
+        info: Dict[str, Any] = {
             "name": self.name,
             "type": self.token_type.value,
         }
@@ -91,7 +91,7 @@ class BearerToken:
 
     def to_stored_token(self, name: str) -> StoredToken:
         """Convert to StoredToken format."""
-        data = {"token": self.token}
+        data: Dict[str, Any] = {"token": self.token}
         if self.expires_at:
             data["expires_at"] = self.expires_at
 

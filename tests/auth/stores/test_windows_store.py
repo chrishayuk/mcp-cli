@@ -141,7 +141,9 @@ class TestCredentialManagerTokenStoreOperations:
     def test_delete_token_error_handling(self, store):
         """Test error handling when deleting token."""
         store.keyring.get_password.return_value = "some-token"
-        store.keyring.delete_password.side_effect = Exception("Credential Manager error")
+        store.keyring.delete_password.side_effect = Exception(
+            "Credential Manager error"
+        )
 
         with pytest.raises(
             TokenStorageError, match="Failed to delete token from Credential Manager"
@@ -227,7 +229,9 @@ class TestCredentialManagerTokenStoreOperations:
     def test_delete_raw_error_handling(self, store):
         """Test error handling when deleting raw value."""
         store.keyring.get_password.return_value = "test-value"
-        store.keyring.delete_password.side_effect = Exception("Credential Manager error")
+        store.keyring.delete_password.side_effect = Exception(
+            "Credential Manager error"
+        )
 
         with pytest.raises(
             TokenStorageError, match="Failed to delete value from Credential Manager"

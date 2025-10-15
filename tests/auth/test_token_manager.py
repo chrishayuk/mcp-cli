@@ -1,8 +1,7 @@
 """Tests for TokenManager with registry integration."""
 
-import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -301,7 +300,7 @@ class TestBackendFactoryIntegration:
     def test_keychain_backend_on_macos(self, temp_dirs):
         """Test that macOS uses keychain backend by default."""
         try:
-            from mcp_cli.auth.stores.keychain_store import KeychainTokenStore
+            from mcp_cli.auth.stores.keychain_store import KeychainTokenStore  # noqa: F401
 
             manager = TokenManager(
                 token_dir=temp_dirs["token_dir"],
@@ -345,9 +344,6 @@ class TestTokenManagerErrorHandling:
 
     def test_corrupted_registry_handling(self, temp_dirs, sample_oauth_tokens):
         """Test handling of corrupted registry file."""
-        # Get registry path from default location
-        registry_path = Path.home() / ".mcp_cli" / "token_registry.json"
-
         # Create manager and store token
         manager1 = TokenManager(
             token_dir=temp_dirs["token_dir"],
@@ -400,6 +396,7 @@ class TestClientRegistration:
 
         # Verify file permissions
         import stat
+
         mode = reg_path.stat().st_mode
         assert stat.S_IMODE(mode) == 0o600
 
@@ -492,9 +489,7 @@ class TestTokenExpiration:
 class TestMultipleTokenTypes:
     """Test managing different token types together."""
 
-    def test_oauth_and_generic_tokens_coexist(
-        self, token_manager, sample_oauth_tokens
-    ):
+    def test_oauth_and_generic_tokens_coexist(self, token_manager, sample_oauth_tokens):
         """Test that OAuth and generic tokens coexist in registry."""
         # Store OAuth token
         token_manager.save_tokens("my-server", sample_oauth_tokens)
@@ -524,15 +519,11 @@ class TestMultipleTokenTypes:
         token_manager.registry.register("bearer1", TokenType.BEARER, "bearer")
 
         # Filter by OAuth
-        oauth_tokens = token_manager.registry.list_tokens(
-            token_type=TokenType.OAUTH
-        )
+        oauth_tokens = token_manager.registry.list_tokens(token_type=TokenType.OAUTH)
         assert len(oauth_tokens) >= 1
         assert all(t["type"] == TokenType.OAUTH.value for t in oauth_tokens)
 
         # Filter by Bearer
-        bearer_tokens = token_manager.registry.list_tokens(
-            token_type=TokenType.BEARER
-        )
+        bearer_tokens = token_manager.registry.list_tokens(token_type=TokenType.BEARER)
         assert len(bearer_tokens) >= 1
         assert all(t["type"] == TokenType.BEARER.value for t in bearer_tokens)

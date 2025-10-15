@@ -1,7 +1,7 @@
 """Tests for KeychainTokenStore."""
 
 import json
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -34,7 +34,9 @@ class TestKeychainTokenStoreInit:
     def test_init_without_keyring_raises_error(self, mock_platform):
         """Test initialization without keyring raises error."""
         with patch.dict("sys.modules", {"keyring": None}):
-            with pytest.raises(TokenStorageError, match="keyring library not installed"):
+            with pytest.raises(
+                TokenStorageError, match="keyring library not installed"
+            ):
                 KeychainTokenStore()
 
 
@@ -103,7 +105,9 @@ class TestKeychainTokenStoreOperations:
         """Test error handling when storing token."""
         store.keyring.set_password.side_effect = Exception("Keyring error")
 
-        with pytest.raises(TokenStorageError, match="Failed to store token in Keychain"):
+        with pytest.raises(
+            TokenStorageError, match="Failed to store token in Keychain"
+        ):
             store.store_token("test-server", sample_tokens)
 
     def test_retrieve_token(self, store, sample_tokens):
@@ -118,7 +122,9 @@ class TestKeychainTokenStoreOperations:
         assert retrieved.access_token == sample_tokens.access_token
         assert retrieved.refresh_token == sample_tokens.refresh_token
 
-        store.keyring.get_password.assert_called_once_with("mcp-cli-oauth", "test-server")
+        store.keyring.get_password.assert_called_once_with(
+            "mcp-cli-oauth", "test-server"
+        )
 
     def test_retrieve_token_nonexistent(self, store):
         """Test retrieving nonexistent token."""
@@ -224,7 +230,9 @@ class TestKeychainTokenStoreRawOperations:
         """Test error handling when storing raw value."""
         store.keyring.set_password.side_effect = Exception("Keyring error")
 
-        with pytest.raises(TokenStorageError, match="Failed to store value in Keychain"):
+        with pytest.raises(
+            TokenStorageError, match="Failed to store value in Keychain"
+        ):
             store._store_raw("test-key", "test-value")
 
     def test_retrieve_raw(self, store):
@@ -252,7 +260,9 @@ class TestKeychainTokenStoreRawOperations:
         result = store._delete_raw("test-key")
 
         assert result is True
-        store.keyring.delete_password.assert_called_once_with("mcp-cli-oauth", "test-key")
+        store.keyring.delete_password.assert_called_once_with(
+            "mcp-cli-oauth", "test-key"
+        )
 
     def test_delete_raw_nonexistent(self, store):
         """Test deleting nonexistent raw value."""

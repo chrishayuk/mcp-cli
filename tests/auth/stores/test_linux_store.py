@@ -53,9 +53,7 @@ class TestSecretServiceTokenStoreInit:
         mock_keyring.get_keyring.return_value = mock_backend
 
         with patch.dict("sys.modules", {"keyring": mock_keyring}):
-            with pytest.raises(
-                TokenStorageError, match="No keyring backend available"
-            ):
+            with pytest.raises(TokenStorageError, match="No keyring backend available"):
                 SecretServiceTokenStore()
 
 

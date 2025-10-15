@@ -31,7 +31,6 @@ from chuk_tool_processor.execution.strategies.inprocess_strategy import (
 from chuk_tool_processor.execution.tool_executor import ToolExecutor
 
 from mcp_cli.auth.oauth_handler import OAuthHandler
-from mcp_cli.config.config_manager import ConfigManager
 from mcp_cli.tools.models import ServerInfo, ToolCallResult, ToolInfo
 from mcp_cli.tools.validation import ToolSchemaValidator
 from mcp_cli.tools.filter import ToolFilter
@@ -203,9 +202,13 @@ class ToolManager:
                     server_entry["headers"] = {}
                 server_entry["headers"].update(headers)
 
-                print(f"✓ Headers set for {server_name}: {list(server_entry['headers'].keys())}")
+                print(
+                    f"✓ Headers set for {server_name}: {list(server_entry['headers'].keys())}"
+                )
                 logger.info(f"OAuth authentication completed for {server_name}")
-                logger.info(f"Headers for {server_name}: {list(server_entry['headers'].keys())}")
+                logger.info(
+                    f"Headers for {server_name}: {list(server_entry['headers'].keys())}"
+                )
                 logger.debug(f"Full server entry: {server_entry}")
             except Exception as e:
                 logger.error(f"OAuth failed for {server_name}: {e}")

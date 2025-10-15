@@ -20,6 +20,7 @@ class KeychainTokenStore(SecureTokenStore):
 
         try:
             import keyring
+
             self.keyring = keyring
         except ImportError:
             raise TokenStorageError(
@@ -34,6 +35,7 @@ class KeychainTokenStore(SecureTokenStore):
             # Add issued_at timestamp if not present
             if tokens.issued_at is None:
                 import time
+
                 tokens.issued_at = time.time()
 
             # Serialize tokens to JSON
@@ -100,7 +102,8 @@ class KeychainTokenStore(SecureTokenStore):
         """Retrieve raw string value from Keychain."""
         try:
             safe_key = self._sanitize_name(key)
-            return self.keyring.get_password(self.SERVICE_NAME, safe_key)
+            result = self.keyring.get_password(self.SERVICE_NAME, safe_key)
+            return str(result) if result is not None else None
         except Exception as e:
             raise TokenStorageError(f"Failed to retrieve value from Keychain: {e}")
 
