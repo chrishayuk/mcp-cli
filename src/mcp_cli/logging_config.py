@@ -65,40 +65,44 @@ def setup_logging(
     root_logger.setLevel(log_level)
     root_logger.addHandler(console_handler)
 
+    # CRITICAL: Set the root logger's level for ALL loggers
+    # This ensures that even if child loggers have their own handlers,
+    # they won't emit logs below this level
+    logging.root.setLevel(log_level)
+
     # Silence noisy third-party loggers unless in debug mode
     if log_level > logging.DEBUG:
-        # Silence chuk components unless we need debug info
-        logging.getLogger("chuk_tool_processor").setLevel(logging.WARNING)
-        logging.getLogger("chuk_mcp").setLevel(logging.WARNING)
-        logging.getLogger("chuk_llm").setLevel(logging.WARNING)
+        # Silence common third-party library loggers
+        third_party_loggers = [
+            "urllib3",
+            "requests",
+            "httpx",
+            "asyncio",
+        ]
 
-        # ENHANCED: More aggressive silencing of MCP server loggers
-        mcp_server_loggers = [
-            "chuk_mcp_runtime.tools.artifacts",
-            "chuk_mcp_runtime.entry",
-            "chuk_mcp_runtime.server",
-            "chuk_sessions.session_manager",
-            "chuk_artifacts.store",
-            "chuk_mcp_runtime.tools.session",
+        for logger_name in third_party_loggers:
+            logging.getLogger(logger_name).setLevel(logging.ERROR)
+
+        # Aggressively silence chuk framework components
+        # These components set up their own handlers, so we need to remove them
+        chuk_loggers = [
+            "chuk_tool_processor",
+            "chuk_mcp",
             "chuk_mcp_runtime",
             "chuk_sessions",
             "chuk_artifacts",
+            "chuk_llm",
         ]
 
-        for logger_name in mcp_server_loggers:
+        for logger_name in chuk_loggers:
             logger = logging.getLogger(logger_name)
-            logger.setLevel(logging.CRITICAL)
-            # Also try setting propagate to False to prevent any logging
+            logger.setLevel(logging.ERROR)
             logger.propagate = False
-            # Add a null handler to prevent any output
-            if not logger.handlers:
-                logger.addHandler(logging.NullHandler())
-
-        # Silence other common noisy loggers
-        logging.getLogger("urllib3").setLevel(logging.WARNING)
-        logging.getLogger("requests").setLevel(logging.WARNING)
-        logging.getLogger("httpx").setLevel(logging.WARNING)
-        logging.getLogger("asyncio").setLevel(logging.WARNING)
+            # Remove all existing handlers
+            for handler in logger.handlers[:]:
+                logger.removeHandler(handler)
+            # Add null handler to prevent any output
+            logger.addHandler(logging.NullHandler())
 
     # Set mcp_cli loggers to appropriate level
     logging.getLogger("mcp_cli").setLevel(log_level)
@@ -127,18 +131,13 @@ def setup_clean_logging() -> None:
 
 def configure_mcp_server_logging(suppress: bool = True) -> None:
     """
-    Specifically configure MCP server-related logging.
+    Configure logging for chuk framework components.
 
     Args:
-        suppress: If True, suppress INFO/DEBUG from MCP servers. If False, allow all.
+        suppress: If True, suppress INFO/DEBUG logs. If False, allow all.
     """
-    mcp_server_loggers = [
-        "chuk_mcp_runtime.tools.artifacts",
-        "chuk_mcp_runtime.entry",
-        "chuk_mcp_runtime.server",
-        "chuk_sessions.session_manager",
-        "chuk_artifacts.store",
-        "chuk_mcp_runtime.tools.session",
+    # Generic chuk framework loggers
+    framework_loggers = [
         "chuk_mcp_runtime",
         "chuk_sessions",
         "chuk_artifacts",
@@ -146,7 +145,7 @@ def configure_mcp_server_logging(suppress: bool = True) -> None:
 
     target_level = logging.CRITICAL if suppress else logging.INFO
 
-    for logger_name in mcp_server_loggers:
+    for logger_name in framework_loggers:
         logger = logging.getLogger(logger_name)
         logger.setLevel(target_level)
         if suppress:
@@ -156,7 +155,7 @@ def configure_mcp_server_logging(suppress: bool = True) -> None:
 
 
 def setup_silent_mcp_environment() -> None:
-    """Set up environment variables to silence MCP servers before they start."""
+    """Set up environment variables to silence subprocesses before they start."""
     # Create a Python startup script to suppress logging
     from tempfile import NamedTemporaryFile
 
@@ -167,21 +166,12 @@ import warnings
 # Suppress all warnings
 warnings.filterwarnings("ignore")
 
-# Suppress specific loggers immediately on Python startup
-for logger_name in [
-    "chuk_mcp_runtime", "chuk_mcp_runtime.tools.artifacts", "chuk_mcp_runtime.entry",
-    "chuk_mcp_runtime.server", "chuk_sessions", "chuk_sessions.session_manager", 
-    "chuk_artifacts", "chuk_artifacts.store", "chuk_mcp_runtime.tools.session"
-]:
-    logger = logging.getLogger(logger_name)
-    logger.setLevel(logging.CRITICAL)
-    logger.propagate = False
-    logger.addHandler(logging.NullHandler())
-
-# Set root logger to ERROR if not configured
+# Set root logger to ERROR before any other code runs
+# This affects all loggers by default
 root = logging.getLogger()
 if not root.handlers:
     logging.basicConfig(level=logging.ERROR, format="%(levelname)-8s %(message)s")
+root.setLevel(logging.ERROR)
 """
 
     # Create temporary startup script
@@ -189,33 +179,20 @@ if not root.handlers:
         f.write(startup_script_content)
         startup_script_path = f.name
 
-    # Set multiple environment variables that might be respected by MCP servers
+    # Set generic environment variables for quiet logging
     silent_env_vars = {
         # Python startup script - this runs before any other Python code
         "PYTHONSTARTUP": startup_script_path,
         # Python logging configuration
-        "PYTHONWARNINGS": "ignore",  # Suppress Python warnings
-        "PYTHONIOENCODING": "utf-8",  # Ensure proper encoding
+        "PYTHONWARNINGS": "ignore",
+        "PYTHONIOENCODING": "utf-8",
         # General logging levels
         "LOG_LEVEL": "ERROR",
         "LOGGING_LEVEL": "ERROR",
-        "MCP_LOG_LEVEL": "ERROR",
-        # chuk-specific logging levels
-        "CHUK_LOG_LEVEL": "ERROR",
-        "CHUK_MCP_LOG_LEVEL": "ERROR",
-        "CHUK_MCP_RUNTIME_LOG_LEVEL": "ERROR",
-        "CHUK_SESSIONS_LOG_LEVEL": "ERROR",
-        "CHUK_ARTIFACTS_LOG_LEVEL": "ERROR",
         # Disable various verbosity flags
         "VERBOSE": "0",
         "DEBUG": "0",
         "QUIET": "1",
-        # Python specific settings to reduce noise
-        "PYTHONPATH_LOGGING_LEVEL": "ERROR",
-        "PYTHON_LOGGING_LEVEL": "ERROR",
-        # Try some common environment variables for subprocess logging
-        "SUBPROCESS_LOG_LEVEL": "ERROR",
-        "CHILD_PROCESS_LOG_LEVEL": "ERROR",
     }
 
     for key, value in silent_env_vars.items():

@@ -42,6 +42,7 @@ async def _init_tool_manager(
     config_file: str,
     servers: List[str],
     server_names: Optional[Dict[int, str]] = None,
+    initialization_timeout: float = 120.0,
 ):
     """
     Dynamically import **ToolManager** (so monkey-patching works) and create it.
@@ -50,11 +51,20 @@ async def _init_tool_manager(
     tm_mod = importlib.import_module("mcp_cli.tools.manager")
     ToolManager = getattr(tm_mod, "ToolManager")  # patched in tests
 
-    tm = ToolManager(config_file, servers, server_names, server_connection_timeout=60.0)
+    tm = ToolManager(
+        config_file, servers, server_names,
+        initialization_timeout=initialization_timeout
+    )
 
     # ENHANCED: Let ToolManager automatically select the namespace
     # It will use the server name for HTTP servers, "stdio" for STDIO servers
     ok = await tm.initialize()  # Remove the hardcoded namespace parameter
+
+    # Clean up any loggers that were created during initialization
+    from mcp_cli.logging_config import setup_logging
+    import os
+    log_level = os.environ.get("LOG_LEVEL", "WARNING")
+    setup_logging(level=log_level, quiet=False, verbose=False)
 
     if not ok:
         # Check if this is just because there are no servers
@@ -105,11 +115,12 @@ async def run_command(
     tm = None
     try:
         server_names = (extra_params or {}).get("server_names")
+        init_timeout = (extra_params or {}).get("init_timeout", 120.0)
 
         # ------------------------------------------------------------------
         # build ToolManager  (patch-friendly, see helper)
         # ------------------------------------------------------------------
-        tm = await _init_tool_manager(config_file, servers, server_names)
+        tm = await _init_tool_manager(config_file, servers, server_names, init_timeout)
 
         # ------------------------------------------------------------------
         # Initialize context with tool manager and other params
@@ -248,6 +259,9 @@ def cli_entry(
     ),
     provider: str = typer.Option("openai", help="LLM provider name"),
     model: str = typer.Option("gpt-4o-mini", help="LLM model name"),
+    init_timeout: float = typer.Option(
+        120.0, "--init-timeout", help="Server initialization timeout in seconds"
+    ),
 ) -> None:
     """
     Thin wrapper so `uv run mcp-cli chat` (or `interactive`) is minimal.
@@ -257,7 +271,7 @@ def cli_entry(
         if mode not in {"chat", "interactive"}:
             raise typer.BadParameter("mode must be 'chat' or 'interactive'")
 
-        tm = await _init_tool_manager(config_file, server)
+        tm = await _init_tool_manager(config_file, server, initialization_timeout=init_timeout)
 
         try:
             if mode == "chat":
