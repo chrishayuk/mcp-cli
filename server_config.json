@@ -7,6 +7,9 @@
     "echo": {
       "command": "uvx",
       "args": ["chuk-mcp-echo", "stdio"]
+    },
+    "notion": {
+      "url": "https://mcp.notion.com/mcp"
     }
   }
 }

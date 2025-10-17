@@ -87,6 +87,11 @@ def main_callback(
         "--confirm-mode",
         help="Tool confirmation mode: always, never, or smart (risk-based)",
     ),
+    init_timeout: float = typer.Option(
+        120.0,
+        "--init-timeout",
+        help="Server initialization timeout in seconds",
+    ),
 ) -> None:
     """MCP CLI - If no subcommand is given, start chat mode."""
 
@@ -232,14 +237,14 @@ def main_callback(
 
     from mcp_cli.chat.chat_handler import handle_chat_mode
 
-    # Start chat mode directly
+    # Start chat mode directly with proper cleanup
     async def _start_chat():
         tm = None
         try:
             logger.debug("Initializing tool manager")
             from mcp_cli.run_command import _init_tool_manager
 
-            tm = await _init_tool_manager(config_file, servers, server_names)
+            tm = await _init_tool_manager(config_file, servers, server_names, init_timeout)
 
             logger.debug("Starting chat mode handler")
             success = await handle_chat_mode(
@@ -250,11 +255,27 @@ def main_callback(
                 api_key=api_key,
             )
             logger.debug(f"Chat mode completed with success: {success}")
+        except asyncio.TimeoutError:
+            logger.error("Initialization or operation timed out")
+            output.error("Operation timed out. Please check server configuration.")
+            # Ensure cleanup happens before event loop closes
+            if tm:
+                logger.debug("Cleaning up after timeout")
+                from mcp_cli.run_command import _safe_close
+                await _safe_close(tm)
+            raise
+        except Exception as e:
+            logger.error(f"Error in chat mode: {e}")
+            # Ensure cleanup happens before event loop closes
+            if tm:
+                logger.debug("Cleaning up after error")
+                from mcp_cli.run_command import _safe_close
+                await _safe_close(tm)
+            raise
         finally:
             if tm:
-                logger.debug("Cleaning up tool manager")
+                logger.debug("Final cleanup of tool manager")
                 from mcp_cli.run_command import _safe_close
-
                 await _safe_close(tm)
 
     try:
@@ -262,6 +283,9 @@ def main_callback(
     except KeyboardInterrupt:
         output.warning("\nInterrupted")
         logger.debug("Chat mode interrupted by user")
+    except asyncio.TimeoutError:
+        # Already handled in _start_chat, just exit gracefully
+        logger.debug("Exiting due to timeout")
     finally:
         restore_terminal()
         raise typer.Exit()
@@ -293,6 +317,11 @@ def _interactive_command(
         None,
         "--confirm-mode",
         help="Tool confirmation mode: always, never, or smart (risk-based)",
+    ),
+    init_timeout: float = typer.Option(
+        120.0,
+        "--init-timeout",
+        help="Server initialization timeout in seconds",
     ),
 ) -> None:
     """Start interactive command mode."""
@@ -382,6 +411,7 @@ def _interactive_command(
             "server_names": server_names,
             "api_base": api_base,
             "api_key": api_key,
+            "init_timeout": init_timeout,
         },
     )
 

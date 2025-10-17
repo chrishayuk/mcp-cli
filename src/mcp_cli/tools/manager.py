@@ -58,7 +58,6 @@ class ToolManager:
         tool_timeout: Optional[float] = None,
         max_concurrency: int = 4,
         initialization_timeout: float = 120.0,
-        server_connection_timeout: float = 30.0,
     ):
         self.config_file = config_file
         self.servers = servers
@@ -66,7 +65,6 @@ class ToolManager:
         self.tool_timeout = self._determine_timeout(tool_timeout)
         self.max_concurrency = max_concurrency
         self.initialization_timeout = initialization_timeout
-        self.server_connection_timeout = server_connection_timeout
 
         # CHUK components
         self.processor: Optional[ToolProcessor] = None
@@ -118,12 +116,45 @@ class ToolManager:
             if config_path.exists():
                 with open(config_path, "r") as f:
                     self._config_cache = json.load(f)
+                    # Inject logging environment variables into STDIO servers
+                    self._inject_logging_env_vars(self._config_cache)
                     return self._config_cache
         except Exception as e:
             logger.warning(f"Could not load config file: {e}")
 
         self._config_cache = {}
         return self._config_cache
+
+    def _inject_logging_env_vars(self, config: Dict[str, Any]) -> None:
+        """
+        Inject logging environment variables into STDIO server configs.
+
+        Note: Subprocess stderr from MCP servers may still appear during startup
+        as PYTHONSTARTUP doesn't work for non-interactive scripts. To fully suppress,
+        use: mcp-cli --server name 2>/dev/null
+        """
+        mcp_servers = config.get("mcpServers", {})
+
+        # Environment variables to inject for quiet logging (generic)
+        # These work if the subprocess code checks them
+        log_env_vars = {
+            "LOG_LEVEL": "ERROR",
+            "LOGGING_LEVEL": "ERROR",
+            "PYTHONWARNINGS": "ignore",
+            "PYTHONIOENCODING": "utf-8",
+        }
+
+        for server_name, server_config in mcp_servers.items():
+            # Only inject for STDIO servers (those with "command" field)
+            if "command" in server_config:
+                # Ensure env dict exists
+                if "env" not in server_config:
+                    server_config["env"] = {}
+
+                # Inject logging vars if not already present
+                for key, value in log_env_vars.items():
+                    if key not in server_config["env"]:
+                        server_config["env"][key] = value
 
     def _detect_server_types(self):
         """Detect server transport types from configuration."""
@@ -270,7 +301,6 @@ class ToolManager:
                     servers=self._sse_servers,
                     server_names=self.server_names,
                     namespace=namespace,
-                    connection_timeout=self.server_connection_timeout,
                     default_timeout=self.tool_timeout,
                 ),
                 timeout=self.initialization_timeout,
@@ -296,7 +326,6 @@ class ToolManager:
                     servers=self._http_servers,
                     server_names=self.server_names,
                     namespace=namespace,
-                    connection_timeout=self.server_connection_timeout,
                     default_timeout=self.tool_timeout,
                 ),
                 timeout=self.initialization_timeout,
@@ -315,22 +344,53 @@ class ToolManager:
         try:
             from chuk_tool_processor.mcp.setup_mcp_stdio import setup_mcp_stdio
 
-            self.processor, self.stream_manager = await asyncio.wait_for(
-                setup_mcp_stdio(
-                    config_file=self.config_file,
-                    servers=self._stdio_servers,
-                    server_names=self.server_names,
-                    namespace=namespace,
-                    enable_caching=True,
-                    enable_retries=True,
-                    max_retries=2,
-                ),
-                timeout=self.initialization_timeout,
-            )
+            logger.info(f"Setting up STDIO servers with {self.initialization_timeout}s timeout")
+
+            # Try to pass initialization_timeout to setup_mcp_stdio
+            # This controls the timeout for the initial connection/handshake
+            try:
+                self.processor, self.stream_manager = await asyncio.wait_for(
+                    setup_mcp_stdio(
+                        config_file=self.config_file,
+                        servers=self._stdio_servers,
+                        server_names=self.server_names,
+                        namespace=namespace,
+                        default_timeout=self.tool_timeout,
+                        initialization_timeout=self.initialization_timeout,  # Pass init timeout
+                        enable_caching=True,
+                        enable_retries=True,
+                        max_retries=2,
+                    ),
+                    timeout=self.initialization_timeout + 10.0,  # Add buffer for outer timeout
+                )
+            except TypeError:
+                # Fallback if initialization_timeout parameter doesn't exist
+                logger.warning("initialization_timeout not supported by setup_mcp_stdio, using legacy call")
+                self.processor, self.stream_manager = await asyncio.wait_for(
+                    setup_mcp_stdio(
+                        config_file=self.config_file,
+                        servers=self._stdio_servers,
+                        server_names=self.server_names,
+                        namespace=namespace,
+                        default_timeout=self.tool_timeout,
+                        enable_caching=True,
+                        enable_retries=True,
+                        max_retries=2,
+                    ),
+                    timeout=self.initialization_timeout,
+                )
+
+            logger.info("STDIO servers initialized successfully")
             return True
 
+        except asyncio.TimeoutError:
+            logger.error(f"STDIO server initialization timed out after {self.initialization_timeout}s")
+            logger.error("This may indicate the server is not responding or is misconfigured")
+            return False
         except Exception as e:
             logger.error(f"STDIO server setup failed: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     async def _setup_empty_toolset(self) -> bool:
@@ -393,13 +453,43 @@ class ToolManager:
 
     async def close(self):
         """Close all resources and connections."""
-        try:
-            if self.stream_manager:
-                await self.stream_manager.close()
-            if self._executor:
-                await self._executor.shutdown()
-        except Exception as exc:
-            logger.warning(f"Error during shutdown: {exc}")
+        errors = []
+
+        # Close stream manager first (handles MCP connections and subprocesses)
+        if self.stream_manager:
+            try:
+                logger.debug("Closing stream manager...")
+                # Set a reasonable timeout for cleanup
+                await asyncio.wait_for(
+                    self.stream_manager.close(),
+                    timeout=10.0
+                )
+                logger.debug("Stream manager closed successfully")
+            except asyncio.TimeoutError:
+                logger.warning("Stream manager close timed out after 10s")
+                errors.append("Stream manager close timed out")
+            except Exception as exc:
+                logger.warning(f"Error closing stream manager: {exc}")
+                errors.append(f"Stream manager: {exc}")
+
+        # Close executor
+        if self._executor:
+            try:
+                logger.debug("Shutting down executor...")
+                await asyncio.wait_for(
+                    self._executor.shutdown(),
+                    timeout=5.0
+                )
+                logger.debug("Executor shutdown successfully")
+            except asyncio.TimeoutError:
+                logger.warning("Executor shutdown timed out after 5s")
+                errors.append("Executor shutdown timed out")
+            except Exception as exc:
+                logger.warning(f"Error shutting down executor: {exc}")
+                errors.append(f"Executor: {exc}")
+
+        if errors:
+            logger.warning(f"Cleanup completed with errors: {'; '.join(errors)}")
 
     # Tool discovery
     async def get_all_tools(self) -> List[ToolInfo]:
