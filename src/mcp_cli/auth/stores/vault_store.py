@@ -1,3 +1,4 @@
+# mcp_cli/auth/stores/vault_store.py
 """HashiCorp Vault token storage backend."""
 
 import json
@@ -91,7 +92,7 @@ class VaultTokenStore(SecureTokenStore):
                 tokens.issued_at = time.time()
 
             # Prepare token data
-            token_data = tokens.to_dict()
+            token_data = tokens.model_dump()
 
             # Store in Vault (KV v2)
             try:
@@ -134,7 +135,7 @@ class VaultTokenStore(SecureTokenStore):
                     # Secret doesn't exist
                     return None
 
-            return OAuthTokens.from_dict(token_data)
+            return OAuthTokens.model_validate(token_data)
         except json.JSONDecodeError as e:
             raise TokenStorageError(f"Failed to parse token data: {e}")
         except Exception as e:

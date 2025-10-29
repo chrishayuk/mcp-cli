@@ -244,7 +244,7 @@ class TestTokenGetAction:
         stored = bearer.to_stored_token("my-token")
         stored.metadata = {"namespace": "bearer"}
         mock_token_manager.token_store._store_raw(
-            "bearer:my-token", json.dumps(stored.to_dict())
+            "bearer:my-token", json.dumps(stored.model_dump())
         )
 
         with patch("mcp_cli.commands.actions.token.output") as mock_output:
@@ -271,7 +271,7 @@ class TestTokenGetAction:
         stored = api_key.to_stored_token("openai")
         stored.metadata = {"namespace": "api-key"}
         mock_token_manager.token_store._store_raw(
-            "api-key:openai", json.dumps(stored.to_dict())
+            "api-key:openai", json.dumps(stored.model_dump())
         )
 
         with patch("mcp_cli.commands.actions.token.output") as mock_output:

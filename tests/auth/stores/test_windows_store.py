@@ -88,7 +88,7 @@ class TestCredentialManagerTokenStoreOperations:
 
     def test_retrieve_token(self, store, sample_tokens):
         """Test retrieving OAuth tokens."""
-        token_json = json.dumps(sample_tokens.to_dict())
+        token_json = json.dumps(sample_tokens.model_dump())
         store.keyring.get_password.return_value = token_json
 
         retrieved = store.retrieve_token("test-server")

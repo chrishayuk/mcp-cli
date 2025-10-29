@@ -1,3 +1,4 @@
+# mcp_cli/auth/secure_token_store.py
 """Abstract interface for secure token storage."""
 
 from abc import ABC, abstractmethod
@@ -96,7 +97,7 @@ class SecureTokenStore(ABC):
         import json
 
         full_key = f"{namespace}:{key}"
-        self._store_raw(full_key, json.dumps(stored.to_dict()))
+        self._store_raw(full_key, json.dumps(stored.model_dump()))
 
     def retrieve_generic(self, key: str, namespace: str = "generic") -> Optional[str]:
         """
@@ -123,7 +124,7 @@ class SecureTokenStore(ABC):
             return None
 
         try:
-            stored = StoredToken.from_dict(json.loads(raw_data))
+            stored = StoredToken.model_validate(json.loads(raw_data))
             return stored.data.get("token")
         except (json.JSONDecodeError, KeyError):
             return None

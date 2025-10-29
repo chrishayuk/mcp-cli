@@ -9,25 +9,27 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
 
 from mcp_cli.auth.oauth_config import OAuthConfig
 from mcp_cli.tools.models import ServerInfo
 
 
-@dataclass
-class ServerConfig:
+class ServerConfig(BaseModel):
     """Configuration for a single MCP server."""
 
     name: str
     command: Optional[str] = None
-    args: List[str] = field(default_factory=list)
-    env: Dict[str, str] = field(default_factory=dict)
+    args: List[str] = Field(default_factory=list)
+    env: Dict[str, str] = Field(default_factory=dict)
     url: Optional[str] = None  # For HTTP/SSE servers
     oauth: Optional[OAuthConfig] = None  # OAuth configuration
     disabled: bool = False
+
+    model_config = {"frozen": False, "arbitrary_types_allowed": True}
 
     @property
     def transport(self) -> str:
@@ -39,26 +41,9 @@ class ServerConfig:
         else:
             return "unknown"
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary format."""
-        config: Dict[str, Any] = {}
-        if self.command:
-            config["command"] = self.command
-        if self.args:
-            config["args"] = self.args
-        if self.env:
-            config["env"] = self.env
-        if self.url:
-            config["url"] = self.url
-        if self.oauth:
-            config["oauth"] = self.oauth.to_dict()
-        if self.disabled:
-            config["disabled"] = self.disabled
-        return config
-
     @classmethod
-    def from_dict(cls, name: str, data: Dict[str, Any]) -> ServerConfig:
-        """Create from dictionary format."""
+    def from_dict(cls, name: str, data: Dict[str, Any]) -> "ServerConfig":
+        """Create from dictionary format with environment variable handling."""
         # Get env from config
         env = data.get("env", {}).copy()
 
@@ -69,7 +54,7 @@ class ServerConfig:
         # Parse OAuth config if present
         oauth = None
         if "oauth" in data:
-            oauth = OAuthConfig.from_dict(data["oauth"])
+            oauth = OAuthConfig.model_validate(data["oauth"])
 
         return cls(
             name=name,
@@ -99,11 +84,10 @@ class ServerConfig:
         )
 
 
-@dataclass
-class MCPConfig:
+class MCPConfig(BaseModel):
     """Complete MCP configuration."""
 
-    servers: Dict[str, ServerConfig] = field(default_factory=dict)
+    servers: Dict[str, ServerConfig] = Field(default_factory=dict)
     default_provider: str = "openai"
     default_model: str = "gpt-4"
     theme: str = "default"
@@ -120,6 +104,8 @@ class MCPConfig:
     vault_mount_point: str = "secret"
     vault_path_prefix: str = "mcp-cli/oauth"
     vault_namespace: Optional[str] = None
+
+    model_config = {"frozen": False, "arbitrary_types_allowed": True}
 
     @classmethod
     def load_from_file(cls, config_path: Path) -> MCPConfig:
@@ -167,7 +153,8 @@ class MCPConfig:
         """Save configuration to JSON file."""
         data = {
             "mcpServers": {
-                name: server.to_dict() for name, server in self.servers.items()
+                name: server.model_dump(exclude_none=True, exclude_defaults=True)
+                for name, server in self.servers.items()
             },
             "defaultProvider": self.default_provider,
             "defaultModel": self.default_model,

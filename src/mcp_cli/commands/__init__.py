@@ -44,11 +44,13 @@ def register_all_commands() -> None:
     from mcp_cli.commands.definitions.interrupt import InterruptCommand
     from mcp_cli.commands.definitions.tool_history import ToolHistoryCommand
     from mcp_cli.commands.definitions.execute_tool import ExecuteToolCommand
+    from mcp_cli.commands.definitions.token import TokenCommand
 
     # Register basic commands
     registry.register(HelpCommand())
     registry.register(ExitCommand())
     registry.register(ClearCommand())
+    registry.register(TokenCommand())
 
     # Register server commands (singular and plural)
     registry.register(ServerSingularCommand())  # /server <name> - show details

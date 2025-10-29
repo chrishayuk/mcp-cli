@@ -1,3 +1,4 @@
+# mcp_cli/auth/__init__.py
 """Authentication and OAuth support for MCP CLI."""
 
 from .oauth_config import OAuthConfig, OAuthTokens

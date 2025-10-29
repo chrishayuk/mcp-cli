@@ -1,3 +1,4 @@
+# mcp_cli/auth/stores/__init__.py
 """Secure token storage backends."""
 
 from .encrypted_file_store import EncryptedFileTokenStore

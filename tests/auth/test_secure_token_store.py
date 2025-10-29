@@ -18,14 +18,14 @@ class ConcreteTokenStore(SecureTokenStore):
 
     def store_token(self, server_name: str, tokens: OAuthTokens) -> None:
         """Store OAuth tokens."""
-        self._storage[f"oauth:{server_name}"] = json.dumps(tokens.to_dict())
+        self._storage[f"oauth:{server_name}"] = json.dumps(tokens.model_dump())
 
     def retrieve_token(self, server_name: str) -> Optional[OAuthTokens]:
         """Retrieve OAuth tokens."""
         key = f"oauth:{server_name}"
         if key in self._storage:
             data = json.loads(self._storage[key])
-            return OAuthTokens.from_dict(data)
+            return OAuthTokens.model_validate(data)
         return None
 
     def delete_token(self, server_name: str) -> bool:

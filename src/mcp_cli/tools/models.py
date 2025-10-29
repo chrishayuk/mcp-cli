@@ -3,15 +3,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from pydantic import BaseModel, Field
+
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Tool-related models (unchanged)
+# Tool-related models (converted to Pydantic)
 # ──────────────────────────────────────────────────────────────────────────────
-@dataclass
-class ToolInfo:
+class ToolInfo(BaseModel):
     """Information about a tool."""
 
     name: str
@@ -19,8 +19,10 @@ class ToolInfo:
     description: Optional[str] = None
     parameters: Optional[Dict[str, Any]] = None
     is_async: bool = False
-    tags: List[str] = field(default_factory=list)
+    tags: List[str] = Field(default_factory=list)
     supports_streaming: bool = False
+
+    model_config = {"frozen": False, "arbitrary_types_allowed": True}
 
     @property
     def fully_qualified_name(self) -> str:
@@ -57,8 +59,7 @@ class ToolInfo:
         }
 
 
-@dataclass
-class ServerInfo:
+class ServerInfo(BaseModel):
     """Information about a connected server instance."""
 
     id: int
@@ -69,12 +70,14 @@ class ServerInfo:
     enabled: bool = True
     connected: bool = False
     transport: str = "stdio"  # "stdio", "http", "sse"
-    capabilities: Dict[str, Any] = field(default_factory=dict)
+    capabilities: Dict[str, Any] = Field(default_factory=dict)
     description: Optional[str] = None  # From server metadata
     version: Optional[str] = None  # Server version
     command: Optional[str] = None  # Server command if known
-    args: List[str] = field(default_factory=list)  # Command arguments
-    env: Dict[str, str] = field(default_factory=dict)  # Environment variables
+    args: List[str] = Field(default_factory=list)  # Command arguments
+    env: Dict[str, str] = Field(default_factory=dict)  # Environment variables
+
+    model_config = {"frozen": False, "arbitrary_types_allowed": True}
 
     @property
     def is_healthy(self) -> bool:
@@ -106,8 +109,7 @@ class ServerInfo:
         return self.tool_count > 0
 
 
-@dataclass
-class ToolCallResult:
+class ToolCallResult(BaseModel):
     """Outcome of a tool execution."""
 
     tool_name: str
@@ -115,6 +117,8 @@ class ToolCallResult:
     result: Any = None
     error: Optional[str] = None
     execution_time: Optional[float] = None
+
+    model_config = {"frozen": False, "arbitrary_types_allowed": True, "extra": "allow"}
 
     @property
     def display_result(self) -> str:
@@ -142,10 +146,9 @@ class ToolCallResult:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# NEW - resource-related models
+# NEW - resource-related models (converted to Pydantic)
 # ──────────────────────────────────────────────────────────────────────────────
-@dataclass
-class ResourceInfo:
+class ResourceInfo(BaseModel):
     """
     Canonical representation of *one* resource entry as returned by
     ``resources.list``.
@@ -161,7 +164,9 @@ class ResourceInfo:
     type: Optional[str] = None
 
     # Anything else goes here …
-    extra: Dict[str, Any] = field(default_factory=dict)
+    extra: Dict[str, Any] = Field(default_factory=dict)
+
+    model_config = {"frozen": False, "arbitrary_types_allowed": True}
 
     # ------------------------------------------------------------------ #
     # Factory helpers

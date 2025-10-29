@@ -202,26 +202,8 @@ class ChatContext:
         # Convert ToolInfo objects to dicts for system prompt generation
         tools_for_prompt = []
         for tool in self.internal_tools:
-            if hasattr(tool, "to_openai_format"):
-                tools_for_prompt.append(tool.to_openai_format())
-            elif isinstance(tool, dict):
-                tools_for_prompt.append(tool)
-            else:
-                # Fallback - convert to dict
-                tools_for_prompt.append(
-                    {
-                        "type": "function",
-                        "function": {
-                            "name": tool.name if hasattr(tool, "name") else str(tool),
-                            "description": tool.description
-                            if hasattr(tool, "description")
-                            else "No description",
-                            "parameters": tool.parameters
-                            if hasattr(tool, "parameters")
-                            else {},
-                        },
-                    }
-                )
+            # ToolInfo objects always have to_openai_format method
+            tools_for_prompt.append(tool.to_openai_format())
 
         system_prompt = generate_system_prompt(tools_for_prompt)
         self.conversation_history = [{"role": "system", "content": system_prompt}]
@@ -445,14 +427,9 @@ class TestChatContext(ChatContext):
         # Get server info
         self.server_info = list(self.stream_manager.get_server_info())
 
-        # Build mappings
+        # Build mappings - tools are ToolInfo objects
         self.tool_to_server_map = {
-            (
-                t["name"] if isinstance(t, dict) else t.name
-            ): self.stream_manager.get_server_for_tool(
-                t["name"] if isinstance(t, dict) else t.name
-            )
-            for t in self.tools
+            t.name: self.stream_manager.get_server_for_tool(t.name) for t in self.tools
         }
 
         # Convert tools to OpenAI format for tests
@@ -460,13 +437,9 @@ class TestChatContext(ChatContext):
             {
                 "type": "function",
                 "function": {
-                    "name": t.get("name", "unknown") if isinstance(t, dict) else t.name,
-                    "description": t.get("description", "")
-                    if isinstance(t, dict)
-                    else t.description,
-                    "parameters": t.get("parameters", {})
-                    if isinstance(t, dict)
-                    else t.parameters,
+                    "name": t.name,
+                    "description": t.description or "",
+                    "parameters": t.parameters or {},
                 },
             }
             for t in self.tools

@@ -35,12 +35,12 @@ class TestStoredToken:
             data={"token": "abc123"},
         )
 
-        result = token.to_dict()
+        result = token.model_dump()
 
         assert result["token_type"] == "bearer"
         assert result["name"] == "test-token"
         assert result["data"] == {"token": "abc123"}
-        assert result["metadata"] == {}
+        assert result["metadata"] is None
 
     def test_to_dict_with_metadata(self):
         """Test converting to dict with metadata."""
@@ -51,7 +51,7 @@ class TestStoredToken:
             metadata={"created_at": "2024-01-01"},
         )
 
-        result = token.to_dict()
+        result = token.model_dump()
 
         assert result["metadata"] == {"created_at": "2024-01-01"}
 
@@ -63,7 +63,7 @@ class TestStoredToken:
             "data": {"token": "abc123"},
         }
 
-        token = StoredToken.from_dict(data)
+        token = StoredToken.model_validate(data)
 
         assert token.token_type == TokenType.BEARER
         assert token.name == "test-token"
@@ -79,7 +79,7 @@ class TestStoredToken:
             "metadata": {"created_at": "2024-01-01"},
         }
 
-        token = StoredToken.from_dict(data)
+        token = StoredToken.model_validate(data)
 
         assert token.metadata == {"created_at": "2024-01-01"}
 
@@ -594,8 +594,8 @@ class TestTokenTypeRoundTrips:
             metadata={"created": "2024-01-01"},
         )
 
-        dict_form = original.to_dict()
-        restored = StoredToken.from_dict(dict_form)
+        dict_form = original.model_dump()
+        restored = StoredToken.model_validate(dict_form)
 
         assert restored.token_type == original.token_type
         assert restored.name == original.name

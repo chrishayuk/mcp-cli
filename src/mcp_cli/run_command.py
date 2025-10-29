@@ -52,8 +52,10 @@ async def _init_tool_manager(
     ToolManager = getattr(tm_mod, "ToolManager")  # patched in tests
 
     tm = ToolManager(
-        config_file, servers, server_names,
-        initialization_timeout=initialization_timeout
+        config_file,
+        servers,
+        server_names,
+        initialization_timeout=initialization_timeout,
     )
 
     # ENHANCED: Let ToolManager automatically select the namespace
@@ -63,6 +65,7 @@ async def _init_tool_manager(
     # Clean up any loggers that were created during initialization
     from mcp_cli.logging_config import setup_logging
     import os
+
     log_level = os.environ.get("LOG_LEVEL", "WARNING")
     setup_logging(level=log_level, quiet=False, verbose=False)
 
@@ -271,7 +274,9 @@ def cli_entry(
         if mode not in {"chat", "interactive"}:
             raise typer.BadParameter("mode must be 'chat' or 'interactive'")
 
-        tm = await _init_tool_manager(config_file, server, initialization_timeout=init_timeout)
+        tm = await _init_tool_manager(
+            config_file, server, initialization_timeout=init_timeout
+        )
 
         try:
             if mode == "chat":

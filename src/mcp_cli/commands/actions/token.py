@@ -221,7 +221,7 @@ async def token_set_action_async(
             bearer = BearerToken(token=value)
             stored = bearer.to_stored_token(name)
             stored.metadata = {"namespace": namespace}
-            store._store_raw(f"{namespace}:{name}", json.dumps(stored.to_dict()))
+            store._store_raw(f"{namespace}:{name}", json.dumps(stored.model_dump()))
 
             # Register in index with expiration if available
             reg_metadata = {}
@@ -240,7 +240,7 @@ async def token_set_action_async(
             api_key = APIKeyToken(provider=provider, key=value)
             stored = api_key.to_stored_token(name)
             stored.metadata = {"namespace": namespace}
-            store._store_raw(f"{namespace}:{name}", json.dumps(stored.to_dict()))
+            store._store_raw(f"{namespace}:{name}", json.dumps(stored.model_dump()))
 
             # Register in index
             registry.register(
@@ -284,7 +284,7 @@ async def token_get_action_async(name: str, namespace: str = "generic") -> None:
         try:
             from mcp_cli.auth.token_types import StoredToken
 
-            stored = StoredToken.from_dict(json.loads(raw_data))
+            stored = StoredToken.model_validate(json.loads(raw_data))
             info = stored.get_display_info()
 
             output.rule(f"[bold]Token: {name}[/bold]", style="primary")
