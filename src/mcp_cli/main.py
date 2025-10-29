@@ -300,8 +300,12 @@ def main_callback(
 # Built-in commands
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 # Chat command - for backward compatibility (same as default behavior)
-@app.command("chat", help="Start chat mode (default behavior, provided for backward compatibility)")
+@app.command(
+    "chat",
+    help="Start chat mode (default behavior, provided for backward compatibility)",
+)
 def _chat_command(
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
@@ -391,6 +395,7 @@ def _chat_command(
             output.success("API key provided (kept in memory only)")
         else:
             import os
+
             env_var = f"{provider.upper().replace('-', '_')}_API_KEY"
             if os.environ.get(env_var):
                 output.success(f"Using API key from {env_var}")
@@ -1437,9 +1442,7 @@ def cmd_command(
     output_file: Optional[str] = typer.Option(
         None, "--output", "-o", help="Output file (use - for stdout)"
     ),
-    prompt: Optional[str] = typer.Option(
-        None, "--prompt", "-p", help="Prompt text"
-    ),
+    prompt: Optional[str] = typer.Option(None, "--prompt", "-p", help="Prompt text"),
     tool: Optional[str] = typer.Option(
         None, "--tool", "-t", help="Tool name to execute"
     ),
@@ -1449,15 +1452,11 @@ def cmd_command(
     system_prompt: Optional[str] = typer.Option(
         None, "--system-prompt", help="Custom system prompt"
     ),
-    raw: bool = typer.Option(
-        False, "--raw", help="Raw output without formatting"
-    ),
+    raw: bool = typer.Option(False, "--raw", help="Raw output without formatting"),
     single_turn: bool = typer.Option(
         False, "--single-turn", help="Disable multi-turn conversation"
     ),
-    max_turns: int = typer.Option(
-        10, "--max-turns", help="Maximum conversation turns"
-    ),
+    max_turns: int = typer.Option(10, "--max-turns", help="Maximum conversation turns"),
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
@@ -1500,7 +1499,12 @@ def cmd_command(
 
     # Process server options
     servers, _, server_names = process_options(
-        server, disable_filesystem, effective_provider, effective_model, config_file, quiet=quiet
+        server,
+        disable_filesystem,
+        effective_provider,
+        effective_model,
+        config_file,
+        quiet=quiet,
     )
 
     # Import cmd action

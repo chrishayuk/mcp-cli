@@ -41,7 +41,9 @@ async def cmd_action_async(
         # Get the initialized context
         context = get_context()
         if not context or not context.tool_manager:
-            output.error("Context not initialized. This command requires a tool manager.")
+            output.error(
+                "Context not initialized. This command requires a tool manager."
+            )
             return
 
         # Handle tool execution mode
@@ -71,7 +73,9 @@ async def cmd_action_async(
         output.error("No operation specified. Use --tool or --prompt/--input")
         output.hint("Examples:")
         output.info("  mcp-cli cmd --tool list_tables")
-        output.info('  mcp-cli cmd --tool read_query --tool-args \'{"query": "SELECT * FROM users"}\'')
+        output.info(
+            '  mcp-cli cmd --tool read_query --tool-args \'{"query": "SELECT * FROM users"}\''
+        )
         output.info("  echo 'Analyze this' | mcp-cli cmd --input - --output result.txt")
         output.info("  mcp-cli cmd --prompt 'Summarize the data' --input data.txt")
 
@@ -92,6 +96,10 @@ async def _execute_tool_direct(
     context = get_context()
     tool_manager = context.tool_manager
 
+    if not tool_manager:
+        output.error("Tool manager not initialized")
+        return
+
     # Parse tool arguments
     tool_args = {}
     if tool_args_json:
@@ -106,27 +114,29 @@ async def _execute_tool_direct(
         if not raw:
             output.info(f"Executing tool: {tool_name}")
 
-        result = await tool_manager.execute_tool(tool_name, tool_args)
+        tool_call_result = await tool_manager.execute_tool(tool_name, tool_args)
 
-        # Handle ToolCallResult object
-        if hasattr(result, '__dict__'):
-            result_dict = {
-                'success': getattr(result, 'success', True),
-                'result': getattr(result, 'result', None),
-                'error': getattr(result, 'error', None),
-                'execution_time': getattr(result, 'execution_time', None),
-            }
-            # If there's an error, show it
-            if result_dict.get('error'):
-                output.error(f"Tool execution failed: {result_dict['error']}")
-                return
-            result = result_dict.get('result', result_dict)
+        # Check for errors
+        if not tool_call_result.success or tool_call_result.error:
+            output.error(f"Tool execution failed: {tool_call_result.error}")
+            return
+
+        # Extract the actual result
+        result_data = tool_call_result.result
 
         # Format output
         if raw:
-            result_str = json.dumps(result) if not isinstance(result, str) else result
+            result_str = (
+                json.dumps(result_data)
+                if not isinstance(result_data, str)
+                else result_data
+            )
         else:
-            result_str = json.dumps(result, indent=2)
+            result_str = (
+                json.dumps(result_data, indent=2)
+                if not isinstance(result_data, str)
+                else result_data
+            )
 
         # Write output
         if output_file and output_file != "-":
@@ -184,7 +194,9 @@ async def _execute_prompt_mode(
         client = model_manager.get_client()
 
         if not client:
-            output.error(f"Failed to get LLM client for {context.provider}/{context.model}")
+            output.error(
+                f"Failed to get LLM client for {context.provider}/{context.model}"
+            )
             return
     except Exception as e:
         output.error(f"Failed to initialize LLM client: {e}")
@@ -204,7 +216,7 @@ async def _execute_prompt_mode(
         # Get available tools
         tools = None
         if context.tool_manager and not single_turn:
-            tools = context.tool_manager.list_tools()
+            tools = await context.tool_manager.get_tools_for_llm()
 
         # Make the LLM call using chuk-llm interface
         response = await client.create_completion(
@@ -258,6 +270,10 @@ async def _handle_tool_calls(
     context = get_context()
     tool_manager = context.tool_manager
 
+    if not tool_manager:
+        output.error("Tool manager not initialized")
+        return response_text
+
     # Add assistant message with tool calls
     messages.append(
         {
@@ -290,8 +306,18 @@ async def _handle_tool_calls(
             output.info(f"Executing tool: {tool_name}")
 
         try:
-            result = await tool_manager.execute_tool(tool_name, tool_args)
-            result_str = json.dumps(result) if not isinstance(result, str) else result
+            tool_call_result = await tool_manager.execute_tool(tool_name, tool_args)
+            # Extract result data and format as string
+            result_data = (
+                tool_call_result.result
+                if tool_call_result.success
+                else f"Error: {tool_call_result.error}"
+            )
+            result_str = (
+                json.dumps(result_data)
+                if not isinstance(result_data, str)
+                else result_data
+            )
 
             # Add tool result to messages
             messages.append(
@@ -317,10 +343,11 @@ async def _handle_tool_calls(
     # Continue conversation
     turns = 1
     while turns < max_turns:
+        tools = await tool_manager.get_tools_for_llm() if tool_manager else None
         response = await client.create_completion(
             model=context.model,
             messages=messages,
-            tools=tool_manager.list_tools() if tool_manager else None,
+            tools=tools,
             max_tokens=4096,
         )
 
@@ -363,8 +390,18 @@ async def _handle_tool_calls(
                 output.info(f"Executing tool: {tool_name}")
 
             try:
-                result = await tool_manager.execute_tool(tool_name, tool_args)
-                result_str = json.dumps(result) if not isinstance(result, str) else result
+                tool_call_result = await tool_manager.execute_tool(tool_name, tool_args)
+                # Extract result data and format as string
+                result_data = (
+                    tool_call_result.result
+                    if tool_call_result.success
+                    else f"Error: {tool_call_result.error}"
+                )
+                result_str = (
+                    json.dumps(result_data)
+                    if not isinstance(result_data, str)
+                    else result_data
+                )
 
                 messages.append(
                     {

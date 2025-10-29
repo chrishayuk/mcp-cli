@@ -253,10 +253,18 @@ class ToolManager:
             except Exception as e:
                 error_msg = str(e).lower()
                 # Check if this is an invalid token error (401)
-                if ("401" in error_msg or "invalid_token" in error_msg or
-                    "invalid access token" in error_msg or "unauthorized" in error_msg):
-                    logger.warning(f"Invalid or expired token detected for {server_name}")
-                    logger.info(f"Clearing stored tokens and re-authenticating {server_name}...")
+                if (
+                    "401" in error_msg
+                    or "invalid_token" in error_msg
+                    or "invalid access token" in error_msg
+                    or "unauthorized" in error_msg
+                ):
+                    logger.warning(
+                        f"Invalid or expired token detected for {server_name}"
+                    )
+                    logger.info(
+                        f"Clearing stored tokens and re-authenticating {server_name}..."
+                    )
 
                     # Clear the invalid tokens
                     self.oauth_handler.clear_tokens(server_name)
@@ -267,21 +275,27 @@ class ToolManager:
                         client_file = token_dir / f"{server_name}_client.json"
                         if client_file.exists():
                             os.remove(client_file)
-                            logger.debug(f"Deleted client registration for {server_name}")
+                            logger.debug(
+                                f"Deleted client registration for {server_name}"
+                            )
                     except Exception as del_e:
                         logger.debug(f"Could not delete client registration: {del_e}")
 
                     # Retry authentication (this will trigger the full OAuth flow with browser)
                     try:
                         logger.info(f"Retrying authentication for {server_name}...")
-                        headers = await self.oauth_handler.prepare_server_headers(server_config)
+                        headers = await self.oauth_handler.prepare_server_headers(
+                            server_config
+                        )
 
                         if "Authorization" in headers:
                             auth_value = headers["Authorization"]
                             if auth_value.startswith("Bearer "):
                                 auth_value = auth_value[7:]  # Remove "Bearer " prefix
                             server_entry["api_key"] = auth_value
-                            logger.debug(f"Set api_key for {server_name} after re-auth: {auth_value[:20]}...")
+                            logger.debug(
+                                f"Set api_key for {server_name} after re-auth: {auth_value[:20]}..."
+                            )
 
                         other_headers = {
                             k: v for k, v in headers.items() if k != "Authorization"
@@ -291,9 +305,13 @@ class ToolManager:
                                 server_entry["headers"] = {}
                             server_entry["headers"].update(other_headers)
 
-                        logger.info(f"✅ Re-authentication successful for {server_name}")
+                        logger.info(
+                            f"✅ Re-authentication successful for {server_name}"
+                        )
                     except Exception as retry_e:
-                        logger.error(f"Re-authentication failed for {server_name}: {retry_e}")
+                        logger.error(
+                            f"Re-authentication failed for {server_name}: {retry_e}"
+                        )
                         raise
                 else:
                     # Not an auth error, re-raise
@@ -461,13 +479,19 @@ class ToolManager:
                 if hasattr(setup_error, "__cause__") and setup_error.__cause__:
                     full_error_context += str(setup_error.__cause__).lower()
                 if hasattr(setup_error, "args"):
-                    full_error_context += " ".join(str(arg) for arg in setup_error.args).lower()
+                    full_error_context += " ".join(
+                        str(arg) for arg in setup_error.args
+                    ).lower()
 
                 combined_error = error_msg + " " + full_error_context
 
                 # Check if this is a 401/auth error during setup
-                if ("401" in combined_error or "invalid_token" in combined_error or
-                    "invalid access token" in combined_error or "unauthorized" in combined_error):
+                if (
+                    "401" in combined_error
+                    or "invalid_token" in combined_error
+                    or "invalid access token" in combined_error
+                    or "unauthorized" in combined_error
+                ):
                     logger.warning("SSE server setup failed with authentication error")
                     logger.info("Attempting to re-authenticate and retry...")
 
@@ -476,7 +500,9 @@ class ToolManager:
 
                     if new_headers:
                         # Retry setup with new authentication
-                        logger.info("Retrying SSE server setup with refreshed authentication...")
+                        logger.info(
+                            "Retrying SSE server setup with refreshed authentication..."
+                        )
                         self.processor, self.stream_manager = await asyncio.wait_for(
                             setup_mcp_sse(
                                 servers=self._sse_servers,
@@ -487,9 +513,13 @@ class ToolManager:
                             ),
                             timeout=self.initialization_timeout,
                         )
-                        logger.info("✅ SSE server setup succeeded after re-authentication")
+                        logger.info(
+                            "✅ SSE server setup succeeded after re-authentication"
+                        )
                     else:
-                        logger.error("Re-authentication failed, cannot setup SSE servers")
+                        logger.error(
+                            "Re-authentication failed, cannot setup SSE servers"
+                        )
                         raise
                 else:
                     # Not an auth error, re-raise
@@ -532,13 +562,19 @@ class ToolManager:
                 if hasattr(setup_error, "__cause__") and setup_error.__cause__:
                     full_error_context += str(setup_error.__cause__).lower()
                 if hasattr(setup_error, "args"):
-                    full_error_context += " ".join(str(arg) for arg in setup_error.args).lower()
+                    full_error_context += " ".join(
+                        str(arg) for arg in setup_error.args
+                    ).lower()
 
                 combined_error = error_msg + " " + full_error_context
 
                 # Check if this is a 401/auth error during setup
-                if ("401" in combined_error or "invalid_token" in combined_error or
-                    "invalid access token" in combined_error or "unauthorized" in combined_error):
+                if (
+                    "401" in combined_error
+                    or "invalid_token" in combined_error
+                    or "invalid access token" in combined_error
+                    or "unauthorized" in combined_error
+                ):
                     logger.warning("HTTP server setup failed with authentication error")
                     logger.info("Attempting to re-authenticate and retry...")
 
@@ -547,7 +583,9 @@ class ToolManager:
 
                     if new_headers:
                         # Retry setup with new authentication
-                        logger.info("Retrying HTTP server setup with refreshed authentication...")
+                        logger.info(
+                            "Retrying HTTP server setup with refreshed authentication..."
+                        )
                         self.processor, self.stream_manager = await asyncio.wait_for(
                             setup_mcp_http_streamable(
                                 servers=self._http_servers,
@@ -558,9 +596,13 @@ class ToolManager:
                             ),
                             timeout=self.initialization_timeout,
                         )
-                        logger.info("✅ HTTP server setup succeeded after re-authentication")
+                        logger.info(
+                            "✅ HTTP server setup succeeded after re-authentication"
+                        )
                     else:
-                        logger.error("Re-authentication failed, cannot setup HTTP servers")
+                        logger.error(
+                            "Re-authentication failed, cannot setup HTTP servers"
+                        )
                         raise
                 else:
                     # Not an auth error, re-raise
@@ -877,7 +919,9 @@ class ToolManager:
     ) -> ToolCallResult:
         """Execute a tool and return the result."""
         if not isinstance(arguments, dict):
-            return ToolCallResult(tool_name, False, error="Arguments must be a dict")  # type: ignore[unreachable]
+            return ToolCallResult(  # type: ignore[unreachable]
+                tool_name=tool_name, success=False, error="Arguments must be a dict"
+            )
 
         # Check if tool is enabled
         if not self.tool_filter.is_tool_enabled(tool_name):
@@ -885,7 +929,9 @@ class ToolManager:
                 tool_name, "unknown"
             )
             return ToolCallResult(
-                tool_name, False, error=f"Tool disabled ({disabled_reason})"
+                tool_name=tool_name,
+                success=False,
+                error=f"Tool disabled ({disabled_reason})",
             )
 
         # CLEAN: Just look up the tool directly in the registry
@@ -893,7 +939,9 @@ class ToolManager:
 
         if not namespace:
             return ToolCallResult(
-                tool_name, False, error=f"Tool '{tool_name}' not found in registry"
+                tool_name=tool_name,
+                success=False,
+                error=f"Tool '{tool_name}' not found in registry",
             )
 
         logger.info(
@@ -922,7 +970,9 @@ class ToolManager:
 
             if not self._executor:
                 return ToolCallResult(
-                    tool_name, False, error="Tool executor not initialized"
+                    tool_name=tool_name,
+                    success=False,
+                    error="Tool executor not initialized",
                 )
 
             logger.info("EXECUTION: Calling executor.execute() with call")
@@ -945,7 +995,9 @@ class ToolManager:
 
             if not results:
                 logger.error("EXECUTION: No results returned from executor")
-                return ToolCallResult(tool_name, False, error="No result returned")
+                return ToolCallResult(
+                    tool_name=tool_name, success=False, error="No result returned"
+                )
 
             result = results[0]
             logger.info(
@@ -972,7 +1024,7 @@ class ToolManager:
             import traceback
 
             traceback.print_exc()
-            return ToolCallResult(tool_name, False, error=str(exc))
+            return ToolCallResult(tool_name=tool_name, success=False, error=str(exc))
 
     async def _find_tool_in_registry(self, tool_name: str) -> Tuple[str, str]:
         """
@@ -1058,9 +1110,11 @@ class ToolManager:
             async for result in self._executor.stream_execute([call]):
                 yield result
         else:
-            yield ToolCallResult(
-                tool_name, False, error="Tool executor not initialized"
+            dummy_call = ToolCall(tool=tool_name, namespace="", arguments={})
+            error_result = ToolResult(
+                tool_call=dummy_call, result=None, error="Tool executor not initialized"
             )
+            yield error_result
 
     async def process_tool_calls(
         self,

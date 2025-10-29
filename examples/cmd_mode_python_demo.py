@@ -8,7 +8,6 @@ for automation and data processing pipelines.
 
 import json
 import subprocess
-import sys
 from pathlib import Path
 from typing import Optional
 
@@ -142,7 +141,7 @@ def demo_file_processing():
     print(f"\n📄 Created input file: {input_file}")
 
     # Process with cmd mode
-    print(f"🔄 Processing file with cmd mode...")
+    print("🔄 Processing file with cmd mode...")
     result = run_mcp_cmd(
         tool="list_tables",
         output_file=str(output_file),
@@ -152,7 +151,7 @@ def demo_file_processing():
         print(f"✓ Output saved to: {output_file}")
         print(f"   Content: {output_file.read_text()}")
     else:
-        print(f"✗ Processing failed")
+        print("✗ Processing failed")
 
     # Cleanup
     input_file.unlink(missing_ok=True)
@@ -173,7 +172,7 @@ def demo_pipeline_processing():
         print("✗ Stage 1 failed")
         return
 
-    print(f"✓ Stage 1 complete")
+    print("✓ Stage 1 complete")
 
     # Stage 2: Process data (example - would use the output)
     print("🔄 Stage 2: Processing data...")
@@ -196,11 +195,13 @@ def demo_batch_processing():
     for i, item in enumerate(items, 1):
         print(f"   [{i}/{len(items)}] Processing {item}...")
         result = run_mcp_cmd(tool="list_tables")
-        results.append({
-            "item": item,
-            "success": result["success"],
-            "data": result.get("data"),
-        })
+        results.append(
+            {
+                "item": item,
+                "success": result["success"],
+                "data": result.get("data"),
+            }
+        )
 
     # Summary
     successful = sum(1 for r in results if r["success"])

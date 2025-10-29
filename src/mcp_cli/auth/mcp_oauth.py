@@ -16,7 +16,7 @@ import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 from urllib.parse import urljoin
 
 import httpx
@@ -33,8 +33,12 @@ class MCPAuthorizationMetadata(BaseModel):
     registration_endpoint: Optional[str] = None
     scopes_supported: list[str] = Field(default_factory=list)
     response_types_supported: list[str] = Field(default_factory=lambda: ["code"])
-    grant_types_supported: list[str] = Field(default_factory=lambda: ["authorization_code", "refresh_token"])
-    code_challenge_methods_supported: list[str] = Field(default_factory=lambda: ["S256"])
+    grant_types_supported: list[str] = Field(
+        default_factory=lambda: ["authorization_code", "refresh_token"]
+    )
+    code_challenge_methods_supported: list[str] = Field(
+        default_factory=lambda: ["S256"]
+    )
 
     model_config = {"frozen": False}
 
