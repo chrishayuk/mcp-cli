@@ -22,11 +22,13 @@ console = Console()
 async def test_mermaid_stdio():
     """Test STDIO connection to mermaid server"""
 
-    console.print(Panel.fit(
-        "[bold cyan]Mermaid MCP Server STDIO Test[/bold cyan]\n\n"
-        "Testing basic STDIO connection and tool retrieval",
-        border_style="cyan"
-    ))
+    console.print(
+        Panel.fit(
+            "[bold cyan]Mermaid MCP Server STDIO Test[/bold cyan]\n\n"
+            "Testing basic STDIO connection and tool retrieval",
+            border_style="cyan",
+        )
+    )
 
     # Step 1: Load config
     console.print("\n[1/4] [bold]Loading server configuration...[/bold]")
@@ -44,7 +46,7 @@ async def test_mermaid_stdio():
         console.print("[red]❌ Mermaid server not found in config[/red]")
         return False
 
-    console.print(f"    [green]✓[/green] Found mermaid config:")
+    console.print("    [green]✓[/green] Found mermaid config:")
     console.print(f"      Command: {mermaid_config.get('command')}")
     console.print(f"      Args: {mermaid_config.get('args')}")
     console.print(f"      Env: {mermaid_config.get('env', {})}")
@@ -91,7 +93,7 @@ async def test_mermaid_stdio():
                 table.add_row(
                     tool.namespace or "N/A",
                     tool.name,
-                    tool.description or "No description"
+                    tool.description or "No description",
                 )
 
             console.print(table)
@@ -109,24 +111,30 @@ async def test_mermaid_stdio():
     if tools:
         # Try to find a simple tool to test
         test_tool = tools[0]  # Use first available tool
-        console.print(f"    Testing: [cyan]{test_tool.namespace}.{test_tool.name}[/cyan]")
+        console.print(
+            f"    Testing: [cyan]{test_tool.namespace}.{test_tool.name}[/cyan]"
+        )
 
         try:
             # Try with minimal arguments
             result = await tm.run_tool(f"{test_tool.namespace}.{test_tool.name}", {})
-            console.print(f"    [green]✓[/green] Tool executed successfully")
+            console.print("    [green]✓[/green] Tool executed successfully")
             console.print(f"    Result: {result}")
         except Exception as e:
-            console.print(f"    [yellow]⚠[/yellow] Tool execution failed (expected if args required): {e}")
+            console.print(
+                f"    [yellow]⚠[/yellow] Tool execution failed (expected if args required): {e}"
+            )
 
     # Cleanup
     await tm.close()
 
-    console.print(Panel.fit(
-        "[bold green]✅ SUCCESS![/bold green]\n\n"
-        "STDIO connection to mermaid server is working correctly",
-        border_style="green"
-    ))
+    console.print(
+        Panel.fit(
+            "[bold green]✅ SUCCESS![/bold green]\n\n"
+            "STDIO connection to mermaid server is working correctly",
+            border_style="green",
+        )
+    )
 
     return True
 
@@ -142,6 +150,7 @@ async def main():
     except Exception as e:
         console.print(f"\n[red]Unexpected error: {e}[/red]")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 

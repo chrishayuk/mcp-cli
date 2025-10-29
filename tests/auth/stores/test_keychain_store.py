@@ -113,7 +113,7 @@ class TestKeychainTokenStoreOperations:
     def test_retrieve_token(self, store, sample_tokens):
         """Test retrieving OAuth tokens."""
         # Mock get_password to return token JSON
-        token_json = json.dumps(sample_tokens.to_dict())
+        token_json = json.dumps(sample_tokens.model_dump())
         store.keyring.get_password.return_value = token_json
 
         retrieved = store.retrieve_token("test-server")

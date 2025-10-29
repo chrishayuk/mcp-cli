@@ -1,3 +1,4 @@
+# mcp_cli/auth/stores/linux_store.py
 """Linux Secret Service API token storage backend."""
 
 import json
@@ -47,7 +48,7 @@ class SecretServiceTokenStore(SecureTokenStore):
                 tokens.issued_at = time.time()
 
             # Serialize tokens to JSON
-            token_json = json.dumps(tokens.to_dict())
+            token_json = json.dumps(tokens.model_dump())
 
             # Store in Secret Service
             self.keyring.set_password(self.SERVICE_NAME, safe_name, token_json)
@@ -67,7 +68,7 @@ class SecretServiceTokenStore(SecureTokenStore):
 
             # Deserialize from JSON
             token_data = json.loads(token_json)
-            return OAuthTokens.from_dict(token_data)
+            return OAuthTokens.model_validate(token_data)
         except json.JSONDecodeError as e:
             raise TokenStorageError(f"Failed to parse token data: {e}")
         except Exception as e:

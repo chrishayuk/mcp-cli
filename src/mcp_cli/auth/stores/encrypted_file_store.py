@@ -1,3 +1,4 @@
+# mcp_cli/auth/stores/encrypted_file_store.py
 """Encrypted file token storage backend (fallback)."""
 
 import json
@@ -107,7 +108,7 @@ class EncryptedFileTokenStore(SecureTokenStore):
                 tokens.issued_at = time.time()
 
             # Serialize to JSON
-            token_json = json.dumps(tokens.to_dict())
+            token_json = json.dumps(tokens.model_dump())
 
             # Encrypt
             encrypted_data = self.fernet.encrypt(token_json.encode())
@@ -138,7 +139,7 @@ class EncryptedFileTokenStore(SecureTokenStore):
 
             # Parse JSON
             token_data = json.loads(decrypted_data.decode())
-            return OAuthTokens.from_dict(token_data)
+            return OAuthTokens.model_validate(token_data)
         except json.JSONDecodeError as e:
             raise TokenStorageError(f"Failed to parse token data: {e}")
         except Exception as e:

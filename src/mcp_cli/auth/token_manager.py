@@ -1,3 +1,4 @@
+# mcp_cli/auth/token_manager.py
 """Token storage and management."""
 
 import json
@@ -161,7 +162,7 @@ class TokenManager:
         reg_path = self._get_client_registration_path(server_name)
 
         with open(reg_path, "w") as f:
-            json.dump(registration.to_dict(), f, indent=2)
+            json.dump(registration.model_dump(), f, indent=2)
 
         # Set file permissions to user-only read/write
         os.chmod(reg_path, 0o600)
@@ -188,7 +189,7 @@ class TokenManager:
         try:
             with open(reg_path, "r") as f:
                 reg_data = json.load(f)
-            return DynamicClientRegistration.from_dict(reg_data)
+            return DynamicClientRegistration.model_validate(reg_data)
         except (json.JSONDecodeError, KeyError, FileNotFoundError):
             return None
 

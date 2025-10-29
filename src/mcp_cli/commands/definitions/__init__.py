@@ -18,6 +18,7 @@ from .providers import ProviderCommand
 from .resources import ResourcesCommand
 from .servers import ServersCommand
 from .theme import ThemeCommand
+from .token import TokenCommand
 from .tool_history import ToolHistoryCommand
 from .tools import ToolsCommand
 from .verbose import VerboseCommand
@@ -35,6 +36,7 @@ __all__ = [
     "ResourcesCommand",
     "ServersCommand",
     "ThemeCommand",
+    "TokenCommand",
     "ToolHistoryCommand",
     "ToolsCommand",
     "VerboseCommand",

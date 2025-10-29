@@ -1,8 +1,10 @@
+# mcp_cli/auth/token_types.py
 """Token types and models for secure storage."""
 
-from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, Optional
+
+from pydantic import BaseModel, Field
 
 
 class TokenType(str, Enum):
@@ -14,8 +16,7 @@ class TokenType(str, Enum):
     BASIC_AUTH = "basic_auth"  # Basic authentication credentials
 
 
-@dataclass
-class StoredToken:
+class StoredToken(BaseModel):
     """Generic token storage model."""
 
     token_type: TokenType
@@ -23,24 +24,7 @@ class StoredToken:
     data: Dict[str, Any]  # Token-specific data
     metadata: Optional[Dict[str, Any]] = None  # Additional metadata
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary format."""
-        return {
-            "token_type": self.token_type.value,
-            "name": self.name,
-            "data": self.data,
-            "metadata": self.metadata or {},
-        }
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "StoredToken":
-        """Create from dictionary format."""
-        return cls(
-            token_type=TokenType(data["token_type"]),
-            name=data["name"],
-            data=data["data"],
-            metadata=data.get("metadata"),
-        )
+    model_config = {"frozen": False, "arbitrary_types_allowed": True}
 
     def get_display_info(self) -> Dict[str, Any]:
         """Get safe display information (no sensitive data)."""
@@ -82,12 +66,13 @@ class StoredToken:
         return info
 
 
-@dataclass
-class BearerToken:
+class BearerToken(BaseModel):
     """Simple bearer token."""
 
     token: str
     expires_at: Optional[float] = None
+
+    model_config = {"frozen": False}
 
     def to_stored_token(self, name: str) -> StoredToken:
         """Convert to StoredToken format."""
@@ -122,14 +107,15 @@ class BearerToken:
         return time.time() >= (self.expires_at - buffer_seconds)
 
 
-@dataclass
-class APIKeyToken:
+class APIKeyToken(BaseModel):
     """API key for provider authentication."""
 
     provider: str  # openai, anthropic, google, etc.
     key: str
     organization_id: Optional[str] = None
     project_id: Optional[str] = None
+
+    model_config = {"frozen": False}
 
     def to_stored_token(self, name: str) -> StoredToken:
         """Convert to StoredToken format."""
@@ -162,12 +148,13 @@ class APIKeyToken:
         )
 
 
-@dataclass
-class BasicAuthToken:
+class BasicAuthToken(BaseModel):
     """Basic authentication credentials."""
 
     username: str
     password: str
+
+    model_config = {"frozen": False}
 
     def to_stored_token(self, name: str) -> StoredToken:
         """Convert to StoredToken format."""

@@ -1,3 +1,4 @@
+# mcp_cli/auth/oauth_handler.py
 """OAuth handler for MCP server connections."""
 
 import logging
@@ -237,12 +238,7 @@ class OAuthHandler:
                 )
                 auth_header = tokens.get_authorization_header()
                 headers["Authorization"] = auth_header
-                print(
-                    f"✓ Added Authorization header for {server_config.name}: {auth_header[:30]}..."
-                )
-                logger.info(
-                    f"Added Authorization header for {server_config.name}: {auth_header[:20]}..."
-                )
+                logger.debug(f"Added Authorization header for {server_config.name}")
             except Exception as e:
                 logger.error(
                     f"MCP OAuth authentication failed for {server_config.name}: {e}"

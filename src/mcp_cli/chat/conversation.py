@@ -149,9 +149,9 @@ class ConversationProcessor:
                         # If this is a duplicate, stop looping and return control to user
                         if (
                             last_tool_signature
-                            and current_sig_str == last_tool_signature  # type: ignore[unreachable]
+                            and current_sig_str == last_tool_signature
                         ):
-                            log.warning(  # type: ignore[unreachable]
+                            log.warning(
                                 f"Duplicate tool call detected: {current_sig_str}"
                             )
                             output.info(

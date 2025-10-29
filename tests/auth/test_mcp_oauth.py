@@ -23,7 +23,7 @@ class TestMCPAuthorizationMetadata:
             "token_endpoint": "https://auth.example.com/token",
         }
 
-        metadata = MCPAuthorizationMetadata.from_dict(data)
+        metadata = MCPAuthorizationMetadata.model_validate(data)
 
         assert metadata.authorization_endpoint == data["authorization_endpoint"]
         assert metadata.token_endpoint == data["token_endpoint"]
@@ -45,7 +45,7 @@ class TestMCPAuthorizationMetadata:
             "code_challenge_methods_supported": ["S256", "plain"],
         }
 
-        metadata = MCPAuthorizationMetadata.from_dict(data)
+        metadata = MCPAuthorizationMetadata.model_validate(data)
 
         assert metadata.authorization_endpoint == data["authorization_endpoint"]
         assert metadata.token_endpoint == data["token_endpoint"]
@@ -63,7 +63,7 @@ class TestDynamicClientRegistration:
         """Test creating registration from minimal dict."""
         data = {"client_id": "test-client-123"}
 
-        registration = DynamicClientRegistration.from_dict(data)
+        registration = DynamicClientRegistration.model_validate(data)
 
         assert registration.client_id == "test-client-123"
         assert registration.client_secret is None
@@ -79,7 +79,7 @@ class TestDynamicClientRegistration:
             "client_secret_expires_at": 1234567999,
         }
 
-        registration = DynamicClientRegistration.from_dict(data)
+        registration = DynamicClientRegistration.model_validate(data)
 
         assert registration.client_id == "test-client-123"
         assert registration.client_secret == "secret-456"
@@ -90,7 +90,7 @@ class TestDynamicClientRegistration:
         """Test converting minimal registration to dict."""
         registration = DynamicClientRegistration(client_id="test-client-123")
 
-        result = registration.to_dict()
+        result = registration.model_dump(exclude_defaults=True, exclude_none=True)
 
         assert result == {"client_id": "test-client-123"}
 
@@ -103,7 +103,7 @@ class TestDynamicClientRegistration:
             client_secret_expires_at=1234567999,
         )
 
-        result = registration.to_dict()
+        result = registration.model_dump()
 
         assert result == {
             "client_id": "test-client-123",

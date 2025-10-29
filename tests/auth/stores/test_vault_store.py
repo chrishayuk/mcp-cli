@@ -174,7 +174,7 @@ class TestVaultTokenStoreOperations:
     def test_retrieve_token_kv_v2(self, store, sample_tokens):
         """Test retrieving token from Vault KV v2."""
         # Mock response
-        mock_response = {"data": {"data": sample_tokens.to_dict()}}
+        mock_response = {"data": {"data": sample_tokens.model_dump()}}
         store.client.secrets.kv.v2.read_secret_version.return_value = mock_response
 
         retrieved = store.retrieve_token("test-server")
@@ -190,7 +190,7 @@ class TestVaultTokenStoreOperations:
         )
 
         # Mock v1 response
-        mock_response = {"data": sample_tokens.to_dict()}
+        mock_response = {"data": sample_tokens.model_dump()}
         store.client.secrets.kv.v1.read_secret.return_value = mock_response
 
         retrieved = store.retrieve_token("test-server")

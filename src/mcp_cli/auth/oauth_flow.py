@@ -1,3 +1,4 @@
+# mcp_cli/auth/oauth_flow.py
 """OAuth 2.0 authorization flow implementation."""
 
 import asyncio
@@ -158,7 +159,7 @@ class OAuthFlow:
                 raise Exception(f"Token exchange failed: {response.text}")
 
             token_data = response.json()
-            return OAuthTokens.from_dict(token_data)
+            return OAuthTokens.model_validate(token_data)
 
     async def refresh_token(self, refresh_token: str) -> OAuthTokens:
         """
@@ -188,7 +189,7 @@ class OAuthFlow:
                 raise Exception(f"Token refresh failed: {response.text}")
 
             token_data = response.json()
-            return OAuthTokens.from_dict(token_data)
+            return OAuthTokens.model_validate(token_data)
 
     async def authorize(self) -> OAuthTokens:
         """

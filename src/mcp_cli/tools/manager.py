@@ -228,22 +228,166 @@ class ToolManager:
                 # Perform OAuth and get authorization header
                 headers = await self.oauth_handler.prepare_server_headers(server_config)
 
-                # Merge OAuth headers with existing headers
-                if "headers" not in server_entry:
-                    server_entry["headers"] = {}
-                server_entry["headers"].update(headers)
+                # IMPORTANT: HTTP Streamable transport prioritizes configured_headers over api_key
+                # To avoid conflicts, we should set EITHER headers OR api_key, not both
+                # For OAuth, we use api_key field (which gets converted to Authorization header)
+                if "Authorization" in headers:
+                    # Extract just the token value (remove "Bearer " prefix if present)
+                    # The http_streamable_transport will add "Bearer " prefix automatically
+                    auth_value = headers["Authorization"]
+                    if auth_value.startswith("Bearer "):
+                        auth_value = auth_value[7:]  # Remove "Bearer " prefix
+                    server_entry["api_key"] = auth_value
+                    logger.debug(f"Set api_key for {server_name}: {auth_value[:20]}...")
 
-                print(
-                    f"✓ Headers set for {server_name}: {list(server_entry['headers'].keys())}"
-                )
+                # Merge any other headers (non-Authorization)
+                other_headers = {
+                    k: v for k, v in headers.items() if k != "Authorization"
+                }
+                if other_headers:
+                    if "headers" not in server_entry:
+                        server_entry["headers"] = {}
+                    server_entry["headers"].update(other_headers)
+
                 logger.info(f"OAuth authentication completed for {server_name}")
-                logger.info(
-                    f"Headers for {server_name}: {list(server_entry['headers'].keys())}"
-                )
-                logger.debug(f"Full server entry: {server_entry}")
             except Exception as e:
-                logger.error(f"OAuth failed for {server_name}: {e}")
-                raise
+                error_msg = str(e).lower()
+                # Check if this is an invalid token error (401)
+                if ("401" in error_msg or "invalid_token" in error_msg or
+                    "invalid access token" in error_msg or "unauthorized" in error_msg):
+                    logger.warning(f"Invalid or expired token detected for {server_name}")
+                    logger.info(f"Clearing stored tokens and re-authenticating {server_name}...")
+
+                    # Clear the invalid tokens
+                    self.oauth_handler.clear_tokens(server_name)
+
+                    # Delete client registration to force full OAuth flow
+                    try:
+                        token_dir = Path.home() / ".mcp_cli" / "tokens"
+                        client_file = token_dir / f"{server_name}_client.json"
+                        if client_file.exists():
+                            os.remove(client_file)
+                            logger.debug(f"Deleted client registration for {server_name}")
+                    except Exception as del_e:
+                        logger.debug(f"Could not delete client registration: {del_e}")
+
+                    # Retry authentication (this will trigger the full OAuth flow with browser)
+                    try:
+                        logger.info(f"Retrying authentication for {server_name}...")
+                        headers = await self.oauth_handler.prepare_server_headers(server_config)
+
+                        if "Authorization" in headers:
+                            auth_value = headers["Authorization"]
+                            if auth_value.startswith("Bearer "):
+                                auth_value = auth_value[7:]  # Remove "Bearer " prefix
+                            server_entry["api_key"] = auth_value
+                            logger.debug(f"Set api_key for {server_name} after re-auth: {auth_value[:20]}...")
+
+                        other_headers = {
+                            k: v for k, v in headers.items() if k != "Authorization"
+                        }
+                        if other_headers:
+                            if "headers" not in server_entry:
+                                server_entry["headers"] = {}
+                            server_entry["headers"].update(other_headers)
+
+                        logger.info(f"✅ Re-authentication successful for {server_name}")
+                    except Exception as retry_e:
+                        logger.error(f"Re-authentication failed for {server_name}: {retry_e}")
+                        raise
+                else:
+                    # Not an auth error, re-raise
+                    logger.error(f"OAuth failed for {server_name}: {e}")
+                    raise
+
+    def _create_oauth_refresh_callback(self):
+        """Create OAuth refresh callback for HTTP/SSE transports (NEW)."""
+
+        async def refresh_oauth_token():
+            """
+            Callback to refresh OAuth tokens when they expire.
+
+            Returns:
+                Dict with updated Authorization header or None if refresh failed
+            """
+            logger.warning("=" * 80)
+            logger.warning("OAUTH REFRESH CALLBACK TRIGGERED!")
+            logger.warning("=" * 80)
+            try:
+                # Try HTTP servers first, then SSE servers
+                server_entry = None
+                if self._http_servers:
+                    server_entry = self._http_servers[0]
+                elif self._sse_servers:
+                    server_entry = self._sse_servers[0]
+                else:
+                    logger.warning("No HTTP/SSE servers configured for OAuth refresh")
+                    return None
+
+                server_name = server_entry["name"]
+                logger.info(f"Refreshing OAuth token for {server_name}")
+
+                from mcp_cli.config.config_manager import initialize_config
+
+                config = initialize_config(Path(self.config_file))
+                server_config = config.get_server(server_name)
+
+                if not server_config:
+                    logger.error(f"Server config not found for {server_name}")
+                    return None
+
+                # Clear old tokens to force full reauthentication
+                # This is necessary when the server restarts and loses sessions
+                logger.info(
+                    f"Clearing stored tokens for {server_name} to force reauthentication"
+                )
+                self.oauth_handler.clear_tokens(server_name)
+
+                # Delete client registration as well to force full OAuth flow
+                try:
+                    token_dir = Path.home() / ".mcp_cli" / "tokens"
+                    client_file = token_dir / f"{server_name}_client.json"
+                    if client_file.exists():
+                        os.remove(client_file)
+                        logger.debug(f"Deleted client registration for {server_name}")
+                except Exception as e:
+                    logger.debug(f"Could not delete client registration: {e}")
+
+                # Get new headers (this will trigger full OAuth flow with browser)
+                headers = await self.oauth_handler.prepare_server_headers(server_config)
+
+                logger.info(f"OAuth reauthentication completed for {server_name}")
+
+                # Update the api_key in the server entry for the transport
+                if "Authorization" in headers:
+                    auth_value = headers["Authorization"]
+                    if auth_value.startswith("Bearer "):
+                        auth_value = auth_value[7:]  # Remove "Bearer " prefix
+                    server_entry["api_key"] = auth_value
+                    logger.debug(
+                        f"Updated server_entry api_key for {server_name} after reauth"
+                    )
+
+                    # CRITICAL: Also update the transport's api_key directly
+                    # The transport's _attempt_recovery() will reinitialize using self.api_key
+                    # So we need to update it before the transport tries to reconnect
+                    if self.stream_manager and hasattr(
+                        self.stream_manager, "transports"
+                    ):
+                        transport = self.stream_manager.transports.get(server_name)
+                        if transport and hasattr(transport, "api_key"):
+                            transport.api_key = auth_value
+                            logger.debug(
+                                f"Updated transport.api_key for {server_name} after reauth"
+                            )
+
+                return headers
+
+            except Exception as e:
+                logger.error(f"OAuth token refresh failed: {e}")
+                return None
+
+        return refresh_oauth_token
 
     async def initialize(self, namespace: str = "stdio") -> bool:
         """Connect to MCP servers and initialize the tool registry."""
@@ -296,15 +440,61 @@ class ToolManager:
         try:
             from chuk_tool_processor.mcp.setup_mcp_sse import setup_mcp_sse
 
-            self.processor, self.stream_manager = await asyncio.wait_for(
-                setup_mcp_sse(
-                    servers=self._sse_servers,
-                    server_names=self.server_names,
-                    namespace=namespace,
-                    default_timeout=self.tool_timeout,
-                ),
-                timeout=self.initialization_timeout,
-            )
+            # Create OAuth refresh callback (NEW)
+            oauth_refresh_callback = self._create_oauth_refresh_callback()
+
+            try:
+                self.processor, self.stream_manager = await asyncio.wait_for(
+                    setup_mcp_sse(
+                        servers=self._sse_servers,
+                        server_names=self.server_names,
+                        namespace=namespace,
+                        default_timeout=self.tool_timeout,
+                        oauth_refresh_callback=oauth_refresh_callback,  # NEW
+                    ),
+                    timeout=self.initialization_timeout,
+                )
+            except Exception as setup_error:
+                error_msg = str(setup_error).lower()
+                # Also check the full exception chain for auth errors
+                full_error_context = ""
+                if hasattr(setup_error, "__cause__") and setup_error.__cause__:
+                    full_error_context += str(setup_error.__cause__).lower()
+                if hasattr(setup_error, "args"):
+                    full_error_context += " ".join(str(arg) for arg in setup_error.args).lower()
+
+                combined_error = error_msg + " " + full_error_context
+
+                # Check if this is a 401/auth error during setup
+                if ("401" in combined_error or "invalid_token" in combined_error or
+                    "invalid access token" in combined_error or "unauthorized" in combined_error):
+                    logger.warning("SSE server setup failed with authentication error")
+                    logger.info("Attempting to re-authenticate and retry...")
+
+                    # Try OAuth refresh callback to get new tokens
+                    new_headers = await oauth_refresh_callback()
+
+                    if new_headers:
+                        # Retry setup with new authentication
+                        logger.info("Retrying SSE server setup with refreshed authentication...")
+                        self.processor, self.stream_manager = await asyncio.wait_for(
+                            setup_mcp_sse(
+                                servers=self._sse_servers,
+                                server_names=self.server_names,
+                                namespace=namespace,
+                                default_timeout=self.tool_timeout,
+                                oauth_refresh_callback=oauth_refresh_callback,
+                            ),
+                            timeout=self.initialization_timeout,
+                        )
+                        logger.info("✅ SSE server setup succeeded after re-authentication")
+                    else:
+                        logger.error("Re-authentication failed, cannot setup SSE servers")
+                        raise
+                else:
+                    # Not an auth error, re-raise
+                    raise
+
             return True
 
         except ImportError as e:
@@ -321,15 +511,92 @@ class ToolManager:
                 setup_mcp_http_streamable,
             )
 
-            self.processor, self.stream_manager = await asyncio.wait_for(
-                setup_mcp_http_streamable(
-                    servers=self._http_servers,
-                    server_names=self.server_names,
-                    namespace=namespace,
-                    default_timeout=self.tool_timeout,
-                ),
-                timeout=self.initialization_timeout,
-            )
+            # Create OAuth refresh callback (NEW)
+            oauth_refresh_callback = self._create_oauth_refresh_callback()
+
+            try:
+                self.processor, self.stream_manager = await asyncio.wait_for(
+                    setup_mcp_http_streamable(
+                        servers=self._http_servers,
+                        server_names=self.server_names,
+                        namespace=namespace,
+                        default_timeout=self.tool_timeout,
+                        oauth_refresh_callback=oauth_refresh_callback,  # NEW
+                    ),
+                    timeout=self.initialization_timeout,
+                )
+            except Exception as setup_error:
+                error_msg = str(setup_error).lower()
+                # Also check the full exception chain for auth errors
+                full_error_context = ""
+                if hasattr(setup_error, "__cause__") and setup_error.__cause__:
+                    full_error_context += str(setup_error.__cause__).lower()
+                if hasattr(setup_error, "args"):
+                    full_error_context += " ".join(str(arg) for arg in setup_error.args).lower()
+
+                combined_error = error_msg + " " + full_error_context
+
+                # Check if this is a 401/auth error during setup
+                if ("401" in combined_error or "invalid_token" in combined_error or
+                    "invalid access token" in combined_error or "unauthorized" in combined_error):
+                    logger.warning("HTTP server setup failed with authentication error")
+                    logger.info("Attempting to re-authenticate and retry...")
+
+                    # Try OAuth refresh callback to get new tokens
+                    new_headers = await oauth_refresh_callback()
+
+                    if new_headers:
+                        # Retry setup with new authentication
+                        logger.info("Retrying HTTP server setup with refreshed authentication...")
+                        self.processor, self.stream_manager = await asyncio.wait_for(
+                            setup_mcp_http_streamable(
+                                servers=self._http_servers,
+                                server_names=self.server_names,
+                                namespace=namespace,
+                                default_timeout=self.tool_timeout,
+                                oauth_refresh_callback=oauth_refresh_callback,
+                            ),
+                            timeout=self.initialization_timeout,
+                        )
+                        logger.info("✅ HTTP server setup succeeded after re-authentication")
+                    else:
+                        logger.error("Re-authentication failed, cannot setup HTTP servers")
+                        raise
+                else:
+                    # Not an auth error, re-raise
+                    raise
+
+            # DEBUG: Check if processor has tools and attempt manual registration
+            if self.processor:
+                logger.info(f"HTTP setup returned processor: {type(self.processor)}")
+
+                # Try to manually trigger tool registration for HTTP servers
+                # This is a workaround for HTTP MCP servers not auto-registering tools
+                if (
+                    hasattr(self.stream_manager, "_clients")
+                    and self.stream_manager._clients
+                ):
+                    logger.info(
+                        "Attempting manual tool registration for HTTP MCP servers..."
+                    )
+                    for client_id, client in enumerate(self.stream_manager._clients):
+                        try:
+                            if hasattr(client, "tools") and client.tools:
+                                logger.info(
+                                    f"Client {client_id} has {len(client.tools)} tools available"
+                                )
+                                # Tools are in the client but need to be registered
+                                # This should be handled by chuk-tool-processor but appears to be missing
+                        except Exception as e:
+                            logger.debug(
+                                f"Could not check tools for client {client_id}: {e}"
+                            )
+
+            if self.stream_manager:
+                logger.info(
+                    f"HTTP setup returned stream_manager: {type(self.stream_manager)}"
+                )
+
             return True
 
         except ImportError as e:
@@ -344,7 +611,9 @@ class ToolManager:
         try:
             from chuk_tool_processor.mcp.setup_mcp_stdio import setup_mcp_stdio
 
-            logger.info(f"Setting up STDIO servers with {self.initialization_timeout}s timeout")
+            logger.info(
+                f"Setting up STDIO servers with {self.initialization_timeout}s timeout"
+            )
 
             # Try to pass initialization_timeout to setup_mcp_stdio
             # This controls the timeout for the initial connection/handshake
@@ -361,11 +630,14 @@ class ToolManager:
                         enable_retries=True,
                         max_retries=2,
                     ),
-                    timeout=self.initialization_timeout + 10.0,  # Add buffer for outer timeout
+                    timeout=self.initialization_timeout
+                    + 10.0,  # Add buffer for outer timeout
                 )
             except TypeError:
                 # Fallback if initialization_timeout parameter doesn't exist
-                logger.warning("initialization_timeout not supported by setup_mcp_stdio, using legacy call")
+                logger.warning(
+                    "initialization_timeout not supported by setup_mcp_stdio, using legacy call"
+                )
                 self.processor, self.stream_manager = await asyncio.wait_for(
                     setup_mcp_stdio(
                         config_file=self.config_file,
@@ -384,12 +656,17 @@ class ToolManager:
             return True
 
         except asyncio.TimeoutError:
-            logger.error(f"STDIO server initialization timed out after {self.initialization_timeout}s")
-            logger.error("This may indicate the server is not responding or is misconfigured")
+            logger.error(
+                f"STDIO server initialization timed out after {self.initialization_timeout}s"
+            )
+            logger.error(
+                "This may indicate the server is not responding or is misconfigured"
+            )
             return False
         except Exception as e:
             logger.error(f"STDIO server setup failed: {e}")
             import traceback
+
             traceback.print_exc()
             return False
 
@@ -439,6 +716,21 @@ class ToolManager:
             ToolRegistryProvider.get_registry(), timeout=30.0
         )
 
+        # DEBUG: Check how many tools are in the registry
+        try:
+            registry_items = await asyncio.wait_for(
+                self._registry.list_tools(), timeout=10.0
+            )
+            logger.info(
+                f"Registry has {len(registry_items)} tools registered after initialization"
+            )
+            if registry_items:
+                logger.info(f"Sample tools: {registry_items[:5]}")
+            else:
+                logger.warning("No tools found in registry after initialization!")
+        except Exception as e:
+            logger.error(f"Failed to list tools from registry: {e}")
+
         strategy = InProcessStrategy(
             self._registry,
             max_concurrency=self.max_concurrency,
@@ -460,10 +752,7 @@ class ToolManager:
             try:
                 logger.debug("Closing stream manager...")
                 # Set a reasonable timeout for cleanup
-                await asyncio.wait_for(
-                    self.stream_manager.close(),
-                    timeout=10.0
-                )
+                await asyncio.wait_for(self.stream_manager.close(), timeout=10.0)
                 logger.debug("Stream manager closed successfully")
             except asyncio.TimeoutError:
                 logger.warning("Stream manager close timed out after 10s")
@@ -476,10 +765,7 @@ class ToolManager:
         if self._executor:
             try:
                 logger.debug("Shutting down executor...")
-                await asyncio.wait_for(
-                    self._executor.shutdown(),
-                    timeout=5.0
-                )
+                await asyncio.wait_for(self._executor.shutdown(), timeout=5.0)
                 logger.debug("Executor shutdown successfully")
             except asyncio.TimeoutError:
                 logger.warning("Executor shutdown timed out after 5s")
@@ -495,13 +781,16 @@ class ToolManager:
     async def get_all_tools(self) -> List[ToolInfo]:
         """Return all available tools."""
         if not self._registry:
+            logger.warning("get_all_tools called but registry is None")
             return []
 
         tools = []  # type: ignore[unreachable]
         try:
+            logger.debug("get_all_tools: Listing tools from registry")
             registry_items = await asyncio.wait_for(
                 self._registry.list_tools(), timeout=30.0
             )
+            logger.info(f"get_all_tools: Found {len(registry_items)} tools in registry")
 
             for ns, name in registry_items:
                 try:
@@ -643,6 +932,16 @@ class ToolManager:
             logger.info(
                 f"EXECUTION: Executor completed in {elapsed:.2f}s, returned {len(results) if results else 0} results"
             )
+
+            # DEBUG: Log the raw result to understand error format
+            if results and results[0].error:
+                logger.warning("=" * 80)
+                logger.warning(
+                    f"DEBUG: Tool execution failed with error: {results[0].error}"
+                )
+                logger.warning(f"DEBUG: Error type: {type(results[0].error)}")
+                logger.warning(f"DEBUG: Full result object: {results[0]}")
+                logger.warning("=" * 80)
 
             if not results:
                 logger.error("EXECUTION: No results returned from executor")

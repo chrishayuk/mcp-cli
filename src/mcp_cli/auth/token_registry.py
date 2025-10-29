@@ -1,3 +1,4 @@
+# mcp_cli/auth/token_registry.py
 """Token registry for tracking stored tokens."""
 
 import json

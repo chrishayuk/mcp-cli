@@ -958,6 +958,17 @@ pre-commit install
 Explore the capabilities of MCP CLI:
 
 ```bash
+# Command Mode Demos
+
+# General cmd mode features (bash)
+bash examples/cmd_mode_demo.sh
+
+# LLM integration with cmd mode (bash)
+bash examples/cmd_mode_llm_demo.sh
+
+# Python integration example
+uv run examples/cmd_mode_python_demo.py
+
 # Custom Provider Management Demos
 
 # Interactive walkthrough demo (educational)

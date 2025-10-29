@@ -1,3 +1,4 @@
+# mcp_cli/auth/mcp_oauth.py
 """MCP OAuth 2.0 implementation following the MCP authorization specification.
 
 This implements:
@@ -13,76 +14,40 @@ import hashlib
 import secrets
 import urllib.parse
 import webbrowser
-from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
 from typing import Any, Dict, Optional
 from urllib.parse import urljoin
 
 import httpx
+from pydantic import BaseModel, Field
 
 from .oauth_config import OAuthTokens
 
 
-@dataclass
-class MCPAuthorizationMetadata:
+class MCPAuthorizationMetadata(BaseModel):
     """OAuth Authorization Server Metadata from .well-known endpoint."""
 
     authorization_endpoint: str
     token_endpoint: str
     registration_endpoint: Optional[str] = None
-    scopes_supported: Optional[list[str]] = None
-    response_types_supported: Optional[list[str]] = None
-    grant_types_supported: Optional[list[str]] = None
-    code_challenge_methods_supported: Optional[list[str]] = None
+    scopes_supported: list[str] = Field(default_factory=list)
+    response_types_supported: list[str] = Field(default_factory=lambda: ["code"])
+    grant_types_supported: list[str] = Field(default_factory=lambda: ["authorization_code", "refresh_token"])
+    code_challenge_methods_supported: list[str] = Field(default_factory=lambda: ["S256"])
 
-    @classmethod
-    def from_dict(cls, data: Dict) -> "MCPAuthorizationMetadata":
-        """Create from OAuth discovery response."""
-        return cls(
-            authorization_endpoint=data["authorization_endpoint"],
-            token_endpoint=data["token_endpoint"],
-            registration_endpoint=data.get("registration_endpoint"),
-            scopes_supported=data.get("scopes_supported", []),
-            response_types_supported=data.get("response_types_supported", ["code"]),
-            grant_types_supported=data.get(
-                "grant_types_supported", ["authorization_code", "refresh_token"]
-            ),
-            code_challenge_methods_supported=data.get(
-                "code_challenge_methods_supported", ["S256"]
-            ),
-        )
+    model_config = {"frozen": False}
 
 
-@dataclass
-class DynamicClientRegistration:
+class DynamicClientRegistration(BaseModel):
     """OAuth client credentials from dynamic registration."""
 
     client_id: str
     client_secret: Optional[str] = None
     client_id_issued_at: Optional[int] = None
-    client_secret_expires_at: Optional[int] = None
+    client_secret_expires_at: int = 0
 
-    @classmethod
-    def from_dict(cls, data: Dict) -> "DynamicClientRegistration":
-        """Create from registration response."""
-        return cls(
-            client_id=data["client_id"],
-            client_secret=data.get("client_secret"),
-            client_id_issued_at=data.get("client_id_issued_at"),
-            client_secret_expires_at=data.get("client_secret_expires_at", 0),
-        )
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for storage."""
-        result: Dict[str, Any] = {"client_id": self.client_id}
-        if self.client_secret:
-            result["client_secret"] = self.client_secret
-        if self.client_id_issued_at:
-            result["client_id_issued_at"] = self.client_id_issued_at
-        if self.client_secret_expires_at:
-            result["client_secret_expires_at"] = self.client_secret_expires_at
-        return result
+    model_config = {"frozen": False}
 
 
 class MCPOAuthClient:
@@ -125,7 +90,7 @@ class MCPOAuthClient:
         async with httpx.AsyncClient() as client:
             response = await client.get(discovery_url)
             response.raise_for_status()
-            metadata = MCPAuthorizationMetadata.from_dict(response.json())
+            metadata = MCPAuthorizationMetadata.model_validate(response.json())
             self._auth_metadata = metadata
             return metadata
 
@@ -166,7 +131,7 @@ class MCPOAuthClient:
                 headers={"Content-Type": "application/json"},
             )
             response.raise_for_status()
-            registration = DynamicClientRegistration.from_dict(response.json())
+            registration = DynamicClientRegistration.model_validate(response.json())
             self._client_registration = registration
             return registration
 
@@ -330,7 +295,7 @@ class MCPOAuthClient:
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
             response.raise_for_status()
-            return OAuthTokens.from_dict(response.json())
+            return OAuthTokens.model_validate(response.json())
 
     async def refresh_token(self, refresh_token: str) -> OAuthTokens:
         """
@@ -361,7 +326,7 @@ class MCPOAuthClient:
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
             response.raise_for_status()
-            return OAuthTokens.from_dict(response.json())
+            return OAuthTokens.model_validate(response.json())
 
     async def authorize(self, scopes: Optional[list[str]] = None) -> OAuthTokens:
         """

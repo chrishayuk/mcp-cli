@@ -1,3 +1,4 @@
+# mcp_cli/auth/provider_tokens.py
 """
 Provider token management with hierarchical resolution.
 
