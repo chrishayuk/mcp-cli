@@ -9,10 +9,19 @@ import logging
 from typing import Any, Dict, List, AsyncIterator, Optional
 
 from chuk_term.ui import output
+from chuk_ai_session_manager import SessionManager
 
 from mcp_cli.chat.system_prompt import generate_system_prompt
 from mcp_cli.tools.manager import ToolManager
-from mcp_cli.tools.models import ToolInfo, ServerInfo
+from mcp_cli.tools.models import (
+    ToolInfo,
+    ServerInfo,
+    ConversationHistory,
+    Message,
+    MessageRole,
+    TokenUsageStats,
+    ToolCall as PydanticToolCall
+)
 from mcp_cli.model_manager import ModelManager
 
 logger = logging.getLogger(__name__)
@@ -30,21 +39,45 @@ class ChatContext:
     Model management is completely delegated to ModelManager.
     """
 
-    def __init__(self, tool_manager: ToolManager, model_manager: ModelManager):
+    def __init__(
+        self,
+        tool_manager: ToolManager,
+        model_manager: ModelManager,
+        token_threshold: int = 150000,  # Conservative threshold for context window
+        enable_infinite_context: bool = True,
+    ):
         """
         Create chat context with required managers.
 
         Args:
             tool_manager: Tool management interface
             model_manager: Model configuration and LLM client manager
+            token_threshold: Token limit before auto-segmentation (default: 150k)
+            enable_infinite_context: Enable automatic context segmentation (default: True)
         """
         self.tool_manager = tool_manager
         self.model_manager = model_manager
+        self.token_threshold = token_threshold
+        self.enable_infinite_context = enable_infinite_context
 
         # Conversation state
         self.exit_requested = False
-        self.conversation_history: List[Dict[str, Any]] = []
-        self.tool_history: List[Dict[str, Any]] = []  # Track tool execution history
+
+        # Token usage tracking
+        self.token_stats: TokenUsageStats = TokenUsageStats()
+
+        # Conversation storage
+        # Note: We maintain our own message list because session manager doesn't support
+        # OpenAI's tool calling format (tool_calls, tool role, etc.)
+        # Session manager is used for token tracking and analytics only
+        self._messages: List[Dict[str, Any]] = []
+
+        # Session management - for token tracking and analytics
+        self.session_manager: Optional[SessionManager] = None
+        self._session_initialized = False
+
+        # Tool execution history
+        self.tool_history: List[Dict[str, Any]] = []
 
         # Tool state (filled during initialization)
         self.tools: List[ToolInfo] = []
@@ -114,12 +147,24 @@ class ChatContext:
         """Current model name."""
         return self.model_manager.get_active_model()
 
+    # ── Backward compatibility ────────────────────────────────────────────
+    @property
+    def conversation_history(self) -> List[Dict[str, Any]]:
+        """Backward compatibility: access to messages list."""
+        return self._messages
+
+    @conversation_history.setter
+    def conversation_history(self, value: List[Dict[str, Any]]) -> None:
+        """Backward compatibility: set messages list."""
+        self._messages = value
+
     # ── Initialization ────────────────────────────────────────────────────
     async def initialize(self) -> bool:
         """Initialize tools and conversation state."""
         try:
             await self._initialize_tools()
             self._initialize_conversation()
+            await self._initialize_session_manager()
 
             if not self.tools:
                 output.print(
@@ -135,6 +180,27 @@ class ChatContext:
             logger.exception("Error initializing chat context")
             output.print(f"[red]Error initializing chat context: {exc}[/red]")
             return False
+
+    async def _initialize_session_manager(self) -> None:
+        """Initialize the session manager as PRIMARY conversation storage."""
+        if self._session_initialized:
+            return
+
+        try:
+            # Create session manager with system prompt
+            self.session_manager = SessionManager(
+                system_prompt=self.system_prompt,
+                infinite_context=self.enable_infinite_context,
+                token_threshold=self.token_threshold
+            )
+
+            self._session_initialized = True
+            logger.info(f"Session manager initialized (infinite_context={self.enable_infinite_context}, threshold={self.token_threshold})")
+
+        except Exception as exc:
+            logger.error(f"Failed to initialize session manager: {exc}")
+            # Make session manager optional - don't fail if it can't initialize
+            logger.warning("Continuing without session manager")
 
     async def _initialize_tools(self) -> None:
         """Initialize tool discovery and adaptation."""
@@ -205,8 +271,10 @@ class ChatContext:
             # ToolInfo objects always have to_openai_format method
             tools_for_prompt.append(tool.to_openai_format())
 
-        system_prompt = generate_system_prompt(tools_for_prompt)
-        self.conversation_history = [{"role": "system", "content": system_prompt}]
+        self.system_prompt = generate_system_prompt(tools_for_prompt)
+
+        # Initialize message list with system prompt
+        self._messages = [{"role": "system", "content": self.system_prompt}]
 
     # ── Model change handling ─────────────────────────────────────────────
     async def refresh_after_model_change(self) -> None:
@@ -236,42 +304,120 @@ class ChatContext:
         return await self.tool_manager.get_server_for_tool(tool_name) or "Unknown"
 
     # ── Conversation management ───────────────────────────────────────────
-    def add_user_message(self, content: str) -> None:
+    async def add_user_message(self, content: str) -> None:
         """Add user message to conversation."""
-        self.conversation_history.append({"role": "user", "content": content})
+        # Add to our message list
+        self._messages.append({"role": "user", "content": content})
 
-    def add_assistant_message(self, content: str) -> None:
+        # Track in session manager for analytics
+        if self.session_manager:
+            await self.session_manager.user_says(content)
+
+        logger.debug(f"User message added: {content[:50]}...")
+
+    async def add_assistant_message(self, content: str, tool_calls: Optional[List[Any]] = None) -> None:
         """Add assistant message to conversation."""
-        self.conversation_history.append({"role": "assistant", "content": content})
+        # Build message for our list
+        msg: Dict[str, Any] = {"role": "assistant"}
+        if content:
+            msg["content"] = content
+        if tool_calls:
+            msg["tool_calls"] = tool_calls
+
+        # Add to our message list
+        self._messages.append(msg)
+
+        # Track in session manager for analytics (simplified - just track text content)
+        if self.session_manager:
+            message_content = content if content else "(tool call)"
+            await self.session_manager.ai_responds(
+                message_content,
+                model=f"{self.provider}/{self.model}"
+            )
+
+            # Update token stats
+            stats = await self.session_manager.get_stats()
+            if stats:
+                self.token_stats.total_tokens = stats.get("total_tokens", 0)
+                self.token_stats.prompt_tokens = stats.get("prompt_tokens", 0)
+                self.token_stats.completion_tokens = stats.get("completion_tokens", 0)
+                self.token_stats.estimated_cost = stats.get("estimated_cost", 0.0)
+                self.token_stats.segments = stats.get("session_segments", 1)
+
+                # Warn if approaching limits
+                if self.token_stats.approaching_limit(self.token_threshold):
+                    logger.warning(f"Approaching token threshold: {self.token_stats.total_tokens}/{self.token_threshold}")
+                    output.print(f"[yellow]Token usage: {self.token_stats.total_tokens}/{self.token_threshold} (80% threshold)[/yellow]")
+
+        logger.debug(f"Assistant message added: {content[:50] if content else '(tool call only)'}...")
+
+    async def add_tool_response(self, tool_call_id: str, content: str, name: str) -> None:
+        """Add tool response message to conversation."""
+        # Add to our message list
+        self._messages.append({
+            "role": "tool",
+            "tool_call_id": tool_call_id,
+            "content": content,
+            "name": name
+        })
+
+        # Track tool usage in session manager for analytics
+        if self.session_manager:
+            self.session_manager.tool_used(
+                tool_name=name,
+                arguments={},
+                result=content
+            )
+
+        logger.debug(f"Tool response added: {name}")
 
     def get_conversation_length(self) -> int:
         """Get conversation length (excluding system prompt)."""
-        return max(0, len(self.conversation_history) - 1)
+        count = len(self._messages)
+        if count > 0 and self._messages[0].get("role") == "system":
+            return count - 1
+        return count
 
-    def clear_conversation_history(self, keep_system_prompt: bool = True) -> None:
+    async def clear_conversation_history(self, keep_system_prompt: bool = True) -> None:
         """Clear conversation history."""
-        if (
-            keep_system_prompt
-            and self.conversation_history
-            and self.conversation_history[0].get("role") == "system"
-        ):
-            system_prompt = self.conversation_history[0]
-            self.conversation_history = [system_prompt]
+        # Reset token stats
+        self.token_stats = TokenUsageStats()
+
+        # Clear messages
+        if keep_system_prompt and self._messages and self._messages[0].get("role") == "system":
+            self._messages = [self._messages[0]]
         else:
-            self.conversation_history = []
+            self._messages = []
+
+        # Reinitialize session manager for fresh token tracking
+        self._session_initialized = False
+        await self._initialize_session_manager()
+
+        logger.info("Conversation history cleared")
 
     def regenerate_system_prompt(self) -> None:
         """Regenerate system prompt with current tools."""
-        system_prompt = generate_system_prompt(self.internal_tools)
-        if (
-            self.conversation_history
-            and self.conversation_history[0].get("role") == "system"
-        ):
-            self.conversation_history[0]["content"] = system_prompt
+        self.system_prompt = generate_system_prompt(self.internal_tools)
+
+        # Update in message list
+        if self._messages and self._messages[0].get("role") == "system":
+            self._messages[0]["content"] = self.system_prompt
         else:
-            self.conversation_history.insert(
-                0, {"role": "system", "content": system_prompt}
-            )
+            self._messages.insert(0, {"role": "system", "content": self.system_prompt})
+
+        # Update session manager if initialized
+        if self.session_manager:
+            self.session_manager.update_system_prompt(self.system_prompt)
+
+        logger.debug("System prompt regenerated")
+
+    async def get_messages_for_llm(self) -> List[Dict[str, Any]]:
+        """Get messages for LLM with proper OpenAI tool calling format."""
+        # Return our properly formatted message list
+        # Note: Session manager doesn't support OpenAI's tool calling format,
+        # so we maintain our own list. Session manager is used for token tracking only.
+        logger.debug(f"Retrieved {len(self._messages)} messages")
+        return self._messages
 
     # ── Simple getters ────────────────────────────────────────────────────
     def get_tool_count(self) -> int:
@@ -282,6 +428,23 @@ class ChatContext:
         """Get number of connected servers."""
         return len(self.server_info)
 
+    async def get_token_stats(self) -> TokenUsageStats:
+        """Get current token usage statistics."""
+        if self.session_manager:
+            try:
+                stats = await self.session_manager.get_stats()
+                if stats:
+                    # Update our token stats from session manager
+                    self.token_stats.total_tokens = stats.get("total_tokens", self.token_stats.total_tokens)
+                    self.token_stats.prompt_tokens = stats.get("prompt_tokens", self.token_stats.prompt_tokens)
+                    self.token_stats.completion_tokens = stats.get("completion_tokens", self.token_stats.completion_tokens)
+                    self.token_stats.estimated_cost = stats.get("estimated_cost", self.token_stats.estimated_cost)
+                    self.token_stats.segments = stats.get("session_segments", 1)
+            except Exception as exc:
+                logger.warning(f"Failed to get stats from session manager: {exc}")
+
+        return self.token_stats
+
     @staticmethod
     def get_display_name_for_tool(namespaced_tool_name: str) -> str:
         """Get display name for tool."""
@@ -291,7 +454,7 @@ class ChatContext:
     def to_dict(self) -> Dict[str, Any]:
         """Export context for command handlers."""
         return {
-            "conversation_history": self.conversation_history,
+            "token_stats": self.token_stats,
             "tools": self.tools,
             "internal_tools": self.internal_tools,
             "client": self.client,
@@ -304,6 +467,7 @@ class ChatContext:
             "exit_requested": self.exit_requested,
             "tool_to_server_map": self.tool_to_server_map,
             "tool_manager": self.tool_manager,
+            "session_manager": self.session_manager,
         }
 
     def update_from_dict(self, context_dict: Dict[str, Any]) -> None:
@@ -312,11 +476,11 @@ class ChatContext:
         if "exit_requested" in context_dict:
             self.exit_requested = context_dict["exit_requested"]
 
-        if "conversation_history" in context_dict:
-            self.conversation_history = context_dict["conversation_history"]
-
         if "model_manager" in context_dict:
             self.model_manager = context_dict["model_manager"]
+
+        if "session_manager" in context_dict:
+            self.session_manager = context_dict["session_manager"]
 
         # Tool state updates (for command handlers that modify tools)
         for key in [
@@ -352,6 +516,14 @@ class ChatContext:
             "conversation_length": self.get_conversation_length(),
             "tools_adapted": bool(self.openai_tools),
             "exit_requested": self.exit_requested,
+            "token_usage": {
+                "total": self.token_stats.total_tokens,
+                "prompt": self.token_stats.prompt_tokens,
+                "completion": self.token_stats.completion_tokens,
+                "cost": self.token_stats.estimated_cost,
+                "segments": self.token_stats.segments,
+            },
+            "session_manager_active": self.session_manager is not None,
         }
 
     def __repr__(self) -> str:

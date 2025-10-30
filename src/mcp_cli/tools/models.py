@@ -146,6 +146,191 @@ class ToolCallResult(BaseModel):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Chat conversation models (Pydantic)
+# ──────────────────────────────────────────────────────────────────────────────
+from enum import Enum
+from datetime import datetime
+
+
+class MessageRole(str, Enum):
+    """Role of a message in a conversation."""
+    SYSTEM = "system"
+    USER = "user"
+    ASSISTANT = "assistant"
+    TOOL = "tool"
+
+
+class ToolCall(BaseModel):
+    """Represents a tool call in a conversation."""
+    id: str
+    type: str = "function"
+    function: Dict[str, Any]  # Contains "name" and "arguments"
+
+    model_config = {"frozen": False, "arbitrary_types_allowed": True}
+
+    @property
+    def name(self) -> str:
+        """Get the tool/function name."""
+        return self.function.get("name", "")
+
+    @property
+    def arguments(self) -> Dict[str, Any]:
+        """Get the tool arguments as a dict."""
+        import json
+        args = self.function.get("arguments", "{}")
+        if isinstance(args, str):
+            try:
+                return json.loads(args)
+            except json.JSONDecodeError:
+                return {}
+        return args
+
+
+class Message(BaseModel):
+    """Represents a single message in a conversation."""
+    role: MessageRole
+    content: Optional[str] = None
+    name: Optional[str] = None  # For tool messages
+    tool_calls: Optional[List[ToolCall]] = None  # For assistant messages with tool calls
+    tool_call_id: Optional[str] = None  # For tool response messages
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+    model_config = {"frozen": False, "arbitrary_types_allowed": True}
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary format for LLM APIs."""
+        result: Dict[str, Any] = {"role": self.role.value}
+
+        if self.content is not None:
+            result["content"] = self.content
+
+        if self.name is not None:
+            result["name"] = self.name
+
+        if self.tool_calls:
+            result["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": tc.type,
+                    "function": tc.function
+                }
+                for tc in self.tool_calls
+            ]
+
+        if self.tool_call_id is not None:
+            result["tool_call_id"] = self.tool_call_id
+
+        return result
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "Message":
+        """Create a Message from a dictionary."""
+        # Handle role conversion
+        role_str = data.get("role", "user")
+        role = MessageRole(role_str) if isinstance(role_str, str) else role_str
+
+        # Handle tool_calls conversion
+        tool_calls = None
+        if "tool_calls" in data and data["tool_calls"]:
+            tool_calls = [
+                ToolCall(**tc) if isinstance(tc, dict) else tc
+                for tc in data["tool_calls"]
+            ]
+
+        return cls(
+            role=role,
+            content=data.get("content"),
+            name=data.get("name"),
+            tool_calls=tool_calls,
+            tool_call_id=data.get("tool_call_id"),
+            timestamp=data.get("timestamp", datetime.now())
+        )
+
+
+class ConversationHistory(BaseModel):
+    """Manages the conversation history with Pydantic validation."""
+    messages: List[Message] = Field(default_factory=list)
+    system_prompt: Optional[str] = None
+
+    model_config = {"frozen": False, "arbitrary_types_allowed": True}
+
+    def add_message(self, message: Message) -> None:
+        """Add a message to the history."""
+        self.messages.append(message)
+
+    def add_user_message(self, content: str) -> None:
+        """Add a user message."""
+        self.messages.append(Message(role=MessageRole.USER, content=content))
+
+    def add_assistant_message(self, content: str, tool_calls: Optional[List[ToolCall]] = None) -> None:
+        """Add an assistant message."""
+        self.messages.append(
+            Message(role=MessageRole.ASSISTANT, content=content, tool_calls=tool_calls)
+        )
+
+    def add_tool_response(self, tool_call_id: str, content: str, name: str) -> None:
+        """Add a tool response message."""
+        self.messages.append(
+            Message(
+                role=MessageRole.TOOL,
+                content=content,
+                tool_call_id=tool_call_id,
+                name=name
+            )
+        )
+
+    def get_messages_for_llm(self) -> List[Dict[str, Any]]:
+        """Get messages in the format expected by LLM APIs."""
+        return [msg.to_dict() for msg in self.messages]
+
+    def clear(self, keep_system: bool = True) -> None:
+        """Clear the conversation history."""
+        if keep_system and self.messages and self.messages[0].role == MessageRole.SYSTEM:
+            system_msg = self.messages[0]
+            self.messages = [system_msg]
+        else:
+            self.messages = []
+
+    def __len__(self) -> int:
+        """Return the number of messages."""
+        return len(self.messages)
+
+    @property
+    def length(self) -> int:
+        """Get the number of messages (excluding system prompt)."""
+        count = len(self.messages)
+        if count > 0 and self.messages[0].role == MessageRole.SYSTEM:
+            return count - 1
+        return count
+
+
+class TokenUsageStats(BaseModel):
+    """Token usage statistics for a conversation."""
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    estimated_cost: float = 0.0
+    segments: int = 1
+
+    model_config = {"frozen": False, "arbitrary_types_allowed": True}
+
+    def update(self, prompt: int, completion: int, cost: float = 0.0) -> None:
+        """Update token counts."""
+        self.prompt_tokens += prompt
+        self.completion_tokens += completion
+        self.total_tokens += (prompt + completion)
+        self.estimated_cost += cost
+
+    def approaching_limit(self, threshold: int) -> bool:
+        """Check if we're approaching the token threshold."""
+        return self.total_tokens >= (threshold * 0.8)  # 80% of threshold
+
+    def exceeded_limit(self, threshold: int) -> bool:
+        """Check if we've exceeded the token threshold."""
+        return self.total_tokens >= threshold
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # NEW - resource-related models (converted to Pydantic)
 # ──────────────────────────────────────────────────────────────────────────────
 class ResourceInfo(BaseModel):

@@ -43,14 +43,16 @@ class ConversationProcessor:
                     start_time = time.time()
 
                     # Skip slash commands (already handled by UI)
-                    last_msg = (
-                        self.context.conversation_history[-1]
-                        if self.context.conversation_history
-                        else {}
-                    )
-                    content = last_msg.get("content", "")
-                    if last_msg.get("role") == "user" and content.startswith("/"):
-                        return
+                    # Get last message from session manager
+                    try:
+                        messages = await self.context.get_messages_for_llm()
+                        last_msg = messages[-1] if messages else {}
+                        content = last_msg.get("content", "")
+                        if last_msg.get("role") == "user" and content.startswith("/"):
+                            return
+                    except Exception:
+                        # If we can't get messages, just continue
+                        pass
 
                     # Ensure OpenAI tools are loaded for function calling
                     if not getattr(self.context, "openai_tools", None):
@@ -119,11 +121,9 @@ class ConversationProcessor:
                             output.warning(
                                 f"Maximum conversation turns ({max_turns}) reached. Stopping to prevent infinite loop."
                             )
-                            self.context.conversation_history.append(
-                                {
-                                    "role": "assistant",
-                                    "content": "I've reached the maximum number of conversation turns. The tool results have been provided above.",
-                                }
+                            # Use async method for session tracking
+                            await self.context.add_assistant_message(
+                                "I've reached the maximum number of conversation turns. The tool results have been provided above."
                             )
                             break
 
@@ -161,6 +161,15 @@ class ConversationProcessor:
 
                         last_tool_signature = current_sig_str
 
+                        # IMPORTANT: Add assistant message with tool_calls BEFORE executing tools
+                        # This ensures the conversation has the proper structure:
+                        # 1. Assistant message with tool_calls
+                        # 2. Tool response messages
+                        await self.context.add_assistant_message(
+                            response_content or None,  # Can be None for tool-only responses
+                            tool_calls
+                        )
+
                         # Log the tool calls for debugging
                         for i, tc in enumerate(tool_calls):
                             log.debug(f"Tool call {i}: {tc}")
@@ -169,7 +178,7 @@ class ConversationProcessor:
                         name_mapping = getattr(self.context, "tool_name_mapping", {})
                         log.debug(f"Using name mapping: {name_mapping}")
 
-                        # Process tool calls - this will handle streaming display
+                        # Process tool calls - this will handle streaming display and add tool responses
                         await self.tool_processor.process_tool_calls(
                             tool_calls, name_mapping
                         )
@@ -194,10 +203,9 @@ class ConversationProcessor:
                         if hasattr(self.ui_manager, "streaming_handler"):
                             self.ui_manager.streaming_handler = None
 
-                    # Add to conversation history
-                    self.context.conversation_history.append(
-                        {"role": "assistant", "content": response_content}
-                    )
+                    # Add to conversation history with session tracking
+                    tool_calls_for_tracking = tool_calls if tool_calls else None
+                    await self.context.add_assistant_message(response_content, tool_calls_for_tracking)
                     break
 
                 except asyncio.CancelledError:
@@ -207,12 +215,8 @@ class ConversationProcessor:
                     import traceback
 
                     traceback.print_exc()
-                    self.context.conversation_history.append(
-                        {
-                            "role": "assistant",
-                            "content": f"I encountered an error: {exc}",
-                        }
-                    )
+                    # Use async method for session tracking
+                    await self.context.add_assistant_message(f"I encountered an error: {exc}")
                     break
         except asyncio.CancelledError:
             raise
@@ -235,9 +239,12 @@ class ConversationProcessor:
         self.ui_manager.streaming_handler = streaming_handler
 
         try:
+            # Get messages optimized for LLM (may use session manager's context management)
+            messages = await self.context.get_messages_for_llm()
+
             completion = await streaming_handler.stream_response(
                 client=self.context.client,
-                messages=self.context.conversation_history,
+                messages=messages,
                 tools=tools,
             )
 
@@ -278,9 +285,12 @@ class ConversationProcessor:
         """
         start_time = time.time()
 
+        # Get messages optimized for LLM (may use session manager's context management)
+        messages = await self.context.get_messages_for_llm()
+
         try:
             completion = await self.context.client.create_completion(
-                messages=self.context.conversation_history,
+                messages=messages,
                 tools=tools,
             )
         except Exception as e:
@@ -292,7 +302,7 @@ class ConversationProcessor:
                     "Tool definitions rejected by model, retrying without tools..."
                 )
                 completion = await self.context.client.create_completion(
-                    messages=self.context.conversation_history
+                    messages=messages
                 )
             else:
                 raise

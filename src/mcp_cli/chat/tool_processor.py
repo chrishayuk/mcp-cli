@@ -161,7 +161,7 @@ class ToolProcessor:
                     )
                     if not confirmed:
                         setattr(self.ui_manager, "interrupt_requested", True)
-                        self._add_cancelled_tool_to_history(
+                        await self._add_cancelled_tool_to_history(
                             llm_tool_name, call_id, raw_arguments
                         )
                         return
@@ -201,7 +201,7 @@ class ToolProcessor:
                     content = f"Error: {tool_result.error}"
 
                 # Add to conversation history
-                self._add_tool_call_to_history(
+                await self._add_tool_call_to_history(
                     llm_tool_name, call_id, arguments, content
                 )
 
@@ -238,7 +238,7 @@ class ToolProcessor:
 
                 # Add error to conversation history
                 error_content = f"Error: Could not execute tool. {exc}"
-                self._add_tool_call_to_history(
+                await self._add_tool_call_to_history(
                     llm_tool_name, call_id, raw_arguments, error_content
                 )
 
@@ -270,95 +270,47 @@ class ToolProcessor:
         else:
             return str(result)
 
-    def _add_tool_call_to_history(
+    async def _add_tool_call_to_history(
         self, llm_tool_name: str, call_id: str, arguments: Any, content: str
     ) -> None:
-        """Add tool call and response to conversation history."""
+        """Add tool call and response to conversation history via session manager."""
         try:
-            # Format arguments for history
-            if isinstance(arguments, dict):
-                arg_json = json.dumps(arguments)
-            else:
-                arg_json = str(arguments)
+            # First, add the assistant's tool call message
+            # The assistant message with tool_calls was already added by conversation.py
+            # We just need to add the tool response
 
-            # Add assistant's tool call
-            self.context.conversation_history.append(
-                {
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": [
-                        {
-                            "id": call_id,
-                            "type": "function",
-                            "function": {
-                                "name": llm_tool_name,
-                                "arguments": arg_json,
-                            },
-                        }
-                    ],
-                }
-            )
+            # Add tool response to session manager
+            await self.context.add_tool_response(call_id, content, llm_tool_name)
 
-            # Add tool's response
-            self.context.conversation_history.append(
-                {
-                    "role": "tool",
-                    "name": llm_tool_name,
-                    "content": content,
-                    "tool_call_id": call_id,
-                }
-            )
+            # Also track the tool usage for analytics
+            if self.context.session_manager:
+                self.context.session_manager.tool_used(
+                    tool_name=llm_tool_name,
+                    arguments=arguments if isinstance(arguments, dict) else {},
+                    result=content
+                )
 
             log.debug(f"Added tool call to conversation history: {llm_tool_name}")
 
         except Exception as e:
             log.error(f"Error updating conversation history: {e}")
 
-    def _add_cancelled_tool_to_history(
+    async def _add_cancelled_tool_to_history(
         self, llm_tool_name: str, call_id: str, raw_arguments: Any
     ) -> None:
-        """Add cancelled tool call to conversation history."""
+        """Add cancelled tool call to conversation history via session manager."""
         try:
-            # Add user cancellation
-            self.context.conversation_history.append(
-                {
-                    "role": "user",
-                    "content": f"Cancel {llm_tool_name} tool execution.",
-                }
-            )
+            # Add user cancellation message
+            await self.context.add_user_message(f"Cancel {llm_tool_name} tool execution.")
 
             # Add assistant acknowledgment
-            arg_json = (
-                json.dumps(raw_arguments)
-                if isinstance(raw_arguments, dict)
-                else str(raw_arguments or {})
-            )
-
-            self.context.conversation_history.append(
-                {
-                    "role": "assistant",
-                    "content": "User cancelled tool execution.",
-                    "tool_calls": [
-                        {
-                            "id": call_id,
-                            "type": "function",
-                            "function": {
-                                "name": llm_tool_name,
-                                "arguments": arg_json,
-                            },
-                        }
-                    ],
-                }
-            )
+            await self.context.add_assistant_message("User cancelled tool execution.")
 
             # Add tool cancellation response
-            self.context.conversation_history.append(
-                {
-                    "role": "tool",
-                    "name": llm_tool_name,
-                    "content": "Tool execution cancelled by user.",
-                    "tool_call_id": call_id,
-                }
+            await self.context.add_tool_response(
+                call_id,
+                "Tool execution cancelled by user.",
+                llm_tool_name
             )
 
         except Exception as e:
