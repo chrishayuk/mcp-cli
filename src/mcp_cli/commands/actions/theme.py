@@ -1,7 +1,7 @@
 # src/mcp_cli/commands/actions/theme.py
 """Theme command for direct CLI access."""
 
-from typing import Optional, List
+from typing import Optional
 import asyncio
 
 from chuk_term.ui import output, format_table
@@ -9,6 +9,7 @@ from chuk_term.ui.theme import set_theme
 from chuk_term.ui.prompts import ask
 
 from mcp_cli.utils.preferences import get_preference_manager, Theme
+from mcp_cli.commands.models import ThemeActionParams
 
 
 def theme_command(
@@ -174,12 +175,21 @@ def _show_theme_preview():
     output.hint("Hint message")
 
 
-async def theme_action_async(args: List[str]) -> None:
-    """Async wrapper for theme command."""
+async def theme_action_async(params: ThemeActionParams) -> None:
+    """
+    Async wrapper for theme command.
+
+    Args:
+        params: Theme action parameters
+
+    Example:
+        >>> params = ThemeActionParams(theme_name="dracula")
+        >>> await theme_action_async(params)
+    """
     # Convert to sync call
-    if not args:
-        # No args = list themes
+    if params.list_themes or not params.theme_name:
+        # No theme name = list themes
         theme_command(list_themes=True)
     else:
-        # First arg is theme name
-        theme_command(theme_name=args[0])
+        # Set the theme
+        theme_command(theme_name=params.theme_name)

@@ -65,6 +65,7 @@ Examples:
     async def execute(self, subcommand: str | None = None, **kwargs) -> CommandResult:
         """Execute the model command - handle direct model switching."""
         from mcp_cli.commands.actions.models import model_action_async
+        from mcp_cli.commands.models import ModelActionParams
 
         # Check if we have args (could be model name or subcommand)
         args = kwargs.get("args", [])
@@ -72,7 +73,10 @@ Examples:
         if not args:
             # No arguments - show current model status
             try:
-                await model_action_async([])
+                from mcp_cli.commands.models import ModelActionParams
+
+                params = ModelActionParams(args=[])
+                await model_action_async(params)
                 return CommandResult(success=True)
             except Exception as e:
                 return CommandResult(
@@ -98,11 +102,12 @@ Examples:
 
         # Otherwise, treat it as a model name to switch to
         try:
+            from mcp_cli.commands.models import ModelActionParams
+
             # Pass the model name directly to switch
-            if isinstance(args, list):
-                await model_action_async(args)
-            else:
-                await model_action_async([str(args)])
+            model_args = args if isinstance(args, list) else [str(args)]
+            params = ModelActionParams(args=model_args)
+            await model_action_async(params)
 
             return CommandResult(success=True)
         except Exception as e:
@@ -152,7 +157,10 @@ class ModelListCommand(UnifiedCommand):
         try:
             # Use the existing enhanced implementation
             # Pass "list" as the command
-            await model_action_async(["list"])
+            from mcp_cli.commands.models import ModelActionParams
+
+            params = ModelActionParams(args=["list"])
+            await model_action_async(params)
 
             # The existing implementation handles all output directly
             # Just return success
@@ -212,9 +220,12 @@ class ModelSetCommand(UnifiedCommand):
             )
 
         try:
+            from mcp_cli.commands.models import ModelActionParams
+
             # Use the existing enhanced implementation
             # Pass the model name directly to switch to it
-            await model_action_async([model_name])
+            params = ModelActionParams(args=[model_name])
+            await model_action_async(params)
 
             # The existing implementation handles all output directly
             return CommandResult(success=True, data={"model": model_name})
@@ -249,7 +260,10 @@ class ModelShowCommand(UnifiedCommand):
         try:
             # Use the existing enhanced implementation
             # Pass no arguments to show current status
-            await model_action_async([])
+            from mcp_cli.commands.models import ModelActionParams
+
+            params = ModelActionParams(args=[])
+            await model_action_async(params)
 
             # The existing implementation handles all output directly
             return CommandResult(success=True, data={"command": "model show"})

@@ -35,7 +35,9 @@ async def test_provider_show_status_no_args(provider_command):
         result = await provider_command.execute(args=[])
 
         assert result.success is True
-        mock_action.assert_called_once_with([])
+        mock_action.assert_called_once()
+        call_args = mock_action.call_args[0][0]
+        assert call_args.args == []
 
 
 @pytest.mark.asyncio
@@ -63,7 +65,9 @@ async def test_provider_switch_to_provider(provider_command):
         result = await provider_command.execute(args=["ollama"])
 
         assert result.success is True
-        mock_action.assert_called_once_with(["ollama"])
+        mock_action.assert_called_once()
+        call_args = mock_action.call_args[0][0]
+        assert call_args.args == ["ollama"]
 
 
 @pytest.mark.asyncio
@@ -91,7 +95,9 @@ async def test_provider_list_subcommand(provider_command):
         result = await provider_command.execute(args=["list"])
 
         assert result.success is True
-        mock_action.assert_called_once_with(["list"])
+        mock_action.assert_called_once()
+        call_args = mock_action.call_args[0][0]
+        assert call_args.args == ["list"]
 
 
 @pytest.mark.asyncio
@@ -105,7 +111,9 @@ async def test_provider_ls_alias(provider_command):
         result = await provider_command.execute(args=["ls"])
 
         assert result.success is True
-        mock_action.assert_called_once_with(["ls"])
+        mock_action.assert_called_once()
+        call_args = mock_action.call_args[0][0]
+        assert call_args.args == ["ls"]
 
 
 @pytest.mark.asyncio
@@ -121,7 +129,9 @@ async def test_provider_set_subcommand(provider_command):
         )
 
         assert result.success is True
-        mock_action.assert_called_once_with(["set", "openai", "api_key", "test-key"])
+        mock_action.assert_called_once()
+        call_args = mock_action.call_args[0][0]
+        assert call_args.args == ["set", "openai", "api_key", "test-key"]
 
 
 @pytest.mark.asyncio
@@ -150,7 +160,9 @@ async def test_provider_with_string_args(provider_command):
         result = await provider_command.execute(args="ollama")
 
         assert result.success is True
-        mock_action.assert_called_once_with(["ollama"])
+        mock_action.assert_called_once()
+        call_args = mock_action.call_args[0][0]
+        assert call_args.args == ["ollama"]
 
 
 @pytest.mark.asyncio
@@ -164,7 +176,9 @@ async def test_provider_with_multiple_args(provider_command):
         result = await provider_command.execute(args=["openai", "gpt-4"])
 
         assert result.success is True
-        mock_action.assert_called_once_with(["openai", "gpt-4"])
+        mock_action.assert_called_once()
+        call_args = mock_action.call_args[0][0]
+        assert call_args.args == ["openai", "gpt-4"]
 
 
 @pytest.mark.asyncio
@@ -179,4 +193,6 @@ async def test_provider_with_no_kwargs(provider_command):
         result = await provider_command.execute()
 
         assert result.success is True
-        mock_action.assert_called_once_with([])  # Should default to empty list
+        mock_action.assert_called_once()
+        call_args = mock_action.call_args[0][0]
+        assert call_args.args == []  # Should default to empty list

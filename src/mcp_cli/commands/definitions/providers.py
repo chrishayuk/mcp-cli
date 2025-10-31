@@ -111,7 +111,10 @@ Note: API keys are NEVER stored in config. Use environment variables:
 
             try:
                 # Default to list when no arguments (like /models does)
-                await provider_action_async(["list"])
+                from mcp_cli.commands.models import ProviderActionParams
+
+                params = ProviderActionParams(args=["list"])
+                await provider_action_async(params)
                 return CommandResult(success=True)
             except Exception as e:
                 return CommandResult(
@@ -138,11 +141,13 @@ Note: API keys are NEVER stored in config. Use environment variables:
         # Otherwise, treat it as a provider name to switch to
         try:
             # Pass the provider name directly to switch
-            if isinstance(args, list):
-                await provider_action_async(args)
-            else:
-                await provider_action_async([str(args)])
+            from mcp_cli.commands.models import ProviderActionParams
 
+            if isinstance(args, list):
+                params = ProviderActionParams(args=args)
+            else:
+                params = ProviderActionParams(args=[str(args)])
+            await provider_action_async(params)
             return CommandResult(success=True)
         except Exception as e:
             return CommandResult(
@@ -186,7 +191,10 @@ class ProviderListCommand(UnifiedCommand):
             # Use the existing enhanced implementation
             # It handles all the display internally with rich formatting
             # Pass "list" as the command
-            await provider_action_async(["list"])
+            from mcp_cli.commands.models import ProviderActionParams
+
+            params = ProviderActionParams(args=["list"])
+            await provider_action_async(params)
 
             # The existing implementation handles all output directly
             # Just return success
@@ -248,7 +256,10 @@ class ProviderSetCommand(UnifiedCommand):
         try:
             # Use the existing enhanced implementation
             # Pass the provider name directly to switch to it
-            await provider_action_async([provider_name])
+            from mcp_cli.commands.models import ProviderActionParams
+
+            params = ProviderActionParams(args=[provider_name])
+            await provider_action_async(params)
 
             # The existing implementation handles all output directly
             return CommandResult(success=True, data={"provider": provider_name})
@@ -281,9 +292,12 @@ class ProviderShowCommand(UnifiedCommand):
         from mcp_cli.commands.actions.providers import provider_action_async
 
         try:
+            from mcp_cli.commands.models import ProviderActionParams
+
             # Use the existing enhanced implementation
             # Pass no arguments to show current status
-            await provider_action_async([])
+            params = ProviderActionParams(args=[])
+            await provider_action_async(params)
 
             # The existing implementation handles all output directly
             return CommandResult(success=True, data={"command": "provider show"})

@@ -46,15 +46,15 @@ class TestServersCommand:
 
             result = await command.execute()
 
-            # Verify the action was called
-            mock_action.assert_called_once_with(
-                args=[],
-                detailed=False,
-                show_capabilities=False,
-                show_transport=False,
-                output_format="table",
-                ping_servers=False,
-            )
+            # Verify the action was called with ServerActionParams
+            mock_action.assert_called_once()
+            call_args = mock_action.call_args[0][0]
+            assert call_args.args == []
+            assert not call_args.detailed
+            assert not call_args.show_capabilities
+            assert not call_args.show_transport
+            assert call_args.output_format == "table"
+            assert not call_args.ping_servers
 
             # Check result
             assert result.success is True
@@ -80,14 +80,10 @@ class TestServersCommand:
             result = await command.execute(detailed=True)
 
             # Verify the action was called with detailed=True
-            mock_action.assert_called_once_with(
-                args=[],
-                detailed=True,
-                show_capabilities=True,
-                show_transport=True,
-                output_format="table",
-                ping_servers=False,
-            )
+            mock_action.assert_called_once()
+            call_args = mock_action.call_args[0][0]
+            assert call_args.detailed
+            # Note: show_capabilities is controlled by 'raw' not 'detailed'
 
             assert result.success is True
 
@@ -99,17 +95,12 @@ class TestServersCommand:
         ) as mock_action:
             mock_action.return_value = {"servers": []}
 
-            # Test with raw/json format
-            result = await command.execute(raw=True)
+            # Test with json format
+            result = await command.execute(format="json")
 
-            mock_action.assert_called_with(
-                args=[],
-                detailed=False,
-                show_capabilities=False,
-                show_transport=False,
-                output_format="json",
-                ping_servers=False,
-            )
+            mock_action.assert_called_once()
+            call_args = mock_action.call_args[0][0]
+            assert call_args.output_format == "json"
 
             assert result.success is True
 

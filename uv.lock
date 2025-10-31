@@ -438,16 +438,16 @@ wheels = [
 
 [[package]]
 name = "chuk-mcp-client-oauth"
-version = "0.1.3"
+version = "0.1.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
     { name = "httpx" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/56/6e/143e202e278140133eb6416553a8a192d794d13e2bdb54bf31b8fe29111b/chuk_mcp_client_oauth-0.1.3.tar.gz", hash = "sha256:74dbb9dece09ca67c2091f2b4bdef8df1a7c4b1250f5daaa9c8796b524c05c35", size = 162946, upload-time = "2025-10-31T01:28:11.094Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/95/f8/70b17dd7bcb1a9c9807824fc20d6d48acb4df2df0fb84f40516785e75ba4/chuk_mcp_client_oauth-0.1.5.tar.gz", hash = "sha256:67a05492cfb026249ecd07915dffa8c6d8d201012be171875312137fd5188068", size = 163198, upload-time = "2025-10-31T16:21:24.681Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2d/f1/4fd298635430ed594f0ca162b629cb9b323dc36ec0cf09644f65c65e9d24/chuk_mcp_client_oauth-0.1.3-py3-none-any.whl", hash = "sha256:51fe3ddf779b8ebea9425103983ea1d8ea5601c483b71e4ab141d4b6255f6555", size = 46646, upload-time = "2025-10-31T01:28:09.371Z" },
+    { url = "https://files.pythonhosted.org/packages/29/21/aecbe4e4713cdf6c56ad50f5780e916e3108a3c174ebcf1a35926be419b5/chuk_mcp_client_oauth-0.1.5-py3-none-any.whl", hash = "sha256:8bce3295d0818df4f20558e7d4156fd6ce1b0e266e4ebf56e4faac9ef2a30c8b", size = 46828, upload-time = "2025-10-31T16:21:21.871Z" },
 ]
 
 [[package]]
@@ -1367,7 +1367,7 @@ wheels = [
 
 [[package]]
 name = "mcp-cli"
-version = "0.8.9"
+version = "0.9"
 source = { editable = "." }
 dependencies = [
     { name = "asyncio" },
@@ -1409,7 +1409,7 @@ requires-dist = [
     { name = "asyncio", specifier = ">=3.4.3" },
     { name = "asyncio", marker = "extra == 'dev'", specifier = ">=3.4.3" },
     { name = "chuk-llm", extras = ["all"], specifier = ">=0.12.7" },
-    { name = "chuk-mcp-client-oauth", specifier = ">=0.1.3" },
+    { name = "chuk-mcp-client-oauth", specifier = ">=0.1.5" },
     { name = "chuk-term", specifier = ">=0.1.3" },
     { name = "chuk-tool-processor", specifier = ">=0.9.5" },
     { name = "cryptography", specifier = ">=44.0.0" },

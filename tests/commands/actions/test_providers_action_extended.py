@@ -9,6 +9,7 @@ from mcp_cli.commands.actions.providers import (
     _render_diagnostic_optimized,
     _switch_provider_enhanced,
 )
+from mcp_cli.commands.models import ProviderActionParams
 
 
 @pytest.fixture
@@ -56,7 +57,7 @@ async def test_provider_action_config_command(mock_context, mock_model_manager):
         "mcp_cli.commands.actions.providers.get_context", return_value=mock_context
     ):
         with patch("mcp_cli.commands.actions.providers._render_config") as mock_config:
-            await provider_action_async(["config"])
+            await provider_action_async(ProviderActionParams(args=["config"]))
 
             mock_config.assert_called_once_with(mock_model_manager)
 
@@ -74,7 +75,9 @@ async def test_provider_action_diagnostic_command_with_target(
         with patch(
             "mcp_cli.commands.actions.providers._render_diagnostic_optimized"
         ) as mock_diag:
-            await provider_action_async(["diagnostic", "test-provider"])
+            await provider_action_async(
+                ProviderActionParams(args=["diagnostic", "test-provider"])
+            )
 
             mock_diag.assert_called_once_with(mock_model_manager, "test-provider")
 
@@ -88,7 +91,9 @@ async def test_provider_action_set_command(mock_context, mock_model_manager):
         "mcp_cli.commands.actions.providers.get_context", return_value=mock_context
     ):
         with patch("mcp_cli.commands.actions.providers._mutate") as mock_mutate:
-            await provider_action_async(["set", "openai", "api_key", "test-key"])
+            await provider_action_async(
+                ProviderActionParams(args=["set", "openai", "api_key", "test-key"])
+            )
 
             mock_mutate.assert_called_once_with(
                 mock_model_manager, "openai", "api_key", "test-key"
@@ -104,7 +109,9 @@ async def test_provider_action_set_command_no_value(mock_context, mock_model_man
         "mcp_cli.commands.actions.providers.get_context", return_value=mock_context
     ):
         with patch("mcp_cli.commands.actions.providers._mutate") as mock_mutate:
-            await provider_action_async(["set", "openai", "api_key"])
+            await provider_action_async(
+                ProviderActionParams(args=["set", "openai", "api_key"])
+            )
 
             mock_mutate.assert_called_once_with(
                 mock_model_manager, "openai", "api_key", None
@@ -292,7 +299,7 @@ async def test_provider_action_async_status_exception():
         "mcp_cli.commands.actions.providers.get_context", return_value=mock_context
     ):
         with patch("mcp_cli.commands.actions.providers.output") as mock_output:
-            await provider_action_async([])
+            await provider_action_async(ProviderActionParams(args=[]))
 
             # Should handle exception and show fallback
             mock_output.info.assert_any_call("Current provider: test")
@@ -323,7 +330,7 @@ async def test_provider_action_async_status_not_ready():
                 "mcp_cli.commands.actions.providers._get_provider_status_enhanced",
                 return_value=("❌", "Not Ready", "No API key"),
             ):
-                await provider_action_async([])
+                await provider_action_async(ProviderActionParams(args=[]))
 
                 # Should show warning about status
                 mock_output.warning.assert_called()

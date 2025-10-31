@@ -12,11 +12,12 @@ Public functions:
 from __future__ import annotations
 
 import inspect
-from typing import Any, Dict, List
+from typing import List
 
 from mcp_cli.utils.async_utils import run_blocking
 from chuk_term.ui import output, format_table
 from mcp_cli.context import get_context
+from mcp_cli.commands.models import ResourceInfoResponse
 
 
 def _human_size(size: int | None) -> str:
@@ -31,12 +32,12 @@ def _human_size(size: int | None) -> str:
     return f"{current_size:.1f} TB"
 
 
-async def resources_action_async() -> List[Dict[str, Any]]:
+async def resources_action_async() -> List[ResourceInfoResponse]:
     """
     Fetch and display resources from all connected MCP servers.
 
     Returns:
-        List of resource dictionaries from all servers.
+        List of resource response models from all servers.
     """
     context = get_context()
     tm = context.tool_manager
@@ -57,27 +58,39 @@ async def resources_action_async() -> List[Dict[str, Any]]:
         output.info("No resources recorded.")
         return []
 
-    # Build table data
+    # Convert to Pydantic models
+    resource_models = []
     table_data = []
     columns = ["Server", "URI", "Size", "MIME-type"]
 
     for item in resources:
+        # Create Pydantic model
+        resource_model = ResourceInfoResponse(
+            uri=item.get("uri", "-"),
+            name=item.get("name"),
+            description=item.get("description"),
+            mime_type=item.get("mimeType"),
+            server=item.get("server", "-"),
+        )
+        resource_models.append(resource_model)
+
+        # Build table row
         table_data.append(
             {
-                "Server": item.get("server", "-"),
-                "URI": item.get("uri", "-"),
+                "Server": resource_model.server,
+                "URI": resource_model.uri,
                 "Size": _human_size(item.get("size")),
-                "MIME-type": item.get("mimeType", "-"),
+                "MIME-type": resource_model.mime_type or "-",
             }
         )
 
     # Display table
     table = format_table(table_data, title="Resources", columns=columns)
     output.print_table(table)
-    return list(resources)
+    return resource_models
 
 
-def resources_action() -> List[Dict[str, Any]]:
+def resources_action() -> List[ResourceInfoResponse]:
     """
     Sync wrapper for resources_action_async.
 

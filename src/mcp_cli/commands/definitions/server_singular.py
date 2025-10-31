@@ -73,12 +73,17 @@ Note: User-added servers persist in ~/.mcp-cli/preferences.json
 
         if not args:
             # No args - show list of servers
-            await servers_action_async()
+            from mcp_cli.commands.models import ServerActionParams
+
+            await servers_action_async(ServerActionParams())
             return CommandResult(success=True)
 
         try:
+            from mcp_cli.commands.models import ServerActionParams
+
             # Pass args to the enhanced servers action which handles all management
-            await servers_action_async(args=args)
+            params = ServerActionParams(args=args)
+            await servers_action_async(params)
             return CommandResult(success=True)
         except Exception as e:
             return CommandResult(

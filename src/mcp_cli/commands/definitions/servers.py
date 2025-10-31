@@ -82,28 +82,32 @@ Note: For server management (add/remove/enable/disable), use /server command
 
     async def execute(self, **kwargs) -> CommandResult:
         """Execute the servers command."""
-        # Import the servers action from the actions module
+        # Import the servers action and models
         from mcp_cli.commands.actions.servers import servers_action_async
+        from mcp_cli.commands.models import ServerActionParams
 
         # Extract parameters for the existing implementation
         detailed = kwargs.get("detailed", False)
         show_raw = kwargs.get("raw", False)
         ping_servers = kwargs.get("ping", False)
+        output_format = kwargs.get("format", "table")
 
         # Check if there are additional arguments for management commands
         args = kwargs.get("args", [])
 
         try:
-            # Use the existing enhanced implementation
-            # It handles all the display internally
-            server_info = await servers_action_async(
-                args=args if args else [],  # Pass args for management commands
+            # Create Pydantic model from parameters
+            params = ServerActionParams(
+                args=args if args else [],
                 detailed=detailed,
-                show_capabilities=detailed,
-                show_transport=detailed,
-                output_format="json" if show_raw else "table",
+                show_capabilities=show_raw,
+                output_format=output_format,
                 ping_servers=ping_servers,
             )
+
+            # Use the existing enhanced implementation
+            # It handles all the display internally
+            server_info = await servers_action_async(params)
 
             # The existing implementation handles all output directly via output.print
             # Just return success

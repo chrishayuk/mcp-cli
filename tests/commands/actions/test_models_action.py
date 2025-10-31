@@ -13,6 +13,7 @@ from mcp_cli.commands.actions.models import (
     _check_local_ollama,
     model_action,
 )
+from mcp_cli.commands.models import ModelActionParams
 
 
 @pytest.fixture
@@ -47,7 +48,7 @@ async def test_model_action_async_no_args(mock_context):
         with patch(
             "mcp_cli.commands.actions.models._show_status", new_callable=AsyncMock
         ) as mock_show:
-            await model_action_async([])
+            await model_action_async(ModelActionParams(args=[]))
             mock_show.assert_called_once()
 
 
@@ -59,7 +60,7 @@ async def test_model_action_async_no_model_manager():
 
     with patch("mcp_cli.commands.actions.models.get_context", return_value=context):
         with patch("mcp_cli.commands.actions.models.output.error") as mock_error:
-            await model_action_async([])
+            await model_action_async(ModelActionParams(args=[]))
             mock_error.assert_called_with("Model manager not available")
 
 
@@ -72,7 +73,7 @@ async def test_model_action_async_list_command(mock_context):
         with patch(
             "mcp_cli.commands.actions.models._list_models", new_callable=AsyncMock
         ) as mock_list:
-            await model_action_async(["list"])
+            await model_action_async(ModelActionParams(args=["list"]))
             mock_list.assert_called_once()
 
 
@@ -85,7 +86,7 @@ async def test_model_action_async_refresh_command(mock_context):
         with patch(
             "mcp_cli.commands.actions.models._refresh_models", new_callable=AsyncMock
         ) as mock_refresh:
-            await model_action_async(["refresh"])
+            await model_action_async(ModelActionParams(args=["refresh"]))
             mock_refresh.assert_called_once()
 
 
@@ -98,7 +99,7 @@ async def test_model_action_async_switch_model(mock_context):
         with patch(
             "mcp_cli.commands.actions.models._switch_model", new_callable=AsyncMock
         ) as mock_switch:
-            await model_action_async(["new-model"])
+            await model_action_async(ModelActionParams(args=["new-model"]))
             mock_switch.assert_called_once()
 
 
@@ -443,7 +444,9 @@ def test_model_action_sync():
             args = ["test", "args"]
             model_action(args)
 
-            # Verify async function was called
-            mock_async.assert_called_with(args)
+            # Verify async function was called with ModelActionParams
+            mock_async.assert_called_once()
+            call_args = mock_async.call_args[0][0]
+            assert call_args.args == args
             # Verify run_blocking was called with the coroutine
             mock_run.assert_called_once()

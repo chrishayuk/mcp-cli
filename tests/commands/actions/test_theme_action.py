@@ -11,6 +11,7 @@ from mcp_cli.commands.actions.theme import (
     theme_action_async,
 )
 from mcp_cli.utils.preferences import Theme
+from mcp_cli.commands.models import ThemeActionParams
 
 
 @pytest.fixture
@@ -254,7 +255,7 @@ def test_show_theme_preview():
 async def test_theme_action_async_no_args():
     """Test async theme action with no arguments."""
     with patch("mcp_cli.commands.actions.theme.theme_command") as mock_command:
-        await theme_action_async([])
+        await theme_action_async(ThemeActionParams())
 
         mock_command.assert_called_with(list_themes=True)
 
@@ -263,7 +264,7 @@ async def test_theme_action_async_no_args():
 async def test_theme_action_async_with_theme_name():
     """Test async theme action with theme name."""
     with patch("mcp_cli.commands.actions.theme.theme_command") as mock_command:
-        await theme_action_async(["dark"])
+        await theme_action_async(ThemeActionParams(theme_name="dark"))
 
         mock_command.assert_called_with(theme_name="dark")
 
@@ -272,6 +273,6 @@ async def test_theme_action_async_with_theme_name():
 async def test_theme_action_async_multiple_args():
     """Test async theme action with multiple arguments (uses first one)."""
     with patch("mcp_cli.commands.actions.theme.theme_command") as mock_command:
-        await theme_action_async(["dark", "extra", "args"])
+        await theme_action_async(ThemeActionParams(theme_name="dark"))
 
         mock_command.assert_called_with(theme_name="dark")

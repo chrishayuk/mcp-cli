@@ -6,6 +6,7 @@ from mcp_cli.commands.base import (
     UnifiedCommand,
     CommandMode,
     CommandResult,
+    CommandGroup,
 )
 
 
@@ -42,6 +43,40 @@ class DummyCommand(UnifiedCommand):
 
     async def execute(self, **kwargs) -> CommandResult:
         return CommandResult(success=True, output=f"{self.name} executed")
+
+
+class DummyCommandGroup(CommandGroup):
+    """Dummy command group for testing."""
+
+    def __init__(
+        self, name="testgroup", description="Test group", modes=CommandMode.ALL
+    ):
+        super().__init__()
+        self._name = name
+        self._description = description
+        self._modes = modes
+        self._aliases = []
+        self._hidden = False
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def description(self) -> str:
+        return self._description
+
+    @property
+    def modes(self) -> CommandMode:
+        return self._modes
+
+    @property
+    def aliases(self):
+        return self._aliases
+
+    @property
+    def hidden(self):
+        return self._hidden
 
 
 class TestUnifiedCommandRegistry:
@@ -251,3 +286,93 @@ class TestUnifiedCommandRegistry:
         registry2 = UnifiedCommandRegistry()
         assert registry1 is not registry2
         assert registry2.get("test") is None
+
+    def test_register_to_nonexistent_group(self):
+        """Test registering a command to a non-existent group."""
+        cmd = DummyCommand(name="subcommand")
+
+        # Try to register to a group that doesn't exist
+        # Should log warning and not register
+        self.registry.register(cmd, group="nonexistent_group")
+
+        # Command should not be registered
+        assert self.registry.get("subcommand") is None
+
+    def test_get_command_names_with_hidden_commands(self):
+        """Test that hidden commands are not in the command names list."""
+        cmd_visible = DummyCommand(name="visible")
+        cmd_hidden = DummyCommand(name="hidden")
+        cmd_hidden._hidden = True
+
+        self.registry.register(cmd_visible)
+        self.registry.register(cmd_hidden)
+
+        # Without aliases
+        names = self.registry.get_command_names(include_aliases=False)
+        assert "visible" in names
+        assert "hidden" not in names
+
+        # With aliases
+        names = self.registry.get_command_names(include_aliases=True)
+        assert "visible" in names
+        assert "hidden" not in names
+
+    def test_register_command_group_and_subcommands(self):
+        """Test registering a command group and accessing its subcommands."""
+        # Create a command group
+        group = DummyCommandGroup(name="tools")
+
+        # Register the group as a top-level command
+        self.registry.register(group)
+
+        # Pre-register the group in _groups for subcommand registration
+        self.registry._groups["tools"] = group
+
+        # Create and register subcommands
+        list_cmd = DummyCommand(name="list", description="List tools")
+        call_cmd = DummyCommand(name="call", description="Call a tool")
+
+        self.registry.register(list_cmd, group="tools")
+        self.registry.register(call_cmd, group="tools")
+
+        # Verify the group is registered
+        assert self.registry.get("tools") is group
+
+        # Verify we can get subcommands
+        assert self.registry.get("tools list") is list_cmd
+        assert self.registry.get("tools call") is call_cmd
+
+    def test_get_subcommand_with_mode_filter(self):
+        """Test getting a subcommand with mode filtering."""
+        # Create a command group
+        group = DummyCommandGroup(name="tools", modes=CommandMode.ALL)
+        self.registry.register(group)
+        self.registry._groups["tools"] = group
+
+        # Create subcommands with different modes
+        list_cmd = DummyCommand(name="list", modes=CommandMode.CHAT)
+        call_cmd = DummyCommand(name="call", modes=CommandMode.CLI)
+
+        self.registry.register(list_cmd, group="tools")
+        self.registry.register(call_cmd, group="tools")
+
+        # Get subcommand with mode filter
+        assert self.registry.get("tools list", mode=CommandMode.CHAT) is list_cmd
+        assert self.registry.get("tools list", mode=CommandMode.CLI) is None
+
+        assert self.registry.get("tools call", mode=CommandMode.CLI) is call_cmd
+        assert self.registry.get("tools call", mode=CommandMode.CHAT) is None
+
+    def test_get_nonexistent_subcommand(self):
+        """Test getting a non-existent subcommand returns None."""
+        # Create a command group
+        group = DummyCommandGroup(name="tools")
+        self.registry.register(group)
+        self.registry._groups["tools"] = group
+
+        # Create a subcommand
+        list_cmd = DummyCommand(name="list")
+        self.registry.register(list_cmd, group="tools")
+
+        # Try to get non-existent subcommand
+        assert self.registry.get("tools nonexistent") is None

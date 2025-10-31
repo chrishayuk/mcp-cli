@@ -49,7 +49,9 @@ class TestProviderCommandCoverage:
             mock_action.return_value = None
             result = await set_command.execute(args="anthropic")
             assert result.success is True
-            mock_action.assert_called_once_with(["anthropic"])
+            mock_action.assert_called_once()
+        call_args = mock_action.call_args[0][0]
+        assert call_args.args == ["anthropic"]
 
     @pytest.mark.asyncio
     async def test_provider_set_from_args_list(self, set_command):
@@ -127,7 +129,10 @@ class TestServerSingularCommandCoverage:
             mock_action.return_value = []
             result = await command.execute(args="test-server")
             assert result.success is True
-            mock_action.assert_called_once_with(args=["test-server"])
+            # Verify ServerActionParams was created with the right args
+            mock_action.assert_called_once()
+            call_args = mock_action.call_args[0][0]
+            assert call_args.args == ["test-server"]
 
     @pytest.mark.asyncio
     async def test_server_details_error(self, command):
@@ -149,4 +154,7 @@ class TestServerSingularCommandCoverage:
             mock_action.return_value = []
             result = await command.execute()
             assert result.success is True
-            mock_action.assert_called_once_with()
+            # Verify ServerActionParams was created with empty args
+            mock_action.assert_called_once()
+            call_args = mock_action.call_args[0][0]
+            assert call_args.args == []
