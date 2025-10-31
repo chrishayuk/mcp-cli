@@ -18,6 +18,7 @@ from chuk_term.ui import output, format_table
 from mcp_cli.context import get_context
 from mcp_cli.config.config_manager import ConfigManager, ServerConfig
 from mcp_cli.utils.preferences import get_preference_manager
+from mcp_cli.commands.models import ServerActionParams, ServerInfoResponse
 
 
 def _get_server_icon(capabilities: Dict[str, Any], tool_count: int) -> str:
@@ -556,16 +557,16 @@ async def _show_connected_server_details(server) -> None:
     output.tip("💡 Use: /servers to list all servers  |  /tools to see available tools")
 
 
-async def servers_action_async(
-    args: Optional[List[str]] = None,
-    detailed: bool = False,
-    show_capabilities: bool = False,
-    show_transport: bool = False,
-    output_format: str = "table",
-    ping_servers: bool = False,
-) -> List[Dict[str, Any]]:
+async def servers_action_async(params: ServerActionParams) -> List[ServerInfoResponse]:
     """
     MCP server management action.
+
+    Args:
+        params: Server action parameters
+
+    Example:
+        >>> params = ServerActionParams(detailed=True, ping_servers=True)
+        >>> await servers_action_async(params)
 
     Supports:
     - /servers or /server list - List all servers
@@ -578,12 +579,12 @@ async def servers_action_async(
     """
 
     # Handle command-style invocation with args
-    if args:
-        if not args:
+    if params.args:
+        if not params.args:
             await _list_servers()
             return []
 
-        sub, *rest = args
+        sub, *rest = params.args
         sub = sub.lower()
 
         # List servers
@@ -680,7 +681,7 @@ async def servers_action_async(
         return []
 
     # Process server data
-    server_data: List[Dict[str, Any]] = []
+    server_data: List[ServerInfoResponse] = []
     for idx, server in enumerate(servers):
         # ServerInfo is a dataclass with these attributes
         name = server.name
@@ -691,7 +692,7 @@ async def servers_action_async(
 
         # Ping if requested
         ping_ms = None
-        if ping_servers:
+        if params.ping_servers:
             try:
                 start = time.perf_counter()
                 if hasattr(tm, "ping_server"):
@@ -700,42 +701,41 @@ async def servers_action_async(
             except Exception:
                 ping_ms = None
 
-        # Build clean server info dict for display
-        info = {
-            "name": name,
-            "transport": transport,
-            "capabilities": capabilities,
-            "tool_count": tool_count,
-            "status": status,
-            "ping_ms": ping_ms,
-        }
+        # Build clean server info response model
+        info = ServerInfoResponse(
+            name=name,
+            transport=transport,
+            capabilities=capabilities,
+            tool_count=tool_count,
+            status=status,
+            ping_ms=ping_ms,
+        )
 
         server_data.append(info)
 
     # Output based on format
-    if output_format == "json":
-        output.print(json.dumps(server_data, indent=2))
+    if params.output_format == "json":
+        # Convert Pydantic models to dicts for JSON serialization
+        output.print(json.dumps([s.model_dump() for s in server_data], indent=2))
     else:
         # Build table
         columns = ["Icon", "Server", "Transport", "Tools", "Capabilities"]
-        if ping_servers:
+        if params.ping_servers:
             columns.append("Ping")
 
         table_data: List[Dict[str, Any]] = []
-        for server_dict in server_data:
-            icon = _get_server_icon(
-                server_dict["capabilities"], server_dict["tool_count"]
-            )
+        for server_info in server_data:
+            icon = _get_server_icon(server_info.capabilities, server_info.tool_count)
             row: Dict[str, Any] = {
                 "Icon": icon,
-                "Server": server_dict["name"],
-                "Transport": server_dict["transport"],
-                "Tools": str(server_dict["tool_count"]),
-                "Capabilities": _format_capabilities(server_dict["capabilities"]),
+                "Server": server_info.name,
+                "Transport": server_info.transport,
+                "Tools": str(server_info.tool_count),
+                "Capabilities": _format_capabilities(server_info.capabilities),
             }
 
-            if ping_servers:
-                perf_icon, perf_text = _format_performance(server_dict["ping_ms"])
+            if params.ping_servers:
+                perf_icon, perf_text = _format_performance(server_info.ping_ms)
                 row["Ping"] = f"{perf_icon} {perf_text}"
 
             table_data.append(row)
@@ -758,14 +758,15 @@ async def servers_action_async(
     return server_data
 
 
-def servers_action(**kwargs) -> List[Dict[str, Any]]:
+def servers_action(**kwargs) -> List[ServerInfoResponse]:
     """
     Sync wrapper for servers_action_async.
 
     Returns:
         List of server information dictionaries.
     """
-    return run_blocking(servers_action_async(**kwargs))
+    params = ServerActionParams(**kwargs)
+    return run_blocking(servers_action_async(params))
 
 
 __all__ = [

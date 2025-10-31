@@ -68,6 +68,22 @@ class TestCommandParameter:
         assert param.choices is None
         assert param.is_flag is False
 
+    def test_parameter_getattr_type(self):
+        """Test backward compatibility for 'type' attribute."""
+        param = CommandParameter(name="test", param_type=int)
+
+        # Test that 'type' attribute works (backward compatibility)
+        assert param.type is int
+
+    def test_parameter_getattr_invalid(self):
+        """Test accessing invalid attribute raises AttributeError."""
+        param = CommandParameter(name="test")
+
+        with pytest.raises(AttributeError) as exc_info:
+            _ = param.nonexistent_attribute
+
+        assert "nonexistent_attribute" in str(exc_info.value)
+
 
 class TestCommandResult:
     """Test the CommandResult dataclass."""
@@ -283,3 +299,73 @@ class TestCommandGroup:
 
         assert result.success is False
         assert "Unknown test_group subcommand" in result.error
+
+    @pytest.mark.asyncio
+    async def test_group_special_list_subcommand(self):
+        """Test special handling for commands with 'list' subcommand."""
+
+        # Create a group with a special name that should default to list
+        class ProvidersGroup(CommandGroup):
+            @property
+            def name(self) -> str:
+                return "providers"
+
+            @property
+            def description(self) -> str:
+                return "Test providers group"
+
+        group = ProvidersGroup()
+        list_cmd = DummyCommand(name="list", description="List items")
+        group.add_subcommand(list_cmd)
+
+        # Execute without subcommand should call 'list'
+        result = await group.execute()
+
+        assert result.success is True
+        assert result.output == "Test executed"  # From list command
+
+    @pytest.mark.asyncio
+    async def test_group_model_command_shortcut(self):
+        """Test model command treats unknown subcommand as model name."""
+
+        class ModelGroup(CommandGroup):
+            @property
+            def name(self) -> str:
+                return "model"
+
+            @property
+            def description(self) -> str:
+                return "Test model group"
+
+        group = ModelGroup()
+        set_cmd = DummyCommand(name="set", description="Set model")
+        group.add_subcommand(set_cmd)
+
+        # Pass a model name as if it's a subcommand
+        result = await group.execute(subcommand="gpt-4")
+
+        assert result.success is True
+        # The model_name should be passed to kwargs
+
+    @pytest.mark.asyncio
+    async def test_group_provider_command_shortcut(self):
+        """Test provider command treats unknown subcommand as provider name."""
+
+        class ProviderGroup(CommandGroup):
+            @property
+            def name(self) -> str:
+                return "provider"
+
+            @property
+            def description(self) -> str:
+                return "Test provider group"
+
+        group = ProviderGroup()
+        set_cmd = DummyCommand(name="set", description="Set provider")
+        group.add_subcommand(set_cmd)
+
+        # Pass a provider name as if it's a subcommand
+        result = await group.execute(subcommand="ollama")
+
+        assert result.success is True
+        # The provider_name should be passed to kwargs

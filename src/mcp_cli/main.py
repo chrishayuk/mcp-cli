@@ -142,7 +142,10 @@ def main_callback(
         initialize_context()
 
         try:
-            asyncio.run(provider_action_async([provider]))
+            from mcp_cli.commands.models import ProviderActionParams
+
+            params = ProviderActionParams(args=[provider])
+            asyncio.run(provider_action_async(params))
         except Exception as e:
             output.error(f"Error: {e}")
         finally:

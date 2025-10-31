@@ -10,6 +10,7 @@ from typing import Dict, List, Any
 from mcp_cli.model_manager import ModelManager
 from chuk_term.ui import output, format_table
 from mcp_cli.context import get_context, ApplicationContext
+from mcp_cli.commands.models import ProviderActionParams
 
 
 def _check_ollama_running() -> tuple[bool, int]:
@@ -122,6 +123,17 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
     """
     Optimized provider list that handles all the edge cases correctly.
     """
+    # Create token manager for checking token sources
+    from mcp_cli.auth import TokenManager, TokenStoreBackend
+    from mcp_cli.constants import NAMESPACE
+
+    try:
+        token_manager = TokenManager(
+            backend=TokenStoreBackend.AUTO, namespace=NAMESPACE
+        )
+    except Exception:
+        token_manager = None
+
     table_data = []
     columns = [
         "Provider",
@@ -180,8 +192,15 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
         # Format status text
         status_display = f"{status_icon} {status_text}"
 
-        # Get token source for display
-        token_source = provider_info.get("token_source", "none")
+        # Check token source ourselves (chuk_llm doesn't provide this)
+        token_source = "none"
+        if provider_name.lower() != "ollama" and token_manager:
+            from mcp_cli.auth.provider_tokens import check_provider_token_status
+
+            token_status = check_provider_token_status(provider_name, token_manager)
+            token_source = token_status.get("source", "none")
+
+        # Display token source
         if provider_name.lower() == "ollama":
             token_display = "-"
         elif token_source == "env":
@@ -454,10 +473,17 @@ def _switch_provider_enhanced(
 
 
 # Update the main action function with enhanced sub-commands
-async def provider_action_async(
-    args: List[str],
-) -> None:
-    """Enhanced provider action with all optimizations applied."""
+async def provider_action_async(params: ProviderActionParams) -> None:
+    """
+    Enhanced provider action with all optimizations applied.
+
+    Args:
+        params: Provider action parameters
+
+    Example:
+        >>> params = ProviderActionParams(args=["list"], detailed=True)
+        >>> await provider_action_async(params)
+    """
     # Get context and model manager
     context: ApplicationContext = get_context()
     model_manager = context.model_manager
@@ -515,11 +541,11 @@ async def provider_action_async(
         return " ".join(features) or "📄 text only"
 
     # Dispatch logic
-    if not args:
+    if not params.args:
         _show_status()
         return
 
-    sub, *rest = args
+    sub, *rest = params.args
     sub = sub.lower()
 
     if sub == "list":
@@ -697,4 +723,5 @@ def provider_action(args: List[str]) -> None:
     """Sync wrapper for provider_action_async."""
     from mcp_cli.utils.async_utils import run_blocking
 
-    run_blocking(provider_action_async(args))
+    params = ProviderActionParams(args=args)
+    run_blocking(provider_action_async(params))

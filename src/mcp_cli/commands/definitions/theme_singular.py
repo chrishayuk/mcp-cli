@@ -86,7 +86,12 @@ Examples:
         else:
             # Has arguments - theme name to switch to
             try:
-                await theme_action_async(args)
+                from mcp_cli.commands.models import ThemeActionParams
+
+                # Get the theme name from args
+                theme_name = args[0] if isinstance(args, list) else str(args)
+                params = ThemeActionParams(theme_name=theme_name)
+                await theme_action_async(params)
                 return CommandResult(success=True)
             except Exception as e:
                 return CommandResult(

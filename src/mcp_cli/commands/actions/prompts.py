@@ -13,19 +13,20 @@ Public functions:
 from __future__ import annotations
 
 import inspect
-from typing import Any, Dict, List
+from typing import List
 
 from mcp_cli.utils.async_utils import run_blocking
 from chuk_term.ui import output, format_table
 from mcp_cli.context import get_context
+from mcp_cli.commands.models import PromptInfoResponse
 
 
-async def prompts_action_async() -> List[Dict[str, Any]]:
+async def prompts_action_async() -> List[PromptInfoResponse]:
     """
     Fetch and display prompt templates from all connected MCP servers.
 
     Returns:
-        List of prompt dictionaries from all servers.
+        List of prompt response models from all servers.
     """
     context = get_context()
     tm = context.tool_manager
@@ -46,31 +47,42 @@ async def prompts_action_async() -> List[Dict[str, Any]]:
         output.info("No prompts recorded.")
         return []
 
-    # Build table data
+    # Convert to Pydantic models
+    prompt_models = []
     table_data = []
     columns = ["Server", "Name", "Description"]
 
     for item in prompts:
+        # Create Pydantic model
+        prompt_model = PromptInfoResponse(
+            name=item.get("name", "-"),
+            description=item.get("description"),
+            arguments=item.get("arguments", []),
+            server=item.get("server", "-"),
+        )
+        prompt_models.append(prompt_model)
+
+        # Build table row
         table_data.append(
             {
-                "Server": item.get("server", "-"),
-                "Name": item.get("name", "-"),
-                "Description": item.get("description", "-"),
+                "Server": prompt_model.server,
+                "Name": prompt_model.name,
+                "Description": prompt_model.description or "-",
             }
         )
 
     # Display table
     table = format_table(table_data, title="Prompts", columns=columns)
     output.print_table(table)
-    return list(prompts)
+    return prompt_models
 
 
-def prompts_action() -> List[Dict[str, Any]]:
+def prompts_action() -> List[PromptInfoResponse]:
     """
     Sync wrapper for prompts_action_async.
 
     Returns:
-        List of prompt dictionaries from all servers.
+        List of prompt response models from all servers.
 
     Raises:
         RuntimeError: If called from inside an active event loop.
@@ -78,7 +90,7 @@ def prompts_action() -> List[Dict[str, Any]]:
     return run_blocking(prompts_action_async())
 
 
-async def prompts_action_cmd() -> List[Dict[str, Any]]:
+async def prompts_action_cmd() -> List[PromptInfoResponse]:
     """
     Alias for prompts_action_async (backward compatibility).
 

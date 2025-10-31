@@ -53,7 +53,10 @@ Examples:
         if not args:
             # No arguments - show current status (singular behavior)
             try:
-                await provider_action_async([])  # Empty args = show status
+                from mcp_cli.commands.models import ProviderActionParams
+
+                params = ProviderActionParams(args=[])
+                await provider_action_async(params)  # Empty args = show status
                 return CommandResult(success=True)
             except Exception as e:
                 return CommandResult(
@@ -67,10 +70,11 @@ Examples:
             if first_arg.lower() in ["list", "ls", "set"]:
                 # Delegate to the action
                 try:
-                    if isinstance(args, list):
-                        await provider_action_async(args)
-                    else:
-                        await provider_action_async([str(args)])
+                    from mcp_cli.commands.models import ProviderActionParams
+
+                    args_list = args if isinstance(args, list) else [str(args)]
+                    params = ProviderActionParams(args=args_list)
+                    await provider_action_async(params)
                     return CommandResult(success=True)
                 except Exception as e:
                     return CommandResult(
@@ -79,10 +83,11 @@ Examples:
             else:
                 # Treat as provider name to switch to
                 try:
-                    if isinstance(args, list):
-                        await provider_action_async(args)
-                    else:
-                        await provider_action_async([str(args)])
+                    from mcp_cli.commands.models import ProviderActionParams
+
+                    args_list = args if isinstance(args, list) else [str(args)]
+                    params = ProviderActionParams(args=args_list)
+                    await provider_action_async(params)
 
                     return CommandResult(success=True)
                 except Exception as e:

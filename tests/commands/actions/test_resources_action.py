@@ -8,6 +8,7 @@ from mcp_cli.commands.actions.resources import (
     resources_action,
     _human_size,
 )
+from mcp_cli.commands.models import ResourceInfoResponse
 
 
 def test_human_size():
@@ -76,8 +77,13 @@ async def test_resources_action_async_basic(mock_context, sample_resources):
 
         mock_output.print_table.assert_called_once_with(mock_table)
 
-        # Verify result
-        assert result == sample_resources
+        # Verify result - should be Pydantic models
+        assert len(result) == len(sample_resources)
+        assert all(isinstance(r, ResourceInfoResponse) for r in result)
+        assert result[0].uri == "file:///test.txt"
+        assert result[0].server == "test_server"
+        assert result[1].uri == "file:///data.json"
+        assert result[1].server == "another_server"
 
 
 @pytest.mark.asyncio
@@ -148,7 +154,9 @@ async def test_resources_action_async_awaitable_result(mock_context, sample_reso
 
         result = await resources_action_async()
 
-        assert result == sample_resources
+        # Verify result - should be Pydantic models
+        assert len(result) == len(sample_resources)
+        assert all(isinstance(r, ResourceInfoResponse) for r in result)
 
 
 def test_resources_action_sync_wrapper():

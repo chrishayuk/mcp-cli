@@ -18,14 +18,19 @@ from mcp_cli.model_manager import ModelManager
 from mcp_cli.utils.async_utils import run_blocking
 from mcp_cli.utils.llm_probe import LLMProbe
 from mcp_cli.context import get_context, ApplicationContext
+from mcp_cli.commands.models import ModelActionParams
 
 
-async def model_action_async(args: List[str]) -> None:
+async def model_action_async(params: ModelActionParams) -> None:
     """
     Handle model management commands.
 
     Args:
-        args: Command arguments
+        params: Model action parameters
+
+    Example:
+        >>> params = ModelActionParams(args=["list"], detailed=True)
+        >>> await model_action_async(params)
     """
     # Get context and model manager
     context = get_context()
@@ -39,11 +44,11 @@ async def model_action_async(args: List[str]) -> None:
     current_model = model_manager.get_active_model()
 
     # No arguments - show current status
-    if not args:
+    if not params.args:
         await _show_status(model_manager, current_model, provider)
         return
 
-    command = args[0].lower()
+    command = params.args[0].lower()
 
     # Handle subcommands
     if command == "list":
@@ -52,7 +57,9 @@ async def model_action_async(args: List[str]) -> None:
         await _refresh_models(model_manager, provider)
     else:
         # Assume it's a model name to switch to
-        await _switch_model(args[0], model_manager, provider, current_model, context)
+        await _switch_model(
+            params.args[0], model_manager, provider, current_model, context
+        )
 
 
 async def _show_status(model_manager: ModelManager, model: str, provider: str) -> None:
@@ -282,4 +289,5 @@ async def _check_local_ollama() -> tuple[bool, list[str]]:
 
 def model_action(args: List[str]) -> None:
     """Synchronous wrapper for model_action_async."""
-    run_blocking(model_action_async(args))
+    params = ModelActionParams(args=args)
+    run_blocking(model_action_async(params))

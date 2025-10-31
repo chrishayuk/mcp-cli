@@ -11,6 +11,7 @@ from mcp_cli.commands.actions.providers import (
     _list_custom_providers,
     provider_action_async,
 )
+from mcp_cli.commands.models import ProviderActionParams
 
 
 class TestCustomProviderCommands:
@@ -241,7 +242,9 @@ class TestCustomProviderCommands:
             "mcp_cli.commands.actions.providers._add_custom_provider"
         ) as mock_add:
             await provider_action_async(
-                ["add", "testai", "https://api.test.com/v1", "gpt-4"]
+                ProviderActionParams(
+                    args=["add", "testai", "https://api.test.com/v1", "gpt-4"]
+                )
             )
 
             mock_add.assert_called_once_with(
@@ -261,7 +264,7 @@ class TestCustomProviderCommands:
         with patch(
             "mcp_cli.commands.actions.providers._remove_custom_provider"
         ) as mock_remove:
-            await provider_action_async(["remove", "testai"])
+            await provider_action_async(ProviderActionParams(args=["remove", "testai"]))
 
             mock_remove.assert_called_once_with("testai")
 
@@ -278,7 +281,7 @@ class TestCustomProviderCommands:
         with patch(
             "mcp_cli.commands.actions.providers._list_custom_providers"
         ) as mock_list:
-            await provider_action_async(["custom"])
+            await provider_action_async(ProviderActionParams(args=["custom"]))
 
             mock_list.assert_called_once()
 
@@ -295,7 +298,7 @@ class TestCustomProviderCommands:
         mock_get_context.return_value = mock_context
 
         # Missing api_base - will fall through to provider switching
-        await provider_action_async(["add", "testai"])
+        await provider_action_async(ProviderActionParams(args=["add", "testai"]))
 
         # Should attempt to switch to "add" as provider with "testai" as model
         mock_switch.assert_called_once_with(

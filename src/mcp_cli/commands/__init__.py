@@ -16,6 +16,81 @@ from mcp_cli.commands.base import (
     CommandResult,
 )
 from mcp_cli.commands.registry import registry, UnifiedCommandRegistry
+from mcp_cli.commands.decorators import validate_params, handle_errors
+from mcp_cli.commands.exceptions import (
+    CommandError,
+    InvalidParameterError,
+    CommandExecutionError,
+    CommandNotFoundError,
+    ValidationError,
+)
+from mcp_cli.commands import utils as command_utils  # noqa: F401
+from mcp_cli.commands.models import (
+    # Server models
+    ServerActionParams,
+    ServerStatusInfo,
+    ServerPerformanceInfo,
+    # Model models
+    ModelActionParams,
+    ModelInfo,
+    # Provider models
+    ProviderActionParams,
+    ProviderInfo,
+    # Token models
+    TokenListParams,
+    TokenSetParams,
+    TokenDeleteParams,
+    TokenClearParams,
+    TokenProviderParams,
+    # Tool models
+    ToolActionParams,
+    ToolCallParams,
+    # Resource models
+    ResourceActionParams,
+    # Prompt models
+    PromptActionParams,
+    # Theme models
+    ThemeActionParams,
+    ThemeInfo,
+    # Conversation models
+    ConversationActionParams,
+    ConversationInfo,
+    # Response models
+    ServerInfoResponse,
+    ResourceInfoResponse,
+    PromptInfoResponse,
+    ToolInfoResponse,
+)
+
+__all__ = [
+    # Base classes
+    "UnifiedCommand",
+    "CommandGroup",
+    "CommandMode",
+    "CommandParameter",
+    "CommandResult",
+    # Registry
+    "registry",
+    "UnifiedCommandRegistry",
+    # Decorators
+    "validate_params",
+    "handle_errors",
+    # Exceptions
+    "CommandError",
+    "InvalidParameterError",
+    "CommandExecutionError",
+    "CommandNotFoundError",
+    "ValidationError",
+    # Utils
+    "command_utils",
+    # Response models
+    "ServerInfoResponse",
+    "ResourceInfoResponse",
+    "PromptInfoResponse",
+    "ToolInfoResponse",
+    # Functions
+    "register_all_commands",
+]
 
 
 def register_all_commands() -> None:
@@ -98,12 +173,46 @@ def register_all_commands() -> None:
 
 
 __all__ = [
+    # Base classes
     "UnifiedCommand",
     "CommandGroup",
     "CommandMode",
     "CommandParameter",
     "CommandResult",
+    # Registry
     "registry",
     "UnifiedCommandRegistry",
     "register_all_commands",
+    # Decorators
+    "validate_params",
+    "handle_errors",
+    # Server models
+    "ServerActionParams",
+    "ServerStatusInfo",
+    "ServerPerformanceInfo",
+    # Model models
+    "ModelActionParams",
+    "ModelInfo",
+    # Provider models
+    "ProviderActionParams",
+    "ProviderInfo",
+    # Token models
+    "TokenListParams",
+    "TokenSetParams",
+    "TokenDeleteParams",
+    "TokenClearParams",
+    "TokenProviderParams",
+    # Tool models
+    "ToolActionParams",
+    "ToolCallParams",
+    # Resource models
+    "ResourceActionParams",
+    # Prompt models
+    "PromptActionParams",
+    # Theme models
+    "ThemeActionParams",
+    "ThemeInfo",
+    # Conversation models
+    "ConversationActionParams",
+    "ConversationInfo",
 ]

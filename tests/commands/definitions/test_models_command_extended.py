@@ -66,7 +66,9 @@ class TestModelListCommand:
             result = await command.execute()
 
             assert result.success is True
-            mock_action.assert_called_once_with(["list"])
+            mock_action.assert_called_once()
+            call_args = mock_action.call_args[0][0]
+            assert call_args.args == ["list"]
 
     @pytest.mark.asyncio
     async def test_list_command_with_refresh(self, command):
@@ -78,7 +80,9 @@ class TestModelListCommand:
 
             assert result.success is True
             # The implementation doesn't pass refresh parameter
-            mock_action.assert_called_once_with(["list"])
+            mock_action.assert_called_once()
+            call_args = mock_action.call_args[0][0]
+            assert call_args.args == ["list"]
 
     @pytest.mark.asyncio
     async def test_list_command_error(self, command):
@@ -117,7 +121,9 @@ class TestModelSetCommand:
 
             assert result.success is True
             # The implementation passes model name directly
-            mock_action.assert_called_once_with(["gpt-4"])
+            mock_action.assert_called_once()
+            call_args = mock_action.call_args[0][0]
+            assert call_args.args == ["gpt-4"]
 
     @pytest.mark.asyncio
     async def test_set_command_no_model_name(self, command):
@@ -137,7 +143,9 @@ class TestModelSetCommand:
 
             assert result.success is True
             # The implementation passes model name directly
-            mock_action.assert_called_once_with(["gpt-3.5-turbo"])
+            mock_action.assert_called_once()
+            call_args = mock_action.call_args[0][0]
+            assert call_args.args == ["gpt-3.5-turbo"]
 
     @pytest.mark.asyncio
     async def test_set_command_error(self, command):
@@ -177,7 +185,9 @@ class TestModelShowCommand:
 
             assert result.success is True
             # The implementation passes empty list
-            mock_action.assert_called_once_with([])
+            mock_action.assert_called_once()
+            call_args = mock_action.call_args[0][0]
+            assert call_args.args == []
 
     @pytest.mark.asyncio
     async def test_show_command_error(self, command):

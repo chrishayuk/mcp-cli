@@ -31,6 +31,7 @@ from chuk_tool_processor.execution.strategies.inprocess_strategy import (
 from chuk_tool_processor.execution.tool_executor import ToolExecutor
 
 from mcp_cli.auth import OAuthHandler
+from mcp_cli.constants import NAMESPACE
 from mcp_cli.tools.models import ServerInfo, ToolCallResult, ToolInfo
 from mcp_cli.tools.validation import ToolSchemaValidator
 from mcp_cli.tools.filter import ToolFilter
@@ -78,8 +79,14 @@ class ToolManager:
         self._sse_servers: List[Any] = []
         self._config_cache: Optional[Dict[str, Any]] = None
 
-        # OAuth support
-        self.oauth_handler = OAuthHandler()
+        # OAuth support with mcp-cli namespace
+        from mcp_cli.auth import TokenManager, TokenStoreBackend
+
+        token_manager = TokenManager(
+            backend=TokenStoreBackend.AUTO,
+            namespace=NAMESPACE,
+        )
+        self.oauth_handler = OAuthHandler(token_manager=token_manager)
 
         # ENHANCED: Tool validation and filtering
         self.tool_filter = ToolFilter()

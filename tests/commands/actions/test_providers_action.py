@@ -15,6 +15,7 @@ from mcp_cli.commands.actions.providers import (
     _switch_provider_enhanced,
     provider_action,
 )
+from mcp_cli.commands.models import ProviderActionParams
 
 
 @pytest.fixture
@@ -389,7 +390,7 @@ async def test_provider_action_async_no_args(mock_context, mock_model_manager):
         "mcp_cli.commands.actions.providers.get_context", return_value=mock_context
     ):
         with patch("mcp_cli.commands.actions.providers.output") as mock_output:
-            await provider_action_async([])
+            await provider_action_async(ProviderActionParams(args=[]))
 
             mock_output.rule.assert_called()
             mock_output.print.assert_called()
@@ -405,7 +406,7 @@ async def test_provider_action_async_list(mock_context):
         with patch(
             "mcp_cli.commands.actions.providers._render_list_optimized"
         ) as mock_list:
-            await provider_action_async(["list"])
+            await provider_action_async(ProviderActionParams(args=["list"]))
 
             mock_list.assert_called_once_with(mock_context.model_manager)
 
@@ -419,7 +420,9 @@ async def test_provider_action_async_diagnostic(mock_context):
         with patch(
             "mcp_cli.commands.actions.providers._render_diagnostic_optimized"
         ) as mock_diag:
-            await provider_action_async(["diagnostic", "test-provider"])
+            await provider_action_async(
+                ProviderActionParams(args=["diagnostic", "test-provider"])
+            )
 
             mock_diag.assert_called_once_with(
                 mock_context.model_manager, "test-provider"
@@ -435,7 +438,7 @@ async def test_provider_action_async_switch(mock_context):
         with patch(
             "mcp_cli.commands.actions.providers._switch_provider_enhanced"
         ) as mock_switch:
-            await provider_action_async(["openai", "gpt-4"])
+            await provider_action_async(ProviderActionParams(args=["openai", "gpt-4"]))
 
             mock_switch.assert_called_once_with(
                 mock_context.model_manager, "openai", "gpt-4", mock_context
@@ -450,7 +453,7 @@ async def test_provider_action_async_no_model_manager():
 
     with patch("mcp_cli.commands.actions.providers.get_context", return_value=context):
         with patch("mcp_cli.commands.actions.providers.output") as mock_output:
-            await provider_action_async([])
+            await provider_action_async(ProviderActionParams(args=[]))
 
             mock_output.error.assert_called_with("Model manager not available")
 
@@ -465,5 +468,8 @@ def test_provider_action_sync():
             args = ["list"]
             provider_action(args)
 
-            mock_async.assert_called_with(args)
+            # Verify async function was called with ProviderActionParams
+            mock_async.assert_called_once()
+            call_args = mock_async.call_args[0][0]
+            assert call_args.args == args
             mock_run.assert_called_once()

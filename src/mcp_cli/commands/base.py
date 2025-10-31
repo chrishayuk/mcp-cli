@@ -11,9 +11,10 @@ This provides a single command abstraction that works across:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from enum import Flag, auto
 from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
 
 
 class CommandMode(Flag):
@@ -25,21 +26,33 @@ class CommandMode(Flag):
     ALL = CHAT | CLI | INTERACTIVE
 
 
-@dataclass
-class CommandParameter:
+class CommandParameter(BaseModel):
     """Definition of a command parameter."""
 
     name: str
-    type: type = str
+    param_type: type = Field(default=str, alias="type")
     default: Any = None
     required: bool = False
     help: str = ""
     choices: Optional[List[Any]] = None
     is_flag: bool = False
 
+    model_config = {
+        "frozen": False,
+        "arbitrary_types_allowed": True,
+        "populate_by_name": True,  # Allow both 'type' and 'param_type'
+    }
 
-@dataclass
-class CommandResult:
+    def __getattr__(self, name: str) -> Any:
+        """Allow accessing param_type as 'type' for backward compatibility."""
+        if name == "type":
+            return self.param_type
+        raise AttributeError(
+            f"'{self.__class__.__name__}' object has no attribute '{name}'"
+        )
+
+
+class CommandResult(BaseModel):
     """Result from command execution."""
 
     success: bool
@@ -48,6 +61,8 @@ class CommandResult:
     error: Optional[str] = None
     should_exit: bool = False
     should_clear: bool = False
+
+    model_config = {"frozen": False, "arbitrary_types_allowed": True}
 
 
 class UnifiedCommand(ABC):

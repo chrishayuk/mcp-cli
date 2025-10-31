@@ -45,7 +45,9 @@ class TestThemeSingularCommand:
         with patch("mcp_cli.commands.actions.theme.theme_action_async") as mock_action:
             result = await command.execute(args=["dark"])
 
-            mock_action.assert_called_once_with(["dark"])
+            mock_action.assert_called_once()
+            call_args = mock_action.call_args[0][0]
+            assert call_args.theme_name == "dark"
             assert result.success is True
 
     @pytest.mark.asyncio
@@ -87,4 +89,7 @@ class TestThemesPluralCommand:
             result = await command.execute()
 
             assert result.success is True
-            mock_action.assert_called_once_with([])  # Empty args for list
+            mock_action.assert_called_once()
+            call_args = mock_action.call_args[0][0]
+            # For themes plural, it shows list (no specific theme_name)
+            assert call_args.theme_name is None or call_args.theme_name == ""

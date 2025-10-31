@@ -46,7 +46,10 @@ Examples:
 
         try:
             # Always show the list
-            await theme_action_async([])  # Empty args = show list
+            from mcp_cli.commands.models import ThemeActionParams
+
+            params = ThemeActionParams()
+            await theme_action_async(params)  # Empty args = show list
             return CommandResult(success=True)
         except Exception as e:
             return CommandResult(

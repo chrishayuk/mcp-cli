@@ -8,6 +8,7 @@ from mcp_cli.commands.actions.prompts import (
     prompts_action,
     prompts_action_cmd,
 )
+from mcp_cli.commands.models import PromptInfoResponse
 
 
 @pytest.fixture
@@ -56,8 +57,13 @@ async def test_prompts_action_async_basic(mock_context, sample_prompts):
         mock_format_table.assert_called_once()
         mock_output.print_table.assert_called_once_with(mock_table)
 
-        # Verify result
-        assert result == sample_prompts
+        # Verify result - should be Pydantic models
+        assert len(result) == len(sample_prompts)
+        assert all(isinstance(p, PromptInfoResponse) for p in result)
+        assert result[0].name == "test_prompt"
+        assert result[0].server == "test_server"
+        assert result[1].name == "another_prompt"
+        assert result[1].server == "another_server"
 
 
 @pytest.mark.asyncio
@@ -128,7 +134,9 @@ async def test_prompts_action_async_awaitable_result(mock_context, sample_prompt
 
         result = await prompts_action_async()
 
-        assert result == sample_prompts
+        # Verify result - should be Pydantic models
+        assert len(result) == len(sample_prompts)
+        assert all(isinstance(p, PromptInfoResponse) for p in result)
 
 
 def test_prompts_action_sync_wrapper():

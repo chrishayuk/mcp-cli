@@ -76,3 +76,105 @@ class TestProviderCommand:
 
             assert result.success is False
             assert "Failed to switch provider" in result.error
+
+    @pytest.mark.asyncio
+    async def test_execute_no_args_error(self, command):
+        """Test error handling when listing with no args fails."""
+        with patch(
+            "mcp_cli.commands.actions.providers.provider_action_async"
+        ) as mock_action:
+            mock_action.side_effect = Exception("Connection failed")
+
+            result = await command.execute(args=[])
+
+            assert result.success is False
+            assert "Failed to list providers" in result.error
+
+    @pytest.mark.asyncio
+    async def test_execute_set_subcommand(self, command):
+        """Test executing the set subcommand."""
+        set_cmd = command.subcommands.get("set")
+        assert set_cmd is not None
+
+        with patch(
+            "mcp_cli.commands.actions.providers.provider_action_async"
+        ) as mock_action:
+            result = await set_cmd.execute(args=["ollama"])
+
+            assert result.success is True
+            mock_action.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_execute_set_error(self, command):
+        """Test error handling in set subcommand."""
+        set_cmd = command.subcommands.get("set")
+
+        with patch(
+            "mcp_cli.commands.actions.providers.provider_action_async"
+        ) as mock_action:
+            mock_action.side_effect = Exception("Invalid provider")
+
+            result = await set_cmd.execute(args=["invalid"])
+
+            assert result.success is False
+            assert "Failed to set provider" in result.error
+
+    @pytest.mark.asyncio
+    async def test_execute_show_subcommand(self, command):
+        """Test executing the show subcommand."""
+        show_cmd = command.subcommands.get("show")
+        assert show_cmd is not None
+
+        with patch(
+            "mcp_cli.commands.actions.providers.provider_action_async"
+        ) as mock_action:
+            result = await show_cmd.execute()
+
+            assert result.success is True
+            mock_action.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_execute_show_error(self, command):
+        """Test error handling in show subcommand."""
+        show_cmd = command.subcommands.get("show")
+
+        with patch(
+            "mcp_cli.commands.actions.providers.provider_action_async"
+        ) as mock_action:
+            mock_action.side_effect = Exception("Failed to get info")
+
+            result = await show_cmd.execute()
+
+            assert result.success is False
+            assert "Failed to get provider info" in result.error
+
+    @pytest.mark.asyncio
+    async def test_execute_with_known_subcommand(self, command):
+        """Test that known subcommands are routed to parent."""
+        with patch("mcp_cli.commands.actions.providers.provider_action_async"):
+            # Test various known subcommand aliases
+            for subcmd in [
+                "list",
+                "ls",
+                "set",
+                "use",
+                "switch",
+                "show",
+                "current",
+                "status",
+            ]:
+                result = await command.execute(args=[subcmd])
+                # Should be handled by subcommand routing
+                assert result is not None
+
+    @pytest.mark.asyncio
+    async def test_execute_provider_name_directly(self, command):
+        """Test passing provider name directly (not a subcommand)."""
+        with patch(
+            "mcp_cli.commands.actions.providers.provider_action_async"
+        ) as mock_action:
+            result = await command.execute(args=["ollama"])
+
+            assert result.success is True
+            # Should treat "ollama" as a provider name to switch to
+            mock_action.assert_called_once()
