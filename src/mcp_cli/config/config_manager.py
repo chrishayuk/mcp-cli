@@ -26,6 +26,7 @@ class ServerConfig(BaseModel):
     args: List[str] = Field(default_factory=list)
     env: Dict[str, str] = Field(default_factory=dict)
     url: Optional[str] = None  # For HTTP/SSE servers
+    headers: Optional[Dict[str, str]] = None  # HTTP headers (e.g., Authorization)
     oauth: Optional[OAuthConfig] = None  # OAuth configuration
     disabled: bool = False
 
@@ -62,6 +63,7 @@ class ServerConfig(BaseModel):
             args=data.get("args", []),
             env=env,
             url=data.get("url"),
+            headers=data.get("headers"),
             oauth=oauth,
             disabled=data.get("disabled", False),
         )

@@ -217,10 +217,17 @@ class ToolManager:
 
             # Remote MCP servers (with URL) automatically use MCP OAuth
             # Servers with explicit oauth config use that config
+            # Skip servers that already have Authorization headers (they don't need OAuth)
             is_remote_mcp = server_config.url and not server_config.command
             has_explicit_oauth = server_config.oauth is not None
+            has_auth_header = (
+                server_config.headers and "Authorization" in server_config.headers
+            )
 
-            if not is_remote_mcp and not has_explicit_oauth:
+            # Skip servers that:
+            # 1. Don't need OAuth (not remote MCP and no explicit OAuth config)
+            # 2. Already have Authorization headers (pre-configured auth)
+            if (not is_remote_mcp and not has_explicit_oauth) or has_auth_header:
                 # Skip servers that don't need OAuth
                 continue
 
