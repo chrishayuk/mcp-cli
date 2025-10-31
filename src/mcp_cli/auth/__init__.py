@@ -1,11 +1,26 @@
 # mcp_cli/auth/__init__.py
 """Authentication and OAuth support for MCP CLI."""
 
-from .oauth_config import OAuthConfig, OAuthTokens
-from .oauth_flow import OAuthFlow
-from .token_manager import TokenManager
-from .token_store_factory import TokenStoreBackend, TokenStoreFactory
-from .secure_token_store import SecureTokenStore
+# Import OAuth functionality from chuk-mcp-client-oauth library
+from chuk_mcp_client_oauth import (
+    OAuthConfig,
+    OAuthTokens,
+    OAuthFlow,
+    TokenManager,
+    TokenStoreBackend,
+    TokenStoreFactory,
+    SecureTokenStore,
+    MCPOAuthClient,
+    OAuthHandler,
+    DynamicClientRegistration,
+    TokenType,
+    StoredToken,
+    APIKeyToken,
+    BearerToken,
+    TokenRegistry,
+)
+
+# Import MCP-CLI specific provider token functionality (kept local)
 from .provider_tokens import (
     get_provider_token_with_hierarchy,
     check_provider_token_status,
@@ -17,6 +32,7 @@ from .provider_tokens import (
 )
 
 __all__ = [
+    # OAuth library exports
     "OAuthConfig",
     "OAuthTokens",
     "OAuthFlow",
@@ -24,6 +40,15 @@ __all__ = [
     "TokenStoreBackend",
     "TokenStoreFactory",
     "SecureTokenStore",
+    "MCPOAuthClient",
+    "OAuthHandler",
+    "DynamicClientRegistration",
+    "TokenType",
+    "StoredToken",
+    "APIKeyToken",
+    "BearerToken",
+    "TokenRegistry",
+    # MCP-CLI specific exports
     "get_provider_token_with_hierarchy",
     "check_provider_token_status",
     "set_provider_token",

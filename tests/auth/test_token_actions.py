@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from mcp_cli.auth.oauth_config import OAuthTokens
-from mcp_cli.auth.token_types import TokenType
+from mcp_cli.auth import OAuthTokens
+from mcp_cli.auth import TokenType
 from mcp_cli.commands.actions.token import (
     token_backends_action_async,
     token_clear_action_async,
@@ -21,8 +21,8 @@ from mcp_cli.commands.actions.token import (
 def mock_token_manager(tmp_path):
     """Mock TokenManager with temporary storage."""
     with patch("mcp_cli.commands.actions.token._get_token_manager") as mock:
-        from mcp_cli.auth.token_manager import TokenManager
-        from mcp_cli.auth.token_store_factory import TokenStoreBackend
+        from mcp_cli.auth import TokenManager
+        from mcp_cli.auth import TokenStoreBackend
 
         manager = TokenManager(
             token_dir=tmp_path / "tokens",
@@ -238,7 +238,7 @@ class TestTokenGetAction:
     async def test_get_existing_token(self, mock_token_manager):
         """Test getting token information."""
         # Store token
-        from mcp_cli.auth.token_types import BearerToken
+        from mcp_cli.auth import BearerToken
 
         bearer = BearerToken(token="token123")
         stored = bearer.to_stored_token("my-token")
@@ -265,7 +265,7 @@ class TestTokenGetAction:
     @pytest.mark.asyncio
     async def test_get_with_different_namespace(self, mock_token_manager):
         """Test getting token from specific namespace."""
-        from mcp_cli.auth.token_types import APIKeyToken
+        from mcp_cli.auth import APIKeyToken
 
         api_key = APIKeyToken(provider="openai", key="sk-123")
         stored = api_key.to_stored_token("openai")

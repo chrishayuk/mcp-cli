@@ -30,7 +30,7 @@ from chuk_tool_processor.execution.strategies.inprocess_strategy import (
 )
 from chuk_tool_processor.execution.tool_executor import ToolExecutor
 
-from mcp_cli.auth.oauth_handler import OAuthHandler
+from mcp_cli.auth import OAuthHandler
 from mcp_cli.tools.models import ServerInfo, ToolCallResult, ToolInfo
 from mcp_cli.tools.validation import ToolSchemaValidator
 from mcp_cli.tools.filter import ToolFilter
@@ -410,31 +410,52 @@ class ToolManager:
     async def initialize(self, namespace: str = "stdio") -> bool:
         """Connect to MCP servers and initialize the tool registry."""
         try:
+            from chuk_term.ui import output
+
             logger.info(f"Initializing ToolManager with {len(self.servers)} servers")
 
             self._detect_server_types()
 
-            # Process OAuth for HTTP/SSE servers before connecting
+            # Determine which servers we're connecting to for better messaging
+            server_names = []
             if self._http_servers:
-                await self._process_oauth_for_servers(self._http_servers)
+                server_names.extend([s["name"] for s in self._http_servers])
             if self._sse_servers:
-                await self._process_oauth_for_servers(self._sse_servers)
+                server_names.extend([s["name"] for s in self._sse_servers])
+            if self._stdio_servers:
+                server_names.extend(self._stdio_servers)
 
-            # Try transports in priority order: SSE > HTTP > STDIO
-            success = False
+            server_list = ", ".join(server_names) if server_names else "servers"
 
-            if self._sse_servers:
-                logger.info("Setting up SSE servers")
-                success = await self._setup_sse_servers(self._sse_servers[0]["name"])
-            elif self._http_servers:
-                logger.info("Setting up HTTP servers")
-                success = await self._setup_http_servers(self._http_servers[0]["name"])
-            elif self._stdio_servers:
-                logger.info("Setting up STDIO servers")
-                success = await self._setup_stdio_servers(namespace)
-            else:
-                logger.info("No servers configured - initializing with empty tool list")
-                success = await self._setup_empty_toolset()
+            # Show spinner during entire initialization (this will auto-clear when done)
+            with output.loading(f"🔐 Connecting to {server_list}...", spinner="dots"):
+                # Process OAuth for HTTP/SSE servers before connecting
+                if self._http_servers:
+                    await self._process_oauth_for_servers(self._http_servers)
+                if self._sse_servers:
+                    await self._process_oauth_for_servers(self._sse_servers)
+
+                # Try transports in priority order: SSE > HTTP > STDIO
+                success = False
+
+                if self._sse_servers:
+                    logger.info("Setting up SSE servers")
+                    success = await self._setup_sse_servers(
+                        self._sse_servers[0]["name"]
+                    )
+                elif self._http_servers:
+                    logger.info("Setting up HTTP servers")
+                    success = await self._setup_http_servers(
+                        self._http_servers[0]["name"]
+                    )
+                elif self._stdio_servers:
+                    logger.info("Setting up STDIO servers")
+                    success = await self._setup_stdio_servers(namespace)
+                else:
+                    logger.info(
+                        "No servers configured - initializing with empty tool list"
+                    )
+                    success = await self._setup_empty_toolset()
 
             if not success:
                 logger.error("Server setup failed")

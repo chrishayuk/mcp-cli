@@ -633,7 +633,7 @@ def _list_custom_providers() -> None:
     """List all custom providers."""
     from mcp_cli.utils.preferences import get_preference_manager
     from mcp_cli.auth.provider_tokens import get_provider_token_display_status
-    from mcp_cli.auth.token_manager import TokenManager
+    from mcp_cli.auth import TokenManager
 
     prefs = get_preference_manager()
     custom_providers = prefs.get_custom_providers()
