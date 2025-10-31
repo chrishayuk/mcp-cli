@@ -68,6 +68,28 @@ MCP CLI supports all providers and models from CHUK-LLM, including cutting-edge 
 - **Comprehensive Help**: Detailed help system with examples and usage patterns
 - **Graceful Error Handling**: User-friendly error messages with troubleshooting hints
 
+## 📚 Documentation
+
+Comprehensive documentation is available in the `docs/` directory:
+
+### Core Documentation
+- **[Commands System](docs/COMMANDS.md)** - Complete guide to the unified command system, patterns, and usage across all modes
+- **[Token Management](docs/TOKEN_MANAGEMENT.md)** - Comprehensive token management for providers and servers including OAuth, bearer tokens, and API keys
+
+### Specialized Documentation
+- **[OAuth Authentication](docs/OAUTH.md)** - OAuth flows, storage backends, and MCP server integration
+- **[Streaming Integration](docs/STREAMING.md)** - Real-time response streaming architecture
+- **[Package Management](docs/PACKAGE_MANAGEMENT.md)** - Dependency organization and feature groups
+
+### UI Documentation
+- **[Themes](docs/ui/themes.md)** - Theme system and customization
+- **[Output System](docs/ui/output.md)** - Rich console output and formatting
+- **[Terminal Management](docs/ui/terminal.md)** - Cross-platform terminal operations
+
+### Testing Documentation
+- **[Unit Testing](docs/testing/UNIT_TESTING.md)** - Test structure and patterns
+- **[Test Coverage](docs/testing/TEST_COVERAGE.md)** - Coverage requirements and reporting
+
 ## 📋 Prerequisites
 
 - **Python 3.11 or higher**
@@ -390,6 +412,23 @@ mcp-cli --server sqlite --provider anthropic --model claude-4-1-opus
 # Themes are persisted across sessions
 ```
 
+#### Token Management
+```bash
+/token                            # List all stored tokens
+/token list                       # List all tokens explicitly
+/token set <name>                 # Store a bearer token
+/token get <name>                 # Get token details
+/token delete <name>              # Delete a token
+/token clear                      # Clear all tokens (with confirmation)
+
+# Examples
+/token set my-api                 # Prompts for token value (secure)
+/token get notion --oauth         # Get OAuth token for Notion server
+/token list --api-keys            # List only provider API keys
+```
+
+See [Token Management Guide](docs/TOKEN_MANAGEMENT.md) for comprehensive documentation.
+
 #### Session Control
 ```bash
 /verbose                          # Toggle verbose/compact display (Default: Enabled)
@@ -400,6 +439,8 @@ mcp-cli --server sqlite --provider anthropic --model claude-4-1-opus
 /help tools                       # Help for specific command
 /exit                            # Exit chat mode
 ```
+
+**For complete command documentation**, see [Commands System Guide](docs/COMMANDS.md).
 
 ### Chat Features
 
@@ -578,7 +619,7 @@ mcp-cli provider remove localai
 mcp-cli --provider temp-ai --api-base https://api.temp.com/v1 --api-key test-key --server sqlite
 ```
 
-**Security Note**: API keys are NEVER stored in configuration files. Use environment variables following the pattern `{PROVIDER_NAME}_API_KEY` or pass via `--api-key` for session-only use.
+**Security Note**: API keys can be stored securely in OS-native keychains (macOS Keychain, Windows Credential Manager, Linux Secret Service) or HashiCorp Vault using the token management system. Alternatively, use environment variables following the pattern `{PROVIDER_NAME}_API_KEY` or pass via `--api-key` for session-only use. See [Token Management](docs/TOKEN_MANAGEMENT.md) for details.
 
 ### Manual Configuration
 
@@ -610,7 +651,9 @@ groq:
   default_model: llama-3.1-70b
 ```
 
-API keys (if using cloud providers) in `~/.chuk_llm/.env`:
+API keys can be provided via:
+1. **Secure token storage** (recommended) - Stored in OS keychain/Vault, see [Token Management](docs/TOKEN_MANAGEMENT.md)
+2. **Environment variables** - Export in your shell or add to `~/.chuk_llm/.env`:
 
 ```bash
 OPENAI_API_KEY=sk-your-key-here
@@ -619,6 +662,8 @@ AZURE_OPENAI_API_KEY=sk-your-azure-key-here
 GEMINI_API_KEY=your-gemini-key
 GROQ_API_KEY=your-groq-key
 ```
+
+3. **Command-line** - Pass `--api-key` for session-only use (not persisted)
 
 ## 📂 Server Configuration
 
