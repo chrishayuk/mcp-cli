@@ -10,9 +10,6 @@
     },
     "notion": {
       "url": "https://mcp.notion.com/mcp"
-    },
-    "linkedin": {
-      "url": "http://localhost:8000"
     }
   }
 }
