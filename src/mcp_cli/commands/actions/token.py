@@ -6,9 +6,9 @@ import json
 from typing import Optional
 
 from chuk_term.ui import output, format_table
-from mcp_cli.auth.token_manager import TokenManager
-from mcp_cli.auth.token_store_factory import TokenStoreBackend, TokenStoreFactory
-from mcp_cli.auth.token_types import APIKeyToken, BearerToken, TokenType
+from mcp_cli.auth import TokenManager
+from mcp_cli.auth import TokenStoreBackend, TokenStoreFactory
+from mcp_cli.auth import APIKeyToken, BearerToken, TokenType
 from mcp_cli.config.config_manager import get_config
 
 
@@ -282,7 +282,7 @@ async def token_get_action_async(name: str, namespace: str = "generic") -> None:
             return
 
         try:
-            from mcp_cli.auth.token_types import StoredToken
+            from mcp_cli.auth import StoredToken
 
             stored = StoredToken.model_validate(json.loads(raw_data))
             info = stored.get_display_info()

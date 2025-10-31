@@ -12,8 +12,8 @@ import os
 from typing import Optional, Dict, Any
 import logging
 
-from .token_manager import TokenManager
-from .token_types import TokenType
+from chuk_mcp_client_oauth import TokenManager
+from chuk_mcp_client_oauth.token_types import TokenType
 
 logger = logging.getLogger(__name__)
 
@@ -224,7 +224,7 @@ def delete_provider_token(
         if result:
             token_manager.registry.unregister(provider_name, "provider")
 
-        return result
+        return bool(result)
 
     except Exception as e:
         logger.error(f"Failed to delete provider token: {e}")

@@ -469,7 +469,7 @@ class ModelManager:
 
         try:
             from mcp_cli.auth.provider_tokens import get_provider_token_with_hierarchy
-            from mcp_cli.auth.token_manager import TokenManager
+            from mcp_cli.auth import TokenManager
 
             # Get token manager
             token_manager = TokenManager()
@@ -500,7 +500,7 @@ class ModelManager:
 
         try:
             from mcp_cli.auth.provider_tokens import get_provider_token_with_hierarchy
-            from mcp_cli.auth.token_manager import TokenManager
+            from mcp_cli.auth import TokenManager
 
             token_manager = TokenManager()
             _, source = get_provider_token_with_hierarchy(provider_name, token_manager)
@@ -687,7 +687,7 @@ class ModelManager:
 
         try:
             from mcp_cli.auth.provider_tokens import get_provider_token_with_hierarchy
-            from mcp_cli.auth.token_manager import TokenManager
+            from mcp_cli.auth import TokenManager
             import os
 
             # Check if env var is already set (highest priority)
@@ -726,7 +726,7 @@ class ModelManager:
 
         # Use hierarchical token resolution for custom providers too
         from mcp_cli.auth.provider_tokens import get_provider_token_with_hierarchy
-        from mcp_cli.auth.token_manager import TokenManager
+        from mcp_cli.auth import TokenManager
 
         # Check runtime keys first
         api_key = self._runtime_api_keys.get(provider)

@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from mcp_cli.auth.oauth_config import OAuthConfig
+from mcp_cli.auth import OAuthConfig
 from mcp_cli.tools.models import ServerInfo
 
 
