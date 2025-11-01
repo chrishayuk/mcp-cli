@@ -10,6 +10,17 @@
     },
     "notion": {
       "url": "https://mcp.notion.com/mcp"
+    },
+    "linkedin": {
+      "url": "http://0.0.0.0:8000/mcp",
+      "oauth": {
+        "authorization_url": "http://localhost:8000/oauth/authorize",
+        "token_url": "http://localhost:8000/oauth/token",
+        "registration_url": "http://localhost:8000/oauth/register",
+        "scopes": ["linkedin.posts", "linkedin.profile", "linkedin.documents"],
+        "redirect_uri": "http://localhost:8080/callback",
+        "use_pkce": true
+      }
     }
   }
 }
