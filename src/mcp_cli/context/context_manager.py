@@ -45,6 +45,9 @@ class ApplicationContext:
     confirm_tools: bool = True
     theme: str = "default"
 
+    # Token storage
+    token_backend: Optional[str] = None
+
     # Session state
     session_id: Optional[str] = None
     is_interactive: bool = False
@@ -167,6 +170,7 @@ class ApplicationContext:
             "verbose_mode": self.verbose_mode,
             "confirm_tools": self.confirm_tools,
             "theme": self.theme,
+            "token_backend": self.token_backend,
             "session_id": self.session_id,
             "is_interactive": self.is_interactive,
             "exit_requested": self.exit_requested,

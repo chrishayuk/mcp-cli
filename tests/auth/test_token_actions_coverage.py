@@ -55,6 +55,7 @@ class TestTokenListActionCoverage:
             token_dir=tmp_path / "tokens",
             backend=TokenStoreBackend.ENCRYPTED_FILE,
             password="test-password",
+            service_name="mcp-cli",
         )
         return manager
 
@@ -196,6 +197,7 @@ class TestTokenSetActionCoverage:
             token_dir=tmp_path / "tokens",
             backend=TokenStoreBackend.ENCRYPTED_FILE,
             password="test-password",
+            service_name="mcp-cli",
         )
         return manager
 

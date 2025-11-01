@@ -33,6 +33,7 @@ class TestTokenSetExtended:
             token_dir=tmp_path / "tokens",
             backend=TokenStoreBackend.ENCRYPTED_FILE,
             password="test-password",
+            service_name="mcp-cli",
         )
         return manager
 
@@ -66,6 +67,7 @@ class TestTokenGetExtended:
             token_dir=tmp_path / "tokens",
             backend=TokenStoreBackend.ENCRYPTED_FILE,
             password="test-password",
+            service_name="mcp-cli",
         )
         return manager
 
@@ -102,6 +104,7 @@ class TestTokenDeleteExtended:
             token_dir=tmp_path / "tokens",
             backend=TokenStoreBackend.ENCRYPTED_FILE,
             password="test-password",
+            service_name="mcp-cli",
         )
         return manager
 
@@ -146,6 +149,7 @@ class TestTokenProviderSetExtended:
             token_dir=tmp_path / "tokens",
             backend=TokenStoreBackend.ENCRYPTED_FILE,
             password="test-password",
+            service_name="mcp-cli",
         )
         return manager
 
@@ -234,6 +238,7 @@ class TestTokenProviderGetExtended:
             token_dir=tmp_path / "tokens",
             backend=TokenStoreBackend.ENCRYPTED_FILE,
             password="test-password",
+            service_name="mcp-cli",
         )
         return manager
 
@@ -302,6 +307,7 @@ class TestTokenProviderDeleteExtended:
             token_dir=tmp_path / "tokens",
             backend=TokenStoreBackend.ENCRYPTED_FILE,
             password="test-password",
+            service_name="mcp-cli",
         )
         return manager
 
@@ -370,6 +376,7 @@ class TestTokenClearExtended:
             token_dir=tmp_path / "tokens",
             backend=TokenStoreBackend.ENCRYPTED_FILE,
             password="test-password",
+            service_name="mcp-cli",
         )
         return manager
 

@@ -472,7 +472,7 @@ class ModelManager:
             from mcp_cli.auth import TokenManager
 
             # Get token manager
-            token_manager = TokenManager()
+            token_manager = TokenManager(service_name="mcp-cli")
 
             # Check hierarchically (env vars > storage)
             api_key, source = get_provider_token_with_hierarchy(
@@ -502,7 +502,7 @@ class ModelManager:
             from mcp_cli.auth.provider_tokens import get_provider_token_with_hierarchy
             from mcp_cli.auth import TokenManager
 
-            token_manager = TokenManager()
+            token_manager = TokenManager(service_name="mcp-cli")
             _, source = get_provider_token_with_hierarchy(provider_name, token_manager)
             return source
 
@@ -700,7 +700,7 @@ class ModelManager:
                 return
 
             # Get token from storage
-            token_manager = TokenManager()
+            token_manager = TokenManager(service_name="mcp-cli")
             api_key, source = get_provider_token_with_hierarchy(
                 provider_name, token_manager
             )
@@ -734,7 +734,7 @@ class ModelManager:
         if not api_key:
             # Use hierarchical resolution (env vars > storage)
             try:
-                token_manager = TokenManager()
+                token_manager = TokenManager(service_name="mcp-cli")
                 api_key, source = get_provider_token_with_hierarchy(
                     provider, token_manager
                 )

@@ -85,6 +85,7 @@ class ToolManager:
         token_manager = TokenManager(
             backend=TokenStoreBackend.AUTO,
             namespace=NAMESPACE,
+            service_name="mcp-cli",
         )
         self.oauth_handler = OAuthHandler(token_manager=token_manager)
 
@@ -979,26 +980,18 @@ class ToolManager:
                 error=f"Tool '{tool_name}' not found in registry",
             )
 
-        logger.info(
-            f"EXECUTION: Found tool '{tool_name}' -> namespace='{namespace}', base_name='{base_name}'"
+        logger.debug(
+            f"Found tool '{tool_name}' -> namespace='{namespace}', base_name='{base_name}'"
         )
-        logger.info(f"EXECUTION: Arguments = {arguments}")
-        logger.info(
-            f"EXECUTION: Creating ToolCall with tool='{base_name}', namespace='{namespace}'"
-        )
-        logger.info(f"EXECUTION: Tool timeout = {timeout or self.tool_timeout}")
+
+        # Determine the timeout to use for this call
+        effective_timeout = timeout or self.tool_timeout
 
         call = ToolCall(
             tool=base_name,
             namespace=namespace,
             arguments=arguments,
-            timeout=timeout or self.tool_timeout,
         )
-
-        logger.info(
-            f"EXECUTION: ToolCall created: tool='{call.tool}', namespace='{call.namespace}'"
-        )
-        logger.info(f"EXECUTION: ToolCall arguments: {call.arguments}")
 
         try:
             import time
@@ -1010,38 +1003,17 @@ class ToolManager:
                     error="Tool executor not initialized",
                 )
 
-            logger.info("EXECUTION: Calling executor.execute() with call")
             start_time = time.time()
-            results = await self._executor.execute([call])
+            results = await self._executor.execute([call], timeout=effective_timeout)
             elapsed = time.time() - start_time
-            logger.info(
-                f"EXECUTION: Executor completed in {elapsed:.2f}s, returned {len(results) if results else 0} results"
-            )
-
-            # DEBUG: Log the raw result to understand error format
-            if results and results[0].error:
-                logger.warning("=" * 80)
-                logger.warning(
-                    f"DEBUG: Tool execution failed with error: {results[0].error}"
-                )
-                logger.warning(f"DEBUG: Error type: {type(results[0].error)}")
-                logger.warning(f"DEBUG: Full result object: {results[0]}")
-                logger.warning("=" * 80)
 
             if not results:
-                logger.error("EXECUTION: No results returned from executor")
+                logger.error("No results returned from executor")
                 return ToolCallResult(
                     tool_name=tool_name, success=False, error="No result returned"
                 )
 
             result = results[0]
-            logger.info(
-                f"EXECUTION: First result: success={not bool(result.error)}, error='{result.error}', result_type={type(result.result)}"
-            )
-
-            if result.result:
-                result_str = str(result.result)[:200]
-                logger.info(f"EXECUTION: Result content: {result_str}...")
 
             return ToolCallResult(
                 tool_name=tool_name,
@@ -1055,10 +1027,7 @@ class ToolManager:
                 ),
             )
         except Exception as exc:
-            logger.error(f"EXECUTION: Exception during execution: {exc}")
-            import traceback
-
-            traceback.print_exc()
+            logger.error(f"Tool execution exception: {exc}")
             return ToolCallResult(tool_name=tool_name, success=False, error=str(exc))
 
     async def _find_tool_in_registry(self, tool_name: str) -> Tuple[str, str]:

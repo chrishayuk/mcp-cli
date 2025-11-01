@@ -10,6 +10,9 @@
     },
     "notion": {
       "url": "https://mcp.notion.com/mcp"
+    },
+    "cloudflare_workers": {
+      "url": "https://bindings.mcp.cloudflare.com/mcp"
     }
   }
 }

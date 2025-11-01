@@ -92,11 +92,29 @@ def main_callback(
         "--init-timeout",
         help="Server initialization timeout in seconds",
     ),
+    tool_timeout: Optional[float] = typer.Option(
+        None,
+        "--tool-timeout",
+        help="Tool execution timeout in seconds (default: 120, can also set MCP_TOOL_TIMEOUT env var)",
+    ),
+    token_backend: Optional[str] = typer.Option(
+        None,
+        "--token-backend",
+        help="Token storage backend: auto, keychain, windows, secretservice, encrypted, vault",
+    ),
 ) -> None:
     """MCP CLI - If no subcommand is given, start chat mode."""
 
     # Re-configure logging based on user options (this overrides the default ERROR level)
     setup_logging(level=log_level, quiet=quiet, verbose=verbose)
+
+    # Store tool timeout if specified
+    if tool_timeout is not None:
+        os.environ["MCP_TOOL_TIMEOUT"] = str(tool_timeout)
+
+    # Store token backend preference if specified
+    if token_backend:
+        os.environ["MCP_CLI_TOKEN_BACKEND"] = token_backend
 
     # Set UI theme and confirmation mode - use preference if not specified
     from mcp_cli.utils.preferences import get_preference_manager
@@ -139,7 +157,7 @@ def main_callback(
         from mcp_cli.context import initialize_context
 
         # Initialize context for the provider command
-        initialize_context()
+        initialize_context(token_backend=token_backend)
 
         try:
             from mcp_cli.commands.models import ProviderActionParams
@@ -1362,24 +1380,44 @@ def tokens_command(
         effective_action = action or "list"
 
         if effective_action == "list":
-            return await token_list_action_async(
+            from mcp_cli.commands.models import TokenListParams
+            import json
+            from pathlib import Path
+
+            # Load server names from config
+            server_names = []
+            try:
+                config_path = Path("server_config.json")
+                if config_path.exists():
+                    with open(config_path, "r") as f:
+                        config = json.load(f)
+                        server_names = list(config.get("mcpServers", {}).keys())
+            except Exception:
+                pass  # Silently ignore config load errors
+
+            params = TokenListParams(
                 namespace=namespace,
                 show_oauth=show_oauth,
                 show_bearer=show_bearer,
                 show_api_keys=show_api_keys,
                 show_providers=show_providers,
+                server_names=server_names,
             )
+            return await token_list_action_async(params)
         elif effective_action == "set":
             if not name:
                 output.error("Token name is required for 'set' action")
                 raise typer.Exit(1)
-            return await token_set_action_async(
+            from mcp_cli.commands.models import TokenSetParams
+
+            params = TokenSetParams(
                 name=name,
                 token_type=token_type,
                 value=value,
                 provider=provider,
                 namespace=namespace or "generic",
             )
+            return await token_set_action_async(params)
         elif effective_action == "get":
             if not name:
                 output.error("Token name is required for 'get' action")
@@ -1392,36 +1430,51 @@ def tokens_command(
             if not name:
                 output.error("Token name is required for 'delete' action")
                 raise typer.Exit(1)
-            return await token_delete_action_async(
+            from mcp_cli.commands.models import TokenDeleteParams
+
+            params = TokenDeleteParams(
                 name=name,
                 namespace=namespace,
                 oauth=is_oauth,
             )
+            return await token_delete_action_async(params)
         elif effective_action == "clear":
-            return await token_clear_action_async(
+            from mcp_cli.commands.models import TokenClearParams
+
+            params = TokenClearParams(
                 namespace=namespace,
                 force=force,
             )
+            return await token_clear_action_async(params)
         elif effective_action == "backends":
             return await token_backends_action_async()
         elif effective_action == "set-provider":
             if not name:
                 output.error("Provider name is required for 'set-provider' action")
                 raise typer.Exit(1)
-            return await token_set_provider_action_async(
+            from mcp_cli.commands.models import TokenProviderParams
+
+            params = TokenProviderParams(
                 provider=name,
                 api_key=value,
             )
+            return await token_set_provider_action_async(params)
         elif effective_action == "get-provider":
             if not name:
                 output.error("Provider name is required for 'get-provider' action")
                 raise typer.Exit(1)
-            return await token_get_provider_action_async(provider=name)
+            from mcp_cli.commands.models import TokenProviderParams
+
+            params = TokenProviderParams(provider=name)
+            return await token_get_provider_action_async(params)
         elif effective_action == "delete-provider":
             if not name:
                 output.error("Provider name is required for 'delete-provider' action")
                 raise typer.Exit(1)
-            return await token_delete_provider_action_async(provider=name)
+            from mcp_cli.commands.models import TokenProviderParams
+
+            params = TokenProviderParams(provider=name)
+            return await token_delete_provider_action_async(params)
         else:
             output.error(f"Unknown action: {effective_action}")
             output.hint(

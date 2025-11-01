@@ -21,13 +21,28 @@ from mcp_cli.commands.models import (
 
 def _get_token_manager() -> TokenManager:
     """Get configured token manager instance with mcp-cli namespace."""
-    try:
-        config = get_config()
-        backend = TokenStoreBackend(config.token_store_backend)
-    except Exception:
-        backend = TokenStoreBackend.AUTO
+    import os
 
-    return TokenManager(backend=backend, namespace=NAMESPACE)
+    # Check for CLI override first
+    backend_override = os.environ.get("MCP_CLI_TOKEN_BACKEND")
+    if backend_override:
+        try:
+            backend = TokenStoreBackend(backend_override)
+        except (ValueError, KeyError):
+            # Invalid backend specified, fall through to config
+            backend = None
+    else:
+        backend = None
+
+    # If no override or invalid override, check config
+    if backend is None:
+        try:
+            config = get_config()
+            backend = TokenStoreBackend(config.token_store_backend)
+        except Exception:
+            backend = TokenStoreBackend.AUTO
+
+    return TokenManager(backend=backend, namespace=NAMESPACE, service_name="mcp-cli")
 
 
 async def token_list_action_async(params: TokenListParams) -> None:
@@ -46,8 +61,9 @@ async def token_list_action_async(params: TokenListParams) -> None:
 
         output.rule("[bold]🔐 Stored Tokens[/bold]", style="primary")
 
-        # Track if we showed any provider tokens
+        # Track if we showed any tokens at all
         provider_tokens = {}
+        oauth_entries = []
 
         # Show provider tokens with hierarchical status
         if params.show_providers and (
@@ -99,8 +115,6 @@ async def token_list_action_async(params: TokenListParams) -> None:
 
         # List OAuth tokens - check servers from provided list
         if params.show_oauth and params.server_names:
-            oauth_entries = []
-
             # Check each configured server for OAuth tokens
             for server_name in params.server_names:
                 # Check if tokens exist for this server
@@ -252,7 +266,8 @@ async def token_list_action_async(params: TokenListParams) -> None:
                 columns=["Type", "Name", "Created", "Expires", "Details"],
             )
             output.print_table(table)
-        elif not params.show_providers or not provider_tokens:
+        elif not provider_tokens and not oauth_entries:
+            # Only show "No tokens found" if we truly have no tokens at all
             output.warning("No tokens found.")
 
         output.print()
@@ -670,9 +685,24 @@ async def token_clear_action_async(params: TokenClearParams) -> None:
 
 async def token_backends_action_async() -> None:
     """List available token storage backends."""
+    import os
+
     try:
         available = TokenStoreFactory.get_available_backends()
-        detected = TokenStoreFactory._detect_backend()
+
+        # Check for CLI override first
+        backend_override = os.environ.get("MCP_CLI_TOKEN_BACKEND")
+        override_succeeded = False
+        if backend_override:
+            try:
+                detected = TokenStoreBackend(backend_override)
+                override_succeeded = True
+            except (ValueError, KeyError):
+                # Invalid backend specified, use auto-detection
+                detected = TokenStoreFactory._detect_backend()
+                output.warning(f"Invalid backend '{backend_override}', using auto-detected backend")
+        else:
+            detected = TokenStoreFactory._detect_backend()
 
         output.rule("[bold]🔒 Token Storage Backends[/bold]", style="primary")
 
@@ -709,7 +739,10 @@ async def token_backends_action_async() -> None:
         )
         output.print_table(table)
         output.print()
-        output.info(f"Current backend: {detected.value}")
+        if override_succeeded:
+            output.info(f"Current backend: {detected.value} (overridden via --token-backend)")
+        else:
+            output.info(f"Current backend: {detected.value}")
 
     except Exception as e:
         output.error(f"Error listing backends: {e}")

@@ -195,6 +195,7 @@ Global options available for all modes and commands:
 - `--disable-filesystem`: Disable filesystem access (default: enabled)
 - `--api-base`: Override API endpoint URL
 - `--api-key`: Override API key (not needed for Ollama)
+- `--token-backend`: Override token storage backend (`auto`, `keychain`, `windows`, `secretservice`, `encrypted`, `vault`)
 - `--verbose`: Enable detailed logging
 - `--quiet`: Suppress non-essential output
 
@@ -301,6 +302,10 @@ mcp-cli theme                     # Show current theme and list available
 mcp-cli theme dark                # Switch to dark theme
 mcp-cli theme --select            # Interactive theme selector
 mcp-cli theme --list              # List all available themes
+
+# Token Storage Management
+mcp-cli token backends            # Show available storage backends
+mcp-cli --token-backend encrypted token list  # Use specific backend
 ```
 
 ## 🤖 Using Chat Mode
@@ -420,11 +425,29 @@ mcp-cli --server sqlite --provider anthropic --model claude-4-1-opus
 /token get <name>                 # Get token details
 /token delete <name>              # Delete a token
 /token clear                      # Clear all tokens (with confirmation)
+/token backends                   # Show available storage backends
 
 # Examples
 /token set my-api                 # Prompts for token value (secure)
 /token get notion --oauth         # Get OAuth token for Notion server
 /token list --api-keys            # List only provider API keys
+```
+
+**Token Storage Backends:**
+MCP CLI supports multiple secure token storage backends:
+- **Keychain** (macOS) - Uses macOS Keychain (default on macOS)
+- **Windows Credential Manager** - Native Windows storage (default on Windows)
+- **Secret Service** - Linux desktop keyring (GNOME/KDE)
+- **Encrypted File** - AES-256 encrypted local files (cross-platform fallback)
+- **HashiCorp Vault** - Enterprise secret management
+
+Override the default backend with `--token-backend`:
+```bash
+# Use encrypted file storage instead of keychain
+mcp-cli --token-backend encrypted token list
+
+# Use vault for enterprise environments
+mcp-cli --token-backend vault token list
 ```
 
 See [Token Management Guide](docs/TOKEN_MANAGEMENT.md) for comprehensive documentation.
@@ -953,11 +976,14 @@ mcp-cli --log-level DEBUG interactive --server sqlite
 ## 🔒 Security Considerations
 
 - **Local by Default**: Ollama with gpt-oss runs locally, keeping your data private
-- **API Keys**: Only needed for cloud providers (OpenAI, Anthropic, etc.), stored securely
+- **Secure Token Storage**: Tokens stored in OS-native credential stores (macOS Keychain, Windows Credential Manager, Linux Secret Service) under the "mcp-cli" service identifier
+- **Multiple Storage Backends**: Choose between keychain, encrypted files, or HashiCorp Vault based on security requirements
+- **API Keys**: Only needed for cloud providers (OpenAI, Anthropic, etc.), stored securely using token management system
 - **File Access**: Filesystem access can be disabled with `--disable-filesystem`
 - **Tool Validation**: All tool calls are validated before execution
 - **Timeout Protection**: Configurable timeouts prevent hanging operations
 - **Server Isolation**: Each server runs in its own process
+- **OAuth 2.0 Support**: Secure authentication for MCP servers using PKCE and resource indicators (RFC 7636, RFC 8707)
 
 ## 🚀 Performance Features
 

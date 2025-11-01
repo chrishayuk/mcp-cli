@@ -129,7 +129,7 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
 
     try:
         token_manager = TokenManager(
-            backend=TokenStoreBackend.AUTO, namespace=NAMESPACE
+            backend=TokenStoreBackend.AUTO, namespace=NAMESPACE, service_name="mcp-cli"
         )
     except Exception:
         token_manager = None

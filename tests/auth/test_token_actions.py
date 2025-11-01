@@ -34,6 +34,7 @@ def mock_token_manager(tmp_path):
             token_dir=tmp_path / "tokens",
             backend=TokenStoreBackend.ENCRYPTED_FILE,
             password="test-password",
+            service_name="mcp-cli",
         )
         mock.return_value = manager
         yield manager
