@@ -1111,8 +1111,6 @@ class ToolManager:
         )
 
         try:
-            import time
-
             if not self._executor:
                 return ToolCallResult(
                     tool_name=tool_name,

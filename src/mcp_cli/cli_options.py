@@ -135,7 +135,7 @@ def load_config(config_file: str) -> Optional[Dict[Any, Any]]:
                     bundled_config = package_files / "server_config.json"
                     if bundled_config.is_file():
                         data_str = bundled_config.read_text()
-                        data: Dict[Any, Any] = json.loads(data_str)
+                        data = json.loads(data_str)
                         logger.info("Loaded bundled server configuration")
                         return data
             except (ImportError, FileNotFoundError, AttributeError, TypeError) as e:
