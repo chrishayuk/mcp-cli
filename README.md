@@ -720,6 +720,30 @@ This means you can:
 - **Use defaults globally**: Run `uvx mcp-cli` from anywhere and get the bundled default servers
 - **Customize explicitly**: Use `--config-file` to specify any configuration file location
 
+### Bundled Default Servers
+
+MCP CLI comes with these pre-configured servers in the bundled `server_config.json`:
+
+| Server | Type | Description | Configuration |
+|--------|------|-------------|---------------|
+| **sqlite** | STDIO | SQLite database operations | `uvx mcp-server-sqlite --db-path test.db` |
+| **echo** | STDIO | Echo server for testing | `uvx chuk-mcp-echo stdio` |
+| **notion** | HTTP | Notion workspace integration (requires OAuth) | `https://mcp.notion.com/mcp` |
+| **cloudflare_workers** | HTTP | Cloudflare Workers bindings (requires OAuth) | `https://bindings.mcp.cloudflare.com/mcp` |
+
+**Note**: HTTP servers (notion, cloudflare_workers) require OAuth authentication. Use the [Token Management](docs/TOKEN_MANAGEMENT.md) system to configure access tokens.
+
+To use these servers:
+```bash
+# Use bundled servers from anywhere
+uvx mcp-cli --server sqlite
+uvx mcp-cli --server echo
+
+# HTTP servers require authentication first
+uvx mcp-cli token set notion --oauth
+uvx mcp-cli --server notion
+```
+
 ### Project Configuration
 
 Create a `server_config.json` file with your MCP server configurations:

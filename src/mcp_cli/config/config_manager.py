@@ -118,8 +118,9 @@ class MCPConfig(BaseModel):
             return config
 
         try:
-            with open(config_path, "r") as f:
-                data = json.load(f)
+            # Handle both regular files and package resources
+            data_str = config_path.read_text()
+            data = json.loads(data_str)
 
             # Load servers
             if "mcpServers" in data:

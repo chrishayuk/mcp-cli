@@ -114,12 +114,32 @@ def validate_provider_exists(provider: str) -> bool:
 
 
 def load_config(config_file: str) -> Optional[Dict[Any, Any]]:
-    """Load MCP server config file."""
+    """Load MCP server config file with fallback to bundled package config."""
     try:
-        if Path(config_file).is_file():
+        config_path = Path(config_file)
+
+        # Try explicit path or current directory first
+        if config_path.is_file():
             with open(config_file, "r", encoding="utf-8") as fh:
                 data: Dict[Any, Any] = json.load(fh)
                 return data
+
+        # If not found and using default name, try package bundle
+        if config_file == "server_config.json":
+            try:
+                import importlib.resources as resources
+                # Try Python 3.9+ API
+                if hasattr(resources, 'files'):
+                    package_files = resources.files('mcp_cli')
+                    bundled_config = package_files / 'server_config.json'
+                    if bundled_config.is_file():
+                        data_str = bundled_config.read_text()
+                        data: Dict[Any, Any] = json.loads(data_str)
+                        logger.info("Loaded bundled server configuration")
+                        return data
+            except (ImportError, FileNotFoundError, AttributeError, TypeError) as e:
+                logger.debug(f"Could not load bundled config: {e}")
+
     except (json.JSONDecodeError, OSError) as exc:
         logger.error("Error loading config file '%s': %s", config_file, exc)
     return None

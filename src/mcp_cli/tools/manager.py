@@ -115,18 +115,39 @@ class ToolManager:
         return 120.0  # Default 2 minutes
 
     def _load_config(self) -> Dict[str, Any]:
-        """Load and cache the configuration file."""
+        """Load and cache the configuration file with fallback to bundled package config."""
         if self._config_cache is not None:
             return self._config_cache
 
         try:
             config_path = Path(self.config_file)
+
+            # Try explicit path or current directory first
             if config_path.exists():
                 with open(config_path, "r") as f:
                     self._config_cache = json.load(f)
                     # Inject logging environment variables into STDIO servers
                     self._inject_logging_env_vars(self._config_cache)
                     return self._config_cache
+
+            # If not found and using default name, try package bundle
+            if self.config_file == "server_config.json":
+                try:
+                    import importlib.resources as resources
+                    # Try Python 3.9+ API
+                    if hasattr(resources, 'files'):
+                        package_files = resources.files('mcp_cli')
+                        bundled_config = package_files / 'server_config.json'
+                        if bundled_config.is_file():
+                            data_str = bundled_config.read_text()
+                            self._config_cache = json.loads(data_str)
+                            # Inject logging environment variables into STDIO servers
+                            self._inject_logging_env_vars(self._config_cache)
+                            logger.info("Loaded bundled server configuration")
+                            return self._config_cache
+                except (ImportError, FileNotFoundError, AttributeError, TypeError) as e:
+                    logger.debug(f"Could not load bundled config: {e}")
+
         except Exception as e:
             logger.warning(f"Could not load config file: {e}")
 
