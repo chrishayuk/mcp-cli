@@ -128,10 +128,11 @@ def load_config(config_file: str) -> Optional[Dict[Any, Any]]:
         if config_file == "server_config.json":
             try:
                 import importlib.resources as resources
+
                 # Try Python 3.9+ API
-                if hasattr(resources, 'files'):
-                    package_files = resources.files('mcp_cli')
-                    bundled_config = package_files / 'server_config.json'
+                if hasattr(resources, "files"):
+                    package_files = resources.files("mcp_cli")
+                    bundled_config = package_files / "server_config.json"
                     if bundled_config.is_file():
                         data_str = bundled_config.read_text()
                         data: Dict[Any, Any] = json.loads(data_str)

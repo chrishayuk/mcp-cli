@@ -251,11 +251,12 @@ class ConfigManager:
                 else:
                     # Fall back to package bundled config
                     import importlib.resources as resources
+
                     try:
                         # Python 3.9+
-                        if hasattr(resources, 'files'):
-                            package_files = resources.files('mcp_cli')
-                            config_file = package_files / 'server_config.json'
+                        if hasattr(resources, "files"):
+                            package_files = resources.files("mcp_cli")
+                            config_file = package_files / "server_config.json"
                             if config_file.is_file():
                                 self._config_path = Path(str(config_file))
                             else:
@@ -263,7 +264,7 @@ class ConfigManager:
                                 self._config_path = cwd_config
                         else:
                             # Python 3.8 fallback
-                            with resources.path('mcp_cli', 'server_config.json') as p:
+                            with resources.path("mcp_cli", "server_config.json") as p:
                                 if p.exists():
                                     self._config_path = p
                                 else:
