@@ -172,7 +172,7 @@ $RECYCLE.BIN/
 
 # Project specific
 chris_config.json
-server_config.json
+/server_config.json
 _modified_server_config.json
 *.db
 *.sqlite

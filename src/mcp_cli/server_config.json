@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "sqlite": {
+      "command": "uvx",
+      "args": ["mcp-server-sqlite", "--db-path", "test.db"]
+    },
+    "echo": {
+      "command": "uvx",
+      "args": ["chuk-mcp-echo", "stdio"]
+    },
+    "notion": {
+      "url": "https://mcp.notion.com/mcp"
+    },
+    "cloudflare_workers": {
+      "url": "https://bindings.mcp.cloudflare.com/mcp"
+    }
+  }
+}

@@ -52,6 +52,9 @@ package-dir = { "" = "src" }
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["mcp_cli*"]
+
+[tool.setuptools.package-data]
+mcp_cli = ["server_config.json"]
 [dependency-groups]
 dev = [
   "colorama>=0.4.6",

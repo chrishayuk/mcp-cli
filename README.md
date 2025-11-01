@@ -695,6 +695,31 @@ MCP CLI supports two types of server configurations:
 1. **Project Servers** (`server_config.json`): Shared project-level configurations
 2. **User Servers** (`~/.mcp-cli/preferences.json`): Personal runtime-added servers that persist across sessions
 
+### Configuration File Discovery
+
+MCP CLI searches for `server_config.json` in the following priority order:
+
+1. **Explicit path** via `--config-file` option:
+   ```bash
+   mcp-cli --config-file /path/to/custom-config.json
+   ```
+
+2. **Current directory** - Automatically detected when running from a project directory:
+   ```bash
+   cd /path/to/my-project
+   mcp-cli --server sqlite    # Uses ./server_config.json if it exists
+   ```
+
+3. **Bundled default** - When running via `uvx` or from any directory without a local config:
+   ```bash
+   uvx mcp-cli --server cloudflare_workers    # Uses packaged server_config.json
+   ```
+
+This means you can:
+- **Override per-project**: Place a `server_config.json` in your project directory with project-specific server configurations
+- **Use defaults globally**: Run `uvx mcp-cli` from anywhere and get the bundled default servers
+- **Customize explicitly**: Use `--config-file` to specify any configuration file location
+
 ### Project Configuration
 
 Create a `server_config.json` file with your MCP server configurations:

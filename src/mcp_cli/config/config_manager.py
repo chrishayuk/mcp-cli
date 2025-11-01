@@ -232,9 +232,45 @@ class ConfigManager:
     def initialize(self, config_path: Optional[Path] = None) -> MCPConfig:
         """
         Initialize or get the configuration.
+
+        Priority order:
+        1. Explicit config_path if provided
+        2. server_config.json in current directory (overrides package default)
+        3. server_config.json bundled in package (fallback)
         """
         if self._config is None:
-            self._config_path = config_path or Path("server_config.json")
+            if config_path:
+                # Explicit path provided
+                self._config_path = Path(config_path)
+            else:
+                # Check current directory first
+                cwd_config = Path("server_config.json")
+                if cwd_config.exists():
+                    self._config_path = cwd_config
+                else:
+                    # Fall back to package bundled config
+                    import importlib.resources as resources
+                    try:
+                        # Python 3.9+
+                        if hasattr(resources, 'files'):
+                            package_files = resources.files('mcp_cli')
+                            config_file = package_files / 'server_config.json'
+                            if config_file.is_file():
+                                self._config_path = Path(str(config_file))
+                            else:
+                                # Package config doesn't exist, use cwd path anyway
+                                self._config_path = cwd_config
+                        else:
+                            # Python 3.8 fallback
+                            with resources.path('mcp_cli', 'server_config.json') as p:
+                                if p.exists():
+                                    self._config_path = p
+                                else:
+                                    self._config_path = cwd_config
+                    except (ImportError, FileNotFoundError, AttributeError, TypeError):
+                        # If package config doesn't exist or can't be accessed, use cwd
+                        self._config_path = cwd_config
+
             self._config = MCPConfig.load_from_file(self._config_path)
         return self._config
 
