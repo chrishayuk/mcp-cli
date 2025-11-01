@@ -438,16 +438,16 @@ wheels = [
 
 [[package]]
 name = "chuk-mcp-client-oauth"
-version = "0.1.5"
+version = "0.1.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
     { name = "httpx" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/95/f8/70b17dd7bcb1a9c9807824fc20d6d48acb4df2df0fb84f40516785e75ba4/chuk_mcp_client_oauth-0.1.5.tar.gz", hash = "sha256:67a05492cfb026249ecd07915dffa8c6d8d201012be171875312137fd5188068", size = 163198, upload-time = "2025-10-31T16:21:24.681Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1d/fc/a8c06c672554127373803bae3fa0edbdb96ef9e4d100756f3c9a6e456d95/chuk_mcp_client_oauth-0.1.7.tar.gz", hash = "sha256:978f5b26321acbdf0acace4d07ead00405fd6f819552ccc5d1a3d24ce673cad3", size = 164934, upload-time = "2025-11-01T01:19:15.886Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/29/21/aecbe4e4713cdf6c56ad50f5780e916e3108a3c174ebcf1a35926be419b5/chuk_mcp_client_oauth-0.1.5-py3-none-any.whl", hash = "sha256:8bce3295d0818df4f20558e7d4156fd6ce1b0e266e4ebf56e4faac9ef2a30c8b", size = 46828, upload-time = "2025-10-31T16:21:21.871Z" },
+    { url = "https://files.pythonhosted.org/packages/3b/be/1fbcd8f18ecfd72bfe291804d6010fdc26d6a9bf938480afe3102165c7c1/chuk_mcp_client_oauth-0.1.7-py3-none-any.whl", hash = "sha256:4159552763452d2e7583a4e3b6801688fa7a21ee13fa1b1f2e4309499ce9aa74", size = 47009, upload-time = "2025-11-01T01:19:14.083Z" },
 ]
 
 [[package]]
@@ -1409,7 +1409,7 @@ requires-dist = [
     { name = "asyncio", specifier = ">=3.4.3" },
     { name = "asyncio", marker = "extra == 'dev'", specifier = ">=3.4.3" },
     { name = "chuk-llm", extras = ["all"], specifier = ">=0.12.7" },
-    { name = "chuk-mcp-client-oauth", specifier = ">=0.1.5" },
+    { name = "chuk-mcp-client-oauth", specifier = ">=0.1.7" },
     { name = "chuk-term", specifier = ">=0.1.3" },
     { name = "chuk-tool-processor", specifier = ">=0.9.5" },
     { name = "cryptography", specifier = ">=44.0.0" },
