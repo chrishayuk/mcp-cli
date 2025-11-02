@@ -8,14 +8,17 @@ instead of loading JSON files all over the place.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, Field
 
 from mcp_cli.auth import OAuthConfig
 from mcp_cli.tools.models import ServerInfo
+
+logger = logging.getLogger(__name__)
 
 
 class ServerConfig(BaseModel):
@@ -251,11 +254,12 @@ class ConfigManager:
                 else:
                     # Fall back to package bundled config
                     import importlib.resources as resources
+
                     try:
                         # Python 3.9+
-                        if hasattr(resources, 'files'):
-                            package_files = resources.files('mcp_cli')
-                            config_file = package_files / 'server_config.json'
+                        if hasattr(resources, "files"):
+                            package_files = resources.files("mcp_cli")
+                            config_file = package_files / "server_config.json"
                             if config_file.is_file():
                                 self._config_path = Path(str(config_file))
                             else:
@@ -263,7 +267,7 @@ class ConfigManager:
                                 self._config_path = cwd_config
                         else:
                             # Python 3.8 fallback
-                            with resources.path('mcp_cli', 'server_config.json') as p:
+                            with resources.path("mcp_cli", "server_config.json") as p:
                                 if p.exists():
                                     self._config_path = p
                                 else:
@@ -330,3 +334,100 @@ def initialize_config(config_path: Optional[Path] = None) -> MCPConfig:
     """
     manager = ConfigManager()
     return manager.initialize(config_path)
+
+
+def detect_server_types(
+    cfg: MCPConfig, servers: List[str]
+) -> Tuple[List[dict], List[str]]:
+    """
+    Detect which servers are HTTP vs STDIO based on configuration.
+
+    Args:
+        cfg: MCPConfig instance
+        servers: List of server names to detect
+
+    Returns:
+        Tuple of (http_servers_list, stdio_servers_list)
+    """
+    http_servers = []
+    stdio_servers = []
+
+    if not cfg or not cfg.servers:
+        # No config, assume all are STDIO
+        return [], servers
+
+    for server in servers:
+        server_config = cfg.servers.get(server)
+
+        if not server_config:
+            logger.warning(f"Server '{server}' not found in configuration")
+            stdio_servers.append(server)
+            continue
+
+        if server_config.url:
+            # HTTP server
+            http_servers.append({"name": server, "url": server_config.url})
+            logger.debug(f"Detected HTTP server: {server} -> {server_config.url}")
+        elif server_config.command:
+            # STDIO server
+            stdio_servers.append(server)
+            logger.debug(f"Detected STDIO server: {server}")
+        else:
+            logger.warning(
+                f"Server '{server}' has unclear configuration, assuming STDIO"
+            )
+            stdio_servers.append(server)
+
+    return http_servers, stdio_servers
+
+
+def validate_server_config(
+    cfg: MCPConfig, servers: List[str]
+) -> Tuple[bool, List[str]]:
+    """
+    Validate server configuration and return status and errors.
+
+    Args:
+        cfg: MCPConfig instance
+        servers: List of server names to validate
+
+    Returns:
+        Tuple of (is_valid, error_messages)
+    """
+    errors = []
+
+    if not cfg or not cfg.servers:
+        errors.append("No servers found in configuration")
+        return False, errors
+
+    for server in servers:
+        if server not in cfg.servers:
+            errors.append(f"Server '{server}' not found in configuration")
+            continue
+
+        server_config = cfg.servers[server]
+
+        # Check for valid configuration
+        has_url = server_config.url is not None
+        has_command = server_config.command is not None
+
+        if not has_url and not has_command:
+            errors.append(f"Server '{server}' missing both 'url' and 'command' fields")
+        elif has_url and has_command:
+            errors.append(
+                f"Server '{server}' has both 'url' and 'command' fields (should have only one)"
+            )
+        elif has_url:
+            # Validate URL format
+            url = server_config.url
+            if url and not url.startswith(("http://", "https://")):
+                errors.append(
+                    f"Server '{server}' URL must start with http:// or https://"
+                )
+        elif has_command:
+            # Validate command format
+            command = server_config.command
+            if not isinstance(command, str) or not command.strip():
+                errors.append(f"Server '{server}' command must be a non-empty string")
+
+    return len(errors) == 0, errors

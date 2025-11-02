@@ -79,6 +79,10 @@ class ToolManager:
         self._sse_servers: List[Any] = []
         self._config_cache: Optional[Dict[str, Any]] = None
 
+        # Effective timeout (will be set after server detection)
+        self._effective_timeout: Optional[float] = None
+        self._effective_max_retries: Optional[int] = None
+
         # OAuth support with mcp-cli namespace
         from mcp_cli.auth import TokenManager, TokenStoreBackend
 
@@ -126,6 +130,8 @@ class ToolManager:
             if config_path.exists():
                 with open(config_path, "r") as f:
                     self._config_cache = json.load(f)
+                    # Resolve token placeholders first (before any other processing)
+                    self._resolve_token_placeholders(self._config_cache)
                     # Inject logging environment variables into STDIO servers
                     self._inject_logging_env_vars(self._config_cache)
                     return self._config_cache
@@ -134,13 +140,16 @@ class ToolManager:
             if self.config_file == "server_config.json":
                 try:
                     import importlib.resources as resources
+
                     # Try Python 3.9+ API
-                    if hasattr(resources, 'files'):
-                        package_files = resources.files('mcp_cli')
-                        bundled_config = package_files / 'server_config.json'
+                    if hasattr(resources, "files"):
+                        package_files = resources.files("mcp_cli")
+                        bundled_config = package_files / "server_config.json"
                         if bundled_config.is_file():
                             data_str = bundled_config.read_text()
                             self._config_cache = json.loads(data_str)
+                            # Resolve token placeholders first (before any other processing)
+                            self._resolve_token_placeholders(self._config_cache)
                             # Inject logging environment variables into STDIO servers
                             self._inject_logging_env_vars(self._config_cache)
                             logger.info("Loaded bundled server configuration")
@@ -153,6 +162,101 @@ class ToolManager:
 
         self._config_cache = {}
         return self._config_cache
+
+    def _resolve_token_placeholders(self, config: Dict[str, Any]) -> None:
+        """
+        Resolve ${TOKEN:namespace:name} placeholders in environment variables.
+
+        Replaces placeholders like ${TOKEN:bearer:brave_search} with actual token
+        values from the secure token store.
+        """
+        import re
+        from mcp_cli.auth import TokenManager, TokenStoreBackend
+
+        mcp_servers = config.get("mcpServers", {})
+        token_pattern = re.compile(r"\$\{TOKEN:([^:]+):([^}]+)\}")
+
+        # Get token manager for looking up tokens
+        token_manager = TokenManager(
+            backend=TokenStoreBackend.AUTO,
+            namespace=NAMESPACE,
+            service_name="mcp-cli",
+        )
+
+        for server_name, server_config in mcp_servers.items():
+            # Process both env vars and headers
+            for field_name in ["env", "headers"]:
+                if field_name in server_config:
+                    for key, value in server_config[field_name].items():
+                        if isinstance(value, str):
+                            # Find all token placeholders in this value
+                            matches = token_pattern.findall(value)
+                            for namespace, name in matches:
+                                # Retrieve token from store
+                                try:
+                                    store = token_manager.token_store
+                                    # Use retrieve_generic method to get token value
+                                    token_value = store.retrieve_generic(
+                                        key=name, namespace=namespace
+                                    )
+
+                                    if token_value:
+                                        # Replace placeholder with actual token
+                                        placeholder = f"${{TOKEN:{namespace}:{name}}}"
+                                        server_config[field_name][key] = value.replace(
+                                            placeholder, token_value
+                                        )
+                                        # Log token with partial masking for security
+                                        masked_token = (
+                                            token_value[:8] + "..." + token_value[-4:]
+                                            if len(token_value) > 12
+                                            else "***"
+                                        )
+                                        logger.debug(
+                                            f"Resolved token placeholder for {server_name} ({field_name}.{key}): "
+                                            f"{namespace}:{name} -> {masked_token} (length: {len(token_value)})"
+                                        )
+                                    else:
+                                        logger.warning(
+                                            f"Token not found for {server_name} ({field_name}.{key}): "
+                                            f"{namespace}:{name}"
+                                        )
+                                except Exception as e:
+                                    logger.error(
+                                        f"Error resolving token for {server_name} ({field_name}.{key}) "
+                                        f"({namespace}:{name}): {e}"
+                                    )
+
+    def _get_max_server_timeout(self, servers: List[Any]) -> float:
+        """
+        Get the maximum timeout from server configurations.
+        Falls back to self.tool_timeout if no server-specific timeouts are set.
+        """
+        max_timeout = self.tool_timeout
+        for server in servers:
+            if isinstance(server, dict) and "timeout" in server:
+                server_timeout = float(server["timeout"])
+                max_timeout = max(max_timeout, server_timeout)
+        return max_timeout
+
+    def _get_min_server_max_retries(self, servers: List[Any]) -> int:
+        """
+        Get the minimum max_retries from server configurations.
+        Falls back to 2 if no server-specific max_retries are set.
+        If any server has max_retries=0, returns 0 (no retries).
+        """
+        min_retries = 2  # Default from line 817
+        has_server_config = False
+
+        for server in servers:
+            if isinstance(server, dict) and "max_retries" in server:
+                has_server_config = True
+                server_retries = int(server["max_retries"])
+                if server_retries == 0:
+                    return 0  # If any server wants no retries, disable retries
+                min_retries = min(min_retries, server_retries)
+
+        return min_retries if has_server_config else 2
 
     def _inject_logging_env_vars(self, config: Dict[str, Any]) -> None:
         """
@@ -209,6 +313,11 @@ class ToolManager:
                 # Mark if OAuth is configured (will be processed during initialization)
                 if "oauth" in server_config:
                     server_entry["oauth"] = server_config["oauth"]
+                # Add per-server timeout and max_retries if configured
+                if "timeout" in server_config:
+                    server_entry["timeout"] = server_config["timeout"]
+                if "max_retries" in server_config:
+                    server_entry["max_retries"] = server_config["max_retries"]
                 self._sse_servers.append(server_entry)
                 logger.debug(f"Detected SSE server: {server}")
             elif "url" in server_config:
@@ -220,6 +329,17 @@ class ToolManager:
                 # Mark if OAuth is configured (will be processed during initialization)
                 if "oauth" in server_config:
                     server_entry["oauth"] = server_config["oauth"]
+                # Add per-server timeout and max_retries if configured
+                if "timeout" in server_config:
+                    server_entry["timeout"] = server_config["timeout"]
+                    logger.info(
+                        f"Server '{server}' configured with timeout: {server_config['timeout']}s"
+                    )
+                if "max_retries" in server_config:
+                    server_entry["max_retries"] = server_config["max_retries"]
+                    logger.info(
+                        f"Server '{server}' configured with max_retries: {server_config['max_retries']}"
+                    )
                 self._http_servers.append(server_entry)
                 logger.debug(f"Detected HTTP server: {server}")
             else:
@@ -452,6 +572,20 @@ class ToolManager:
 
             self._detect_server_types()
 
+            # Calculate effective timeout and max_retries from all servers
+            all_servers = self._http_servers + self._sse_servers
+            if all_servers:
+                self._effective_timeout = self._get_max_server_timeout(all_servers)
+                self._effective_max_retries = self._get_min_server_max_retries(
+                    all_servers
+                )
+                logger.info(
+                    f"Effective timeout: {self._effective_timeout}s, max_retries: {self._effective_max_retries}"
+                )
+            else:
+                self._effective_timeout = self.tool_timeout
+                self._effective_max_retries = 2
+
             # Determine which servers we're connecting to for better messaging
             server_names = []
             if self._http_servers:
@@ -518,13 +652,21 @@ class ToolManager:
             # Create OAuth refresh callback (NEW)
             oauth_refresh_callback = self._create_oauth_refresh_callback()
 
+            # Extract per-server timeout and max_retries configuration
+            server_timeout = self._get_max_server_timeout(self._sse_servers)
+            server_max_retries = self._get_min_server_max_retries(self._sse_servers)
+
             try:
                 self.processor, self.stream_manager = await asyncio.wait_for(
                     setup_mcp_sse(
                         servers=self._sse_servers,
                         server_names=self.server_names,
                         namespace=namespace,
-                        default_timeout=self.tool_timeout,
+                        default_timeout=server_timeout,
+                        max_retries=server_max_retries,
+                        enable_retries=(
+                            server_max_retries > 0
+                        ),  # Disable if max_retries is 0
                         oauth_refresh_callback=oauth_refresh_callback,  # NEW
                     ),
                     timeout=self.initialization_timeout,
@@ -601,13 +743,21 @@ class ToolManager:
             # Create OAuth refresh callback (NEW)
             oauth_refresh_callback = self._create_oauth_refresh_callback()
 
+            # Extract per-server timeout and max_retries configuration
+            server_timeout = self._get_max_server_timeout(self._http_servers)
+            server_max_retries = self._get_min_server_max_retries(self._http_servers)
+
             try:
                 self.processor, self.stream_manager = await asyncio.wait_for(
                     setup_mcp_http_streamable(
                         servers=self._http_servers,
                         server_names=self.server_names,
                         namespace=namespace,
-                        default_timeout=self.tool_timeout,
+                        default_timeout=server_timeout,
+                        max_retries=server_max_retries,
+                        enable_retries=(
+                            server_max_retries > 0
+                        ),  # Disable if max_retries is 0
                         oauth_refresh_callback=oauth_refresh_callback,  # NEW
                     ),
                     timeout=self.initialization_timeout,
@@ -709,17 +859,35 @@ class ToolManager:
         """Setup STDIO servers."""
         try:
             from chuk_tool_processor.mcp.setup_mcp_stdio import setup_mcp_stdio
+            import tempfile
 
             logger.info(
                 f"Setting up STDIO servers with {self.initialization_timeout}s timeout"
             )
+
+            # Write the modified config (with resolved tokens) to a temp file
+            # This ensures chuk-tool-processor gets the config with tokens already replaced
+            config_to_use = self.config_file
+            temp_config_file = None
+
+            if self._config_cache:
+                # Create a temporary file with the modified config
+                temp_config_file = tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".json", delete=False
+                )
+                json.dump(self._config_cache, temp_config_file)
+                temp_config_file.close()
+                config_to_use = temp_config_file.name
+                logger.debug(
+                    f"Using temporary config file with resolved tokens: {config_to_use}"
+                )
 
             # Try to pass initialization_timeout to setup_mcp_stdio
             # This controls the timeout for the initial connection/handshake
             try:
                 self.processor, self.stream_manager = await asyncio.wait_for(
                     setup_mcp_stdio(
-                        config_file=self.config_file,
+                        config_file=config_to_use,
                         servers=self._stdio_servers,
                         server_names=self.server_names,
                         namespace=namespace,
@@ -739,7 +907,7 @@ class ToolManager:
                 )
                 self.processor, self.stream_manager = await asyncio.wait_for(
                     setup_mcp_stdio(
-                        config_file=self.config_file,
+                        config_file=config_to_use,
                         servers=self._stdio_servers,
                         server_names=self.server_names,
                         namespace=namespace,
@@ -750,6 +918,15 @@ class ToolManager:
                     ),
                     timeout=self.initialization_timeout,
                 )
+            finally:
+                # Clean up temp file
+                if temp_config_file:
+                    try:
+                        import os
+
+                        os.unlink(temp_config_file.name)
+                    except Exception:
+                        pass
 
             logger.info("STDIO servers initialized successfully")
             return True
@@ -830,16 +1007,19 @@ class ToolManager:
         except Exception as e:
             logger.error(f"Failed to list tools from registry: {e}")
 
+        # Use effective timeout calculated from server configs
+        effective_timeout = self._effective_timeout or self.tool_timeout
+
         strategy = InProcessStrategy(
             self._registry,
             max_concurrency=self.max_concurrency,
-            default_timeout=self.tool_timeout,
+            default_timeout=effective_timeout,
         )
 
         self._executor = ToolExecutor(
             registry=self._registry,
             strategy=strategy,
-            default_timeout=self.tool_timeout,
+            default_timeout=effective_timeout,
         )
 
     async def close(self):
@@ -1006,7 +1186,8 @@ class ToolManager:
         )
 
         # Determine the timeout to use for this call
-        effective_timeout = timeout or self.tool_timeout
+        # Priority: explicit timeout > server-configured timeout > fallback default
+        effective_timeout = timeout or self._effective_timeout or self.tool_timeout
 
         call = ToolCall(
             tool=base_name,
@@ -1015,8 +1196,6 @@ class ToolManager:
         )
 
         try:
-            import time
-
             if not self._executor:
                 return ToolCallResult(
                     tool_name=tool_name,
@@ -1024,9 +1203,7 @@ class ToolManager:
                     error="Tool executor not initialized",
                 )
 
-            start_time = time.time()
             results = await self._executor.execute([call], timeout=effective_timeout)
-            elapsed = time.time() - start_time
 
             if not results:
                 logger.error("No results returned from executor")
@@ -1128,7 +1305,7 @@ class ToolManager:
             tool=base_name,
             namespace=namespace,
             arguments=arguments,
-            timeout=timeout or self.tool_timeout,
+            timeout=timeout or self._effective_timeout or self.tool_timeout,
         )
 
         if self._executor:

@@ -30,7 +30,7 @@ from chuk_term.ui import (
     restore_terminal,
 )
 from chuk_term.ui.theme import set_theme
-from mcp_cli.cli_options import process_options
+from mcp_cli.config import process_options
 from mcp_cli.context import initialize_context
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1253,29 +1253,49 @@ def token_command(
             if not name:
                 output.error("Token name is required for 'set' action")
                 raise typer.Exit(1)
+            from mcp_cli.commands.models import TokenSetParams
+
+            # Use token_type as default namespace if not specified
+            default_namespace = (
+                token_type if token_type in ["bearer", "api-key"] else "generic"
+            )
             return await token_set_action_async(
-                name=name,
-                token_type=token_type,
-                value=value,
-                provider=provider,
-                namespace=namespace or "generic",
+                TokenSetParams(
+                    name=name,
+                    token_type=token_type,
+                    value=value,
+                    provider=provider,
+                    namespace=namespace or default_namespace,
+                )
             )
         elif action == "get":
             if not name:
                 output.error("Token name is required for 'get' action")
                 raise typer.Exit(1)
+            # Use token_type as default namespace if not specified
+            default_namespace = (
+                token_type if token_type in ["bearer", "api-key"] else "generic"
+            )
             return await token_get_action_async(
                 name=name,
-                namespace=namespace or "generic",
+                namespace=namespace or default_namespace,
             )
         elif action == "delete":
             if not name:
                 output.error("Token name is required for 'delete' action")
                 raise typer.Exit(1)
+            from mcp_cli.commands.models import TokenDeleteParams
+
+            # Use token_type as default namespace if not specified
+            default_namespace = (
+                token_type if token_type in ["bearer", "api-key"] else "generic"
+            )
             return await token_delete_action_async(
-                name=name,
-                namespace=namespace,
-                oauth=is_oauth,
+                TokenDeleteParams(
+                    name=name,
+                    namespace=namespace or default_namespace,
+                    oauth=is_oauth,
+                )
             )
         elif action == "clear":
             return await token_clear_action_async(

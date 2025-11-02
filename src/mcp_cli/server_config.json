@@ -13,6 +13,16 @@
     },
     "cloudflare_workers": {
       "url": "https://bindings.mcp.cloudflare.com/mcp"
+    },
+    "brave_search": {
+      "command": "npx",
+      "args": ["-y", "@brave/brave-search-mcp-server"],
+      "env": {
+        "BRAVE_API_KEY": "${TOKEN:bearer:brave_search}"
+      }
+    },
+    "monday": {
+      "url": "https://mcp.monday.com/mcp"
     }
   }
 }

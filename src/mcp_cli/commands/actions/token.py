@@ -700,7 +700,9 @@ async def token_backends_action_async() -> None:
             except (ValueError, KeyError):
                 # Invalid backend specified, use auto-detection
                 detected = TokenStoreFactory._detect_backend()
-                output.warning(f"Invalid backend '{backend_override}', using auto-detected backend")
+                output.warning(
+                    f"Invalid backend '{backend_override}', using auto-detected backend"
+                )
         else:
             detected = TokenStoreFactory._detect_backend()
 
@@ -740,7 +742,9 @@ async def token_backends_action_async() -> None:
         output.print_table(table)
         output.print()
         if override_succeeded:
-            output.info(f"Current backend: {detected.value} (overridden via --token-backend)")
+            output.info(
+                f"Current backend: {detected.value} (overridden via --token-backend)"
+            )
         else:
             output.info(f"Current backend: {detected.value}")
 

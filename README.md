@@ -765,14 +765,80 @@ Create a `server_config.json` file with your MCP server configurations:
     },
     "brave-search": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "args": ["-y", "@brave/brave-search-mcp-server"],
       "env": {
-        "BRAVE_API_KEY": "your-brave-api-key"
+        "BRAVE_API_KEY": "${TOKEN:bearer:brave_search}"
+      }
+    },
+    "notion": {
+      "url": "https://mcp.notion.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${TOKEN:bearer:notion}"
       }
     }
   }
 }
 ```
+
+### Secure Token Replacement
+
+MCP CLI supports automatic token replacement from secure storage using the `${TOKEN:namespace:name}` syntax:
+
+**Syntax**: `${TOKEN:<namespace>:<token-name>}`
+
+**Examples**:
+```json
+{
+  "mcpServers": {
+    "brave-search": {
+      "command": "npx",
+      "args": ["-y", "@brave/brave-search-mcp-server"],
+      "env": {
+        "BRAVE_API_KEY": "${TOKEN:bearer:brave_search}"
+      }
+    },
+    "api-server": {
+      "url": "https://api.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${TOKEN:bearer:my_api}",
+        "X-API-Key": "${TOKEN:api-key:my_service}"
+      }
+    }
+  }
+}
+```
+
+**Token Storage**:
+```bash
+# Store tokens securely (never in config files!)
+mcp-cli token set brave_search --type bearer
+# Enter token value when prompted (hidden input)
+
+mcp-cli token set my_api --type bearer --value "your-token-here"
+
+# Tokens are stored in OS-native secure storage:
+# - macOS: Keychain
+# - Windows: Credential Manager
+# - Linux: Secret Service (GNOME Keyring/KWallet)
+```
+
+**Supported Locations**:
+- `env`: Environment variables for STDIO servers
+- `headers`: HTTP headers for HTTP/SSE servers
+
+**Namespaces**:
+- `bearer`: Bearer tokens (default for `--type bearer`)
+- `api-key`: API keys (default for `--type api-key`)
+- `oauth`: OAuth tokens (automatic)
+- `generic`: Custom tokens
+
+**Benefits**:
+- ✅ Never store API keys in config files
+- ✅ Share `server_config.json` safely (no secrets)
+- ✅ Tokens encrypted in OS-native secure storage
+- ✅ Works across all transport types (STDIO, HTTP, SSE)
+
+See [Token Management Guide](docs/TOKEN_MANAGEMENT.md) for complete documentation.
 
 ### Runtime Server Management
 
