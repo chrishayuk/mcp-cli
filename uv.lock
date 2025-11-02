@@ -442,7 +442,7 @@ wheels = [
 
 [[package]]
 name = "chuk-mcp-client-oauth"
-version = "0.3.1"
+version = "0.3.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
@@ -450,9 +450,9 @@ dependencies = [
     { name = "keyring", marker = "sys_platform == 'darwin' or sys_platform == 'win32'" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f6/9e/8c67dbeb33b7d10474fcd115c83f0056aeffb9f4c8b6d9273cc768635bdf/chuk_mcp_client_oauth-0.3.1.tar.gz", hash = "sha256:d39462a6a06375495d35baf2408b55b29345253d8b07d18ff5680c24a65980d3", size = 197501, upload-time = "2025-11-01T16:48:41.775Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0f/b6/9f6a0a2dc188a8d79bbf6cf2e18e213ddef1e396c8a780888e88152af0ca/chuk_mcp_client_oauth-0.3.5.tar.gz", hash = "sha256:593f9f1110b06462d37efdf928814d0d0a860cad2ef86aae74a36e740d9f8fb1", size = 197623, upload-time = "2025-11-02T18:09:11.64Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/57/69/e22e45e728735a43fff2c5ca6ca3f97495f4a67101e184da7fbdd0a76dcc/chuk_mcp_client_oauth-0.3.1-py3-none-any.whl", hash = "sha256:82a3edce1bd50b5c1bc8b687f0b8f239f7705cd23a7cafb95043250ccf1359f5", size = 61453, upload-time = "2025-11-01T16:48:40.19Z" },
+    { url = "https://files.pythonhosted.org/packages/62/90/2107ba5d3528fc56b841d140e0f524e726b6a1e5936c7a8092fc6dc0a01b/chuk_mcp_client_oauth-0.3.5-py3-none-any.whl", hash = "sha256:809f90afecdc811f846e651da6c3156a7c3ac19cd881895949ecccc1a9a516f2", size = 61582, upload-time = "2025-11-02T18:09:09.936Z" },
 ]
 
 [[package]]
@@ -1372,7 +1372,7 @@ wheels = [
 
 [[package]]
 name = "mcp-cli"
-version = "0.9.5"
+version = "0.9.7"
 source = { editable = "." }
 dependencies = [
     { name = "asyncio" },
@@ -1414,7 +1414,7 @@ requires-dist = [
     { name = "asyncio", specifier = ">=3.4.3" },
     { name = "asyncio", marker = "extra == 'dev'", specifier = ">=3.4.3" },
     { name = "chuk-llm", extras = ["all"], specifier = ">=0.12.7" },
-    { name = "chuk-mcp-client-oauth", specifier = ">=0.3.1" },
+    { name = "chuk-mcp-client-oauth", specifier = ">=0.3.5" },
     { name = "chuk-term", specifier = ">=0.1.3" },
     { name = "chuk-tool-processor", specifier = ">=0.9.7" },
     { name = "cryptography", specifier = ">=44.0.0" },

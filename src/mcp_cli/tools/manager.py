@@ -416,26 +416,18 @@ class ToolManager:
                     or "unauthorized" in error_msg
                 ):
                     logger.warning(
-                        f"Invalid or expired token detected for {server_name}"
+                        f"Invalid or expired token detected for {server_name}: {e}"
                     )
                     logger.info(
                         f"Clearing stored tokens and re-authenticating {server_name}..."
                     )
 
-                    # Clear the invalid tokens
+                    # Clear the invalid tokens (this is now handled in oauth_handler.ensure_authenticated_mcp)
+                    # but we do it again here to ensure memory cache is cleared
                     self.oauth_handler.clear_tokens(server_name)
 
-                    # Delete client registration to force full OAuth flow
-                    try:
-                        token_dir = Path.home() / ".mcp_cli" / "tokens"
-                        client_file = token_dir / f"{server_name}_client.json"
-                        if client_file.exists():
-                            os.remove(client_file)
-                            logger.debug(
-                                f"Deleted client registration for {server_name}"
-                            )
-                    except Exception as del_e:
-                        logger.debug(f"Could not delete client registration: {del_e}")
+                    # NOTE: We don't delete client registration anymore - it's still valid
+                    # Only tokens need to be refreshed. The oauth_handler will handle the full flow.
 
                     # Retry authentication (this will trigger the full OAuth flow with browser)
                     try:
@@ -691,11 +683,15 @@ class ToolManager:
                     or "invalid access token" in combined_error
                     or "unauthorized" in combined_error
                 ):
-                    logger.warning("SSE server setup failed with authentication error")
+                    logger.warning(f"SSE server setup failed with authentication error: {setup_error}")
                     logger.info("Attempting to re-authenticate and retry...")
 
                     # Try OAuth refresh callback to get new tokens
-                    new_headers = await oauth_refresh_callback()
+                    try:
+                        new_headers = await oauth_refresh_callback()
+                    except Exception as callback_error:
+                        logger.error(f"OAuth refresh callback failed: {callback_error}")
+                        new_headers = None
 
                     if new_headers:
                         # Retry setup with new authentication
@@ -717,7 +713,8 @@ class ToolManager:
                         )
                     else:
                         logger.error(
-                            "Re-authentication failed, cannot setup SSE servers"
+                            "Re-authentication failed, cannot setup SSE servers. "
+                            "Try running 'mcp-cli token delete <server> --is-oauth' to clear tokens."
                         )
                         raise
                 else:
@@ -782,11 +779,15 @@ class ToolManager:
                     or "invalid access token" in combined_error
                     or "unauthorized" in combined_error
                 ):
-                    logger.warning("HTTP server setup failed with authentication error")
+                    logger.warning(f"HTTP server setup failed with authentication error: {setup_error}")
                     logger.info("Attempting to re-authenticate and retry...")
 
                     # Try OAuth refresh callback to get new tokens
-                    new_headers = await oauth_refresh_callback()
+                    try:
+                        new_headers = await oauth_refresh_callback()
+                    except Exception as callback_error:
+                        logger.error(f"OAuth refresh callback failed: {callback_error}")
+                        new_headers = None
 
                     if new_headers:
                         # Retry setup with new authentication
@@ -808,7 +809,8 @@ class ToolManager:
                         )
                     else:
                         logger.error(
-                            "Re-authentication failed, cannot setup HTTP servers"
+                            "Re-authentication failed, cannot setup HTTP servers. "
+                            "Try running 'mcp-cli token delete <server> --is-oauth' to clear tokens."
                         )
                         raise
                 else:
