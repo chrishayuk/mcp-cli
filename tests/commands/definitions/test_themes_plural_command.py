@@ -31,7 +31,7 @@ class TestThemesPluralCommand:
             # Should call theme action with empty params
             mock_action.assert_called_once()
             call_args = mock_action.call_args[0][0]
-            assert hasattr(call_args, "model_fields")  # It's a Pydantic model
+            assert hasattr(call_args.__class__, "model_fields")  # It's a Pydantic model
             assert result.success is True
 
     @pytest.mark.asyncio

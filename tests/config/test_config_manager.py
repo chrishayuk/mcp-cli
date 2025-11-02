@@ -13,6 +13,8 @@ from mcp_cli.config.config_manager import (
     ConfigManager,
     get_config,
     initialize_config,
+    detect_server_types,
+    validate_server_config,
 )
 
 
@@ -433,3 +435,251 @@ class TestConfigHelpers:
         # Should not raise, even if file doesn't exist
         config = initialize_config()
         assert config is not None
+
+
+class TestDetectServerTypes:
+    """Test detect_server_types function."""
+
+    def test_detect_http_server(self, tmp_path):
+        """Test detecting HTTP server."""
+        config_data = {"mcpServers": {"http-server": {"url": "http://localhost:8080"}}}
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_data))
+
+        config = MCPConfig.load_from_file(config_file)
+        http_servers, stdio_servers = detect_server_types(config, ["http-server"])
+
+        assert len(http_servers) == 1
+        assert http_servers[0]["name"] == "http-server"
+        assert http_servers[0]["url"] == "http://localhost:8080"
+        assert len(stdio_servers) == 0
+
+    def test_detect_stdio_server(self, tmp_path):
+        """Test detecting STDIO server."""
+        config_data = {
+            "mcpServers": {
+                "stdio-server": {"command": "python", "args": ["-m", "server"]}
+            }
+        }
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_data))
+
+        config = MCPConfig.load_from_file(config_file)
+        http_servers, stdio_servers = detect_server_types(config, ["stdio-server"])
+
+        assert len(http_servers) == 0
+        assert len(stdio_servers) == 1
+        assert stdio_servers[0] == "stdio-server"
+
+    def test_detect_mixed_servers(self, tmp_path):
+        """Test detecting mixed HTTP and STDIO servers."""
+        config_data = {
+            "mcpServers": {
+                "http-server": {"url": "http://localhost:8080"},
+                "stdio-server": {"command": "python"},
+            }
+        }
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_data))
+
+        config = MCPConfig.load_from_file(config_file)
+        http_servers, stdio_servers = detect_server_types(
+            config, ["http-server", "stdio-server"]
+        )
+
+        assert len(http_servers) == 1
+        assert len(stdio_servers) == 1
+
+    def test_detect_server_not_found(self, tmp_path):
+        """Test detecting server that doesn't exist in config."""
+        config_data = {"mcpServers": {"real-server": {"command": "python"}}}
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_data))
+
+        config = MCPConfig.load_from_file(config_file)
+        http_servers, stdio_servers = detect_server_types(config, ["missing-server"])
+
+        # Missing server should be assumed STDIO
+        assert len(http_servers) == 0
+        assert len(stdio_servers) == 1
+        assert stdio_servers[0] == "missing-server"
+
+    def test_detect_server_unclear_config(self, tmp_path):
+        """Test detecting server with unclear configuration."""
+        config_data = {
+            "mcpServers": {
+                "unclear-server": {"param": "value"}  # No url or command
+            }
+        }
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_data))
+
+        config = MCPConfig.load_from_file(config_file)
+        http_servers, stdio_servers = detect_server_types(config, ["unclear-server"])
+
+        # Unclear config should default to STDIO
+        assert len(http_servers) == 0
+        assert len(stdio_servers) == 1
+
+    def test_detect_empty_config(self):
+        """Test detecting with empty config."""
+        config = MCPConfig()
+        http_servers, stdio_servers = detect_server_types(config, ["any-server"])
+
+        # Should assume all STDIO when no config
+        assert len(http_servers) == 0
+        assert len(stdio_servers) == 1
+
+    def test_detect_none_config(self):
+        """Test detecting with None config."""
+        http_servers, stdio_servers = detect_server_types(None, ["any-server"])
+
+        # Should assume all STDIO when None config
+        assert len(http_servers) == 0
+        assert len(stdio_servers) == 1
+
+
+class TestValidateServerConfig:
+    """Test validate_server_config function."""
+
+    def test_validate_valid_stdio_server(self, tmp_path):
+        """Test validating valid STDIO server."""
+        config_data = {
+            "mcpServers": {
+                "stdio-server": {"command": "python", "args": ["-m", "server"]}
+            }
+        }
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_data))
+
+        config = MCPConfig.load_from_file(config_file)
+        is_valid, errors = validate_server_config(config, ["stdio-server"])
+
+        assert is_valid is True
+        assert len(errors) == 0
+
+    def test_validate_valid_http_server(self, tmp_path):
+        """Test validating valid HTTP server."""
+        config_data = {"mcpServers": {"http-server": {"url": "https://localhost:8080"}}}
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_data))
+
+        config = MCPConfig.load_from_file(config_file)
+        is_valid, errors = validate_server_config(config, ["http-server"])
+
+        assert is_valid is True
+        assert len(errors) == 0
+
+    def test_validate_server_missing_both(self, tmp_path):
+        """Test validating server missing both url and command."""
+        config_data = {
+            "mcpServers": {
+                "invalid-server": {"param": "value"}  # No url or command
+            }
+        }
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_data))
+
+        config = MCPConfig.load_from_file(config_file)
+        is_valid, errors = validate_server_config(config, ["invalid-server"])
+
+        assert is_valid is False
+        assert len(errors) == 1
+        assert "missing both" in errors[0].lower()
+
+    def test_validate_server_has_both(self, tmp_path):
+        """Test validating server with both url and command."""
+        config_data = {
+            "mcpServers": {
+                "both-server": {"url": "http://localhost:8080", "command": "python"}
+            }
+        }
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_data))
+
+        config = MCPConfig.load_from_file(config_file)
+        is_valid, errors = validate_server_config(config, ["both-server"])
+
+        assert is_valid is False
+        assert len(errors) == 1
+        assert "both" in errors[0].lower()
+
+    def test_validate_invalid_url_format(self, tmp_path):
+        """Test validating server with invalid URL format."""
+        config_data = {
+            "mcpServers": {
+                "bad-url-server": {"url": "ftp://localhost:8080"}  # Not http/https
+            }
+        }
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_data))
+
+        config = MCPConfig.load_from_file(config_file)
+        is_valid, errors = validate_server_config(config, ["bad-url-server"])
+
+        assert is_valid is False
+        assert len(errors) == 1
+        assert "http://" in errors[0] or "https://" in errors[0]
+
+    def test_validate_empty_command(self, tmp_path):
+        """Test validating server with empty command."""
+        config_data = {
+            "mcpServers": {
+                "empty-cmd-server": {"command": "   "}  # Empty command
+            }
+        }
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_data))
+
+        config = MCPConfig.load_from_file(config_file)
+        is_valid, errors = validate_server_config(config, ["empty-cmd-server"])
+
+        assert is_valid is False
+        assert len(errors) == 1
+        assert "non-empty string" in errors[0].lower()
+
+    def test_validate_server_not_found(self, tmp_path):
+        """Test validating server that doesn't exist."""
+        config_data = {"mcpServers": {"real-server": {"command": "python"}}}
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_data))
+
+        config = MCPConfig.load_from_file(config_file)
+        is_valid, errors = validate_server_config(config, ["missing-server"])
+
+        assert is_valid is False
+        assert len(errors) == 1
+        assert "not found" in errors[0].lower()
+
+    def test_validate_empty_config(self):
+        """Test validating with empty config."""
+        config = MCPConfig()
+        is_valid, errors = validate_server_config(config, ["any-server"])
+
+        assert is_valid is False
+        assert len(errors) == 1
+        assert "no servers" in errors[0].lower()
+
+    def test_validate_none_config(self):
+        """Test validating with None config."""
+        is_valid, errors = validate_server_config(None, ["any-server"])
+
+        assert is_valid is False
+        assert len(errors) == 1
+
+    def test_validate_multiple_errors(self, tmp_path):
+        """Test validating with multiple errors."""
+        config_data = {
+            "mcpServers": {
+                "bad1": {"param": "value"},  # Missing both
+                "bad2": {"url": "http://localhost", "command": "python"},  # Has both
+            }
+        }
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_data))
+
+        config = MCPConfig.load_from_file(config_file)
+        is_valid, errors = validate_server_config(config, ["bad1", "bad2"])
+
+        assert is_valid is False
+        assert len(errors) == 2

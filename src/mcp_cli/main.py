@@ -30,7 +30,7 @@ from chuk_term.ui import (
     restore_terminal,
 )
 from chuk_term.ui.theme import set_theme
-from mcp_cli.cli_options import process_options
+from mcp_cli.config import process_options
 from mcp_cli.context import initialize_context
 
 # ──────────────────────────────────────────────────────────────────────────────

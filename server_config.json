@@ -20,6 +20,9 @@
       "env": {
         "BRAVE_API_KEY": "${TOKEN:bearer:brave_search}"
       }
+    },
+    "monday": {
+      "url": "https://mcp.monday.com/mcp"
     }
   }
 }

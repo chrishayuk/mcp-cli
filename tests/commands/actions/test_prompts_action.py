@@ -1,6 +1,6 @@
 """Tests for prompts action."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from mcp_cli.commands.actions.prompts import (
@@ -154,7 +154,8 @@ def test_prompts_action_sync_wrapper():
 async def test_prompts_action_cmd_alias():
     """Test the cmd alias function."""
     with patch(
-        "mcp_cli.commands.actions.prompts.prompts_action_async"
+        "mcp_cli.commands.actions.prompts.prompts_action_async",
+        new_callable=AsyncMock,
     ) as mock_prompts_action:
         mock_prompts_action.return_value = []
 

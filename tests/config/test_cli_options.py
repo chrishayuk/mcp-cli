@@ -6,7 +6,14 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from mcp_cli.cli_options import load_config, extract_server_names, process_options
+from mcp_cli.config.cli_options import (
+    load_config,
+    extract_server_names,
+    inject_logging_env_vars,
+    process_options,
+    get_config_summary,
+)
+from mcp_cli.config.config_manager import MCPConfig
 
 
 @pytest.fixture
@@ -42,13 +49,11 @@ def invalid_config(tmp_path):
 
 
 def test_load_config_valid(valid_config):
-    # When the file exists and contains valid JSON, load_config should return a dict.
+    # When the file exists and contains valid JSON, load_config should return an MCPConfig.
     config = load_config(str(valid_config))
-    assert isinstance(config, dict)
-    assert "mcpServers" in config
-    assert "ServerA" in config["mcpServers"]
-    assert config["mcpServers"]["ServerA"]["param"] == "valueA"
-    assert config["mcpServers"]["ServerA"]["command"] == "server-a-cmd"
+    assert isinstance(config, MCPConfig)
+    assert "ServerA" in config.servers
+    assert config.servers["ServerA"].command == "server-a-cmd"
 
 
 def test_load_config_missing(tmp_path):
@@ -67,28 +72,37 @@ def test_load_config_invalid(invalid_config):
     # The implementation may log errors internally but we only care that it returns None
 
 
-def test_extract_server_names_all():
-    # With a valid config dictionary and no specified servers,
+def test_extract_server_names_all(tmp_path):
+    # With a valid config and no specified servers,
     # the function should map all server keys.
-    config = {
+    config_content = {
         "mcpServers": {
-            "ServerA": {"command": "cmd-a", "param": "valueA"},
-            "ServerB": {"command": "cmd-b", "param": "valueB"},
+            "ServerA": {"command": "cmd-a"},
+            "ServerB": {"command": "cmd-b"},
         }
     }
+    config_file = tmp_path / "test_config.json"
+    config_file.write_text(json.dumps(config_content))
+
+    config = load_config(str(config_file))
     server_names = extract_server_names(config)
-    # Expecting indices 0 and 1 mapped to the keys from mcpServers.
-    assert server_names == {0: "ServerA", 1: "ServerB"}
+    # Expecting indices 0 and 1 mapped to the keys from servers.
+    assert set(server_names.values()) == {"ServerA", "ServerB"}
 
 
-def test_extract_server_names_subset(caplog):
+def test_extract_server_names_subset(caplog, tmp_path):
     # If specified_servers are provided, only matching ones should be added.
-    config = {
+    config_content = {
         "mcpServers": {
-            "ServerA": {"command": "cmd-a", "param": "valueA"},
-            "ServerB": {"command": "cmd-b", "param": "valueB"},
+            "ServerA": {"command": "cmd-a"},
+            "ServerB": {"command": "cmd-b"},
         }
     }
+    config_file = tmp_path / "test_config.json"
+    config_file.write_text(json.dumps(config_content))
+
+    config = load_config(str(config_file))
+
     # Provide a mix of matching and non-matching server names.
     specified = ["ServerB", "ServerX"]
 
@@ -132,7 +146,7 @@ def dummy_config_file(tmp_path):
     return str(config_file)
 
 
-@patch("mcp_cli.cli_options.trigger_discovery_after_setup")
+@patch("mcp_cli.config.cli_options.trigger_discovery_after_setup")
 def test_process_options_with_servers(mock_discovery, dummy_config_file, monkeypatch):
     # Mock discovery to avoid actual network calls
     mock_discovery.return_value = 0
@@ -177,7 +191,7 @@ def test_process_options_with_servers(mock_discovery, dummy_config_file, monkeyp
     assert os.getcwd() in source_fs
 
 
-@patch("mcp_cli.cli_options.trigger_discovery_after_setup")
+@patch("mcp_cli.config.cli_options.trigger_discovery_after_setup")
 def test_process_options_without_model_and_files(mock_discovery, monkeypatch, tmp_path):
     # Mock discovery to avoid actual network calls
     mock_discovery.return_value = 0
@@ -232,7 +246,7 @@ def test_process_options_without_model_and_files(mock_discovery, monkeypatch, tm
     assert server_names == {0: "Server1"}
 
 
-@patch("mcp_cli.cli_options.trigger_discovery_after_setup")
+@patch("mcp_cli.config.cli_options.trigger_discovery_after_setup")
 def test_process_options_with_explicit_model(mock_discovery, monkeypatch, tmp_path):
     """Test that explicit model is properly set."""
     mock_discovery.return_value = 0
@@ -262,7 +276,7 @@ def test_process_options_with_explicit_model(mock_discovery, monkeypatch, tmp_pa
     assert servers_list == ["TestServer"]
 
 
-@patch("mcp_cli.cli_options.trigger_discovery_after_setup")
+@patch("mcp_cli.config.cli_options.trigger_discovery_after_setup")
 def test_process_options_http_server(mock_discovery, monkeypatch, tmp_path):
     """Test handling of HTTP server configuration."""
     mock_discovery.return_value = 0
@@ -300,7 +314,7 @@ def test_process_options_http_server(mock_discovery, monkeypatch, tmp_path):
     assert os.environ["LLM_MODEL"] == "gpt-5"
 
 
-@patch("mcp_cli.cli_options.trigger_discovery_after_setup")
+@patch("mcp_cli.config.cli_options.trigger_discovery_after_setup")
 def test_process_options_quiet_mode(mock_discovery, monkeypatch, tmp_path, caplog):
     """Test that quiet mode suppresses server noise."""
     mock_discovery.return_value = 0
@@ -334,8 +348,8 @@ def test_process_options_quiet_mode(mock_discovery, monkeypatch, tmp_path, caplo
     assert "MCP_CLI_MODIFIED_CONFIG" in os.environ
 
 
-@patch("mcp_cli.cli_options.output")
-@patch("mcp_cli.cli_options.trigger_discovery_after_setup")
+@patch("mcp_cli.config.cli_options.output")
+@patch("mcp_cli.config.cli_options.trigger_discovery_after_setup")
 @patch("mcp_cli.utils.preferences.get_preference_manager")
 def test_process_options_disabled_server_blocked(
     mock_pref_manager, mock_discovery, mock_output, monkeypatch, tmp_path, caplog
@@ -382,7 +396,7 @@ def test_process_options_disabled_server_blocked(
         assert any("disabled and cannot be used" in str(call) for call in warning_calls)
 
 
-@patch("mcp_cli.cli_options.trigger_discovery_after_setup")
+@patch("mcp_cli.config.cli_options.trigger_discovery_after_setup")
 @patch("mcp_cli.utils.preferences.get_preference_manager")
 def test_process_options_mixed_enabled_disabled(
     mock_pref_manager, mock_discovery, monkeypatch, tmp_path
@@ -430,7 +444,7 @@ def test_process_options_mixed_enabled_disabled(
         assert len(servers_list) == 2
 
 
-@patch("mcp_cli.cli_options.trigger_discovery_after_setup")
+@patch("mcp_cli.config.cli_options.trigger_discovery_after_setup")
 @patch("mcp_cli.utils.preferences.get_preference_manager")
 def test_process_options_no_servers_when_all_disabled(
     mock_pref_manager, mock_discovery, monkeypatch, tmp_path, caplog
@@ -477,7 +491,7 @@ def test_process_options_no_servers_when_all_disabled(
         )
 
 
-@patch("mcp_cli.cli_options.trigger_discovery_after_setup")
+@patch("mcp_cli.config.cli_options.trigger_discovery_after_setup")
 @patch("mcp_cli.utils.preferences.get_preference_manager")
 def test_extract_server_names_with_disabled(
     mock_pref_manager, mock_discovery, tmp_path
@@ -494,13 +508,17 @@ def test_extract_server_names_with_disabled(
     mock_pm.is_server_disabled.side_effect = is_disabled
     mock_pref_manager.return_value = mock_pm
 
-    config = {
+    config_content = {
         "mcpServers": {
             "EnabledServer": {"command": "cmd1", "args": []},
             "DisabledServer": {"command": "cmd2", "args": []},
             "AnotherEnabled": {"command": "cmd3", "args": []},
         }
     }
+    config_file = tmp_path / "test_config.json"
+    config_file.write_text(json.dumps(config_content))
+
+    config = load_config(str(config_file))
 
     # Test without specifying servers - should filter disabled
     server_names = extract_server_names(config, None)
@@ -514,3 +532,346 @@ def test_extract_server_names_with_disabled(
     assert (
         "DisabledServer" in server_names.values()
     )  # Included when explicitly specified
+
+
+class TestLoadConfigBundled:
+    """Test bundled config loading fallback."""
+
+    def test_load_bundled_config_with_default_name(self, tmp_path, monkeypatch):
+        """Test loading bundled config when server_config.json not found locally."""
+        # Change to temp directory where server_config.json doesn't exist
+        monkeypatch.chdir(tmp_path)
+
+        # Mock importlib.resources to simulate bundled config
+        mock_bundled_config = {
+            "mcpServers": {"BundledServer": {"command": "bundled-cmd", "args": []}}
+        }
+
+        # Create a mock resource file
+        mock_resource_file = MagicMock()
+        mock_resource_file.is_file.return_value = True
+        mock_resource_file.__str__.return_value = str(
+            tmp_path / "bundled_server_config.json"
+        )
+
+        # Create the actual file for MCPConfig.load_from_file to read
+        bundled_file = tmp_path / "bundled_server_config.json"
+        bundled_file.write_text(json.dumps(mock_bundled_config))
+        mock_resource_file.__str__.return_value = str(bundled_file)
+
+        with patch("importlib.resources.files") as mock_files:
+            mock_package = MagicMock()
+            mock_package.__truediv__ = MagicMock(return_value=mock_resource_file)
+            mock_files.return_value = mock_package
+
+            config = load_config("server_config.json")
+
+            # Should successfully load bundled config
+            assert config is not None
+            assert "BundledServer" in config.servers
+
+    def test_load_bundled_config_not_found(self, tmp_path, monkeypatch):
+        """Test when bundled config is not available."""
+        monkeypatch.chdir(tmp_path)
+
+        # Mock importlib.resources to raise error (no bundled config)
+        with patch(
+            "importlib.resources.files", side_effect=FileNotFoundError("No bundled")
+        ):
+            config = load_config("server_config.json")
+            assert config is None
+
+    def test_load_config_with_empty_but_valid_json(self, tmp_path):
+        """Test loading config with empty but valid JSON."""
+        config_file = tmp_path / "empty.json"
+        config_file.write_text("{}")
+
+        config = load_config(str(config_file))
+        # Should return config with empty servers dict
+        assert config is not None
+        assert len(config.servers) == 0
+
+    def test_load_config_with_content_but_invalid_json(self, tmp_path):
+        """Test file has content but invalid JSON returns None."""
+        config_file = tmp_path / "invalid.json"
+        config_file.write_text('{"invalid": json syntax}')
+
+        config = load_config(str(config_file))
+        assert config is None
+
+
+class TestInjectLoggingEnvVars:
+    """Test inject_logging_env_vars function."""
+
+    def test_inject_logging_quiet_mode(self, tmp_path):
+        """Test logging injection in quiet mode."""
+        config_data = {
+            "mcpServers": {"Server1": {"command": "cmd1", "args": [], "env": {}}}
+        }
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_data))
+
+        config = MCPConfig.load_from_file(config_file)
+
+        # Inject with quiet=True
+        inject_logging_env_vars(config, quiet=True)
+
+        # Should set ERROR level
+        assert config.servers["Server1"].env["LOG_LEVEL"] == "ERROR"
+        assert config.servers["Server1"].env["PYTHONWARNINGS"] == "ignore"
+
+    def test_inject_logging_normal_mode(self, tmp_path):
+        """Test logging injection in normal mode."""
+        config_data = {
+            "mcpServers": {"Server1": {"command": "cmd1", "args": [], "env": {}}}
+        }
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_data))
+
+        config = MCPConfig.load_from_file(config_file)
+
+        # Inject with quiet=False (default)
+        inject_logging_env_vars(config, quiet=False)
+
+        # Should set WARNING level
+        assert config.servers["Server1"].env["LOG_LEVEL"] == "WARNING"
+        assert config.servers["Server1"].env["MCP_LOG_LEVEL"] == "WARNING"
+
+    def test_inject_preserves_existing_env_vars(self, tmp_path):
+        """Test that existing env vars are not overwritten."""
+        config_data = {
+            "mcpServers": {
+                "Server1": {
+                    "command": "cmd1",
+                    "args": [],
+                    "env": {"LOG_LEVEL": "DEBUG"},
+                }
+            }
+        }
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_data))
+
+        config = MCPConfig.load_from_file(config_file)
+
+        inject_logging_env_vars(config, quiet=True)
+
+        # Should preserve existing LOG_LEVEL
+        assert config.servers["Server1"].env["LOG_LEVEL"] == "DEBUG"
+
+    def test_inject_skips_http_servers(self, tmp_path):
+        """Test that HTTP servers (no command) don't get env vars injected."""
+        config_data = {
+            "mcpServers": {"HttpServer": {"url": "http://localhost:8080", "env": {}}}
+        }
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_data))
+
+        config = MCPConfig.load_from_file(config_file)
+
+        inject_logging_env_vars(config, quiet=True)
+
+        # HTTP server should not have logging env vars
+        assert "LOG_LEVEL" not in config.servers["HttpServer"].env
+
+    def test_inject_with_none_config(self):
+        """Test that inject handles None config gracefully."""
+        # Should return without error
+        inject_logging_env_vars(None, quiet=True)
+
+    def test_inject_with_empty_servers(self, tmp_path):
+        """Test injection with config that has no servers."""
+        config_data = {"mcpServers": {}}
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_data))
+
+        config = MCPConfig.load_from_file(config_file)
+
+        # Should return without error
+        inject_logging_env_vars(config, quiet=True)
+
+
+class TestProcessOptionsEdgeCases:
+    """Test edge cases and error paths in process_options."""
+
+    @patch("mcp_cli.config.cli_options.setup_chuk_llm_environment")
+    @patch("mcp_cli.config.cli_options.trigger_discovery_after_setup")
+    @patch("mcp_cli.utils.preferences.get_preference_manager")
+    def test_process_options_with_discovery_results(
+        self, mock_pref, mock_discovery, mock_setup_env, tmp_path, monkeypatch
+    ):
+        """Test that discovery is triggered and returns count."""
+        # Mock discovery to return some functions
+        mock_discovery.return_value = 5
+
+        # Mock preference manager to allow servers
+        mock_pm = MagicMock()
+        mock_pm.is_server_disabled.return_value = False
+        mock_pref.return_value = mock_pm
+
+        config_content = {"mcpServers": {"Server1": {"command": "cmd1", "args": []}}}
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_content))
+
+        monkeypatch.delenv("LLM_PROVIDER", raising=False)
+
+        servers_list, _, _ = process_options(
+            server="Server1",
+            disable_filesystem=True,
+            provider="openai",
+            model="gpt-4",
+            config_file=str(config_file),
+        )
+
+        # Verify discovery was called and returned correct count
+        mock_discovery.assert_called_once()
+        assert servers_list == ["Server1"]
+
+    @patch("mcp_cli.config.cli_options.trigger_discovery_after_setup")
+    def test_process_options_with_nonexistent_config(
+        self, mock_discovery, tmp_path, monkeypatch, caplog
+    ):
+        """Test handling of non-existent config file."""
+        mock_discovery.return_value = 0
+
+        nonexistent_file = str(tmp_path / "nonexistent.json")
+
+        monkeypatch.delenv("LLM_PROVIDER", raising=False)
+
+        with caplog.at_level(logging.WARNING):
+            servers_list, specified, server_names = process_options(
+                server="Server1",
+                disable_filesystem=True,
+                provider="openai",
+                model="gpt-4",
+                config_file=nonexistent_file,
+            )
+
+        # Should return empty lists/dict
+        assert servers_list == []
+        assert specified == ["Server1"]
+        assert server_names == {}
+
+        # Should log warning
+        assert any(
+            "Could not load config file" in record.message for record in caplog.records
+        )
+
+    @patch("mcp_cli.config.cli_options.validate_server_config")
+    @patch("mcp_cli.config.cli_options.trigger_discovery_after_setup")
+    @patch("mcp_cli.utils.preferences.get_preference_manager")
+    def test_process_options_with_validation_errors(
+        self, mock_pref, mock_discovery, mock_validate, tmp_path, monkeypatch, caplog
+    ):
+        """Test handling of server validation errors."""
+        mock_discovery.return_value = 0
+        mock_validate.return_value = (
+            False,
+            ["Server1 missing command", "Server2 has invalid config"],
+        )
+
+        # Mock preference manager to allow servers
+        mock_pm = MagicMock()
+        mock_pm.is_server_disabled.return_value = False
+        mock_pref.return_value = mock_pm
+
+        config_content = {
+            "mcpServers": {
+                "Server1": {"command": "cmd1", "args": []},
+                "Server2": {"command": "cmd2", "args": []},
+            }
+        }
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_content))
+
+        monkeypatch.delenv("LLM_PROVIDER", raising=False)
+
+        with caplog.at_level(logging.ERROR):
+            servers_list, _, _ = process_options(
+                server="Server1,Server2",
+                disable_filesystem=True,
+                provider="openai",
+                model="gpt-4",
+                config_file=str(config_file),
+            )
+
+        # Should log validation errors
+        assert any(
+            "Server configuration validation failed" in record.message
+            for record in caplog.records
+        )
+        assert any(
+            "Server1 missing command" in record.message for record in caplog.records
+        )
+
+    @patch("mcp_cli.config.cli_options.trigger_discovery_after_setup")
+    @patch("mcp_cli.utils.preferences.get_preference_manager")
+    def test_process_options_modified_config_save_error(
+        self, mock_pref, mock_discovery, tmp_path, monkeypatch, caplog
+    ):
+        """Test handling of error when saving modified config."""
+        mock_discovery.return_value = 0
+
+        mock_pm = MagicMock()
+        mock_pm.is_server_disabled.return_value = False
+        mock_pref.return_value = mock_pm
+
+        config_content = {"mcpServers": {"Server1": {"command": "cmd1", "args": []}}}
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_content))
+
+        monkeypatch.delenv("LLM_PROVIDER", raising=False)
+
+        # Mock save_to_file to raise exception
+        with patch.object(
+            MCPConfig, "save_to_file", side_effect=Exception("Save failed")
+        ):
+            with caplog.at_level(logging.WARNING):
+                servers_list, _, _ = process_options(
+                    server="Server1",
+                    disable_filesystem=True,
+                    provider="openai",
+                    model="gpt-4",
+                    config_file=str(config_file),
+                )
+
+            # Should log warning about failed save
+            assert any(
+                "Failed to create modified config" in record.message
+                for record in caplog.records
+            )
+
+
+class TestGetConfigSummary:
+    """Test get_config_summary function."""
+
+    def test_get_config_summary_valid(self, tmp_path):
+        """Test getting summary of valid config."""
+        config_content = {
+            "mcpServers": {
+                "StdioServer": {"command": "stdio-cmd", "args": []},
+                "HttpServer": {"url": "http://localhost:8080"},
+                "AnotherStdio": {"command": "another-cmd", "args": []},
+            }
+        }
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_content))
+
+        summary = get_config_summary(str(config_file))
+
+        assert summary["total_servers"] == 3
+        assert summary["http_servers"] == 1
+        assert summary["stdio_servers"] == 2
+        assert "StdioServer" in summary["server_names"]
+        assert "HttpServer" in summary["server_names"]
+        assert len(summary["http_server_details"]) == 1
+        assert summary["http_server_details"][0]["name"] == "HttpServer"
+        assert summary["http_server_details"][0]["url"] == "http://localhost:8080"
+
+    def test_get_config_summary_invalid_config(self, tmp_path):
+        """Test getting summary when config cannot be loaded."""
+        nonexistent_file = str(tmp_path / "nonexistent.json")
+
+        summary = get_config_summary(nonexistent_file)
+
+        assert "error" in summary
+        assert summary["error"] == "Could not load config file"

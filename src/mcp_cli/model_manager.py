@@ -861,7 +861,7 @@ class ModelManager:
     def get_discovery_status(self) -> Dict[str, Any]:
         """Get discovery status information"""
         try:
-            from mcp_cli.cli_options import get_discovery_status
+            from mcp_cli.config import get_discovery_status
 
             return get_discovery_status()
         except Exception:

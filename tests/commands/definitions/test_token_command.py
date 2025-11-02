@@ -37,7 +37,7 @@ class TestTokenCommand:
             # Should call list action
             mock_list.assert_called_once()
             call_args = mock_list.call_args[0][0]
-            assert hasattr(call_args, "model_fields")  # It's a Pydantic model
+            assert hasattr(call_args.__class__, "model_fields")  # It's a Pydantic model
             assert result.success is True
 
     @pytest.mark.asyncio
