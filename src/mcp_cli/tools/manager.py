@@ -79,6 +79,10 @@ class ToolManager:
         self._sse_servers: List[Any] = []
         self._config_cache: Optional[Dict[str, Any]] = None
 
+        # Effective timeout (will be set after server detection)
+        self._effective_timeout: Optional[float] = None
+        self._effective_max_retries: Optional[int] = None
+
         # OAuth support with mcp-cli namespace
         from mcp_cli.auth import TokenManager, TokenStoreBackend
 
@@ -223,6 +227,37 @@ class ToolManager:
                                         f"({namespace}:{name}): {e}"
                                     )
 
+    def _get_max_server_timeout(self, servers: List[Any]) -> float:
+        """
+        Get the maximum timeout from server configurations.
+        Falls back to self.tool_timeout if no server-specific timeouts are set.
+        """
+        max_timeout = self.tool_timeout
+        for server in servers:
+            if isinstance(server, dict) and "timeout" in server:
+                server_timeout = float(server["timeout"])
+                max_timeout = max(max_timeout, server_timeout)
+        return max_timeout
+
+    def _get_min_server_max_retries(self, servers: List[Any]) -> int:
+        """
+        Get the minimum max_retries from server configurations.
+        Falls back to 2 if no server-specific max_retries are set.
+        If any server has max_retries=0, returns 0 (no retries).
+        """
+        min_retries = 2  # Default from line 817
+        has_server_config = False
+
+        for server in servers:
+            if isinstance(server, dict) and "max_retries" in server:
+                has_server_config = True
+                server_retries = int(server["max_retries"])
+                if server_retries == 0:
+                    return 0  # If any server wants no retries, disable retries
+                min_retries = min(min_retries, server_retries)
+
+        return min_retries if has_server_config else 2
+
     def _inject_logging_env_vars(self, config: Dict[str, Any]) -> None:
         """
         Inject logging environment variables into STDIO server configs.
@@ -278,6 +313,11 @@ class ToolManager:
                 # Mark if OAuth is configured (will be processed during initialization)
                 if "oauth" in server_config:
                     server_entry["oauth"] = server_config["oauth"]
+                # Add per-server timeout and max_retries if configured
+                if "timeout" in server_config:
+                    server_entry["timeout"] = server_config["timeout"]
+                if "max_retries" in server_config:
+                    server_entry["max_retries"] = server_config["max_retries"]
                 self._sse_servers.append(server_entry)
                 logger.debug(f"Detected SSE server: {server}")
             elif "url" in server_config:
@@ -289,6 +329,17 @@ class ToolManager:
                 # Mark if OAuth is configured (will be processed during initialization)
                 if "oauth" in server_config:
                     server_entry["oauth"] = server_config["oauth"]
+                # Add per-server timeout and max_retries if configured
+                if "timeout" in server_config:
+                    server_entry["timeout"] = server_config["timeout"]
+                    logger.info(
+                        f"Server '{server}' configured with timeout: {server_config['timeout']}s"
+                    )
+                if "max_retries" in server_config:
+                    server_entry["max_retries"] = server_config["max_retries"]
+                    logger.info(
+                        f"Server '{server}' configured with max_retries: {server_config['max_retries']}"
+                    )
                 self._http_servers.append(server_entry)
                 logger.debug(f"Detected HTTP server: {server}")
             else:
@@ -521,6 +572,20 @@ class ToolManager:
 
             self._detect_server_types()
 
+            # Calculate effective timeout and max_retries from all servers
+            all_servers = self._http_servers + self._sse_servers
+            if all_servers:
+                self._effective_timeout = self._get_max_server_timeout(all_servers)
+                self._effective_max_retries = self._get_min_server_max_retries(
+                    all_servers
+                )
+                logger.info(
+                    f"Effective timeout: {self._effective_timeout}s, max_retries: {self._effective_max_retries}"
+                )
+            else:
+                self._effective_timeout = self.tool_timeout
+                self._effective_max_retries = 2
+
             # Determine which servers we're connecting to for better messaging
             server_names = []
             if self._http_servers:
@@ -587,13 +652,21 @@ class ToolManager:
             # Create OAuth refresh callback (NEW)
             oauth_refresh_callback = self._create_oauth_refresh_callback()
 
+            # Extract per-server timeout and max_retries configuration
+            server_timeout = self._get_max_server_timeout(self._sse_servers)
+            server_max_retries = self._get_min_server_max_retries(self._sse_servers)
+
             try:
                 self.processor, self.stream_manager = await asyncio.wait_for(
                     setup_mcp_sse(
                         servers=self._sse_servers,
                         server_names=self.server_names,
                         namespace=namespace,
-                        default_timeout=self.tool_timeout,
+                        default_timeout=server_timeout,
+                        max_retries=server_max_retries,
+                        enable_retries=(
+                            server_max_retries > 0
+                        ),  # Disable if max_retries is 0
                         oauth_refresh_callback=oauth_refresh_callback,  # NEW
                     ),
                     timeout=self.initialization_timeout,
@@ -670,13 +743,21 @@ class ToolManager:
             # Create OAuth refresh callback (NEW)
             oauth_refresh_callback = self._create_oauth_refresh_callback()
 
+            # Extract per-server timeout and max_retries configuration
+            server_timeout = self._get_max_server_timeout(self._http_servers)
+            server_max_retries = self._get_min_server_max_retries(self._http_servers)
+
             try:
                 self.processor, self.stream_manager = await asyncio.wait_for(
                     setup_mcp_http_streamable(
                         servers=self._http_servers,
                         server_names=self.server_names,
                         namespace=namespace,
-                        default_timeout=self.tool_timeout,
+                        default_timeout=server_timeout,
+                        max_retries=server_max_retries,
+                        enable_retries=(
+                            server_max_retries > 0
+                        ),  # Disable if max_retries is 0
                         oauth_refresh_callback=oauth_refresh_callback,  # NEW
                     ),
                     timeout=self.initialization_timeout,
@@ -926,16 +1007,19 @@ class ToolManager:
         except Exception as e:
             logger.error(f"Failed to list tools from registry: {e}")
 
+        # Use effective timeout calculated from server configs
+        effective_timeout = self._effective_timeout or self.tool_timeout
+
         strategy = InProcessStrategy(
             self._registry,
             max_concurrency=self.max_concurrency,
-            default_timeout=self.tool_timeout,
+            default_timeout=effective_timeout,
         )
 
         self._executor = ToolExecutor(
             registry=self._registry,
             strategy=strategy,
-            default_timeout=self.tool_timeout,
+            default_timeout=effective_timeout,
         )
 
     async def close(self):
@@ -1102,7 +1186,8 @@ class ToolManager:
         )
 
         # Determine the timeout to use for this call
-        effective_timeout = timeout or self.tool_timeout
+        # Priority: explicit timeout > server-configured timeout > fallback default
+        effective_timeout = timeout or self._effective_timeout or self.tool_timeout
 
         call = ToolCall(
             tool=base_name,
@@ -1220,7 +1305,7 @@ class ToolManager:
             tool=base_name,
             namespace=namespace,
             arguments=arguments,
-            timeout=timeout or self.tool_timeout,
+            timeout=timeout or self._effective_timeout or self.tool_timeout,
         )
 
         if self._executor:
