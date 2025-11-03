@@ -25,6 +25,15 @@
     },
     "monday": {
       "url": "https://mcp.monday.com/mcp"
+    },
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest"
+      ]
+    },
+    "linkedin": {
+      "url": "https://linkedin.chukai.io/mcp"
     }
   }
 }

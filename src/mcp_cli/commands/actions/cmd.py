@@ -19,7 +19,7 @@ async def cmd_action_async(
     system_prompt: Optional[str] = None,
     raw: bool = False,
     single_turn: bool = False,
-    max_turns: int = 10,
+    max_turns: int = 30,
 ) -> None:
     """
     Execute command mode operations for automation and scripting.
