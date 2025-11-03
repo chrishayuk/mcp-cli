@@ -683,7 +683,9 @@ class ToolManager:
                     or "invalid access token" in combined_error
                     or "unauthorized" in combined_error
                 ):
-                    logger.warning(f"SSE server setup failed with authentication error: {setup_error}")
+                    logger.warning(
+                        f"SSE server setup failed with authentication error: {setup_error}"
+                    )
                     logger.info("Attempting to re-authenticate and retry...")
 
                     # Try OAuth refresh callback to get new tokens
@@ -779,7 +781,9 @@ class ToolManager:
                     or "invalid access token" in combined_error
                     or "unauthorized" in combined_error
                 ):
-                    logger.warning(f"HTTP server setup failed with authentication error: {setup_error}")
+                    logger.warning(
+                        f"HTTP server setup failed with authentication error: {setup_error}"
+                    )
                     logger.info("Attempting to re-authenticate and retry...")
 
                     # Try OAuth refresh callback to get new tokens
@@ -1152,6 +1156,159 @@ class ToolManager:
 
         return None
 
+    def _is_oauth_error(self, error: Union[Exception, str]) -> bool:
+        """
+        Check if an error is related to OAuth authentication failure.
+
+        Args:
+            error: Exception or error string to check
+
+        Returns:
+            True if this appears to be an OAuth/authentication error
+        """
+        # Convert to string if it's an exception
+        if isinstance(error, Exception):
+            error_msg = str(error).lower()
+        else:
+            error_msg = str(error).lower() if error else ""
+
+        # Check for common OAuth error indicators
+        oauth_indicators = [
+            "401",
+            "invalid_token",
+            "invalid access token",
+            "unauthorized",
+            "oauth validation failed",
+            "expired token",
+            "token expired",
+        ]
+
+        # Check the main error message
+        if any(indicator in error_msg for indicator in oauth_indicators):
+            return True
+
+        # Also check the exception chain if it's an Exception object
+        if isinstance(error, Exception):
+            if hasattr(error, "__cause__") and error.__cause__:
+                cause_msg = str(error.__cause__).lower()
+                if any(indicator in cause_msg for indicator in oauth_indicators):
+                    return True
+
+            # Check exception args
+            if hasattr(error, "args"):
+                for arg in error.args:
+                    if isinstance(arg, str) and any(
+                        indicator in arg.lower() for indicator in oauth_indicators
+                    ):
+                        return True
+
+        return False
+
+    async def _attempt_oauth_reauth_for_namespace(self, namespace: str) -> bool:
+        """
+        Attempt to re-authenticate OAuth for a given namespace (server).
+
+        Args:
+            namespace: The server namespace that needs re-authentication
+
+        Returns:
+            True if re-authentication succeeded, False otherwise
+        """
+        try:
+            # Find the server name from the namespace
+            server_name = namespace
+            if not server_name or server_name == "default":
+                logger.debug("Cannot re-authenticate: invalid or default namespace")
+                return False
+
+            # Get the server configuration
+            server_config = await self._get_server_config_by_name(server_name)
+            if not server_config:
+                logger.debug(
+                    f"Cannot re-authenticate: no config found for {server_name}"
+                )
+                return False
+
+            # Only attempt OAuth re-auth for HTTP/SSE servers
+            if "url" not in server_config:
+                logger.debug(
+                    f"Cannot re-authenticate: {server_name} is not an HTTP/SSE server"
+                )
+                return False
+
+            logger.info(
+                f"Clearing stored tokens for {server_name} to force re-authentication..."
+            )
+            self.oauth_handler.clear_tokens(server_name)
+
+            # Delete client registration file if it exists
+            config_dir = Path.home() / ".mcp_cli" / "oauth"
+            client_file = config_dir / f"{server_name}_client.json"
+            if client_file.exists():
+                client_file.unlink()
+                logger.debug(f"Deleted client registration file: {client_file}")
+
+            # Get new OAuth headers (this will trigger full OAuth flow)
+            logger.info(f"Starting OAuth re-authentication for {server_name}...")
+            headers = await self.oauth_handler.prepare_server_headers(server_config)
+
+            if not headers or "Authorization" not in headers:
+                logger.error(
+                    f"Re-authentication failed: no Authorization header returned for {server_name}"
+                )
+                return False
+
+            logger.info(f"✅ OAuth re-authentication completed for {server_name}")
+
+            # Update the server entry with new auth headers
+            server_entry = None
+            for entry in self._http_servers + self._sse_servers:
+                if entry.get("name") == server_name:
+                    server_entry = entry
+                    break
+
+            if server_entry:
+                # Update api_key
+                auth_value = headers.get("Authorization", "")
+                if auth_value.startswith("Bearer "):
+                    auth_value = auth_value[7:]
+                server_entry["api_key"] = auth_value
+                logger.debug(f"Updated server_entry api_key for {server_name}")
+
+                # Update transport api_key if it exists
+                if self.stream_manager:
+                    transport = self.stream_manager.transports.get(server_name)
+                    if transport and hasattr(transport, "api_key"):
+                        transport.api_key = auth_value
+                        logger.debug(f"Updated transport.api_key for {server_name}")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"OAuth re-authentication failed for {namespace}: {e}")
+            return False
+
+    async def _get_server_config_by_name(self, server_name: str) -> Optional[Any]:
+        """
+        Get server configuration by server name as a ServerConfig object.
+
+        Args:
+            server_name: Name of the server
+
+        Returns:
+            ServerConfig object or None if not found
+        """
+        try:
+            from mcp_cli.config.config_manager import initialize_config
+
+            # Use initialize_config to get a proper config manager
+            config = initialize_config(Path(self.config_file))
+            return config.get_server(server_name)
+
+        except Exception as e:
+            logger.error(f"Failed to get server config for {server_name}: {e}")
+            return None
+
     # Tool execution
     async def execute_tool(
         self, tool_name: str, arguments: Dict[str, Any], timeout: Optional[float] = None
@@ -1197,38 +1354,108 @@ class ToolManager:
             arguments=arguments,
         )
 
-        try:
-            if not self._executor:
+        # Try to execute the tool, with OAuth re-authentication retry if needed
+        max_oauth_retries = 1
+        for attempt in range(max_oauth_retries + 1):
+            try:
+                if not self._executor:
+                    return ToolCallResult(
+                        tool_name=tool_name,
+                        success=False,
+                        error="Tool executor not initialized",
+                    )
+
+                results = await self._executor.execute(
+                    [call], timeout=effective_timeout
+                )
+
+                if not results:
+                    logger.error("No results returned from executor")
+                    return ToolCallResult(
+                        tool_name=tool_name, success=False, error="No result returned"
+                    )
+
+                result = results[0]
+
+                # Check for errors in both result.error and result.result['error']
+                error_to_check = None
+                if result.error:
+                    error_to_check = result.error
+                elif isinstance(result.result, dict) and "error" in result.result:
+                    error_to_check = result.result["error"]
+
+                # Log errors at debug level
+                if error_to_check:
+                    logger.debug(
+                        f"Tool result has error: {error_to_check[:200] if len(error_to_check) > 200 else error_to_check}"
+                    )
+
+                # Check if the result contains an OAuth error
+                if error_to_check and self._is_oauth_error(error_to_check):
+                    if attempt < max_oauth_retries:
+                        logger.warning(
+                            f"🔐 OAuth error detected in tool result: {error_to_check[:200]}..."
+                        )
+                        logger.info(
+                            f"🔄 Attempting OAuth re-authentication for namespace '{namespace}' (attempt {attempt + 1}/{max_oauth_retries})..."
+                        )
+
+                        # Try to re-authenticate
+                        if await self._attempt_oauth_reauth_for_namespace(namespace):
+                            logger.info(
+                                "✅ Re-authentication successful, retrying tool execution..."
+                            )
+                            continue  # Retry the tool execution
+                        else:
+                            logger.warning(
+                                "Re-authentication failed or not applicable for this server"
+                            )
+                    else:
+                        logger.error(
+                            f"OAuth error persists after {max_oauth_retries} retry attempts"
+                        )
+
                 return ToolCallResult(
                     tool_name=tool_name,
-                    success=False,
-                    error="Tool executor not initialized",
+                    success=not bool(result.error),
+                    result=result.result,
+                    error=result.error,
+                    execution_time=(
+                        (result.end_time - result.start_time).total_seconds()
+                        if hasattr(result, "end_time") and hasattr(result, "start_time")
+                        else None
+                    ),
                 )
+            except Exception as exc:
+                logger.error(f"Tool execution exception: {exc}")
 
-            results = await self._executor.execute([call], timeout=effective_timeout)
+                # Check if this is an OAuth error and we haven't retried yet
+                if self._is_oauth_error(exc) and attempt < max_oauth_retries:
+                    logger.warning(f"OAuth error detected in exception: {exc}")
+                    logger.info(
+                        f"Attempting OAuth re-authentication for namespace '{namespace}' (attempt {attempt + 1}/{max_oauth_retries})..."
+                    )
 
-            if not results:
-                logger.error("No results returned from executor")
+                    # Try to re-authenticate
+                    if await self._attempt_oauth_reauth_for_namespace(namespace):
+                        logger.info(
+                            "✅ Re-authentication successful, retrying tool execution..."
+                        )
+                        continue  # Retry the tool execution
+                    else:
+                        logger.warning(
+                            "Re-authentication failed or not applicable for this server"
+                        )
+
+                # If not an OAuth error, or retry failed, return the error
                 return ToolCallResult(
-                    tool_name=tool_name, success=False, error="No result returned"
+                    tool_name=tool_name, success=False, error=str(exc)
                 )
 
-            result = results[0]
-
-            return ToolCallResult(
-                tool_name=tool_name,
-                success=not bool(result.error),
-                result=result.result,
-                error=result.error,
-                execution_time=(
-                    (result.end_time - result.start_time).total_seconds()
-                    if hasattr(result, "end_time") and hasattr(result, "start_time")
-                    else None
-                ),
-            )
-        except Exception as exc:
-            logger.error(f"Tool execution exception: {exc}")
-            return ToolCallResult(tool_name=tool_name, success=False, error=str(exc))
+        # Should not reach here, but just in case
+        return ToolCallResult(
+            tool_name=tool_name, success=False, error="Max retries exceeded"
+        )
 
     async def _find_tool_in_registry(self, tool_name: str) -> Tuple[str, str]:
         """

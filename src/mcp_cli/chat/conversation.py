@@ -27,11 +27,11 @@ class ConversationProcessor:
         self.ui_manager = ui_manager
         self.tool_processor = ToolProcessor(context, ui_manager)
 
-    async def process_conversation(self, max_turns: int = 10):
+    async def process_conversation(self, max_turns: int = 30):
         """Process the conversation loop, handling tool calls and responses with streaming.
 
         Args:
-            max_turns: Maximum number of conversation turns before forcing exit (default: 10)
+            max_turns: Maximum number of conversation turns before forcing exit (default: 30)
         """
         turn_count = 0
         last_tool_signature = None  # Track last tool call to detect duplicates

@@ -102,6 +102,7 @@ def main_callback(
         "--token-backend",
         help="Token storage backend: auto, keychain, windows, secretservice, encrypted, vault",
     ),
+    max_turns: int = typer.Option(30, "--max-turns", help="Maximum conversation turns"),
 ) -> None:
     """MCP CLI - If no subcommand is given, start chat mode."""
 
@@ -276,6 +277,7 @@ def main_callback(
                 model=effective_model,  # Use effective values
                 api_base=api_base,
                 api_key=api_key,
+                max_turns=max_turns,
             )
             logger.debug(f"Chat mode completed with success: {success}")
         except asyncio.TimeoutError:
@@ -1532,7 +1534,7 @@ def cmd_command(
     single_turn: bool = typer.Option(
         False, "--single-turn", help="Disable multi-turn conversation"
     ),
-    max_turns: int = typer.Option(10, "--max-turns", help="Maximum conversation turns"),
+    max_turns: int = typer.Option(30, "--max-turns", help="Maximum conversation turns"),
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
@@ -1597,7 +1599,7 @@ def cmd_command(
             system_prompt=params.get("system_prompt"),
             raw=params.get("raw", False),
             single_turn=params.get("single_turn", False),
-            max_turns=params.get("max_turns", 10),
+            max_turns=params.get("max_turns", 30),
         )
 
     run_command_sync(

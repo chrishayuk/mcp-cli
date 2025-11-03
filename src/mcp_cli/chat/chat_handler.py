@@ -36,6 +36,7 @@ async def handle_chat_mode(
     api_base: str | None = None,
     api_key: str | None = None,
     confirm_mode: str | None = None,
+    max_turns: int = 30,
 ) -> bool:
     """
     Launch the interactive chat loop with streaming support.
@@ -47,6 +48,7 @@ async def handle_chat_mode(
         api_base: API base URL override (optional)
         api_key: API key override (optional)
         confirm_mode: Tool confirmation mode override (optional)
+        max_turns: Maximum conversation turns before forcing exit (default: 30)
 
     Returns:
         True if session ended normally, False on failure
@@ -128,7 +130,7 @@ async def handle_chat_mode(
         convo = ConversationProcessor(ctx, ui)
 
         # Main chat loop with streaming support
-        await _run_enhanced_chat_loop(ui, ctx, convo)
+        await _run_enhanced_chat_loop(ui, ctx, convo, max_turns)
 
         return True
 
@@ -164,6 +166,7 @@ async def handle_chat_mode_for_testing(
     stream_manager,
     provider: str | None = None,
     model: str | None = None,
+    max_turns: int = 30,
 ) -> bool:
     """
     Launch chat mode for testing with stream_manager.
@@ -174,6 +177,7 @@ async def handle_chat_mode_for_testing(
         stream_manager: Test stream manager
         provider: Provider for testing
         model: Model for testing
+        max_turns: Maximum conversation turns before forcing exit (default: 30)
 
     Returns:
         True if session ended normally, False on failure
@@ -202,7 +206,7 @@ async def handle_chat_mode_for_testing(
         convo = ConversationProcessor(ctx, ui)
 
         # Main chat loop with streaming support
-        await _run_enhanced_chat_loop(ui, ctx, convo)
+        await _run_enhanced_chat_loop(ui, ctx, convo, max_turns)
 
         return True
 
@@ -222,7 +226,10 @@ async def handle_chat_mode_for_testing(
 
 
 async def _run_enhanced_chat_loop(
-    ui: ChatUIManager, ctx: ChatContext, convo: ConversationProcessor
+    ui: ChatUIManager,
+    ctx: ChatContext,
+    convo: ConversationProcessor,
+    max_turns: int = 30,
 ) -> None:
     """
     Run the main chat loop with enhanced streaming support.
@@ -231,6 +238,7 @@ async def _run_enhanced_chat_loop(
         ui: UI manager with streaming coordination
         ctx: Chat context
         convo: Conversation processor with streaming support
+        max_turns: Maximum conversation turns before forcing exit (default: 30)
     """
     while True:
         try:
@@ -272,7 +280,7 @@ async def _run_enhanced_chat_loop(
             ctx.add_user_message(user_msg)
 
             # Use the enhanced conversation processor that handles streaming
-            await convo.process_conversation()
+            await convo.process_conversation(max_turns=max_turns)
 
         except KeyboardInterrupt:
             # Handle Ctrl+C gracefully
