@@ -186,12 +186,18 @@ async def _execute_prompt_mode(
         output.error("No prompt or input provided")
         return
 
-    # Get the LLM client - use ModelManager since it's the standard way
+    # Get the LLM client - use the model_manager from context
     try:
-        from mcp_cli.model_manager import ModelManager
+        # Use the model manager from context which has the correct provider/model
+        model_manager = context.model_manager
+        if not model_manager:
+            # Fallback: create new one if context doesn't have it
+            from mcp_cli.model_manager import ModelManager
+            model_manager = ModelManager()
+            # Set it to the correct provider/model from context
+            model_manager.switch_model(context.provider, context.model)
 
-        model_manager = ModelManager()
-        client = model_manager.get_client()
+        client = model_manager.get_client(provider=context.provider, model=context.model)
 
         if not client:
             output.error(
