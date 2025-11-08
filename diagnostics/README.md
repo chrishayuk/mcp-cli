@@ -55,10 +55,23 @@ uv run diagnostics/mcp_server_diagnostic.py
 **Output:** Detailed server analysis with health status, runtime server management test results, and recommendations
 
 #### `debug_models.py`
-**Purpose:** Diagnoses model discovery and provider configuration issues  
-**Checks:** chuk-llm version, API keys, provider status, Ollama detection  
-**Usage:** `uv run diagnostics/debug_models.py`  
+**Purpose:** Diagnoses model discovery and provider configuration issues
+**Checks:** chuk-llm version, API keys, provider status, Ollama detection
+**Usage:** `uv run diagnostics/debug_models.py`
 **Output:** Provider configuration analysis with model counts
+
+#### `model_manager_diagnostic.py` ⭐ NEW
+**Purpose:** Comprehensive test suite for the refactored ModelManager
+**Tests:** Provider discovery, model listing, runtime provider management, Pydantic validation, client creation, model refresh, configuration integrity
+**Usage:** `uv run diagnostics/model_manager_diagnostic.py [--verbose]`
+**Output:** 11+ diagnostic tests validating ModelManager functionality
+**Features:**
+- Tests Pydantic model validation and type safety
+- Validates runtime provider creation and discovery
+- Checks model listing without hardcoded defaults
+- Verifies provider switching and default model selection
+- Tests client creation and model refresh functionality
+- Ensures Pydantic model immutability where required
 
 ### 🧪 Specialized Testing
 

@@ -56,7 +56,7 @@ Aliases: cls
         # Import needed modules
         from chuk_term.ui import clear_screen, display_chat_banner
         from mcp_cli.context import get_context
-        from mcp_cli.model_manager import ModelManager
+        from mcp_cli.model_management import ModelManager
 
         # Clear the screen first
         clear_screen()

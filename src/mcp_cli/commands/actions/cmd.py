@@ -188,7 +188,7 @@ async def _execute_prompt_mode(
 
     # Get the LLM client - use ModelManager since it's the standard way
     try:
-        from mcp_cli.model_manager import ModelManager
+        from mcp_cli.model_management import ModelManager
 
         model_manager = ModelManager()
         client = model_manager.get_client()

@@ -175,7 +175,7 @@ def main_callback(
     logger.debug("Starting default chat mode")
 
     # Use ModelManager to get active provider/model if not specified
-    from mcp_cli.model_manager import ModelManager
+    from mcp_cli.model_management import ModelManager
 
     model_manager = ModelManager()
 
@@ -189,6 +189,16 @@ def main_callback(
         if model and "," in model:
             models = [m.strip() for m in model.split(",")]
             model = models[0]  # Use first as default
+
+        # FIXED: If no model specified, warn user
+        if not model:
+            output.warning(
+                f"No model specified for runtime provider '{provider}'. "
+                "You should specify --model with the provider's model name."
+            )
+            output.tip(
+                f"Example: --provider {provider} --api-base {api_base} --model <model-name>"
+            )
 
         model_manager.add_runtime_provider(
             name=provider,
@@ -210,7 +220,7 @@ def main_callback(
     # Validate provider if specified
     elif provider:
         if not model_manager.validate_provider(provider):
-            available = ", ".join(model_manager.list_providers())
+            available = ", ".join(model_manager.get_available_providers())
             output.error(f"Unknown provider: {provider}")
             output.info(f"Available providers: {available}")
             output.tip(f"Did you mean to run: mcp-cli provider {provider}")
@@ -278,6 +288,7 @@ def main_callback(
                 api_base=api_base,
                 api_key=api_key,
                 max_turns=max_turns,
+                model_manager=model_manager,  # FIXED: Pass the model manager with runtime provider
             )
             logger.debug(f"Chat mode completed with success: {success}")
         except asyncio.TimeoutError:
@@ -391,7 +402,7 @@ def _chat_command(
     logger.debug("Starting chat mode (via explicit chat command)")
 
     # Use ModelManager to get active provider/model if not specified
-    from mcp_cli.model_manager import ModelManager
+    from mcp_cli.model_management import ModelManager
 
     model_manager = ModelManager()
 
@@ -428,7 +439,7 @@ def _chat_command(
     # Validate provider if specified
     elif provider:
         if not model_manager.validate_provider(provider):
-            available = ", ".join(model_manager.list_providers())
+            available = ", ".join(model_manager.get_available_providers())
             output.error(f"Unknown provider: {provider}")
             output.info(f"Available providers: {available}")
             raise typer.Exit(1)
@@ -577,7 +588,7 @@ def _interactive_command(
     logger.debug("Starting interactive command mode")
 
     # Use ModelManager to get active provider/model if not specified
-    from mcp_cli.model_manager import ModelManager
+    from mcp_cli.model_management import ModelManager
 
     model_manager = ModelManager()
 
@@ -1078,7 +1089,7 @@ def models_command(
     # Configure logging and theme for this command
     _setup_command_logging(quiet, verbose, log_level, theme)
 
-    from mcp_cli.model_manager import ModelManager
+    from mcp_cli.model_management import ModelManager
     from rich.table import Table
 
     model_manager = ModelManager()
@@ -1091,12 +1102,13 @@ def models_command(
     # Validate provider exists
     if not model_manager.validate_provider(target_provider):
         output.error(f"Unknown provider: {target_provider}")
-        output.info(f"Available providers: {', '.join(model_manager.list_providers())}")
+        output.info(
+            f"Available providers: {', '.join(model_manager.get_available_providers())}"
+        )
         return
 
     # Get provider info
-    provider_info = model_manager.get_provider_info(target_provider)
-    default_model = provider_info.get("default_model", "Not specified")
+    default_model = model_manager.get_default_model(target_provider)
     available_models = model_manager.get_available_models(target_provider)
 
     # Create table
@@ -1138,11 +1150,9 @@ def models_command(
     # Show additional info
     output.print(f"\n[dim]Provider:[/dim] {target_provider}")
     output.print(f"[dim]Total models:[/dim] {len(available_models)}")
-    output.print(f"[dim]API Base:[/dim] {provider_info.get('api_base') or 'Default'}")
-    if provider_info.get("has_api_key"):
-        output.print("[dim]API Key:[/dim] ********")
-    else:
-        output.print("[dim]API Key:[/dim] [red]Not configured[/red]")
+    # API base and key info not readily available in new architecture
+    # output.print(f"[dim]API Base:[/dim] Default")
+    # output.print("[dim]API Key:[/dim] Configured")
 
     # Show switch command if not current provider
     if not is_current_provider:
@@ -1557,7 +1567,7 @@ def cmd_command(
     _setup_command_logging(quiet, verbose, log_level, theme)
 
     # Use ModelManager to resolve provider/model
-    from mcp_cli.model_manager import ModelManager
+    from mcp_cli.model_management import ModelManager
 
     model_manager = ModelManager()
 

@@ -13,7 +13,7 @@ from chuk_term.ui import output
 from mcp_cli.chat.system_prompt import generate_system_prompt
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.tools.models import ToolInfo, ServerInfo
-from mcp_cli.model_manager import ModelManager
+from mcp_cli.model_management import ModelManager
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +66,7 @@ class ChatContext:
         model: str | None = None,
         api_base: str | None = None,
         api_key: str | None = None,
+        model_manager: ModelManager | None = None,  # FIXED: Accept model_manager
     ) -> "ChatContext":
         """
         Factory method for convenient creation.
@@ -76,25 +77,30 @@ class ChatContext:
             model: Model to switch to (optional)
             api_base: API base URL override (optional)
             api_key: API key override (optional)
+            model_manager: Pre-configured ModelManager (optional, creates new if None)
 
         Returns:
             Configured ChatContext instance
         """
-        model_manager = ModelManager()
+        # FIXED: Use provided model_manager if available, otherwise create new
+        if model_manager is None:
+            model_manager = ModelManager()
 
-        # Configure provider if API settings provided
-        if provider and (api_base or api_key):
-            model_manager.configure_provider(
-                provider, api_key=api_key, api_base=api_base
-            )
+            # Configure provider if API settings provided
+            if provider and (api_base or api_key):
+                model_manager.add_runtime_provider(
+                    name=provider, api_key=api_key, api_base=api_base or ""
+                )
 
-        # Switch model if requested
-        if provider and model:
-            model_manager.switch_model(provider, model)
-        elif provider:
-            model_manager.switch_provider(provider)
-        elif model:
-            model_manager.switch_to_model(model)
+            # Switch model if requested
+            if provider and model:
+                model_manager.switch_model(provider, model)
+            elif provider:
+                model_manager.switch_provider(provider)
+            elif model:
+                # Switch model in current provider
+                current_provider = model_manager.get_active_provider()
+                model_manager.switch_model(current_provider, model)
 
         return cls(tool_manager, model_manager)
 
@@ -412,7 +418,9 @@ class TestChatContext(ChatContext):
         elif provider:
             model_manager.switch_provider(provider)
         elif model:
-            model_manager.switch_to_model(model)
+            # Switch model in current provider
+            current_provider = model_manager.get_active_provider()
+            model_manager.switch_model(current_provider, model)
 
         return cls(stream_manager, model_manager)
 

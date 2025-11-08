@@ -37,6 +37,7 @@ async def handle_chat_mode(
     api_key: str | None = None,
     confirm_mode: str | None = None,
     max_turns: int = 30,
+    model_manager=None,  # FIXED: Accept model_manager from caller
 ) -> bool:
     """
     Launch the interactive chat loop with streaming support.
@@ -49,6 +50,7 @@ async def handle_chat_mode(
         api_key: API key override (optional)
         confirm_mode: Tool confirmation mode override (optional)
         max_turns: Maximum conversation turns before forcing exit (default: 30)
+        model_manager: Pre-configured ModelManager (optional, creates new if None)
 
     Returns:
         True if session ended normally, False on failure
@@ -68,16 +70,19 @@ async def handle_chat_mode(
             model=model or "gpt-4",
             api_base=api_base,
             api_key=api_key,
+            model_manager=model_manager,  # FIXED: Pass model_manager with runtime providers
         )
 
         # Create chat context using clean factory
         with output.loading("Initializing chat context..."):
+            # FIXED: Use the model_manager from app_context to ensure consistency
             ctx = ChatContext.create(
                 tool_manager=tool_manager,
                 provider=provider,
                 model=model,
                 api_base=api_base,
                 api_key=api_key,
+                model_manager=app_context.model_manager,  # Use the same instance
             )
 
             if not await ctx.initialize():
