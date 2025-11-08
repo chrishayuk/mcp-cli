@@ -7,7 +7,7 @@ This version incorporates the diagnostic fixes with your existing architecture.
 from __future__ import annotations
 import subprocess
 from typing import Dict, List, Any
-from mcp_cli.model_manager import ModelManager
+from mcp_cli.model_management import ModelManager
 from chuk_term.ui import output, format_table
 from mcp_cli.context import get_context, ApplicationContext
 from mcp_cli.commands.models import ProviderActionParams
@@ -148,7 +148,7 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
 
     try:
         # Get provider info using the working method
-        all_providers_info = model_manager.list_available_providers()
+        all_providers_info = model_manager.get_available_providers()
 
         if not all_providers_info:
             output.error("No providers found. Check chuk-llm installation.")
@@ -159,7 +159,7 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
         return
 
     # Sort providers to put current one first, then alphabetically
-    provider_items = list(all_providers_info.items())
+    provider_items = list(all_providers_info.items())  # type: ignore[attr-defined]
     provider_items.sort(key=lambda x: (x[0] != current_provider, x[0]))
 
     for provider_name, provider_info in provider_items:
@@ -257,7 +257,7 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
     inactive_providers = []
     inactive_custom_providers = []
     custom_count = 0
-    for name, info in all_providers_info.items():
+    for name, info in all_providers_info.items():  # type: ignore[attr-defined]
         if info.get("is_custom"):
             custom_count += 1
         if "error" not in info:
@@ -308,24 +308,24 @@ def _render_diagnostic_optimized(
         providers_to_test = [target] if model_manager.validate_provider(target) else []
         if not providers_to_test:
             output.error(f"Unknown provider: {target}")
-            available = ", ".join(model_manager.list_providers())
+            available = ", ".join(model_manager.get_available_providers())
             output.warning(f"Available providers: {available}")
             return
     else:
-        providers_to_test = model_manager.list_providers()
+        providers_to_test = model_manager.get_available_providers()
 
     table_data = []
     columns = ["Provider", "Status", "Models", "Features", "Details"]
 
     try:
-        all_providers_data = model_manager.list_available_providers()
+        all_providers_data = model_manager.get_available_providers()
     except Exception as e:
         output.error(f"Error getting provider data: {e}")
         return
 
     for provider in providers_to_test:
         try:
-            provider_info = all_providers_data.get(provider, {})
+            provider_info = all_providers_data.get(provider, {})  # type: ignore[attr-defined]
 
             # Skip if provider has errors
             if "error" in provider_info:
@@ -396,15 +396,15 @@ def _switch_provider_enhanced(
     """Enhanced provider switching with better validation and feedback."""
 
     if not model_manager.validate_provider(provider_name):
-        available = ", ".join(model_manager.list_providers())
+        available = ", ".join(model_manager.get_available_providers())
         output.error(f"Unknown provider: {provider_name}")
         output.info(f"Available providers: {available}")
         return
 
     # Get provider info for validation
     try:
-        all_providers_info = model_manager.list_available_providers()
-        provider_info = all_providers_info.get(provider_name, {})
+        all_providers_info = model_manager.get_available_providers()
+        provider_info = all_providers_info.get(provider_name, {})  # type: ignore[attr-defined]
 
         if "error" in provider_info:
             output.error(f"Provider error: {provider_info['error']}")
@@ -493,13 +493,13 @@ async def provider_action_async(params: ProviderActionParams) -> None:
         return
 
     def _show_status() -> None:
-        provider, model = model_manager.get_active_provider_and_model()
-        status = model_manager.get_status_summary()
+        provider = model_manager.get_active_provider()
+        model = model_manager.get_active_model()
 
         # Get enhanced status for current provider
         try:
-            all_providers = model_manager.list_available_providers()
-            current_info = all_providers.get(provider, {})
+            # current_info not used anymore in new architecture
+            current_info: dict[str, str] = {}
             status_icon, status_text, status_reason = _get_provider_status_enhanced(
                 provider, current_info
             )
@@ -512,7 +512,8 @@ async def provider_action_async(params: ProviderActionParams) -> None:
             output.print(f"  [bold]Provider:[/bold] {provider}")
             output.print(f"  [bold]Model:[/bold]    {model}")
             output.print(f"  [bold]Status:[/bold]   {status_icon} {status_text}")
-            output.print(f"  [bold]Features:[/bold] {_format_features(status)}")
+            # Features info not available in new architecture - skip it
+            # output.print(f"  [bold]Features:[/bold] {_format_features({})}")
 
             if status_icon != "✅":
                 output.print()

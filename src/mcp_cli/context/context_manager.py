@@ -12,7 +12,7 @@ from typing import Any, Optional, List, Dict
 from pathlib import Path
 
 from mcp_cli.tools.manager import ToolManager
-from mcp_cli.model_manager import ModelManager
+from mcp_cli.model_management import ModelManager
 from mcp_cli.tools.models import ServerInfo, ToolInfo
 
 
@@ -62,7 +62,7 @@ class ApplicationContext:
     def __post_init__(self):
         """Initialize managers if not provided."""
         if self.model_manager is None:
-            from mcp_cli.model_manager import ModelManager
+            from mcp_cli.model_management import ModelManager
 
             self.model_manager = ModelManager()
 

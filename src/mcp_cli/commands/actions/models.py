@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import List
 
 from chuk_term.ui import output, format_table
-from mcp_cli.model_manager import ModelManager
+from mcp_cli.model_management import ModelManager
 from mcp_cli.utils.async_utils import run_blocking
 from mcp_cli.utils.llm_probe import LLMProbe
 from mcp_cli.context import get_context, ApplicationContext
@@ -127,8 +127,8 @@ async def _list_models(
     # Get static models from config
     static_models = set()
     try:
-        provider_info = model_manager.get_provider_info(provider)
-        static_models = set(provider_info.get("models", []))
+        # Just get the available models - we don't differentiate static anymore
+        static_models = set(available_models)
     except Exception:
         pass
 
@@ -180,20 +180,16 @@ async def _refresh_models(model_manager: ModelManager, provider: str) -> None:
         before_count = len(model_manager.get_available_models(provider))
 
         try:
-            success = model_manager.refresh_discovery(provider)
+            # refresh_models returns count of new models discovered
+            new_count = model_manager.refresh_models(provider)
+            after_count = len(model_manager.get_available_models(provider))
 
-            if success:
-                after_count = len(model_manager.get_available_models(provider))
-                new_count = after_count - before_count
-
-                if new_count > 0:
-                    output.success(f"Discovered {new_count} new models!")
-                else:
-                    output.info("No new models discovered")
-
-                output.print(f"Total models: {after_count}")
+            if new_count > 0:
+                output.success(f"Discovered {new_count} new models!")
             else:
-                output.error("Refresh failed")
+                output.info("No new models discovered")
+
+            output.print(f"Total models: {after_count}")
 
         except Exception as e:
             output.error(f"Refresh error: {e}")
@@ -209,8 +205,8 @@ async def _switch_model(
     """Attempt to switch to a new model."""
     with output.loading(f"Testing model '{new_model}'..."):
         try:
-            # Validate model
-            is_valid = model_manager.validate_model_for_provider(provider, new_model)
+            # Validate model (note: validate_model takes model, provider order)
+            is_valid = model_manager.validate_model(new_model, provider)
 
             if not is_valid:
                 output.error(f"Model not available: {new_model}")
@@ -230,7 +226,7 @@ async def _switch_model(
 
             if result.success:
                 # Switch successful
-                model_manager.set_active_model(new_model)
+                model_manager.switch_model(provider, new_model)
                 # Update the ApplicationContext attributes directly
                 context.model = new_model
                 # context doesn't have a client attribute
@@ -253,15 +249,8 @@ async def _show_ollama_status(model_manager: ModelManager) -> None:
 
         if ollama_running:
             available = len(model_manager.get_available_models("ollama"))
-            discovery = model_manager.get_discovery_status()
-            enabled = discovery.get("ollama_enabled", False)
-
-            status = f"Ollama: {len(local_models)} local, {available} accessible"
-            if enabled:
-                status += " | Discovery: ✅"
-            else:
-                status += " | Discovery: ❌"
-
+            # Discovery is always enabled in the new architecture
+            status = f"Ollama: {len(local_models)} local, {available} accessible | Discovery: ✅"
             output.info(f"\n{status}")
         else:
             output.hint("\nOllama: Not running | Use 'ollama serve' to start")

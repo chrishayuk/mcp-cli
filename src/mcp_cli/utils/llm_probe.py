@@ -13,7 +13,7 @@ import re
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
 
-from mcp_cli.model_manager import ModelManager  # ← CHANGED
+from mcp_cli.model_management import ModelManager  # ← CHANGED
 
 
 @dataclass
@@ -87,7 +87,7 @@ class LLMProbe:
         """
         try:
             # Create client using ModelManager's client creation method
-            client = self.model_manager.get_client_for_provider(provider, model)
+            client = self.model_manager.get_client(provider, model)
 
             # Test with a simple completion
             response = await client.create_completion(
@@ -135,8 +135,9 @@ class LLMProbe:
         """
         try:
             # Validate provider exists in configuration
-            self.model_manager.get_provider_info(provider)  # ← CHANGED
-            model = self.model_manager.get_default_model(provider)  # ← CHANGED
+            if not self.model_manager.validate_provider(provider):
+                raise ValueError(f"Provider {provider} not found")
+            model = self.model_manager.get_default_model(provider)
             return await self.test_provider_model(provider, model, test_message)
         except ValueError as e:
             return ProbeResult(success=False, error_message=str(e))
