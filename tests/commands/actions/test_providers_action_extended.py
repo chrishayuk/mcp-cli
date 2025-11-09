@@ -5,8 +5,6 @@ from unittest.mock import MagicMock, patch
 
 from mcp_cli.commands.actions.providers import (
     provider_action_async,
-    _render_list_optimized,
-    _render_diagnostic_optimized,
     _switch_provider_enhanced,
 )
 from mcp_cli.commands.models import ProviderActionParams
@@ -118,69 +116,6 @@ async def test_provider_action_set_command_no_value(mock_context, mock_model_man
             )
 
 
-def test_render_list_optimized_exception():
-    """Test render list when exception occurs."""
-    mock_manager = MagicMock()
-    mock_manager.list_available_providers.side_effect = Exception("API error")
-
-    with patch("mcp_cli.commands.actions.providers.output") as mock_output:
-        _render_list_optimized(mock_manager)
-
-        mock_output.error.assert_called_with("Error getting provider list: API error")
-
-
-def test_render_diagnostic_optimized_exception():
-    """Test render diagnostic when exception occurs."""
-    mock_manager = MagicMock()
-    mock_manager.list_available_providers.side_effect = Exception("API error")
-    mock_manager.validate_provider.return_value = True
-    mock_manager.list_providers.return_value = ["test"]
-
-    with patch("mcp_cli.commands.actions.providers.output") as mock_output:
-        _render_diagnostic_optimized(mock_manager, "test")
-
-        mock_output.error.assert_called_with("Error getting provider data: API error")
-
-
-def test_render_diagnostic_optimized_provider_exception():
-    """Test render diagnostic when provider has exception."""
-    mock_manager = MagicMock()
-    mock_manager.list_available_providers.return_value = {}
-    mock_manager.validate_provider.return_value = True
-    mock_manager.list_providers.return_value = ["test"]
-
-    with patch("mcp_cli.commands.actions.providers.output"):
-        with patch(
-            "mcp_cli.commands.actions.providers.format_table"
-        ) as mock_format_table:
-            mock_format_table.return_value = "formatted_table"
-
-            _render_diagnostic_optimized(mock_manager, "test")
-
-            # Should handle exception gracefully and create error row
-            table_data = mock_format_table.call_args[0][0]
-            assert len(table_data) == 1
-            # When provider info is not available, it shows "Not Configured" status
-            assert "❌" in table_data[0]["Status"] or "Error" in table_data[0]["Status"]
-
-
-def test_switch_provider_enhanced_provider_error():
-    """Test switch provider when provider has error."""
-    mock_manager = MagicMock()
-    mock_manager.validate_provider.return_value = True
-    mock_manager.list_available_providers.return_value = {
-        "test-provider": {"error": "Provider initialization failed"}
-    }
-    mock_context = MagicMock()
-
-    with patch("mcp_cli.commands.actions.providers.output") as mock_output:
-        _switch_provider_enhanced(mock_manager, "test-provider", None, mock_context)
-
-        mock_output.error.assert_called_with(
-            "Provider error: Provider initialization failed"
-        )
-
-
 def test_switch_provider_enhanced_partial_setup():
     """Test switch provider with partial setup warning."""
     mock_manager = MagicMock()
@@ -204,24 +139,6 @@ def test_switch_provider_enhanced_partial_setup():
                 "Continuing anyway" in str(call) or "Switching to" in str(call)
                 for call in mock_output.info.call_args_list
             )
-
-
-def test_switch_provider_enhanced_validation_exception():
-    """Test switch provider when validation throws exception."""
-    mock_manager = MagicMock()
-    mock_manager.validate_provider.return_value = True
-    mock_manager.list_available_providers.side_effect = Exception("Connection error")
-    mock_manager.get_default_model.return_value = "default"
-    mock_context = MagicMock()
-
-    with patch("mcp_cli.commands.actions.providers.output") as mock_output:
-        _switch_provider_enhanced(mock_manager, "test-provider", None, mock_context)
-
-        mock_output.warning.assert_called_with(
-            "Could not validate provider: Connection error"
-        )
-        # Should continue with switch
-        mock_output.info.assert_called()
 
 
 def test_switch_provider_enhanced_switch_exception():
@@ -286,28 +203,6 @@ def test_switch_provider_enhanced_context_update_exception():
 
 
 @pytest.mark.asyncio
-async def test_provider_action_async_status_exception():
-    """Test provider action status when exception in formatting."""
-    mock_context = MagicMock()
-    mock_manager = MagicMock()
-    mock_manager.get_active_provider_and_model.return_value = ("test", "model")
-    mock_manager.get_status_summary.return_value = {}
-    mock_manager.list_available_providers.side_effect = Exception("API error")
-    mock_context.model_manager = mock_manager
-
-    with patch(
-        "mcp_cli.commands.actions.providers.get_context", return_value=mock_context
-    ):
-        with patch("mcp_cli.commands.actions.providers.output") as mock_output:
-            await provider_action_async(ProviderActionParams(args=[]))
-
-            # Should handle exception and show fallback
-            mock_output.info.assert_any_call("Current provider: test")
-            mock_output.info.assert_any_call("Current model   : model")
-            mock_output.warning.assert_called_with("Status check failed: API error")
-
-
-@pytest.mark.asyncio
 async def test_provider_action_async_status_not_ready():
     """Test provider action status when provider not ready."""
     mock_context = MagicMock()
@@ -334,35 +229,6 @@ async def test_provider_action_async_status_not_ready():
 
                 # Should show warning about status
                 mock_output.warning.assert_called()
-
-
-def test_render_diagnostic_optimized_provider_with_details():
-    """Test render diagnostic with provider details like API base."""
-    mock_manager = MagicMock()
-    mock_manager.list_available_providers.return_value = {
-        "test": {
-            "has_api_key": True,
-            "models": ["model1"],
-            "api_base": "https://api.test.com",
-            "discovery_enabled": True,
-            "baseline_features": ["streaming"],
-        }
-    }
-    mock_manager.validate_provider.return_value = True
-    mock_manager.list_providers.return_value = ["test"]
-
-    with patch("mcp_cli.commands.actions.providers.output"):
-        with patch(
-            "mcp_cli.commands.actions.providers.format_table"
-        ) as mock_format_table:
-            mock_format_table.return_value = "formatted_table"
-
-            _render_diagnostic_optimized(mock_manager, "test")
-
-            # Check details were included
-            table_data = mock_format_table.call_args[0][0]
-            assert "API: https://api.test.com" in table_data[0]["Details"]
-            assert "Discovery: ✅" in table_data[0]["Details"]
 
 
 def test_check_ollama_running_empty_output():

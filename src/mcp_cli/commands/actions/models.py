@@ -177,8 +177,6 @@ async def _list_models(
 async def _refresh_models(model_manager: ModelManager, provider: str) -> None:
     """Refresh model discovery."""
     with output.loading(f"Refreshing models for {provider}..."):
-        before_count = len(model_manager.get_available_models(provider))
-
         try:
             # refresh_models returns count of new models discovered
             new_count = model_manager.refresh_models(provider)

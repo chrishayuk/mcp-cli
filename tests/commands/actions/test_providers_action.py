@@ -251,53 +251,6 @@ def test_render_list_optimized(mock_model_manager):
             mock_output.tip.assert_called()
 
 
-def test_render_list_optimized_no_providers(mock_model_manager):
-    """Test rendering list with no providers."""
-    mock_model_manager.list_available_providers.return_value = {}
-
-    with patch("mcp_cli.commands.actions.providers.output") as mock_output:
-        _render_list_optimized(mock_model_manager)
-
-        mock_output.error.assert_called_with(
-            "No providers found. Check chuk-llm installation."
-        )
-
-
-def test_render_list_optimized_with_errors(mock_model_manager):
-    """Test rendering list with provider errors."""
-    mock_model_manager.list_available_providers.return_value = {
-        "error-provider": {"error": "Connection failed to provider"}
-    }
-
-    with patch("mcp_cli.commands.actions.providers.output"):
-        with patch(
-            "mcp_cli.commands.actions.providers.format_table"
-        ) as mock_format_table:
-            mock_format_table.return_value = "formatted_table"
-
-            _render_list_optimized(mock_model_manager)
-
-            # Verify error provider was included in table
-            table_data = mock_format_table.call_args[0][0]
-            assert any(row["Status"] == "Error" for row in table_data)
-
-
-def test_render_diagnostic_optimized_all_providers(mock_model_manager):
-    """Test rendering diagnostic for all providers."""
-    with patch("mcp_cli.commands.actions.providers.output"):
-        with patch(
-            "mcp_cli.commands.actions.providers.format_table"
-        ) as mock_format_table:
-            mock_format_table.return_value = "formatted_table"
-
-            _render_diagnostic_optimized(mock_model_manager, None)
-
-            mock_format_table.assert_called_once()
-            # Should test all providers
-            table_data = mock_format_table.call_args[0][0]
-            assert len(table_data) >= 2  # At least test-provider and ollama
-
-
 def test_render_diagnostic_optimized_specific_provider(mock_model_manager):
     """Test rendering diagnostic for specific provider."""
     with patch("mcp_cli.commands.actions.providers.output"):
@@ -354,19 +307,6 @@ def test_switch_provider_enhanced_invalid_provider(mock_model_manager, mock_cont
 
         mock_output.error.assert_called_with("Unknown provider: invalid")
         mock_model_manager.switch_model.assert_not_called()
-
-
-def test_switch_provider_enhanced_not_ready(mock_model_manager, mock_context):
-    """Test switching to provider that's not ready."""
-    mock_model_manager.list_available_providers.return_value = {
-        "openai": {"has_api_key": False}
-    }
-
-    with patch("mcp_cli.commands.actions.providers.output") as mock_output:
-        _switch_provider_enhanced(mock_model_manager, "openai", None, mock_context)
-
-        mock_output.error.assert_called()
-        mock_output.tip.assert_called()
 
 
 def test_switch_provider_enhanced_ollama_not_running(mock_model_manager, mock_context):

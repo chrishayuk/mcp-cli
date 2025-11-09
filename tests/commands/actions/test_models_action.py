@@ -224,9 +224,12 @@ async def test_refresh_models_success(mock_model_manager):
     """Test successful model refresh."""
     # Mock refresh_models to return 2 new models
     mock_model_manager.refresh_models.return_value = 2
-    mock_model_manager.get_available_models.side_effect = [
-        ["model1", "model2"],  # Before
-        ["model1", "model2", "model3", "model4"],  # After
+    # After refresh, there are 4 models total
+    mock_model_manager.get_available_models.return_value = [
+        "model1",
+        "model2",
+        "model3",
+        "model4",
     ]
 
     with patch("mcp_cli.commands.actions.models.output") as mock_output:
