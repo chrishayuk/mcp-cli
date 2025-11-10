@@ -1416,7 +1416,7 @@ requires-dist = [
     { name = "chuk-llm", extras = ["all"], specifier = ">=0.12.7" },
     { name = "chuk-mcp-client-oauth", specifier = ">=0.3.5" },
     { name = "chuk-term", specifier = ">=0.1.3" },
-    { name = "chuk-tool-processor", specifier = ">=0.9.7" },
+    { name = "chuk-tool-processor", specifier = "==0.9.7" },
     { name = "cryptography", specifier = ">=44.0.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "hvac", marker = "extra == 'vault'", specifier = ">=2.0.0" },
