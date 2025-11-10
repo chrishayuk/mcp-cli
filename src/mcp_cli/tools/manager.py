@@ -709,9 +709,9 @@ class ToolManager:
 
     async def _setup_http_servers(self, namespace: str) -> bool:
         """
-        Setup HTTP servers using universal API with SSE transport and OAuth retry support.
+        Setup HTTP servers using HTTP Streamable transport with OAuth retry support.
 
-        Note: In chuk-tool-processor 0.10+, HTTP servers use the SSE transport.
+        Note: In chuk-tool-processor 0.10+, HTTP servers use the HTTP Streamable transport.
         """
         try:
             from chuk_tool_processor.mcp.stream_manager import StreamManager
@@ -722,15 +722,15 @@ class ToolManager:
             server_timeout = self._get_max_server_timeout(self._http_servers)
             server_max_retries = self._get_min_server_max_retries(self._http_servers)
 
-            logger.info(f"Setting up HTTP servers using SSE transport (timeout={server_timeout}s, max_retries={server_max_retries})")
+            logger.info(f"Setting up HTTP servers using HTTP Streamable transport (timeout={server_timeout}s, max_retries={server_max_retries})")
 
             # Try setup with OAuth retry support
             max_auth_retries = 1
             for attempt in range(max_auth_retries + 1):
                 try:
-                    # 1. Create StreamManager with SSE transport
+                    # 1. Create StreamManager with HTTP Streamable transport
                     self.stream_manager = await asyncio.wait_for(
-                        StreamManager.create_with_sse(
+                        StreamManager.create_with_http_streamable(
                             servers=self._http_servers,
                             server_names=self.server_names,
                             connection_timeout=10.0,
@@ -753,7 +753,7 @@ class ToolManager:
                         max_retries=server_max_retries,
                     )
 
-                    logger.info("HTTP servers (via SSE transport) initialized successfully")
+                    logger.info("HTTP servers (via HTTP Streamable transport) initialized successfully")
                     return True
 
                 except Exception as setup_error:

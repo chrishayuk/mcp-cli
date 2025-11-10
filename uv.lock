@@ -487,7 +487,7 @@ wheels = [
 
 [[package]]
 name = "chuk-tool-processor"
-version = "0.9.7"
+version = "0.10"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "chuk-mcp" },
@@ -496,9 +496,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "uuid" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c9/6e/8ad269c72743aa9b4926c7baffa1c0c79aaa52b4f81ea0af0886ca7f0316/chuk_tool_processor-0.9.7.tar.gz", hash = "sha256:33d69ed56c69ddba36639d87d983c548b408d76d74473548bee0cfbd009354bf", size = 156810, upload-time = "2025-11-02T15:35:54.221Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/10/1b/f6a88499131d4e7ae89c06540edde49ca38fd4b415043a6b5570bc3c6ebb/chuk_tool_processor-0.10.tar.gz", hash = "sha256:bb7639d8d42e18720af375305e7c9994eb0916e1d4652513af113e1dc75c42a1", size = 179399, upload-time = "2025-11-10T20:20:30.574Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e1/81/588f03d01abe71445175f40f8193c93753801d637e26fad91d11e169c16d/chuk_tool_processor-0.9.7-py3-none-any.whl", hash = "sha256:0f543e410d037eb3cd15229408c87e76de9c783427dd978aae4fbf6605412df8", size = 155555, upload-time = "2025-11-02T15:35:52.236Z" },
+    { url = "https://files.pythonhosted.org/packages/49/0d/322ad260a7476949af0af9c6ddccebd6bd6607943a263f25da7e6c214820/chuk_tool_processor-0.10-py3-none-any.whl", hash = "sha256:9503e00c14d25c19a94f5fe3d5565cf423e10c82502598b2cce9ca1617737e27", size = 167779, upload-time = "2025-11-10T20:20:28.947Z" },
 ]
 
 [[package]]
@@ -1416,7 +1416,7 @@ requires-dist = [
     { name = "chuk-llm", extras = ["all"], specifier = ">=0.12.7" },
     { name = "chuk-mcp-client-oauth", specifier = ">=0.3.5" },
     { name = "chuk-term", specifier = ">=0.1.3" },
-    { name = "chuk-tool-processor", specifier = ">=0.9.7" },
+    { name = "chuk-tool-processor", specifier = ">=0.10.0" },
     { name = "cryptography", specifier = ">=44.0.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "hvac", marker = "extra == 'vault'", specifier = ">=2.0.0" },
