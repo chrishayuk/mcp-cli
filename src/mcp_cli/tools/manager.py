@@ -637,234 +637,157 @@ class ToolManager:
             return False
 
     async def _setup_sse_servers(self, namespace: str) -> bool:
-        """Setup SSE servers."""
+        """Setup SSE servers using universal API with OAuth retry support."""
         try:
-            from chuk_tool_processor.mcp.setup_mcp_sse import setup_mcp_sse
-
-            # Create OAuth refresh callback (NEW)
-            oauth_refresh_callback = self._create_oauth_refresh_callback()
+            from chuk_tool_processor.mcp.stream_manager import StreamManager
+            from chuk_tool_processor.mcp.register_mcp_tools import register_mcp_tools
+            from chuk_tool_processor.core.processor import ToolProcessor
 
             # Extract per-server timeout and max_retries configuration
             server_timeout = self._get_max_server_timeout(self._sse_servers)
             server_max_retries = self._get_min_server_max_retries(self._sse_servers)
 
-            try:
-                self.processor, self.stream_manager = await asyncio.wait_for(
-                    setup_mcp_sse(
-                        servers=self._sse_servers,
-                        server_names=self.server_names,
-                        namespace=namespace,
-                        default_timeout=server_timeout,
-                        max_retries=server_max_retries,
-                        enable_retries=(
-                            server_max_retries > 0
-                        ),  # Disable if max_retries is 0
-                        oauth_refresh_callback=oauth_refresh_callback,  # NEW
-                    ),
-                    timeout=self.initialization_timeout,
-                )
-            except Exception as setup_error:
-                error_msg = str(setup_error).lower()
-                # Also check the full exception chain for auth errors
-                full_error_context = ""
-                if hasattr(setup_error, "__cause__") and setup_error.__cause__:
-                    full_error_context += str(setup_error.__cause__).lower()
-                if hasattr(setup_error, "args"):
-                    full_error_context += " ".join(
-                        str(arg) for arg in setup_error.args
-                    ).lower()
+            logger.info(f"Setting up SSE servers with timeout={server_timeout}s, max_retries={server_max_retries}")
 
-                combined_error = error_msg + " " + full_error_context
-
-                # Check if this is a 401/auth error during setup
-                if (
-                    "401" in combined_error
-                    or "invalid_token" in combined_error
-                    or "invalid access token" in combined_error
-                    or "unauthorized" in combined_error
-                ):
-                    logger.warning(
-                        f"SSE server setup failed with authentication error: {setup_error}"
+            # Try setup with OAuth retry support
+            max_auth_retries = 1
+            for attempt in range(max_auth_retries + 1):
+                try:
+                    # 1. Create StreamManager with SSE transport
+                    self.stream_manager = await asyncio.wait_for(
+                        StreamManager.create_with_sse(
+                            servers=self._sse_servers,
+                            server_names=self.server_names,
+                            connection_timeout=10.0,
+                            default_timeout=server_timeout,
+                        ),
+                        timeout=self.initialization_timeout,
                     )
-                    logger.info("Attempting to re-authenticate and retry...")
 
-                    # Try OAuth refresh callback to get new tokens
-                    try:
-                        new_headers = await oauth_refresh_callback()
-                    except Exception as callback_error:
-                        logger.error(f"OAuth refresh callback failed: {callback_error}")
-                        new_headers = None
+                    # 2. Register MCP tools from the stream manager
+                    registered_tools = await register_mcp_tools(self.stream_manager, namespace=namespace)
+                    logger.info(f"Registered {len(registered_tools)} tools from SSE servers")
 
-                    if new_headers:
-                        # Retry setup with new authentication
-                        logger.info(
-                            "Retrying SSE server setup with refreshed authentication..."
-                        )
-                        self.processor, self.stream_manager = await asyncio.wait_for(
-                            setup_mcp_sse(
-                                servers=self._sse_servers,
-                                server_names=self.server_names,
-                                namespace=namespace,
-                                default_timeout=self.tool_timeout,
-                                oauth_refresh_callback=oauth_refresh_callback,
-                            ),
-                            timeout=self.initialization_timeout,
-                        )
-                        logger.info(
-                            "✅ SSE server setup succeeded after re-authentication"
-                        )
+                    # 3. Create ToolProcessor with configuration
+                    self.processor = ToolProcessor(
+                        default_timeout=server_timeout,
+                        max_concurrency=self.max_concurrency,
+                        enable_caching=True,
+                        cache_ttl=300,
+                        enable_retries=(server_max_retries > 0),
+                        max_retries=server_max_retries,
+                    )
+
+                    logger.info("SSE servers initialized successfully")
+                    return True
+
+                except Exception as setup_error:
+                    # Check if this is an OAuth error and we can retry
+                    if self._is_oauth_error(setup_error) and attempt < max_auth_retries:
+                        logger.warning(f"SSE setup failed with OAuth error: {setup_error}")
+                        logger.info("Attempting OAuth re-authentication...")
+
+                        # Get server name for re-authentication
+                        server_name = self._sse_servers[0]["name"] if self._sse_servers else None
+                        if server_name and await self._attempt_oauth_reauth_for_namespace(server_name):
+                            logger.info("✅ Re-authentication successful, retrying SSE setup...")
+                            # Update server entry with new token before retry
+                            await self._process_oauth_for_servers(self._sse_servers)
+                            continue
+                        else:
+                            logger.error("Re-authentication failed")
+                            raise
                     else:
-                        logger.error(
-                            "Re-authentication failed, cannot setup SSE servers. "
-                            "Try running 'mcp-cli token delete <server> --is-oauth' to clear tokens."
-                        )
+                        # Not an OAuth error or out of retries
                         raise
-                else:
-                    # Not an auth error, re-raise
-                    raise
 
-            return True
-
-        except ImportError as e:
-            logger.error(f"SSE transport not available: {e}")
-            return False
         except Exception as e:
             logger.error(f"SSE server setup failed: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     async def _setup_http_servers(self, namespace: str) -> bool:
-        """Setup HTTP servers."""
-        try:
-            from chuk_tool_processor.mcp.setup_mcp_http_streamable import (
-                setup_mcp_http_streamable,
-            )
+        """
+        Setup HTTP servers using universal API with SSE transport and OAuth retry support.
 
-            # Create OAuth refresh callback (NEW)
-            oauth_refresh_callback = self._create_oauth_refresh_callback()
+        Note: In chuk-tool-processor 0.10+, HTTP servers use the SSE transport.
+        """
+        try:
+            from chuk_tool_processor.mcp.stream_manager import StreamManager
+            from chuk_tool_processor.mcp.register_mcp_tools import register_mcp_tools
+            from chuk_tool_processor.core.processor import ToolProcessor
 
             # Extract per-server timeout and max_retries configuration
             server_timeout = self._get_max_server_timeout(self._http_servers)
             server_max_retries = self._get_min_server_max_retries(self._http_servers)
 
-            try:
-                self.processor, self.stream_manager = await asyncio.wait_for(
-                    setup_mcp_http_streamable(
-                        servers=self._http_servers,
-                        server_names=self.server_names,
-                        namespace=namespace,
+            logger.info(f"Setting up HTTP servers using SSE transport (timeout={server_timeout}s, max_retries={server_max_retries})")
+
+            # Try setup with OAuth retry support
+            max_auth_retries = 1
+            for attempt in range(max_auth_retries + 1):
+                try:
+                    # 1. Create StreamManager with SSE transport
+                    self.stream_manager = await asyncio.wait_for(
+                        StreamManager.create_with_sse(
+                            servers=self._http_servers,
+                            server_names=self.server_names,
+                            connection_timeout=10.0,
+                            default_timeout=server_timeout,
+                        ),
+                        timeout=self.initialization_timeout,
+                    )
+
+                    # 2. Register MCP tools from the stream manager
+                    registered_tools = await register_mcp_tools(self.stream_manager, namespace=namespace)
+                    logger.info(f"Registered {len(registered_tools)} tools from HTTP servers")
+
+                    # 3. Create ToolProcessor with configuration
+                    self.processor = ToolProcessor(
                         default_timeout=server_timeout,
+                        max_concurrency=self.max_concurrency,
+                        enable_caching=True,
+                        cache_ttl=300,
+                        enable_retries=(server_max_retries > 0),
                         max_retries=server_max_retries,
-                        enable_retries=(
-                            server_max_retries > 0
-                        ),  # Disable if max_retries is 0
-                        oauth_refresh_callback=oauth_refresh_callback,  # NEW
-                    ),
-                    timeout=self.initialization_timeout,
-                )
-            except Exception as setup_error:
-                error_msg = str(setup_error).lower()
-                # Also check the full exception chain for auth errors
-                full_error_context = ""
-                if hasattr(setup_error, "__cause__") and setup_error.__cause__:
-                    full_error_context += str(setup_error.__cause__).lower()
-                if hasattr(setup_error, "args"):
-                    full_error_context += " ".join(
-                        str(arg) for arg in setup_error.args
-                    ).lower()
-
-                combined_error = error_msg + " " + full_error_context
-
-                # Check if this is a 401/auth error during setup
-                if (
-                    "401" in combined_error
-                    or "invalid_token" in combined_error
-                    or "invalid access token" in combined_error
-                    or "unauthorized" in combined_error
-                ):
-                    logger.warning(
-                        f"HTTP server setup failed with authentication error: {setup_error}"
                     )
-                    logger.info("Attempting to re-authenticate and retry...")
 
-                    # Try OAuth refresh callback to get new tokens
-                    try:
-                        new_headers = await oauth_refresh_callback()
-                    except Exception as callback_error:
-                        logger.error(f"OAuth refresh callback failed: {callback_error}")
-                        new_headers = None
+                    logger.info("HTTP servers (via SSE transport) initialized successfully")
+                    return True
 
-                    if new_headers:
-                        # Retry setup with new authentication
-                        logger.info(
-                            "Retrying HTTP server setup with refreshed authentication..."
-                        )
-                        self.processor, self.stream_manager = await asyncio.wait_for(
-                            setup_mcp_http_streamable(
-                                servers=self._http_servers,
-                                server_names=self.server_names,
-                                namespace=namespace,
-                                default_timeout=self.tool_timeout,
-                                oauth_refresh_callback=oauth_refresh_callback,
-                            ),
-                            timeout=self.initialization_timeout,
-                        )
-                        logger.info(
-                            "✅ HTTP server setup succeeded after re-authentication"
-                        )
+                except Exception as setup_error:
+                    # Check if this is an OAuth error and we can retry
+                    if self._is_oauth_error(setup_error) and attempt < max_auth_retries:
+                        logger.warning(f"HTTP setup failed with OAuth error: {setup_error}")
+                        logger.info("Attempting OAuth re-authentication...")
+
+                        # Get server name for re-authentication
+                        server_name = self._http_servers[0]["name"] if self._http_servers else None
+                        if server_name and await self._attempt_oauth_reauth_for_namespace(server_name):
+                            logger.info("✅ Re-authentication successful, retrying HTTP setup...")
+                            # Update server entry with new token before retry
+                            await self._process_oauth_for_servers(self._http_servers)
+                            continue
+                        else:
+                            logger.error("Re-authentication failed")
+                            raise
                     else:
-                        logger.error(
-                            "Re-authentication failed, cannot setup HTTP servers. "
-                            "Try running 'mcp-cli token delete <server> --is-oauth' to clear tokens."
-                        )
+                        # Not an OAuth error or out of retries
                         raise
-                else:
-                    # Not an auth error, re-raise
-                    raise
 
-            # DEBUG: Check if processor has tools and attempt manual registration
-            if self.processor:
-                logger.info(f"HTTP setup returned processor: {type(self.processor)}")
-
-                # Try to manually trigger tool registration for HTTP servers
-                # This is a workaround for HTTP MCP servers not auto-registering tools
-                if (
-                    hasattr(self.stream_manager, "_clients")
-                    and self.stream_manager._clients
-                ):
-                    logger.info(
-                        "Attempting manual tool registration for HTTP MCP servers..."
-                    )
-                    for client_id, client in enumerate(self.stream_manager._clients):
-                        try:
-                            if hasattr(client, "tools") and client.tools:
-                                logger.info(
-                                    f"Client {client_id} has {len(client.tools)} tools available"
-                                )
-                                # Tools are in the client but need to be registered
-                                # This should be handled by chuk-tool-processor but appears to be missing
-                        except Exception as e:
-                            logger.debug(
-                                f"Could not check tools for client {client_id}: {e}"
-                            )
-
-            if self.stream_manager:
-                logger.info(
-                    f"HTTP setup returned stream_manager: {type(self.stream_manager)}"
-                )
-
-            return True
-
-        except ImportError as e:
-            logger.error(f"HTTP transport not available: {e}")
-            return False
         except Exception as e:
             logger.error(f"HTTP server setup failed: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     async def _setup_stdio_servers(self, namespace: str) -> bool:
-        """Setup STDIO servers."""
+        """Setup STDIO servers using universal API."""
         try:
-            from chuk_tool_processor.mcp.setup_mcp_stdio import setup_mcp_stdio
+            from chuk_tool_processor.mcp.stream_manager import StreamManager
+            from chuk_tool_processor.mcp.register_mcp_tools import register_mcp_tools
+            from chuk_tool_processor.core.processor import ToolProcessor
             import tempfile
 
             logger.info(
@@ -888,54 +811,44 @@ class ToolManager:
                     f"Using temporary config file with resolved tokens: {config_to_use}"
                 )
 
-            # Try to pass initialization_timeout to setup_mcp_stdio
-            # This controls the timeout for the initial connection/handshake
             try:
-                self.processor, self.stream_manager = await asyncio.wait_for(
-                    setup_mcp_stdio(
+                # 1. Create StreamManager with STDIO transport
+                self.stream_manager = await asyncio.wait_for(
+                    StreamManager.create(
                         config_file=config_to_use,
                         servers=self._stdio_servers,
                         server_names=self.server_names,
-                        namespace=namespace,
+                        transport_type="stdio",
                         default_timeout=self.tool_timeout,
-                        initialization_timeout=self.initialization_timeout,  # Pass init timeout
-                        enable_caching=True,
-                        enable_retries=True,
-                        max_retries=2,
-                    ),
-                    timeout=self.initialization_timeout
-                    + 10.0,  # Add buffer for outer timeout
-                )
-            except TypeError:
-                # Fallback if initialization_timeout parameter doesn't exist
-                logger.warning(
-                    "initialization_timeout not supported by setup_mcp_stdio, using legacy call"
-                )
-                self.processor, self.stream_manager = await asyncio.wait_for(
-                    setup_mcp_stdio(
-                        config_file=config_to_use,
-                        servers=self._stdio_servers,
-                        server_names=self.server_names,
-                        namespace=namespace,
-                        default_timeout=self.tool_timeout,
-                        enable_caching=True,
-                        enable_retries=True,
-                        max_retries=2,
                     ),
                     timeout=self.initialization_timeout,
                 )
+
+                # 2. Register MCP tools from the stream manager
+                registered_tools = await register_mcp_tools(self.stream_manager, namespace=namespace)
+                logger.info(f"Registered {len(registered_tools)} tools from STDIO servers")
+
+                # 3. Create ToolProcessor with configuration
+                self.processor = ToolProcessor(
+                    default_timeout=self.tool_timeout,
+                    max_concurrency=self.max_concurrency,
+                    enable_caching=True,
+                    cache_ttl=300,
+                    enable_retries=True,
+                    max_retries=2,
+                )
+
+                logger.info("STDIO servers initialized successfully")
+                return True
+
             finally:
                 # Clean up temp file
                 if temp_config_file:
                     try:
                         import os
-
                         os.unlink(temp_config_file.name)
                     except Exception:
                         pass
-
-            logger.info("STDIO servers initialized successfully")
-            return True
 
         except asyncio.TimeoutError:
             logger.error(
@@ -948,7 +861,6 @@ class ToolManager:
         except Exception as e:
             logger.error(f"STDIO server setup failed: {e}")
             import traceback
-
             traceback.print_exc()
             return False
 
