@@ -1,5 +1,7 @@
 # src/mcp_cli/ui/streaming_display.py
 """
+from __future__ import annotations
+
 Compact streaming display components for MCP-CLI.
 
 Provides content-aware streaming display with dynamic phase messages,
@@ -7,7 +9,7 @@ content type detection, and smooth progressive rendering.
 """
 
 import time
-from typing import Generator, List, Optional
+from typing import Generator
 from rich.console import Group
 from rich.live import Live
 from rich.panel import Panel
@@ -51,7 +53,7 @@ class CompactStreamingDisplay:
     def __init__(self, title: str = "🤖 Assistant", mode: str = "response"):
         self.title = title
         self.mode = mode  # response, tool, thinking, etc.
-        self.first_lines: List[str] = []  # Store the first few lines
+        self.first_lines: list[str] = []  # Store the first few lines
         self.current_line = ""
         self.total_chars = 0
         self.total_lines = 0
@@ -59,7 +61,7 @@ class CompactStreamingDisplay:
         self.spinner_index = 0
         self.preview_captured = False
         self.max_preview_lines = 4
-        self.detected_type: Optional[str] = None
+        self.detected_type: str | None = None
         self.content = ""  # Store full content
 
     def detect_content_type(self, text: str):
@@ -313,9 +315,7 @@ class CompactStreamingDisplay:
             should_render_markdown = True
 
         # Try to render as markdown if appropriate
-        from typing import Union
-
-        content_display: Union[Markdown, Text]
+        content_display: Markdown | Text
         if should_render_markdown:
             try:
                 content_display = Markdown(self.content)

@@ -1,5 +1,7 @@
 # src/mcp_cli/model_management/provider_discovery.py
 """
+from __future__ import annotations
+
 Provider and model discovery functionality.
 
 This module handles discovering models from OpenAI-compatible APIs
@@ -7,7 +9,6 @@ and refreshing model lists for providers.
 """
 
 import logging
-from typing import Optional
 
 from mcp_cli.model_management.discovery import DiscoveryResult
 from mcp_cli.model_management.provider import RuntimeProviderConfig
@@ -87,7 +88,7 @@ class ProviderDiscovery:
             )
 
     @staticmethod
-    def refresh_provider_models(config: RuntimeProviderConfig) -> Optional[int]:
+    def refresh_provider_models(config: RuntimeProviderConfig) -> int | None:
         """
         Refresh models for a runtime provider by querying the API.
 

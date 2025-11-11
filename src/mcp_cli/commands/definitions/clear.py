@@ -5,7 +5,6 @@ Unified clear command implementation.
 
 from __future__ import annotations
 
-from typing import List
 
 from mcp_cli.commands.base import (
     UnifiedCommand,
@@ -22,7 +21,7 @@ class ClearCommand(UnifiedCommand):
         return "clear"
 
     @property
-    def aliases(self) -> List[str]:
+    def aliases(self) -> list[str]:
         return []
 
     @property

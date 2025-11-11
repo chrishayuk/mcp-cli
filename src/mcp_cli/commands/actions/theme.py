@@ -1,7 +1,6 @@
 # src/mcp_cli/commands/actions/theme.py
 """Theme command for direct CLI access."""
 
-from typing import Optional
 import asyncio
 
 from chuk_term.ui import output, format_table
@@ -13,7 +12,7 @@ from mcp_cli.commands.models import ThemeActionParams
 
 
 def theme_command(
-    theme_name: Optional[str] = None,
+    theme_name: str | None = None,
     list_themes: bool = False,
     select: bool = False,
 ) -> None:

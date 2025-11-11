@@ -1,5 +1,7 @@
 # src/mcp_cli/ui/chat_display_manager.py
 """
+from __future__ import annotations
+
 Centralized Chat Display Manager for MCP-CLI.
 
 This module consolidates ALL UI display logic for chat mode into a single
@@ -15,16 +17,17 @@ Replaces scattered UI logic from:
 
 import time
 import json
-from typing import Optional, Dict, Any
+from typing import Any
 
 from chuk_term.ui import output
 from chuk_term.ui.terminal import clear_line
+from mcp_cli.chat.models import ToolExecutionState
 
 
 class ChatDisplayManager:
     """Centralized display manager for all chat UI operations."""
 
-    def __init__(self, console=None):
+    def __init__(self, console=None) -> None:
         # console parameter kept for compatibility but not used
         # since we're using chuk-term instead of Rich
 
@@ -34,7 +37,7 @@ class ChatDisplayManager:
         self.streaming_start_time = 0.0
 
         self.is_tool_executing = False
-        self.current_tool: Optional[Dict[str, Any]] = None
+        self.current_tool: ToolExecutionState | None = None
         self.tool_start_time = 0.0
 
         # Spinner animation
@@ -75,14 +78,12 @@ class ChatDisplayManager:
 
     # ==================== TOOL EXECUTION METHODS ====================
 
-    def start_tool_execution(self, tool_name: str, arguments: Dict[str, Any]):
+    def start_tool_execution(self, tool_name: str, arguments: dict[str, Any]):
         """Start animated tool execution display."""
         self.is_tool_executing = True
-        self.current_tool = {
-            "name": tool_name,
-            "arguments": arguments,
-            "start_time": time.time(),
-        }
+        self.current_tool = ToolExecutionState(
+            name=tool_name, arguments=arguments, start_time=time.time()
+        )
 
         # Start animated tool execution
         self._ensure_live_display()
@@ -93,15 +94,11 @@ class ChatDisplayManager:
             return
 
         # Store result for final display
-        elapsed = time.time() - self.current_tool["start_time"]
-        self.current_tool.update(
-            {
-                "result": result,
-                "success": success,
-                "elapsed": elapsed,
-                "completed": True,
-            }
-        )
+        elapsed_time = time.time() - self.current_tool.start_time
+        self.current_tool.result = result
+        self.current_tool.success = success
+        self.current_tool.elapsed = elapsed_time
+        self.current_tool.completed = True
 
         self.is_tool_executing = False
         self._stop_live_display()
@@ -168,9 +165,11 @@ class ChatDisplayManager:
 
         # Tool execution section
         elif self.is_tool_executing and self.current_tool:
-            elapsed = time.time() - self.current_tool["start_time"]
+            elapsed = time.time() - self.current_tool.start_time
             dots = "." * (int(elapsed * 2) % 4)
-            status = f"{spinner} Executing {self.current_tool['name']}{dots} ({elapsed:.1f}s)"
+            status = (
+                f"{spinner} Executing {self.current_tool.name}{dots} ({elapsed:.1f}s)"
+            )
             return status
 
         return ""
@@ -189,15 +188,13 @@ class ChatDisplayManager:
         tool_info = self.current_tool
 
         # Status header
-        if tool_info["success"]:
-            output.success(
-                f"✓ Completed: {tool_info['name']} ({tool_info['elapsed']:.2f}s)"
-            )
+        if tool_info.success:
+            output.success(f"✓ Completed: {tool_info.name} ({tool_info.elapsed:.2f}s)")
         else:
-            output.error(f"✗ Failed: {tool_info['name']} ({tool_info['elapsed']:.2f}s)")
+            output.error(f"✗ Failed: {tool_info.name} ({tool_info.elapsed:.2f}s)")
 
         # Arguments (compact)
-        args = tool_info.get("arguments", {})
+        args = tool_info.arguments
         if args and any(str(v).strip() for v in args.values() if v is not None):
             output.print("Arguments:")
             filtered_args = {
@@ -207,7 +204,7 @@ class ChatDisplayManager:
                 output.print(f"  {key}: {value}")
 
         # Result
-        result = tool_info.get("result", "")
+        result = tool_info.result
         if result:
             output.print("Result:")
             # Try to format result nicely
@@ -220,12 +217,12 @@ class ChatDisplayManager:
                 # Use as plain text
                 output.print(str(result))
 
-    def _show_tool_invocation(self, tool_name: str, arguments: Dict[str, Any]):
+    def _show_tool_invocation(self, tool_name: str, arguments: dict[str, Any]):
         """Show tool invocation."""
         output.tool_call(tool_name, arguments)
 
     def _show_tool_result(
-        self, tool_info: Dict[str, Any], result: str, elapsed: float, success: bool
+        self, tool_info: dict[str, Any], result: str, elapsed: float, success: bool
     ):
         """Show tool execution result."""
         # Tool name and status

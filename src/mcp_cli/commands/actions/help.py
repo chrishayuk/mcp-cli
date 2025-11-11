@@ -6,13 +6,13 @@ Displays help information for commands in both chat and CLI modes.
 """
 
 from __future__ import annotations
-from typing import Dict, Optional, Any
+from typing import Any
 
 from chuk_term.ui import output, format_table
 from mcp_cli.commands.registry import registry
 
 
-def help_action(command_name: Optional[str] = None, console: Any = None) -> None:
+def help_action(command_name: str | None = None, console: Any = None) -> None:
     """
     Display help for a specific command or all commands.
 
@@ -31,15 +31,15 @@ def help_action(command_name: Optional[str] = None, console: Any = None) -> None
         _show_all_commands(commands)
 
 
-def _get_commands() -> Dict[str, object]:
+def _get_commands() -> dict[str, object]:
     """Get available commands from the unified registry."""
-    commands: Dict[str, object] = {}
+    commands: dict[str, object] = {}
     for cmd in registry.list_commands():
         commands[cmd.name] = cmd
     return commands
 
 
-def _show_command_help(command_name: str, commands: Dict[str, object]) -> None:
+def _show_command_help(command_name: str, commands: dict[str, object]) -> None:
     """Show detailed help for a specific command."""
     cmd = commands.get(command_name)
 
@@ -61,7 +61,7 @@ def _show_command_help(command_name: str, commands: Dict[str, object]) -> None:
         output.print(f"\n[dim]Aliases: {', '.join(aliases)}[/dim]")
 
 
-def _show_all_commands(commands: Dict[str, object]) -> None:
+def _show_all_commands(commands: dict[str, object]) -> None:
     """Show a summary table of all available commands."""
     if not commands:
         output.warning("No commands available")
@@ -110,7 +110,7 @@ def _show_all_commands(commands: Dict[str, object]) -> None:
     output.info("  Example: 'my-llm' → export MY_LLM_API_KEY=your-key")
 
 
-def _extract_description(help_text: Optional[str]) -> str:
+def _extract_description(help_text: str | None) -> str:
     """Extract a one-line description from help text."""
     if not help_text:
         return "No description"

@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, Dict
+from typing import Any
 
 # mcp cli
 from chuk_term.ui import output
@@ -75,8 +75,8 @@ async def tools_call_action() -> None:  # noqa: D401
         cprint(f"[cyan]Description:[/cyan] {tool.description}")
 
     # ── argument collection ───────────────────────────────────────────
-    params_schema: Dict[str, Any] = tool.parameters or {}
-    args: Dict[str, Any] = {}
+    params_schema: dict[str, Any] = tool.parameters or {}
+    args: dict[str, Any] = {}
 
     if params_schema.get("properties"):
         cprint("\n[yellow]Enter arguments as JSON (leave blank for none):[/yellow]")

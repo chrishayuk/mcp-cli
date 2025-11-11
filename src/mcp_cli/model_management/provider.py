@@ -7,7 +7,6 @@ Pydantic models for managing provider configurations in a type-safe manner.
 
 from __future__ import annotations
 
-from typing import Optional, List
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -21,11 +20,11 @@ class RuntimeProviderConfig(BaseModel):
 
     name: str = Field(..., description="Provider name")
     api_base: str = Field(..., description="API base URL")
-    models: List[str] = Field(default_factory=list, description="Available models")
-    default_model: Optional[str] = Field(
+    models: list[str] = Field(default_factory=list, description="Available models")
+    default_model: str | None = Field(
         None, description="Default model (first in models list if not specified)"
     )
-    api_key: Optional[str] = Field(
+    api_key: str | None = Field(
         None, description="API key (stored in memory only for runtime providers)"
     )
     is_runtime: bool = Field(
@@ -44,7 +43,7 @@ class RuntimeProviderConfig(BaseModel):
         """Check if provider has any models configured."""
         return len(self.models) > 0
 
-    def add_models(self, models: List[str]) -> None:
+    def add_models(self, models: list[str]) -> None:
         """
         Add models to the provider and update default if needed.
 
@@ -55,7 +54,7 @@ class RuntimeProviderConfig(BaseModel):
         if not self.default_model and self.models:
             self.default_model = self.models[0]
 
-    def set_models(self, models: List[str]) -> None:
+    def set_models(self, models: list[str]) -> None:
         """
         Replace all models and update default.
 
@@ -81,9 +80,9 @@ class ProviderCapabilities(BaseModel):
     supports_tools: bool = Field(default=False, description="Function calling support")
     supports_vision: bool = Field(default=False, description="Vision/image support")
     supports_json_mode: bool = Field(default=False, description="JSON mode support")
-    max_context_length: Optional[int] = Field(
+    max_context_length: int | None = Field(
         None, description="Maximum context length in tokens"
     )
-    max_output_tokens: Optional[int] = Field(None, description="Maximum output tokens")
+    max_output_tokens: int | None = Field(None, description="Maximum output tokens")
 
     model_config = {"frozen": True}  # Immutable

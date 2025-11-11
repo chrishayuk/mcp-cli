@@ -17,7 +17,7 @@ import json
 import logging
 import os
 import uuid
-from typing import Any, Dict, List, Optional, Tuple, Union, AsyncIterator
+from typing import Any, AsyncIterator
 from pathlib import Path
 
 from chuk_tool_processor.core.processor import ToolProcessor
@@ -32,7 +32,15 @@ from chuk_tool_processor.execution.tool_executor import ToolExecutor
 
 from mcp_cli.auth import OAuthHandler
 from mcp_cli.constants import NAMESPACE
-from mcp_cli.tools.models import ServerInfo, ToolCallResult, ToolInfo
+from mcp_cli.tools.models import (
+    ServerInfo,
+    ToolCallResult,
+    ToolInfo,
+    TransportServerConfig,
+    LLMToolDefinition,
+    FunctionDefinition,
+    ValidationResult,
+)
 from mcp_cli.tools.validation import ToolSchemaValidator
 from mcp_cli.tools.filter import ToolFilter
 
@@ -54,9 +62,9 @@ class ToolManager:
     def __init__(
         self,
         config_file: str,
-        servers: List[str],
-        server_names: Optional[Dict[int, str]] = None,
-        tool_timeout: Optional[float] = None,
+        servers: list[str],
+        server_names: dict[int, str | None] | None = None,
+        tool_timeout: float | None = None,
         max_concurrency: int = 4,
         initialization_timeout: float = 120.0,
     ):
@@ -68,20 +76,20 @@ class ToolManager:
         self.initialization_timeout = initialization_timeout
 
         # CHUK components
-        self.processor: Optional[ToolProcessor] = None
-        self.stream_manager: Optional[StreamManager] = None
+        self.processor: ToolProcessor | None = None
+        self.stream_manager: StreamManager | None = None
         self._registry = None
-        self._executor: Optional[ToolExecutor] = None
+        self._executor: ToolExecutor | None = None
 
         # Server type detection
-        self._http_servers: List[Any] = []
-        self._stdio_servers: List[Any] = []
-        self._sse_servers: List[Any] = []
-        self._config_cache: Optional[Dict[str, Any]] = None
+        self._http_servers: list[TransportServerConfig] = []
+        self._stdio_servers: list[str] = []
+        self._sse_servers: list[TransportServerConfig] = []
+        self._config_cache: dict[str, Any] | None = None
 
         # Effective timeout (will be set after server detection)
-        self._effective_timeout: Optional[float] = None
-        self._effective_max_retries: Optional[int] = None
+        self._effective_timeout: float | None = None
+        self._effective_max_retries: int | None = None
 
         # OAuth support with mcp-cli namespace
         from mcp_cli.auth import TokenManager, TokenStoreBackend
@@ -95,10 +103,10 @@ class ToolManager:
 
         # ENHANCED: Tool validation and filtering
         self.tool_filter = ToolFilter()
-        self.validation_results: Dict[str, Any] = {}
-        self.last_validation_provider: Optional[str] = None
+        self.validation_results: dict[str, Any] = {}
+        self.last_validation_provider: str | None = None
 
-    def _determine_timeout(self, explicit_timeout: Optional[float]) -> float:
+    def _determine_timeout(self, explicit_timeout: float | None) -> float:
         """Determine timeout with environment variable fallback."""
         if explicit_timeout is not None:
             return explicit_timeout
@@ -118,7 +126,7 @@ class ToolManager:
 
         return 120.0  # Default 2 minutes
 
-    def _load_config(self) -> Dict[str, Any]:
+    def _load_config(self) -> dict[str, Any]:
         """Load and cache the configuration file with fallback to bundled package config."""
         if self._config_cache is not None:
             return self._config_cache
@@ -163,7 +171,7 @@ class ToolManager:
         self._config_cache = {}
         return self._config_cache
 
-    def _resolve_token_placeholders(self, config: Dict[str, Any]) -> None:
+    def _resolve_token_placeholders(self, config: dict[str, Any]) -> None:
         """
         Resolve ${TOKEN:namespace:name} placeholders in environment variables.
 
@@ -227,38 +235,36 @@ class ToolManager:
                                         f"({namespace}:{name}): {e}"
                                     )
 
-    def _get_max_server_timeout(self, servers: List[Any]) -> float:
+    def _get_max_server_timeout(self, servers: list[TransportServerConfig]) -> float:
         """
         Get the maximum timeout from server configurations.
         Falls back to self.tool_timeout if no server-specific timeouts are set.
         """
         max_timeout = self.tool_timeout
         for server in servers:
-            if isinstance(server, dict) and "timeout" in server:
-                server_timeout = float(server["timeout"])
-                max_timeout = max(max_timeout, server_timeout)
+            if server.timeout is not None:
+                max_timeout = max(max_timeout, server.timeout)
         return max_timeout
 
-    def _get_min_server_max_retries(self, servers: List[Any]) -> int:
+    def _get_min_server_max_retries(self, servers: list[TransportServerConfig]) -> int:
         """
         Get the minimum max_retries from server configurations.
         Falls back to 2 if no server-specific max_retries are set.
         If any server has max_retries=0, returns 0 (no retries).
         """
-        min_retries = 2  # Default from line 817
+        min_retries = 2  # Default
         has_server_config = False
 
         for server in servers:
-            if isinstance(server, dict) and "max_retries" in server:
+            if server.max_retries is not None:
                 has_server_config = True
-                server_retries = int(server["max_retries"])
-                if server_retries == 0:
+                if server.max_retries == 0:
                     return 0  # If any server wants no retries, disable retries
-                min_retries = min(min_retries, server_retries)
+                min_retries = min(min_retries, server.max_retries)
 
         return min_retries if has_server_config else 2
 
-    def _inject_logging_env_vars(self, config: Dict[str, Any]) -> None:
+    def _inject_logging_env_vars(self, config: dict[str, Any]) -> None:
         """
         Inject logging environment variables into STDIO server configs.
 
@@ -305,40 +311,32 @@ class ToolManager:
             transport_type = server_config.get("transport", "").lower()
 
             if transport_type == "sse":
-                server_entry = {
-                    "name": server,
-                    "url": server_config["url"],
-                    "headers": server_config.get("headers", {}),
-                }
-                # Mark if OAuth is configured (will be processed during initialization)
-                if "oauth" in server_config:
-                    server_entry["oauth"] = server_config["oauth"]
-                # Add per-server timeout and max_retries if configured
-                if "timeout" in server_config:
-                    server_entry["timeout"] = server_config["timeout"]
-                if "max_retries" in server_config:
-                    server_entry["max_retries"] = server_config["max_retries"]
+                # Create Pydantic model instead of raw dict
+                server_entry = TransportServerConfig(
+                    name=server,
+                    url=server_config["url"],
+                    headers=server_config.get("headers", {}),
+                    timeout=server_config.get("timeout"),
+                    max_retries=server_config.get("max_retries"),
+                )
                 self._sse_servers.append(server_entry)
                 logger.debug(f"Detected SSE server: {server}")
             elif "url" in server_config:
-                server_entry = {
-                    "name": server,
-                    "url": server_config["url"],
-                    "headers": server_config.get("headers", {}),
-                }
-                # Mark if OAuth is configured (will be processed during initialization)
-                if "oauth" in server_config:
-                    server_entry["oauth"] = server_config["oauth"]
-                # Add per-server timeout and max_retries if configured
-                if "timeout" in server_config:
-                    server_entry["timeout"] = server_config["timeout"]
+                # Create Pydantic model instead of raw dict
+                server_entry = TransportServerConfig(
+                    name=server,
+                    url=server_config["url"],
+                    headers=server_config.get("headers", {}),
+                    timeout=server_config.get("timeout"),
+                    max_retries=server_config.get("max_retries"),
+                )
+                if server_entry.timeout:
                     logger.info(
-                        f"Server '{server}' configured with timeout: {server_config['timeout']}s"
+                        f"Server '{server}' configured with timeout: {server_entry.timeout}s"
                     )
-                if "max_retries" in server_config:
-                    server_entry["max_retries"] = server_config["max_retries"]
+                if server_entry.max_retries:
                     logger.info(
-                        f"Server '{server}' configured with max_retries: {server_config['max_retries']}"
+                        f"Server '{server}' configured with max_retries: {server_entry.max_retries}"
                     )
                 self._http_servers.append(server_entry)
                 logger.debug(f"Detected HTTP server: {server}")
@@ -350,7 +348,9 @@ class ToolManager:
             f"Detected {len(self._http_servers)} HTTP, {len(self._sse_servers)} SSE, {len(self._stdio_servers)} STDIO servers"
         )
 
-    async def _process_oauth_for_servers(self, servers: List[Dict[str, Any]]) -> None:
+    async def _process_oauth_for_servers(
+        self, servers: list[TransportServerConfig]
+    ) -> None:
         """Process OAuth authentication for servers that require it."""
         from mcp_cli.config.config_manager import initialize_config
 
@@ -358,7 +358,7 @@ class ToolManager:
         config = initialize_config(Path(self.config_file))
 
         for server_entry in servers:
-            server_name = server_entry["name"]
+            server_name = server_entry.name
             server_config = config.get_server(server_name)
 
             if not server_config:
@@ -393,7 +393,7 @@ class ToolManager:
                     auth_value = headers["Authorization"]
                     if auth_value.startswith("Bearer "):
                         auth_value = auth_value[7:]  # Remove "Bearer " prefix
-                    server_entry["api_key"] = auth_value
+                    server_entry.api_key = auth_value
                     logger.debug(f"Set api_key for {server_name}: {auth_value[:20]}...")
 
                 # Merge any other headers (non-Authorization)
@@ -401,9 +401,7 @@ class ToolManager:
                     k: v for k, v in headers.items() if k != "Authorization"
                 }
                 if other_headers:
-                    if "headers" not in server_entry:
-                        server_entry["headers"] = {}
-                    server_entry["headers"].update(other_headers)
+                    server_entry.headers.update(other_headers)
 
                 logger.info(f"OAuth authentication completed for {server_name}")
             except Exception as e:
@@ -440,7 +438,7 @@ class ToolManager:
                             auth_value = headers["Authorization"]
                             if auth_value.startswith("Bearer "):
                                 auth_value = auth_value[7:]  # Remove "Bearer " prefix
-                            server_entry["api_key"] = auth_value
+                            server_entry.api_key = auth_value
                             logger.debug(
                                 f"Set api_key for {server_name} after re-auth: {auth_value[:20]}..."
                             )
@@ -449,9 +447,7 @@ class ToolManager:
                             k: v for k, v in headers.items() if k != "Authorization"
                         }
                         if other_headers:
-                            if "headers" not in server_entry:
-                                server_entry["headers"] = {}
-                            server_entry["headers"].update(other_headers)
+                            server_entry.headers.update(other_headers)
 
                         logger.info(
                             f"✅ Re-authentication successful for {server_name}"
@@ -490,7 +486,7 @@ class ToolManager:
                     logger.warning("No HTTP/SSE servers configured for OAuth refresh")
                     return None
 
-                server_name = server_entry["name"]
+                server_name = server_entry.name
                 logger.info(f"Refreshing OAuth token for {server_name}")
 
                 from mcp_cli.config.config_manager import initialize_config
@@ -529,7 +525,7 @@ class ToolManager:
                     auth_value = headers["Authorization"]
                     if auth_value.startswith("Bearer "):
                         auth_value = auth_value[7:]  # Remove "Bearer " prefix
-                    server_entry["api_key"] = auth_value
+                    server_entry.api_key = auth_value
                     logger.debug(
                         f"Updated server_entry api_key for {server_name} after reauth"
                     )
@@ -581,9 +577,9 @@ class ToolManager:
             # Determine which servers we're connecting to for better messaging
             server_names = []
             if self._http_servers:
-                server_names.extend([s["name"] for s in self._http_servers])
+                server_names.extend([s.name for s in self._http_servers])
             if self._sse_servers:
-                server_names.extend([s["name"] for s in self._sse_servers])
+                server_names.extend([s.name for s in self._sse_servers])
             if self._stdio_servers:
                 server_names.extend(self._stdio_servers)
 
@@ -602,14 +598,10 @@ class ToolManager:
 
                 if self._sse_servers:
                     logger.info("Setting up SSE servers")
-                    success = await self._setup_sse_servers(
-                        self._sse_servers[0]["name"]
-                    )
+                    success = await self._setup_sse_servers(self._sse_servers[0].name)
                 elif self._http_servers:
                     logger.info("Setting up HTTP servers")
-                    success = await self._setup_http_servers(
-                        self._http_servers[0]["name"]
-                    )
+                    success = await self._setup_http_servers(self._http_servers[0].name)
                 elif self._stdio_servers:
                     logger.info("Setting up STDIO servers")
                     success = await self._setup_stdio_servers(namespace)
@@ -647,16 +639,22 @@ class ToolManager:
             server_timeout = self._get_max_server_timeout(self._sse_servers)
             server_max_retries = self._get_min_server_max_retries(self._sse_servers)
 
-            logger.info(f"Setting up SSE servers with timeout={server_timeout}s, max_retries={server_max_retries}")
+            logger.info(
+                f"Setting up SSE servers with timeout={server_timeout}s, max_retries={server_max_retries}"
+            )
 
             # Try setup with OAuth retry support
             max_auth_retries = 1
             for attempt in range(max_auth_retries + 1):
                 try:
                     # 1. Create StreamManager with SSE transport
+                    # Convert Pydantic models to dict format for StreamManager
+                    sse_servers_dict = [
+                        s.to_stream_manager_config() for s in self._sse_servers
+                    ]
                     self.stream_manager = await asyncio.wait_for(
                         StreamManager.create_with_sse(
-                            servers=self._sse_servers,
+                            servers=sse_servers_dict,
                             server_names=self.server_names,
                             connection_timeout=10.0,
                             default_timeout=server_timeout,
@@ -665,8 +663,12 @@ class ToolManager:
                     )
 
                     # 2. Register MCP tools from the stream manager
-                    registered_tools = await register_mcp_tools(self.stream_manager, namespace=namespace)
-                    logger.info(f"Registered {len(registered_tools)} tools from SSE servers")
+                    registered_tools = await register_mcp_tools(
+                        self.stream_manager, namespace=namespace
+                    )
+                    logger.info(
+                        f"Registered {len(registered_tools)} tools from SSE servers"
+                    )
 
                     # 3. Create ToolProcessor with configuration
                     self.processor = ToolProcessor(
@@ -684,13 +686,24 @@ class ToolManager:
                 except Exception as setup_error:
                     # Check if this is an OAuth error and we can retry
                     if self._is_oauth_error(setup_error) and attempt < max_auth_retries:
-                        logger.warning(f"SSE setup failed with OAuth error: {setup_error}")
+                        logger.warning(
+                            f"SSE setup failed with OAuth error: {setup_error}"
+                        )
                         logger.info("Attempting OAuth re-authentication...")
 
                         # Get server name for re-authentication
-                        server_name = self._sse_servers[0]["name"] if self._sse_servers else None
-                        if server_name and await self._attempt_oauth_reauth_for_namespace(server_name):
-                            logger.info("✅ Re-authentication successful, retrying SSE setup...")
+                        server_name = (
+                            self._sse_servers[0].name if self._sse_servers else None
+                        )
+                        if (
+                            server_name
+                            and await self._attempt_oauth_reauth_for_namespace(
+                                server_name
+                            )
+                        ):
+                            logger.info(
+                                "✅ Re-authentication successful, retrying SSE setup..."
+                            )
                             # Update server entry with new token before retry
                             await self._process_oauth_for_servers(self._sse_servers)
                             continue
@@ -701,9 +714,13 @@ class ToolManager:
                         # Not an OAuth error or out of retries
                         raise
 
+            # If we get here, all retry attempts failed
+            return False
+
         except Exception as e:
             logger.error(f"SSE server setup failed: {e}")
             import traceback
+
             traceback.print_exc()
             return False
 
@@ -722,16 +739,22 @@ class ToolManager:
             server_timeout = self._get_max_server_timeout(self._http_servers)
             server_max_retries = self._get_min_server_max_retries(self._http_servers)
 
-            logger.info(f"Setting up HTTP servers using HTTP Streamable transport (timeout={server_timeout}s, max_retries={server_max_retries})")
+            logger.info(
+                f"Setting up HTTP servers using HTTP Streamable transport (timeout={server_timeout}s, max_retries={server_max_retries})"
+            )
 
             # Try setup with OAuth retry support
             max_auth_retries = 1
             for attempt in range(max_auth_retries + 1):
                 try:
                     # 1. Create StreamManager with HTTP Streamable transport
+                    # Convert Pydantic models to dict format for StreamManager
+                    http_servers_dict = [
+                        s.to_stream_manager_config() for s in self._http_servers
+                    ]
                     self.stream_manager = await asyncio.wait_for(
                         StreamManager.create_with_http_streamable(
-                            servers=self._http_servers,
+                            servers=http_servers_dict,
                             server_names=self.server_names,
                             connection_timeout=10.0,
                             default_timeout=server_timeout,
@@ -740,8 +763,12 @@ class ToolManager:
                     )
 
                     # 2. Register MCP tools from the stream manager
-                    registered_tools = await register_mcp_tools(self.stream_manager, namespace=namespace)
-                    logger.info(f"Registered {len(registered_tools)} tools from HTTP servers")
+                    registered_tools = await register_mcp_tools(
+                        self.stream_manager, namespace=namespace
+                    )
+                    logger.info(
+                        f"Registered {len(registered_tools)} tools from HTTP servers"
+                    )
 
                     # 3. Create ToolProcessor with configuration
                     self.processor = ToolProcessor(
@@ -753,19 +780,32 @@ class ToolManager:
                         max_retries=server_max_retries,
                     )
 
-                    logger.info("HTTP servers (via HTTP Streamable transport) initialized successfully")
+                    logger.info(
+                        "HTTP servers (via HTTP Streamable transport) initialized successfully"
+                    )
                     return True
 
                 except Exception as setup_error:
                     # Check if this is an OAuth error and we can retry
                     if self._is_oauth_error(setup_error) and attempt < max_auth_retries:
-                        logger.warning(f"HTTP setup failed with OAuth error: {setup_error}")
+                        logger.warning(
+                            f"HTTP setup failed with OAuth error: {setup_error}"
+                        )
                         logger.info("Attempting OAuth re-authentication...")
 
                         # Get server name for re-authentication
-                        server_name = self._http_servers[0]["name"] if self._http_servers else None
-                        if server_name and await self._attempt_oauth_reauth_for_namespace(server_name):
-                            logger.info("✅ Re-authentication successful, retrying HTTP setup...")
+                        server_name = (
+                            self._http_servers[0].name if self._http_servers else None
+                        )
+                        if (
+                            server_name
+                            and await self._attempt_oauth_reauth_for_namespace(
+                                server_name
+                            )
+                        ):
+                            logger.info(
+                                "✅ Re-authentication successful, retrying HTTP setup..."
+                            )
                             # Update server entry with new token before retry
                             await self._process_oauth_for_servers(self._http_servers)
                             continue
@@ -776,9 +816,13 @@ class ToolManager:
                         # Not an OAuth error or out of retries
                         raise
 
+            # If we get here, all retry attempts failed
+            return False
+
         except Exception as e:
             logger.error(f"HTTP server setup failed: {e}")
             import traceback
+
             traceback.print_exc()
             return False
 
@@ -825,8 +869,12 @@ class ToolManager:
                 )
 
                 # 2. Register MCP tools from the stream manager
-                registered_tools = await register_mcp_tools(self.stream_manager, namespace=namespace)
-                logger.info(f"Registered {len(registered_tools)} tools from STDIO servers")
+                registered_tools = await register_mcp_tools(
+                    self.stream_manager, namespace=namespace
+                )
+                logger.info(
+                    f"Registered {len(registered_tools)} tools from STDIO servers"
+                )
 
                 # 3. Create ToolProcessor with configuration
                 self.processor = ToolProcessor(
@@ -846,6 +894,7 @@ class ToolManager:
                 if temp_config_file:
                     try:
                         import os
+
                         os.unlink(temp_config_file.name)
                     except Exception:
                         pass
@@ -861,6 +910,7 @@ class ToolManager:
         except Exception as e:
             logger.error(f"STDIO server setup failed: {e}")
             import traceback
+
             traceback.print_exc()
             return False
 
@@ -975,7 +1025,7 @@ class ToolManager:
             logger.warning(f"Cleanup completed with errors: {'; '.join(errors)}")
 
     # Tool discovery
-    async def get_all_tools(self) -> List[ToolInfo]:
+    async def get_all_tools(self) -> list[ToolInfo]:
         """Return all available tools."""
         if not self._registry:
             logger.warning("get_all_tools called but registry is None")
@@ -1021,7 +1071,7 @@ class ToolManager:
 
         return tools
 
-    async def get_unique_tools(self) -> List[ToolInfo]:
+    async def get_unique_tools(self) -> list[ToolInfo]:
         """Return tools without duplicates from the default namespace."""
         seen = set()
         unique = []
@@ -1036,7 +1086,7 @@ class ToolManager:
 
     async def get_tool_by_name(
         self, tool_name: str, namespace: str | None = None
-    ) -> Optional[ToolInfo]:
+    ) -> ToolInfo | None:
         """Get tool info by name and optional namespace."""
         if not self._registry:
             return None
@@ -1068,7 +1118,7 @@ class ToolManager:
 
         return None
 
-    def _is_oauth_error(self, error: Union[Exception, str]) -> bool:
+    def _is_oauth_error(self, error: Exception | str) -> bool:
         """
         Check if an error is related to OAuth authentication failure.
 
@@ -1175,7 +1225,7 @@ class ToolManager:
             # Update the server entry with new auth headers
             server_entry = None
             for entry in self._http_servers + self._sse_servers:
-                if entry.get("name") == server_name:
+                if entry.name == server_name:
                     server_entry = entry
                     break
 
@@ -1184,7 +1234,7 @@ class ToolManager:
                 auth_value = headers.get("Authorization", "")
                 if auth_value.startswith("Bearer "):
                     auth_value = auth_value[7:]
-                server_entry["api_key"] = auth_value
+                server_entry.api_key = auth_value
                 logger.debug(f"Updated server_entry api_key for {server_name}")
 
                 # Update transport api_key if it exists
@@ -1200,7 +1250,7 @@ class ToolManager:
             logger.error(f"OAuth re-authentication failed for {namespace}: {e}")
             return False
 
-    async def _get_server_config_by_name(self, server_name: str) -> Optional[Any]:
+    async def _get_server_config_by_name(self, server_name: str) -> Any | None:
         """
         Get server configuration by server name as a ServerConfig object.
 
@@ -1223,7 +1273,7 @@ class ToolManager:
 
     # Tool execution
     async def execute_tool(
-        self, tool_name: str, arguments: Dict[str, Any], timeout: Optional[float] = None
+        self, tool_name: str, arguments: dict[str, Any], timeout: float | None = None
     ) -> ToolCallResult:
         """Execute a tool and return the result."""
         if not isinstance(arguments, dict):
@@ -1327,17 +1377,8 @@ class ToolManager:
                             f"OAuth error persists after {max_oauth_retries} retry attempts"
                         )
 
-                return ToolCallResult(
-                    tool_name=tool_name,
-                    success=not bool(result.error),
-                    result=result.result,
-                    error=result.error,
-                    execution_time=(
-                        (result.end_time - result.start_time).total_seconds()
-                        if hasattr(result, "end_time") and hasattr(result, "start_time")
-                        else None
-                    ),
-                )
+                # Use native chuk ToolResult for full tracking data
+                return ToolCallResult.from_chuk_result(result)
             except Exception as exc:
                 logger.error(f"Tool execution exception: {exc}")
 
@@ -1369,7 +1410,7 @@ class ToolManager:
             tool_name=tool_name, success=False, error="Max retries exceeded"
         )
 
-    async def _find_tool_in_registry(self, tool_name: str) -> Tuple[str, str]:
+    async def _find_tool_in_registry(self, tool_name: str) -> tuple[str, str]:
         """
         Find a tool in the registry exactly as it exists.
         Resolve namespace for the tool name.
@@ -1409,7 +1450,7 @@ class ToolManager:
             return "", ""
 
     async def stream_execute_tool(
-        self, tool_name: str, arguments: Dict[str, Any], timeout: Optional[float] = None
+        self, tool_name: str, arguments: dict[str, Any], timeout: float | None = None
     ) -> AsyncIterator[ToolResult]:
         """Execute a tool with streaming support."""
         # Check if tool is enabled
@@ -1461,10 +1502,10 @@ class ToolManager:
 
     async def process_tool_calls(
         self,
-        tool_calls: List[Dict[str, Any]],
-        name_mapping: Dict[str, str],
-        conversation_history: Optional[List[Dict[str, Any]]] = None,
-    ) -> List[ToolResult]:
+        tool_calls: list[dict[str, Any]],
+        name_mapping: dict[str, str],
+        conversation_history: list[dict[str, Any]] | None = None,
+    ) -> list[ToolResult]:
         """Process tool calls from an LLM."""
         chuk_calls = []
         call_mapping = {}
@@ -1572,11 +1613,11 @@ class ToolManager:
                     }
                 )
 
-        typed_results: List[ToolResult] = results
+        typed_results: list[ToolResult] = results
         return typed_results
 
     # Server helpers
-    async def get_server_info(self) -> List[ServerInfo]:
+    async def get_server_info(self) -> list[ServerInfo]:
         """Get information about all connected servers."""
         if not self.stream_manager:
             return []
@@ -1622,21 +1663,21 @@ class ToolManager:
             for i, server in enumerate(self.servers)
         ]
 
-    async def get_server_for_tool(self, tool_name: str) -> Optional[str]:
+    async def get_server_for_tool(self, tool_name: str) -> str | None:
         """Get the server name for a tool."""
         # CLEAN: Just get namespace from registry lookup
         namespace, _ = await self._find_tool_in_registry(tool_name)
         return namespace if namespace else None
 
     # LLM helpers
-    async def get_tools_for_llm(self) -> List[Dict[str, Any]]:
+    async def get_tools_for_llm(self) -> list[dict[str, Any]]:
         """Get OpenAI-compatible tool definitions (validated)."""
         valid_tools, _ = await self.get_adapted_tools_for_llm("openai")
         return valid_tools
 
     async def get_adapted_tools_for_llm(
         self, provider: str = "openai"
-    ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
+    ) -> tuple[list[dict[str, Any]], dict[str, str]]:
         """Get tools adapted for the specified LLM provider with validation."""
         # Get raw tools first
         raw_tools, raw_name_mapping = await self._get_raw_adapted_tools_for_llm(
@@ -1696,7 +1737,7 @@ class ToolManager:
 
     async def _get_raw_adapted_tools_for_llm(
         self, provider: str = "openai"
-    ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
+    ) -> tuple[list[dict[str, Any]], dict[str, str]]:
         """Get raw tools adapted for the specified LLM provider (without validation)."""
         unique_tools = await self.get_unique_tools()
 
@@ -1717,16 +1758,16 @@ class ToolManager:
                 tool.name
             )  # Identity mapping - no conversion needed
 
-            llm_tools.append(
-                {
-                    "type": "function",
-                    "function": {
-                        "name": tool_name,
-                        "description": tool.description or "",
-                        "parameters": tool.parameters or {},
-                    },
-                }
+            # Use Pydantic model for type safety, then convert to dict
+            # Use mode='json' to serialize enums as their values
+            llm_tool = LLMToolDefinition(
+                function=FunctionDefinition(
+                    name=tool_name,
+                    description=tool.description or "",
+                    parameters=tool.parameters or {},
+                )
             )
+            llm_tools.append(llm_tool.model_dump(mode="json"))
 
         logger.info(f"Final name mapping (identity): {name_mapping}")
         return llm_tools, name_mapping
@@ -1744,7 +1785,7 @@ class ToolManager:
         """Check if a tool is enabled."""
         return self.tool_filter.is_tool_enabled(tool_name)
 
-    def get_disabled_tools(self) -> Dict[str, str]:
+    def get_disabled_tools(self) -> dict[str, str]:
         """Get all disabled tools with their reasons."""
         return self.tool_filter.get_disabled_tools()
 
@@ -1761,13 +1802,13 @@ class ToolManager:
         """Clear all tools disabled due to validation errors."""
         self.tool_filter.clear_validation_disabled()
 
-    def get_validation_summary(self) -> Dict[str, Any]:
+    def get_validation_summary(self) -> dict[str, Any]:
         """Get a summary of the last validation run."""
         summary = self.tool_filter.get_validation_summary()
         summary.update(self.validation_results)
         return summary
 
-    async def revalidate_tools(self, provider: str | None = None) -> Dict[str, Any]:
+    async def revalidate_tools(self, provider: str | None = None) -> dict[str, Any]:
         """
         Re-run validation on all tools.
 
@@ -1789,7 +1830,7 @@ class ToolManager:
 
     async def validate_single_tool(
         self, tool_name: str, provider: str = "openai"
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """
         Validate a single tool by name.
 
@@ -1819,15 +1860,19 @@ class ToolManager:
                 break
 
         if not llm_tool:
-            return False, f"Tool '{tool_name}' not found in LLM format"
+            validation = ValidationResult.failure(
+                f"Tool '{tool_name}' not found in LLM format"
+            )
+            return validation.is_valid, validation.error_message
 
         # Validate
         if provider == "openai":
-            return ToolSchemaValidator.validate_openai_schema(llm_tool)
+            validation = ToolSchemaValidator.validate_openai_schema(llm_tool)
+            return validation.is_valid, validation.error_message
         else:
             return True, None  # Assume valid for other providers
 
-    def get_tool_validation_details(self, tool_name: str) -> Optional[Dict[str, Any]]:
+    def get_tool_validation_details(self, tool_name: str) -> dict[str, Any | None]:
         """Get detailed validation information for a specific tool."""
         disabled_tools = self.get_disabled_tools()
 
@@ -1860,7 +1905,7 @@ class ToolManager:
 
     # Formatting helpers
     @staticmethod
-    def format_tool_response(response_content: Union[List[Dict[str, Any]], Any]) -> str:
+    def format_tool_response(response_content: list[dict[str, Any]] | Any) -> str:
         """Format tool response content for LLM consumption."""
         if (
             isinstance(response_content, list)
@@ -1896,7 +1941,7 @@ class ToolManager:
         return self.tool_timeout
 
     # Resource access (kept for compatibility)
-    async def list_prompts(self) -> List[Dict[str, Any]]:
+    async def list_prompts(self) -> list[dict[str, Any]]:
         """Return all prompts from servers."""
         if self.stream_manager and hasattr(self.stream_manager, "list_prompts"):
             try:
@@ -1907,7 +1952,7 @@ class ToolManager:
                 pass
         return []
 
-    async def list_resources(self) -> List[Dict[str, Any]]:
+    async def list_resources(self) -> list[dict[str, Any]]:
         """Return all resources from servers."""
         if self.stream_manager and hasattr(self.stream_manager, "list_resources"):
             try:
@@ -1931,10 +1976,10 @@ class ToolManager:
 
 
 # Global singleton
-_tool_manager: Optional[ToolManager] = None
+_tool_manager: ToolManager | None = None
 
 
-def get_tool_manager() -> Optional[ToolManager]:
+def get_tool_manager() -> ToolManager | None:
     """Get the global tool manager instance."""
     return _tool_manager
 

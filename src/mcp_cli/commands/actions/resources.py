@@ -12,7 +12,6 @@ Public functions:
 from __future__ import annotations
 
 import inspect
-from typing import List
 
 from mcp_cli.utils.async_utils import run_blocking
 from chuk_term.ui import output, format_table
@@ -32,7 +31,7 @@ def _human_size(size: int | None) -> str:
     return f"{current_size:.1f} TB"
 
 
-async def resources_action_async() -> List[ResourceInfoResponse]:
+async def resources_action_async() -> list[ResourceInfoResponse]:
     """
     Fetch and display resources from all connected MCP servers.
 
@@ -90,7 +89,7 @@ async def resources_action_async() -> List[ResourceInfoResponse]:
     return resource_models
 
 
-def resources_action() -> List[ResourceInfoResponse]:
+def resources_action() -> list[ResourceInfoResponse]:
     """
     Sync wrapper for resources_action_async.
 

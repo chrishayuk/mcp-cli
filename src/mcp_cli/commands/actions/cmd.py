@@ -5,18 +5,17 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Optional
 
 from chuk_term.ui import output
 
 
 async def cmd_action_async(
-    input_file: Optional[str] = None,
-    output_file: Optional[str] = None,
-    prompt: Optional[str] = None,
-    tool: Optional[str] = None,
-    tool_args: Optional[str] = None,
-    system_prompt: Optional[str] = None,
+    input_file: str | None = None,
+    output_file: str | None = None,
+    prompt: str | None = None,
+    tool: str | None = None,
+    tool_args: str | None = None,
+    system_prompt: str | None = None,
     raw: bool = False,
     single_turn: bool = False,
     max_turns: int = 30,
@@ -86,8 +85,8 @@ async def cmd_action_async(
 
 async def _execute_tool_direct(
     tool_name: str,
-    tool_args_json: Optional[str],
-    output_file: Optional[str],
+    tool_args_json: str | None,
+    output_file: str | None,
     raw: bool,
 ) -> None:
     """Execute a tool directly without LLM interaction."""
@@ -153,10 +152,10 @@ async def _execute_tool_direct(
 
 
 async def _execute_prompt_mode(
-    input_file: Optional[str],
-    output_file: Optional[str],
-    prompt: Optional[str],
-    system_prompt: Optional[str],
+    input_file: str | None,
+    output_file: str | None,
+    prompt: str | None,
+    system_prompt: str | None,
     raw: bool,
     single_turn: bool,
     max_turns: int,
@@ -193,11 +192,14 @@ async def _execute_prompt_mode(
         if not model_manager:
             # Fallback: create new one if context doesn't have it
             from mcp_cli.model_management import ModelManager
+
             model_manager = ModelManager()
             # Set it to the correct provider/model from context
             model_manager.switch_model(context.provider, context.model)
 
-        client = model_manager.get_client(provider=context.provider, model=context.model)
+        client = model_manager.get_client(
+            provider=context.provider, model=context.model
+        )
 
         if not client:
             output.error(

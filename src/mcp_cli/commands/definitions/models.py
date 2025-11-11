@@ -6,7 +6,6 @@ Uses the existing enhanced model commands from mcp_cli.commands.model
 
 from __future__ import annotations
 
-from typing import List
 
 from mcp_cli.commands.base import (
     UnifiedCommand,
@@ -31,7 +30,7 @@ class ModelCommand(CommandGroup):
         return "models"
 
     @property
-    def aliases(self) -> List[str]:
+    def aliases(self) -> list[str]:
         return ["model"]
 
     @property
@@ -124,7 +123,7 @@ class ModelListCommand(UnifiedCommand):
         return "list"
 
     @property
-    def aliases(self) -> List[str]:
+    def aliases(self) -> list[str]:
         return ["ls"]
 
     @property
@@ -132,7 +131,7 @@ class ModelListCommand(UnifiedCommand):
         return "List available models for the current provider"
 
     @property
-    def parameters(self) -> List[CommandParameter]:
+    def parameters(self) -> list[CommandParameter]:
         return [
             CommandParameter(
                 name="provider",
@@ -181,7 +180,7 @@ class ModelSetCommand(UnifiedCommand):
         return "set"
 
     @property
-    def aliases(self) -> List[str]:
+    def aliases(self) -> list[str]:
         return ["use", "switch"]
 
     @property
@@ -189,7 +188,7 @@ class ModelSetCommand(UnifiedCommand):
         return "Set the active model"
 
     @property
-    def parameters(self) -> List[CommandParameter]:
+    def parameters(self) -> list[CommandParameter]:
         return [
             CommandParameter(
                 name="model_name",
@@ -245,7 +244,7 @@ class ModelShowCommand(UnifiedCommand):
         return "show"
 
     @property
-    def aliases(self) -> List[str]:
+    def aliases(self) -> list[str]:
         return ["current", "status"]
 
     @property

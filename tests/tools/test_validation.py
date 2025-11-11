@@ -25,41 +25,41 @@ class TestToolSchemaValidator:
             },
         }
 
-        is_valid, error = ToolSchemaValidator.validate_openai_schema(tool)
-        assert is_valid is True
-        assert error is None
+        result = ToolSchemaValidator.validate_openai_schema(tool)
+        assert result.is_valid is True
+        assert result.error_message is None
 
     def test_validate_openai_schema_missing_function(self):
         """Test validate_openai_schema with missing function property."""
         tool = {"type": "function"}
 
-        is_valid, error = ToolSchemaValidator.validate_openai_schema(tool)
-        assert is_valid is False
-        assert "missing 'function' property" in error
+        result = ToolSchemaValidator.validate_openai_schema(tool)
+        assert result.is_valid is False
+        assert "missing 'function' property" in result.error_message
 
     def test_validate_openai_schema_function_not_dict(self):
         """Test validate_openai_schema with non-dict function."""
         tool = {"type": "function", "function": "not a dict"}
 
-        is_valid, error = ToolSchemaValidator.validate_openai_schema(tool)
-        assert is_valid is False
-        assert "must be a dictionary" in error
+        result = ToolSchemaValidator.validate_openai_schema(tool)
+        assert result.is_valid is False
+        assert "must be a dictionary" in result.error_message
 
     def test_validate_openai_schema_missing_name(self):
         """Test validate_openai_schema with missing name."""
         tool = {"type": "function", "function": {"description": "No name"}}
 
-        is_valid, error = ToolSchemaValidator.validate_openai_schema(tool)
-        assert is_valid is False
-        assert "name must be a non-empty string" in error
+        result = ToolSchemaValidator.validate_openai_schema(tool)
+        assert result.is_valid is False
+        assert "name must be a non-empty string" in result.error_message
 
     def test_validate_openai_schema_empty_name(self):
         """Test validate_openai_schema with empty name."""
         tool = {"type": "function", "function": {"name": ""}}
 
-        is_valid, error = ToolSchemaValidator.validate_openai_schema(tool)
-        assert is_valid is False
-        assert "name must be a non-empty string" in error
+        result = ToolSchemaValidator.validate_openai_schema(tool)
+        assert result.is_valid is False
+        assert "name must be a non-empty string" in result.error_message
 
     def test_validate_openai_schema_invalid_name_characters(self):
         """Test validate_openai_schema with invalid characters in name."""
@@ -68,9 +68,9 @@ class TestToolSchemaValidator:
             "function": {"name": "invalid@name", "description": "Test"},
         }
 
-        is_valid, error = ToolSchemaValidator.validate_openai_schema(tool)
-        assert is_valid is False
-        assert "contains invalid characters" in error
+        result = ToolSchemaValidator.validate_openai_schema(tool)
+        assert result.is_valid is False
+        assert "contains invalid characters" in result.error_message
 
     @pytest.mark.parametrize(
         "name",
@@ -83,9 +83,9 @@ class TestToolSchemaValidator:
             "function": {"name": name, "description": "Test"},
         }
 
-        is_valid, error = ToolSchemaValidator.validate_openai_schema(tool)
-        assert is_valid is True
-        assert error is None
+        result = ToolSchemaValidator.validate_openai_schema(tool)
+        assert result.is_valid is True
+        assert result.error_message is None
 
     @pytest.mark.parametrize(
         "prop", ["title", "examples", "deprecated", "version", "tags"]
@@ -97,9 +97,9 @@ class TestToolSchemaValidator:
             "function": {"name": "tool", "description": "Test", prop: "value"},
         }
 
-        is_valid, error = ToolSchemaValidator.validate_openai_schema(tool)
-        assert is_valid is False
-        assert f"unsupported property '{prop}'" in error
+        result = ToolSchemaValidator.validate_openai_schema(tool)
+        assert result.is_valid is False
+        assert f"unsupported property '{prop}'" in result.error_message
 
     def test_validate_openai_schema_parameters_not_dict(self):
         """Test validate_openai_schema with non-dict parameters."""
@@ -108,9 +108,9 @@ class TestToolSchemaValidator:
             "function": {"name": "tool", "description": "Test", "parameters": "string"},
         }
 
-        is_valid, error = ToolSchemaValidator.validate_openai_schema(tool)
-        assert is_valid is False
-        assert "Parameters must be a dictionary" in error
+        result = ToolSchemaValidator.validate_openai_schema(tool)
+        assert result.is_valid is False
+        assert "Parameters must be a dictionary" in result.error_message
 
     def test_validate_openai_schema_array_without_items(self):
         """Test validate_openai_schema with array missing items."""
@@ -126,10 +126,10 @@ class TestToolSchemaValidator:
             },
         }
 
-        is_valid, error = ToolSchemaValidator.validate_openai_schema(tool)
-        assert is_valid is False
-        assert "Array schema" in error
-        assert "missing 'items'" in error
+        result = ToolSchemaValidator.validate_openai_schema(tool)
+        assert result.is_valid is False
+        assert "Array schema" in result.error_message
+        assert "missing 'items'" in result.error_message
 
     def test_check_array_schemas_nested(self):
         """Test _check_array_schemas with nested structures."""
@@ -395,10 +395,10 @@ class TestToolSchemaValidator:
         # Pass something that might cause an unexpected error
         tool = {"function": {"name": None}}  # Invalid name type
 
-        is_valid, error = ToolSchemaValidator.validate_openai_schema(tool)
+        result = ToolSchemaValidator.validate_openai_schema(tool)
 
-        assert is_valid is False
-        assert error is not None
+        assert result.is_valid is False
+        assert result.error_message is not None
 
     def test_fix_array_schemas_oneof_allof(self):
         """Test fix_array_schemas with oneOf and allOf."""

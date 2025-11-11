@@ -3,10 +3,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 
-def format_capabilities(capabilities: Dict[str, Any]) -> str:
+def format_capabilities(capabilities: dict[str, Any]) -> str:
     """
     Format server capabilities as readable string.
 
@@ -70,7 +70,7 @@ def format_performance(ping_ms: float | None) -> tuple[str, str]:
         return "🔴", f"{ping_ms:.1f}ms"
 
 
-def get_server_icon(capabilities: Dict[str, Any], tool_count: int) -> str:
+def get_server_icon(capabilities: dict[str, Any], tool_count: int) -> str:
     """
     Determine server icon based on MCP capabilities.
 

@@ -7,38 +7,43 @@ instead of passing dictionaries around.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Optional, List, Dict
+from typing import Any, Annotated
 from pathlib import Path
+
+from pydantic import BaseModel, Field, ConfigDict, PrivateAttr, SkipValidation
 
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.model_management import ModelManager
-from mcp_cli.tools.models import ServerInfo, ToolInfo
+from mcp_cli.tools.models import ServerInfo, ToolInfo, ConversationMessage
 
 
-@dataclass
-class ApplicationContext:
+class ApplicationContext(BaseModel):
     """
     Centralized application context that holds all state and managers.
 
     This replaces the dictionary-based context that was being passed around.
     """
 
-    # Core managers
-    tool_manager: Optional[ToolManager] = None
-    model_manager: Optional[ModelManager] = None
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,  # Allow ToolManager, ModelManager, etc.
+        validate_assignment=True,
+    )
+
+    # Core managers (skip validation to allow test mocks)
+    tool_manager: Annotated[ToolManager | None, SkipValidation()] = None
+    model_manager: Annotated[ModelManager | None, SkipValidation()] = None
 
     # Configuration
-    config_path: Path = field(default_factory=lambda: Path("server_config.json"))
+    config_path: Path = Field(default_factory=lambda: Path("server_config.json"))
     provider: str = "openai"
     model: str = "gpt-4"
-    api_base: Optional[str] = None
-    api_key: Optional[str] = None
+    api_base: str | None = None
+    api_key: str | None = None
 
     # Server and tool state
-    servers: List[ServerInfo] = field(default_factory=list)
-    tools: List[ToolInfo] = field(default_factory=list)
-    current_server: Optional[ServerInfo] = None
+    servers: list[ServerInfo] = Field(default_factory=list)
+    tools: list[ToolInfo] = Field(default_factory=list)
+    current_server: ServerInfo | None = None
 
     # UI state
     verbose_mode: bool = True
@@ -46,20 +51,20 @@ class ApplicationContext:
     theme: str = "default"
 
     # Token storage
-    token_backend: Optional[str] = None
+    token_backend: str | None = None
 
     # Session state
-    session_id: Optional[str] = None
+    session_id: str | None = None
     is_interactive: bool = False
     exit_requested: bool = False
 
     # Conversation state (for chat mode)
-    conversation_history: List[Dict[str, Any]] = field(default_factory=list)
+    conversation_history: list[dict[str, Any]] = Field(default_factory=list)
 
-    # Additional context data
-    _extra: Dict[str, Any] = field(default_factory=dict)
+    # Additional context data (private attribute)
+    _extra: dict[str, Any] = PrivateAttr(default_factory=dict)
 
-    def __post_init__(self):
+    def model_post_init(self, __context: Any) -> None:
         """Initialize managers if not provided."""
         if self.model_manager is None:
             from mcp_cli.model_management import ModelManager
@@ -73,10 +78,10 @@ class ApplicationContext:
     @classmethod
     def create(
         cls,
-        tool_manager: Optional[ToolManager] = None,
-        config_path: Optional[Path] = None,
-        provider: Optional[str] = None,
-        model: Optional[str] = None,
+        tool_manager: ToolManager | None = None,
+        config_path: Path | None = None,
+        provider: str | None = None,
+        model: str | None = None,
         **kwargs,
     ) -> ApplicationContext:
         """
@@ -106,7 +111,7 @@ class ApplicationContext:
             if len(self.servers) == 1:
                 self.current_server = self.servers[0]
 
-    def get_current_server(self) -> Optional[ServerInfo]:
+    def get_current_server(self) -> ServerInfo | None:
         """Get the currently active server."""
         return self.current_server
 
@@ -114,14 +119,14 @@ class ApplicationContext:
         """Set the currently active server."""
         self.current_server = server
 
-    def find_server(self, name: str) -> Optional[ServerInfo]:
+    def find_server(self, name: str) -> ServerInfo | None:
         """Find a server by name."""
         for server in self.servers:
             if server.name.lower() == name.lower():
                 return server
         return None
 
-    def find_tool(self, name: str) -> Optional[ToolInfo]:
+    def find_tool(self, name: str) -> ToolInfo | None:
         """Find a tool by name."""
         for tool in self.tools:
             if tool.name == name or tool.fully_qualified_name == name:
@@ -150,7 +155,7 @@ class ApplicationContext:
         else:
             self._extra[key] = value
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Convert to dictionary for backwards compatibility.
 
@@ -178,7 +183,7 @@ class ApplicationContext:
             **self._extra,
         }
 
-    def update_from_dict(self, data: Dict[str, Any]) -> None:
+    def update_from_dict(self, data: dict[str, Any]) -> None:
         """
         Update context from a dictionary (for backwards compatibility).
 
@@ -202,6 +207,42 @@ class ApplicationContext:
             else:
                 self._extra[key] = value
 
+    # Conversation message helpers
+    def add_message(self, message: ConversationMessage | dict[str, Any]) -> None:
+        """Add a message to conversation history."""
+        if isinstance(message, ConversationMessage):
+            self.conversation_history.append(message.to_dict())
+        else:
+            self.conversation_history.append(message)
+
+    def add_user_message(self, content: str) -> None:
+        """Add a user message to conversation history."""
+        self.add_message(ConversationMessage.user_message(content))
+
+    def add_assistant_message(
+        self, content: str | None = None, tool_calls: list[dict[str, Any]] | None = None
+    ) -> None:
+        """Add an assistant message to conversation history."""
+        self.add_message(ConversationMessage.assistant_message(content, tool_calls))
+
+    def add_system_message(self, content: str) -> None:
+        """Add a system message to conversation history."""
+        self.add_message(ConversationMessage.system_message(content))
+
+    def add_tool_message(
+        self, content: str, tool_call_id: str, name: str | None = None
+    ) -> None:
+        """Add a tool response message to conversation history."""
+        self.add_message(ConversationMessage.tool_message(content, tool_call_id, name))
+
+    def get_messages(self) -> list[ConversationMessage]:
+        """Get conversation history as typed ConversationMessage objects."""
+        return [ConversationMessage.from_dict(msg) for msg in self.conversation_history]
+
+    def clear_conversation(self) -> None:
+        """Clear the conversation history."""
+        self.conversation_history.clear()
+
 
 class ContextManager:
     """
@@ -210,8 +251,8 @@ class ContextManager:
     This provides a singleton-like pattern for managing the application context.
     """
 
-    _instance: Optional[ContextManager] = None
-    _context: Optional[ApplicationContext] = None
+    _instance: ContextManager | None = None
+    _context: ApplicationContext | None = None
 
     def __new__(cls) -> ContextManager:
         """Ensure singleton instance."""
@@ -221,8 +262,8 @@ class ContextManager:
 
     def initialize(
         self,
-        tool_manager: Optional[ToolManager] = None,
-        config_path: Optional[Path] = None,
+        tool_manager: ToolManager | None = None,
+        config_path: Path | None = None,
         **kwargs,
     ) -> ApplicationContext:
         """

@@ -6,7 +6,7 @@ This version incorporates the diagnostic fixes with your existing architecture.
 
 from __future__ import annotations
 import subprocess
-from typing import Dict, List, Any
+from typing import Any
 from mcp_cli.model_management import ModelManager
 from chuk_term.ui import output, format_table
 from mcp_cli.context import get_context, ApplicationContext
@@ -33,7 +33,7 @@ def _check_ollama_running() -> tuple[bool, int]:
 
 
 def _get_provider_status_enhanced(
-    provider_name: str, info: Dict[str, Any]
+    provider_name: str, info: dict[str, Any]
 ) -> tuple[str, str, str]:
     """
     Enhanced status logic that handles all provider types correctly.
@@ -72,7 +72,7 @@ def _get_provider_status_enhanced(
     return "✅", "Ready", f"Configured ({model_count} models){source_info}"
 
 
-def _get_model_count_display_enhanced(provider_name: str, info: Dict[str, Any]) -> str:
+def _get_model_count_display_enhanced(provider_name: str, info: dict[str, Any]) -> str:
     """
     Enhanced model count display that handles Ollama and chuk-llm 0.7+ correctly.
     """
@@ -100,7 +100,7 @@ def _get_model_count_display_enhanced(provider_name: str, info: Dict[str, Any]) 
         return f"{count} models"
 
 
-def _get_features_display_enhanced(info: Dict[str, Any]) -> str:
+def _get_features_display_enhanced(info: dict[str, Any]) -> str:
     """Enhanced feature display with more comprehensive icons."""
     baseline_features = info.get("baseline_features", [])
 
@@ -147,19 +147,35 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
     current_provider = model_manager.get_active_provider()
 
     try:
-        # Get provider info using the working method
-        all_providers_info = model_manager.get_available_providers()
+        # Get provider list
+        provider_names = model_manager.get_available_providers()
 
-        if not all_providers_info:
+        if not provider_names:
             output.error("No providers found. Check chuk-llm installation.")
             return
+
+        # Build provider info dict
+        all_providers_info = {}
+        for provider_name in provider_names:
+            try:
+                models = model_manager.get_available_models(provider_name)
+                default_model = (
+                    model_manager.get_default_model(provider_name) if models else "-"
+                )
+                all_providers_info[provider_name] = {
+                    "models": models,
+                    "default_model": default_model,
+                    "model_count": len(models) if models else 0,
+                }
+            except Exception as e:
+                all_providers_info[provider_name] = {"error": str(e)}
 
     except Exception as e:
         output.error(f"Error getting provider list: {e}")
         return
 
     # Sort providers to put current one first, then alphabetically
-    provider_items = list(all_providers_info.items())  # type: ignore[attr-defined]
+    provider_items = list(all_providers_info.items())
     provider_items.sort(key=lambda x: (x[0] != current_provider, x[0]))
 
     for provider_name, provider_info in provider_items:
@@ -172,7 +188,7 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
                     "Token": "-",
                     "Default Model": "-",
                     "Models Available": "-",
-                    "Features": provider_info["error"][:20] + "...",
+                    "Features": str(provider_info["error"])[:20] + "...",
                 }
             )
             continue
@@ -211,7 +227,7 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
             token_display = "❌ none"
 
         # Default model with proper fallback
-        default_model = provider_info.get("default_model", "-")
+        default_model = str(provider_info.get("default_model", "-"))
         if not default_model or default_model in ("None", "null"):
             default_model = "-"
 
@@ -257,7 +273,7 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
     inactive_providers = []
     inactive_custom_providers = []
     custom_count = 0
-    for name, info in all_providers_info.items():  # type: ignore[attr-defined]
+    for name, info in all_providers_info.items():
         if info.get("is_custom"):
             custom_count += 1
         if "error" not in info:
@@ -531,7 +547,7 @@ async def provider_action_async(params: ProviderActionParams) -> None:
             output.info(f"Current model   : {model}")
             output.warning(f"Status check failed: {e}")
 
-    def _format_features(status: Dict) -> str:
+    def _format_features(status: dict) -> str:
         features = []
         if status.get("supports_streaming"):
             features.append("📡 streaming")
@@ -600,7 +616,7 @@ def _render_config(model_manager: ModelManager) -> None:
 
 
 def _add_custom_provider(
-    name: str, api_base: str, models: List[str] | None = None
+    name: str, api_base: str, models: list[str] | None = None
 ) -> None:
     """Add a custom OpenAI-compatible provider."""
     from mcp_cli.utils.preferences import get_preference_manager
@@ -720,7 +736,7 @@ def _mutate(
 
 
 # Sync wrapper
-def provider_action(args: List[str]) -> None:
+def provider_action(args: list[str]) -> None:
     """Sync wrapper for provider_action_async."""
     from mcp_cli.utils.async_utils import run_blocking
 

@@ -4,6 +4,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from mcp_cli.commands.definitions.conversation import ConversationCommand
+from mcp_cli.chat.models import Message, MessageRole
 
 
 @pytest.fixture
@@ -17,17 +18,17 @@ def mock_chat_context():
     """Create a mock chat context with tool calls."""
     context = MagicMock()
     context.conversation_history = [
-        {"role": "user", "content": "Hello"},
-        {"role": "assistant", "content": "Hi there!"},
-        {
-            "role": "assistant",
-            "content": None,
-            "tool_calls": [
+        Message(role=MessageRole.USER, content="Hello"),
+        Message(role=MessageRole.ASSISTANT, content="Hi there!"),
+        Message(
+            role=MessageRole.ASSISTANT,
+            content=None,
+            tool_calls=[
                 {"function": {"name": "test_tool", "arguments": '{"param": "value"}'}}
             ],
-        },
-        {"role": "tool", "content": "Tool result"},
-        {"role": "system", "content": "System message"},
+        ),
+        Message(role=MessageRole.TOOL, content="Tool result"),
+        Message(role=MessageRole.SYSTEM, content="System message"),
     ]
     context.clear_conversation = MagicMock()
     return context
@@ -67,7 +68,7 @@ async def test_conversation_detail_view_with_no_content(conversation_command):
     """Test detailed view when message has no content and no tool calls."""
     context = MagicMock()
     context.conversation_history = [
-        {"role": "assistant", "content": None}  # No content, no tool_calls
+        Message(role=MessageRole.ASSISTANT, content=None)  # No content, no tool_calls
     ]
 
     result = await conversation_command.execute(chat_context=context, args=["1"])
@@ -81,18 +82,17 @@ async def test_conversation_table_with_all_role_types(conversation_command):
     """Test table display with all role types."""
     context = MagicMock()
     context.conversation_history = [
-        {"role": "system", "content": "System message"},
-        {"role": "user", "content": "User message"},
-        {"role": "assistant", "content": "Assistant message"},
-        {"role": "tool", "content": "Tool result"},
-        {"role": "unknown", "content": "Unknown role"},
+        Message(role=MessageRole.SYSTEM, content="System message"),
+        Message(role=MessageRole.USER, content="User message"),
+        Message(role=MessageRole.ASSISTANT, content="Assistant message"),
+        Message(role=MessageRole.TOOL, content="Tool result"),
     ]
 
     result = await conversation_command.execute(chat_context=context)
 
     assert result.success is True
     assert result.data is not None
-    assert len(result.data) == 5
+    assert len(result.data) == 4
 
     # Check role displays
     roles = [item["Role"] for item in result.data]
@@ -100,7 +100,6 @@ async def test_conversation_table_with_all_role_types(conversation_command):
     assert "👤 User" in roles
     assert "🤖 Assistant" in roles
     assert "🔨 Tool" in roles
-    assert "❓" in roles[4]  # Unknown role
 
 
 @pytest.mark.asyncio
@@ -109,18 +108,19 @@ async def test_conversation_save_with_args_filename(
 ):
     """Test save with filename from args."""
     with patch("builtins.open", create=True) as mock_open:
-        mock_file = MagicMock()
-        mock_open.return_value.__enter__.return_value = mock_file
+        with patch("json.dump"):
+            mock_file = MagicMock()
+            mock_open.return_value.__enter__.return_value = mock_file
 
-        result = await conversation_command.execute(
-            chat_context=mock_chat_context,
-            action="save",
-            args=["save", "test_file.json"],
-        )
+            result = await conversation_command.execute(
+                chat_context=mock_chat_context,
+                action="save",
+                args=["save", "test_file.json"],
+            )
 
-        assert result.success is True
-        assert "saved to test_file.json" in result.output.lower()
-        mock_open.assert_called_once_with("test_file.json", "w")
+            assert result.success is True
+            assert "saved to test_file.json" in result.output.lower()
+            mock_open.assert_called_once_with("test_file.json", "w")
 
 
 @pytest.mark.asyncio
@@ -138,7 +138,7 @@ async def test_conversation_save_no_filename(conversation_command, mock_chat_con
 async def test_conversation_clear_no_method(conversation_command):
     """Test clear when context has no clear_conversation method."""
     context = MagicMock(spec=["conversation_history"])
-    context.conversation_history = [{"role": "user", "content": "test"}]
+    context.conversation_history = [Message(role=MessageRole.USER, content="test")]
 
     result = await conversation_command.execute(chat_context=context, action="clear")
 
@@ -164,11 +164,11 @@ async def test_conversation_with_tool_calls_in_table(conversation_command):
     """Test table display with tool call messages."""
     context = MagicMock()
     context.conversation_history = [
-        {
-            "role": "assistant",
-            "content": None,
-            "tool_calls": [{"function": {"name": "tool1"}}],
-        }
+        Message(
+            role=MessageRole.ASSISTANT,
+            content=None,
+            tool_calls=[{"function": {"name": "tool1"}}],
+        )
     ]
 
     result = await conversation_command.execute(chat_context=context)

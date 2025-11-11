@@ -7,7 +7,7 @@ Allows executing MCP tools directly with parameters.
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from mcp_cli.commands.base import (
     CommandMode,
@@ -22,14 +22,14 @@ from chuk_term.ui import output
 class ExecuteToolCommand(UnifiedCommand):
     """Command to execute a tool with parameters."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the execute tool command."""
         super().__init__()
         self._name: str = "execute"
         self._description: str = "Execute a tool with parameters"
         self._modes: CommandMode = CommandMode.INTERACTIVE | CommandMode.CHAT
-        self._aliases: List[str] = ["exec", "run"]
-        self._parameters: List[CommandParameter] = [
+        self._aliases: list[str] = ["exec", "run"]
+        self._parameters: list[CommandParameter] = [
             CommandParameter(
                 name="tool",
                 type=str,
@@ -90,11 +90,11 @@ Tips:
         return self._modes
 
     @property
-    def aliases(self) -> List[str]:
+    def aliases(self) -> list[str]:
         return self._aliases
 
     @property
-    def parameters(self) -> List[CommandParameter]:
+    def parameters(self) -> list[CommandParameter]:
         return self._parameters
 
     @property
@@ -107,11 +107,11 @@ Tips:
 
     async def execute(
         self,
-        tool_manager: Optional[ToolManager] = None,
-        tool: Optional[str] = None,
-        params: Optional[str] = None,
-        server: Optional[str] = None,
-        args: Optional[Any] = None,
+        tool_manager: ToolManager | None = None,
+        tool: str | None = None,
+        params: str | None = None,
+        server: str | None = None,
+        args: Any | None = None,
         **kwargs,
     ) -> CommandResult:
         """Execute the tool command."""
@@ -242,7 +242,7 @@ Tips:
                 schema = {}
 
             # Build example
-            example_params: Dict[str, Any] = {}
+            example_params: dict[str, Any] = {}
             if "properties" in schema:
                 for prop_name, prop_info in schema["properties"].items():
                     if prop_name in schema.get("required", []):
@@ -372,7 +372,7 @@ Tips:
             output.rule("Available Tools")
 
             # Group tools by namespace/server
-            tools_by_namespace: Dict[str, list] = {}
+            tools_by_namespace: dict[str, list] = {}
             for tool in tools:
                 namespace = tool.namespace or "default"
                 if namespace not in tools_by_namespace:
@@ -386,7 +386,7 @@ Tips:
                     # Look for server name by index or use namespace
                     for idx, name in tool_manager.server_names.items():
                         if str(idx) in namespace or namespace == "default":
-                            server_display = name
+                            server_display = name if name else "unknown"
                             break
 
                 output.rule(f"Server: {server_display}")
@@ -440,7 +440,7 @@ Tips:
             output.rule("Example Usage")
 
             # Build example params
-            example_params: Dict[str, Any] = {}
+            example_params: dict[str, Any] = {}
             if "properties" in schema:
                 for prop_name, prop_info in schema["properties"].items():
                     if prop_name in schema.get("required", []):
@@ -470,7 +470,7 @@ Tips:
 
         return CommandResult(success=True)
 
-    def _parse_simple_params(self, params: str) -> Dict[str, Any]:
+    def _parse_simple_params(self, params: str) -> dict[str, Any]:
         """Parse simple key=value parameters."""
         result = {}
 

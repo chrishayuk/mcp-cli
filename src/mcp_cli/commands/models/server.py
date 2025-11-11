@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
 from pydantic import Field, field_validator
 
 from .base_model import CommandBaseModel
@@ -24,7 +23,7 @@ class ServerActionParams(CommandBaseModel):
         >>> params = ServerActionParams(output_format="json")
     """
 
-    args: List[str] = Field(default_factory=list, description="Command arguments")
+    args: list[str] = Field(default_factory=list, description="Command arguments")
     detailed: bool = Field(default=False, description="Show detailed information")
     show_capabilities: bool = Field(
         default=False, description="Show server capabilities"
@@ -77,7 +76,7 @@ class ServerPerformanceInfo(CommandBaseModel):
 
     icon: str = Field(min_length=1, description="Performance icon")
     latency: str = Field(min_length=1, description="Formatted latency")
-    ping_ms: Optional[float] = Field(
+    ping_ms: float | None = Field(
         default=None, ge=0, description="Raw ping in milliseconds"
     )
 

@@ -1,9 +1,11 @@
 # mcp_cli/llm/llm_client.py
 """
+from __future__ import annotations
+
 LLM client interface - compatibility layer and stub for tests
 """
 
-from typing import Any, Optional
+from typing import Any
 
 try:
     # Try to import from the real chuk-llm if available
@@ -34,9 +36,7 @@ class StubLLMClient(LLMClient):
         return f"Test response from {self.provider} {self.model}"
 
 
-def get_llm_client(
-    provider: str = "openai", model: Optional[str] = None, **kwargs
-) -> Any:
+def get_llm_client(provider: str = "openai", model: str | None = None, **kwargs) -> Any:
     """
     Get an LLM client instance.
 

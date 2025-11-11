@@ -6,7 +6,6 @@ Supports both project servers (server_config.json) and user servers (~/.mcp-cli/
 
 from __future__ import annotations
 
-from typing import List
 
 from mcp_cli.commands.base import (
     UnifiedCommand,
@@ -22,7 +21,7 @@ class ServerSingularCommand(UnifiedCommand):
         return "server"
 
     @property
-    def aliases(self) -> List[str]:
+    def aliases(self) -> list[str]:
         return []  # No aliases for singular form
 
     @property

@@ -4,6 +4,7 @@ import pytest
 from unittest.mock import patch, Mock
 from mcp_cli.commands.definitions.conversation import ConversationCommand
 from mcp_cli.commands.base import CommandMode
+from mcp_cli.chat.models import Message, MessageRole
 
 
 class TestConversationCommand:
@@ -31,10 +32,10 @@ class TestConversationCommand:
         """Test showing conversation history."""
         mock_context = Mock()
         mock_context.conversation_history = [
-            {"role": "user", "content": "Hello"},
-            {"role": "assistant", "content": "Hi there!"},
-            {"role": "user", "content": "How are you?"},
-            {"role": "assistant", "content": "I'm doing well, thank you!"},
+            Message(role=MessageRole.USER, content="Hello"),
+            Message(role=MessageRole.ASSISTANT, content="Hi there!"),
+            Message(role=MessageRole.USER, content="How are you?"),
+            Message(role=MessageRole.ASSISTANT, content="I'm doing well, thank you!"),
         ]
 
         result = await command.execute(chat_context=mock_context, action="show")
@@ -50,8 +51,8 @@ class TestConversationCommand:
         """Test clearing conversation history."""
         mock_context = Mock()
         mock_context.conversation_history = [
-            {"role": "user", "content": "Hello"},
-            {"role": "assistant", "content": "Hi there!"},
+            Message(role=MessageRole.USER, content="Hello"),
+            Message(role=MessageRole.ASSISTANT, content="Hi there!"),
         ]
 
         result = await command.execute(chat_context=mock_context, action="clear")
@@ -66,8 +67,8 @@ class TestConversationCommand:
         """Test saving conversation to file."""
         mock_context = Mock()
         mock_context.conversation_history = [
-            {"role": "user", "content": "Hello"},
-            {"role": "assistant", "content": "Hi there!"},
+            Message(role=MessageRole.USER, content="Hello"),
+            Message(role=MessageRole.ASSISTANT, content="Hi there!"),
         ]
 
         with patch("builtins.open", create=True) as mock_open:

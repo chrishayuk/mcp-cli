@@ -1,11 +1,13 @@
 # src/mcp_cli/commands/actions/tools_manage.py
 """
+from __future__ import annotations
+
 Tool management commands for enabling/disabling tools and validation.
 """
 
 import asyncio
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from chuk_term.ui import output, format_table
 
@@ -15,8 +17,8 @@ logger = logging.getLogger(__name__)
 
 
 async def tools_manage_action_async(
-    tm: ToolManager, action: str, tool_name: Optional[str] = None, **kwargs
-) -> Dict[str, Any]:
+    tm: ToolManager, action: str, tool_name: str | None = None, **kwargs
+) -> dict[str, Any]:
     """
     Manage tools (enable/disable/validate).
 
@@ -200,7 +202,7 @@ async def tools_manage_action_async(
 
 
 def tools_manage_action(
-    tm: ToolManager, action: str, tool_name: Optional[str] = None, **kwargs
-) -> Dict[str, Any]:
+    tm: ToolManager, action: str, tool_name: str | None = None, **kwargs
+) -> dict[str, Any]:
     """Sync wrapper for tool management actions."""
     return asyncio.run(tools_manage_action_async(tm, action, tool_name, **kwargs))

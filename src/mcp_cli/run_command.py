@@ -17,7 +17,7 @@ import asyncio
 import importlib
 import logging
 import sys
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable
 from pathlib import Path
 
 import typer
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------- #
 # internal helpers / globals                                                  #
 # --------------------------------------------------------------------------- #
-_ALL_TM: List[Any] = []  # referenced by the unit-tests
+_ALL_TM: list[Any] = []  # referenced by the unit-tests
 
 
 # --------------------------------------------------------------------------- #
@@ -40,8 +40,8 @@ _ALL_TM: List[Any] = []  # referenced by the unit-tests
 # --------------------------------------------------------------------------- #
 async def _init_tool_manager(
     config_file: str,
-    servers: List[str],
-    server_names: Optional[Dict[int, str]] = None,
+    servers: list[str],
+    server_names: dict[int, str | None] | None = None,
     initialization_timeout: float = 120.0,
 ):
     """
@@ -106,8 +106,8 @@ async def run_command(
     async_command: Callable[..., Any],
     *,
     config_file: str,
-    servers: List[str],
-    extra_params: Optional[Dict[str, Any]],
+    servers: list[str],
+    extra_params: dict[str, Any | None],
 ) -> Any:
     """
     Initialise the ToolManager and context, then call *async_command(...)*.
@@ -123,7 +123,9 @@ async def run_command(
         # ------------------------------------------------------------------
         # build ToolManager  (patch-friendly, see helper)
         # ------------------------------------------------------------------
-        tm = await _init_tool_manager(config_file, servers, server_names, init_timeout)
+        tm = await _init_tool_manager(
+            config_file, servers, server_names, init_timeout or 120.0
+        )
 
         # ------------------------------------------------------------------
         # Initialize context with tool manager and other params
@@ -178,9 +180,9 @@ async def run_command(
 def run_command_sync(
     async_command: Callable[..., Any],
     config_file: str,
-    servers: List[str],
+    servers: list[str],
     *,
-    extra_params: Optional[Dict[str, Any]],
+    extra_params: dict[str, Any | None],
 ) -> Any:
     """
     Synchronous convenience wrapper (used by `mcp-cli` entry-point and tests).
@@ -257,7 +259,7 @@ def cli_entry(
     config_file: str = typer.Option(
         "server_config.json", "--config", "-c", help="Server config file"
     ),
-    server: List[str] = typer.Option(
+    server: list[str] = typer.Option(
         ["sqlite"], "--server", "-s", help="Server(s) to connect"
     ),
     provider: str = typer.Option("openai", help="LLM provider name"),

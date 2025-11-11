@@ -7,10 +7,8 @@ Converts between Rich color names and prompt_toolkit color formats.
 This ensures consistent color handling across different UI components.
 """
 
-from typing import Optional
 
-
-def rich_to_prompt_toolkit(color_str: Optional[str]) -> str:
+def rich_to_prompt_toolkit(color_str: str | None) -> str:
     """
     Convert Rich color names to prompt_toolkit format.
 

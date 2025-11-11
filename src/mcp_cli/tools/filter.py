@@ -1,11 +1,13 @@
 # mcp_cli/tools/filter.py
 """
+from __future__ import annotations
+
 Tool filtering and management system.
 AGGRESSIVE AUTO-FIX: Always attempt to fix tools before validation.
 """
 
 import logging
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Any
 
 from mcp_cli.tools.validation import ToolSchemaValidator
 
@@ -20,8 +22,8 @@ class ToolFilter:
         self.disabled_by_validation: set[str] = set()
         self.disabled_by_user: set[str] = set()
         self.auto_fix_enabled: bool = True
-        self._validation_cache: Dict[str, Tuple[bool, Optional[str]]] = {}
-        self._fix_stats: Dict[str, int] = {"attempted": 0, "successful": 0, "failed": 0}
+        self._validation_cache: dict[str, tuple[bool, str | None]] = {}
+        self._fix_stats: dict[str, int] = {"attempted": 0, "successful": 0, "failed": 0}
 
     def is_tool_enabled(self, tool_name: str) -> bool:
         """Check if a tool is enabled (not disabled)."""
@@ -43,7 +45,7 @@ class ToolFilter:
         self.disabled_by_user.discard(tool_name)
         logger.info(f"Enabled tool '{tool_name}'")
 
-    def get_disabled_tools(self) -> Dict[str, str]:
+    def get_disabled_tools(self) -> dict[str, str]:
         """Get all disabled tools with their reasons."""
         result = {}
         for tool in self.disabled_by_validation:
@@ -69,8 +71,8 @@ class ToolFilter:
         logger.info("Cleared all validation-disabled tools")
 
     def filter_tools(
-        self, tools: List[Dict[str, Any]], provider: str = "openai"
-    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        self, tools: list[dict[str, Any]], provider: str = "openai"
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """
         Filter tools, separating valid from invalid ones.
         AGGRESSIVE: Always try to auto-fix first, then validate.
@@ -134,21 +136,19 @@ class ToolFilter:
                         )
                 else:
                     # Auto-fix disabled, just validate
-                    is_valid, error_msg = ToolSchemaValidator.validate_openai_schema(
-                        tool
-                    )
+                    validation = ToolSchemaValidator.validate_openai_schema(tool)
 
-                    if is_valid:
+                    if validation.is_valid:
                         valid_tools.append(tool)
                     else:
                         logger.warning(
-                            f"Tool '{tool_name}' failed validation: {error_msg}"
+                            f"Tool '{tool_name}' failed validation: {validation.error_message}"
                         )
                         self.disable_tool(tool_name, "validation")
                         invalid_tools.append(
                             {
                                 **tool,
-                                "_validation_error": error_msg,
+                                "_validation_error": validation.error_message,
                                 "_disabled_reason": "validation",
                             }
                         )
@@ -164,7 +164,7 @@ class ToolFilter:
 
         return valid_tools, invalid_tools
 
-    def _extract_tool_name(self, tool: Dict[str, Any]) -> str:
+    def _extract_tool_name(self, tool: dict[str, Any]) -> str:
         """Extract tool name from tool definition."""
         if "function" in tool:
             func_name: str = tool["function"].get("name", "unknown")
@@ -172,33 +172,7 @@ class ToolFilter:
         tool_name: str = tool.get("name", "unknown")
         return tool_name
 
-    def _try_fix_tool(
-        self, tool: Dict[str, Any], provider: str
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Attempt to fix a broken tool schema.
-        DEPRECATED: Use ToolSchemaValidator.validate_and_fix_tool instead.
-        """
-        if provider != "openai":
-            return None
-
-        try:
-            # Use the enhanced fix function that handles OpenAI compatibility
-            fixed_tool = ToolSchemaValidator.fix_openai_compatibility(tool)
-
-            # Also fix array schemas
-            if "function" in fixed_tool and "parameters" in fixed_tool["function"]:
-                fixed_parameters = ToolSchemaValidator.fix_array_schemas(
-                    fixed_tool["function"]["parameters"]
-                )
-                fixed_tool["function"]["parameters"] = fixed_parameters
-
-            return fixed_tool
-        except Exception as e:
-            logger.debug(f"Failed to auto-fix tool: {e}")
-            return None
-
-    def get_validation_summary(self) -> Dict[str, Any]:
+    def get_validation_summary(self) -> dict[str, Any]:
         """Get a summary of validation results."""
         return {
             "total_disabled": len(self.disabled_tools),
@@ -209,9 +183,9 @@ class ToolFilter:
             "fix_stats": self._fix_stats.copy(),
         }
 
-    def get_fix_statistics(self) -> Dict[str, int]:
+    def get_fix_statistics(self) -> dict[str, int]:
         """Get auto-fix statistics."""
-        stats: Dict[str, int] = self._fix_stats.copy()
+        stats: dict[str, int] = self._fix_stats.copy()
         return stats
 
     def reset_statistics(self) -> None:

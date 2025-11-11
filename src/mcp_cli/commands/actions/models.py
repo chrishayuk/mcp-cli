@@ -11,7 +11,6 @@ Commands:
 
 from __future__ import annotations
 
-from typing import List
 
 from chuk_term.ui import output, format_table
 from mcp_cli.model_management import ModelManager
@@ -120,7 +119,7 @@ async def _list_models(
     table_data = []
 
     # Get local Ollama models if applicable
-    local_models: List[str] = []
+    local_models: list[str] = []
     if provider.lower() == "ollama":
         ollama_running, local_models = await _check_local_ollama()
 
@@ -274,7 +273,7 @@ async def _check_local_ollama() -> tuple[bool, list[str]]:
         return False, []
 
 
-def model_action(args: List[str]) -> None:
+def model_action(args: list[str]) -> None:
     """Synchronous wrapper for model_action_async."""
     params = ModelActionParams(args=args)
     run_blocking(model_action_async(params))

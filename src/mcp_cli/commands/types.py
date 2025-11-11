@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-from typing import List
 
 # Import response models
 # These will be imported once the models are updated
@@ -18,10 +17,10 @@ if TYPE_CHECKING:
     )
 
 # Response list type aliases
-ServerList = List["ServerInfoResponse"]
-ResourceList = List["ResourceInfoResponse"]
-PromptList = List["PromptInfoResponse"]
-ToolList = List["ToolInfoResponse"]
+ServerList = list["ServerInfoResponse"]
+ResourceList = list["ResourceInfoResponse"]
+PromptList = list["PromptInfoResponse"]
+ToolList = list["ToolInfoResponse"]
 
 __all__ = [
     "ServerList",

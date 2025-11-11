@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from enum import Flag, auto
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -34,7 +34,7 @@ class CommandParameter(BaseModel):
     default: Any = None
     required: bool = False
     help: str = ""
-    choices: Optional[List[Any]] = None
+    choices: list[Any] | None = None
     is_flag: bool = False
 
     model_config = {
@@ -56,9 +56,9 @@ class CommandResult(BaseModel):
     """Result from command execution."""
 
     success: bool
-    output: Optional[str] = None
-    data: Optional[Any] = None
-    error: Optional[str] = None
+    output: str | None = None
+    data: Any | None = None
+    error: str | None = None
     should_exit: bool = False
     should_clear: bool = False
 
@@ -83,7 +83,7 @@ class UnifiedCommand(ABC):
         pass
 
     @property
-    def aliases(self) -> List[str]:
+    def aliases(self) -> list[str]:
         """Alternative names for the command."""
         return []
 
@@ -104,7 +104,7 @@ class UnifiedCommand(ABC):
         return CommandMode.ALL
 
     @property
-    def parameters(self) -> List[CommandParameter]:
+    def parameters(self) -> list[CommandParameter]:
         """
         Parameters this command accepts.
 
@@ -151,7 +151,7 @@ class UnifiedCommand(ABC):
             return f"Error: {result.error}"
         return ""
 
-    def validate_parameters(self, **kwargs) -> Optional[str]:
+    def validate_parameters(self, **kwargs) -> str | None:
         """
         Validate parameters before execution.
 
@@ -174,9 +174,9 @@ class CommandGroup(UnifiedCommand):
     A command that contains subcommands (e.g., 'tools list', 'tools call').
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
-        self.subcommands: Dict[str, UnifiedCommand] = {}
+        self.subcommands: dict[str, UnifiedCommand] = {}
 
     def add_subcommand(self, command: UnifiedCommand) -> None:
         """Add a subcommand to this group."""

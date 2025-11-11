@@ -129,7 +129,7 @@ async def test_initialize_chat_context(chat_context):
     assert chat_context.get_tool_count() == 2
 
     # system prompt injected as first conversation turn
-    assert chat_context.conversation_history[0] == {
+    assert chat_context.conversation_history[0].to_dict() == {
         "role": "system",
         "content": "SYS_PROMPT",
     }
@@ -163,4 +163,4 @@ async def test_to_dict_and_update_roundtrip(chat_context):
 
     assert chat_context.exit_requested is True
     assert chat_context.get_conversation_length() == original_len + 1
-    assert chat_context.conversation_history[-1]["content"] == "Hi"
+    assert chat_context.conversation_history[-1].content == "Hi"

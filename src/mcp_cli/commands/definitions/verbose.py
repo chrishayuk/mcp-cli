@@ -5,7 +5,6 @@ Unified verbose command implementation (chat mode only).
 
 from __future__ import annotations
 
-from typing import List
 
 from mcp_cli.commands.base import (
     UnifiedCommand,
@@ -23,7 +22,7 @@ class VerboseCommand(UnifiedCommand):
         return "verbose"
 
     @property
-    def aliases(self) -> List[str]:
+    def aliases(self) -> list[str]:
         return []
 
     @property
@@ -51,7 +50,7 @@ Examples:
         return CommandMode.CHAT | CommandMode.INTERACTIVE
 
     @property
-    def parameters(self) -> List[CommandParameter]:
+    def parameters(self) -> list[CommandParameter]:
         return [
             CommandParameter(
                 name="state",

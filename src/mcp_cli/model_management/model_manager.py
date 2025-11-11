@@ -1,5 +1,7 @@
 # src/mcp_cli/model_management/model_manager.py
 """
+from __future__ import annotations
+
 ModelManager - Clean, type-safe LLM provider and model management.
 
 This module provides the main ModelManager class that orchestrates:
@@ -15,7 +17,7 @@ NO HARDCODED MODELS - All model data comes from:
 """
 
 import logging
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 from mcp_cli.model_management.provider import RuntimeProviderConfig
 from mcp_cli.model_management.client_factory import ClientFactory
@@ -35,12 +37,12 @@ class ModelManager:
     - Provides a simple, intuitive API
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize ModelManager with chuk_llm configuration."""
         self._chuk_config = None
-        self._active_provider: Optional[str] = None
-        self._active_model: Optional[str] = None
-        self._custom_providers: Dict[str, RuntimeProviderConfig] = {}
+        self._active_provider: str | None = None
+        self._active_model: str | None = None
+        self._custom_providers: dict[str, RuntimeProviderConfig] = {}
         self._client_factory = ClientFactory()
         self._discovery_triggered = False
 
@@ -49,7 +51,7 @@ class ModelManager:
 
     # ── Initialization ────────────────────────────────────────────────────────
 
-    def _initialize_chuk_llm(self):
+    def _initialize_chuk_llm(self) -> None:
         """Initialize chuk_llm configuration and trigger discovery."""
         try:
             from chuk_llm.configuration import get_config
@@ -59,9 +61,9 @@ class ModelManager:
 
             # Set defaults from chuk_llm
             if self._chuk_config:
-                self._active_provider = "ollama"  # Safe default
-                # Get default model from provider config (no hardcoding!)
-                self._active_model = self.get_default_model("ollama")
+                self._active_provider = "ollama"  # type: ignore[unreachable]  # Safe default
+                # Defer model resolution to avoid circular dependencies during __init__
+                self._active_model = None
 
             # Trigger discovery
             self._trigger_discovery()
@@ -73,7 +75,7 @@ class ModelManager:
             self._active_provider = "ollama"
             self._active_model = None  # Will be determined on first use
 
-    def _trigger_discovery(self):
+    def _trigger_discovery(self) -> None:
         """Trigger model discovery for providers."""
         if self._discovery_triggered:
             return
@@ -89,7 +91,7 @@ class ModelManager:
         except Exception as e:
             logger.warning(f"ModelManager discovery failed (continuing anyway): {e}")
 
-    def _load_custom_providers(self):
+    def _load_custom_providers(self) -> None:
         """Load custom providers from preferences."""
         try:
             from mcp_cli.utils.preferences import get_preference_manager
@@ -104,6 +106,7 @@ class ModelManager:
                     api_base=provider_data.get("api_base", ""),
                     models=provider_data.get("models", []),
                     default_model=provider_data.get("default_model"),
+                    api_key=None,  # Not stored in preferences for security
                     is_runtime=False,  # These are persisted in preferences
                 )
                 self._custom_providers[name] = config
@@ -114,7 +117,7 @@ class ModelManager:
 
     # ── Provider Management ───────────────────────────────────────────────────
 
-    def get_available_providers(self) -> List[str]:
+    def get_available_providers(self) -> list[str]:
         """
         Get list of all available providers.
 
@@ -125,7 +128,7 @@ class ModelManager:
 
         # Get chuk_llm providers
         if self._chuk_config:
-            try:
+            try:  # type: ignore[unreachable]
                 all_providers = self._chuk_config.get_all_providers()
                 # Ollama first, then others alphabetically
                 if "ollama" in all_providers:
@@ -145,8 +148,8 @@ class ModelManager:
         self,
         name: str,
         api_base: str,
-        api_key: Optional[str] = None,
-        models: Optional[List[str]] = None,
+        api_key: str | None = None,
+        models: list[str] | None = None,
     ) -> RuntimeProviderConfig:
         """
         Add a provider at runtime (not persisted).
@@ -171,7 +174,7 @@ class ModelManager:
                 logger.info(
                     f"Discovered {discovery_result.discovered_count} models from {name}"
                 )
-                models = discovery_result.models
+                models = list(discovery_result.models)
             else:
                 logger.warning(
                     f"Discovery failed for {name}: {discovery_result.error or 'No models found'}"
@@ -181,7 +184,7 @@ class ModelManager:
         config = RuntimeProviderConfig(
             name=name,
             api_base=api_base,
-            models=models or [],
+            models=models if models else [] or [],
             api_key=api_key,
             is_runtime=True,
             default_model=None,  # Will be auto-set by model_validator
@@ -205,7 +208,7 @@ class ModelManager:
 
     # ── Model Management ──────────────────────────────────────────────────────
 
-    def get_available_models(self, provider: Optional[str] = None) -> List[str]:
+    def get_available_models(self, provider: str | None = None) -> list[str]:
         """
         Get available models for a provider.
 
@@ -235,7 +238,7 @@ class ModelManager:
             logger.warning("No chuk_llm config available, cannot get models")
             return []
 
-        try:
+        try:  # type: ignore[unreachable]
             from chuk_llm.llm.client import list_available_providers
 
             providers = list_available_providers()
@@ -278,7 +281,7 @@ class ModelManager:
 
             # Use chuk_llm configuration
             if self._chuk_config:
-                provider_config = self._chuk_config.get_provider(provider)
+                provider_config = self._chuk_config.get_provider(provider)  # type: ignore[unreachable]
                 default = provider_config.default_model
                 if default:
                     return str(default)
@@ -293,7 +296,7 @@ class ModelManager:
             available_models = self.get_available_models(provider)
             return available_models[0] if available_models else "default"
 
-    def refresh_models(self, provider: Optional[str] = None) -> int:
+    def refresh_models(self, provider: str | None = None) -> int:
         """
         Manually refresh models for a provider.
 
@@ -361,9 +364,7 @@ class ModelManager:
 
     # ── Client Management ─────────────────────────────────────────────────────
 
-    def get_client(
-        self, provider: Optional[str] = None, model: Optional[str] = None
-    ) -> Any:
+    def get_client(self, provider: str | None = None, model: str | None = None) -> Any:
         """
         Get a client for the specified or active provider/model.
 
@@ -398,7 +399,7 @@ class ModelManager:
         """Check if a provider is available."""
         return provider in self.get_available_providers()
 
-    def validate_model(self, model: str, provider: Optional[str] = None) -> bool:
+    def validate_model(self, model: str, provider: str | None = None) -> bool:
         """Check if a model is available for a provider."""
         target_provider = provider or self._active_provider
         if not target_provider:

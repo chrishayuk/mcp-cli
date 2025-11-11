@@ -62,36 +62,6 @@ from mcp_cli.commands.models import (
     ToolInfoResponse,
 )
 
-__all__ = [
-    # Base classes
-    "UnifiedCommand",
-    "CommandGroup",
-    "CommandMode",
-    "CommandParameter",
-    "CommandResult",
-    # Registry
-    "registry",
-    "UnifiedCommandRegistry",
-    # Decorators
-    "validate_params",
-    "handle_errors",
-    # Exceptions
-    "CommandError",
-    "InvalidParameterError",
-    "CommandExecutionError",
-    "CommandNotFoundError",
-    "ValidationError",
-    # Utils
-    "command_utils",
-    # Response models
-    "ServerInfoResponse",
-    "ResourceInfoResponse",
-    "PromptInfoResponse",
-    "ToolInfoResponse",
-    # Functions
-    "register_all_commands",
-]
-
 
 def register_all_commands() -> None:
     """
@@ -186,6 +156,12 @@ __all__ = [
     # Decorators
     "validate_params",
     "handle_errors",
+    # Exceptions
+    "CommandError",
+    "InvalidParameterError",
+    "CommandExecutionError",
+    "CommandNotFoundError",
+    "ValidationError",
     # Server models
     "ServerActionParams",
     "ServerStatusInfo",
@@ -215,4 +191,9 @@ __all__ = [
     # Conversation models
     "ConversationActionParams",
     "ConversationInfo",
+    # Response models
+    "ServerInfoResponse",
+    "ResourceInfoResponse",
+    "PromptInfoResponse",
+    "ToolInfoResponse",
 ]

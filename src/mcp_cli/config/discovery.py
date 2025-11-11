@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, List
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ def trigger_discovery_after_setup() -> int:
         return 0
 
 
-def get_available_models_quick(provider: str = "ollama") -> List[str]:
+def get_available_models_quick(provider: str = "ollama") -> list[str]:
     """
     Quick function to get available models after discovery.
 
@@ -125,7 +125,7 @@ def validate_provider_exists(provider: str) -> bool:
         return False
 
 
-def get_discovery_status() -> Dict[str, Any]:
+def get_discovery_status() -> dict[str, Any]:
     """
     Get discovery status for debugging.
 

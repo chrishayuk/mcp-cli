@@ -1,7 +1,6 @@
 # src/mcp_cli/ui/formatting.py
 """Helper functions for tool display and formatting using chuk-term."""
 
-from typing import List, Dict
 from chuk_term.ui import output, format_table
 
 from mcp_cli.tools.models import ToolInfo, ServerInfo
@@ -9,7 +8,7 @@ from mcp_cli.tools.models import ToolInfo, ServerInfo
 
 def format_tool_for_display(
     tool: ToolInfo, show_details: bool = False
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Format a tool for display in UI."""
     display_data = {
         "name": tool.name,
@@ -33,7 +32,7 @@ def format_tool_for_display(
     return display_data
 
 
-def create_tools_table(tools: List[ToolInfo], show_details: bool = False):
+def create_tools_table(tools: list[ToolInfo], show_details: bool = False):
     """Create a chuk-term table for tools (does not print it)."""
     # Prepare data for table
     headers = ["Server", "Tool", "Description"]
@@ -60,7 +59,7 @@ def create_tools_table(tools: List[ToolInfo], show_details: bool = False):
     return table
 
 
-def create_servers_table(servers: List[ServerInfo]):
+def create_servers_table(servers: list[ServerInfo]):
     """Create a chuk-term table for servers (does not print it)."""
     # Prepare data for table
     headers = ["ID", "Server Name", "Tools", "Status"]

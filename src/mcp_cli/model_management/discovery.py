@@ -7,7 +7,6 @@ Pydantic models for representing the results of model discovery operations.
 
 from __future__ import annotations
 
-from typing import Optional, List
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -20,9 +19,9 @@ class DiscoveryResult(BaseModel):
     """
 
     provider: str = Field(..., description="Provider name")
-    models: List[str] = Field(default_factory=list, description="Discovered models")
+    models: list[str] = Field(default_factory=list, description="Discovered models")
     success: bool = Field(..., description="Whether discovery succeeded")
-    error: Optional[str] = Field(None, description="Error message if failed")
+    error: str | None = Field(None, description="Error message if failed")
     discovered_count: int = Field(default=0, description="Number of models discovered")
 
     @model_validator(mode="after")

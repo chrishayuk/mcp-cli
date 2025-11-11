@@ -1,4 +1,6 @@
 # mcp_cli/chat/__main__.py
+from __future__ import annotations
+
 import logging
 import sys
 import typer
@@ -6,7 +8,6 @@ import atexit
 import asyncio
 import signal
 import gc
-from typing import Optional
 
 # Updated imports for new chuk-mcp APIs
 
@@ -126,9 +127,9 @@ def setup_signal_handlers():
 def common_options(
     ctx: typer.Context,
     config_file: str = "server_config.json",
-    server: Optional[str] = None,
+    server: str | None = None,
     provider: str = "openai",
-    model: Optional[str] = None,
+    model: str | None = None,
     disable_filesystem: bool = True,
 ):
     """

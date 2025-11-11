@@ -4,7 +4,7 @@
 from __future__ import annotations
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from rich import print
 from rich.markdown import Markdown
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 class SlashCompleter(Completer):
     """Provides completions for slash commands based on registered commands."""
 
-    def __init__(self, command_names: List[str]):
+    def __init__(self, command_names: list[str]):
         self.command_names = command_names
 
     def get_completions(self, document, complete_event):
@@ -48,10 +48,10 @@ class SlashCompleter(Completer):
 
 async def interactive_mode(
     stream_manager: Any = None,
-    tool_manager: Optional[ToolManager] = None,
+    tool_manager: ToolManager | None = None,
     provider: str = "openai",
     model: str = "gpt-4o-mini",
-    server_names: Optional[Dict[int, str]] = None,
+    server_names: dict[int, str | None] | None = None,
     **kwargs,
 ) -> bool:
     """

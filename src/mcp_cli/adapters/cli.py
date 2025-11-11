@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict
+from typing import Any
 
 import typer
 
@@ -128,7 +128,7 @@ class CLICommandAdapter:
         app.add_typer(sub_app, name=group.name, help=group.description)
 
     @staticmethod
-    async def _execute_command(command: Any, kwargs: Dict[str, Any]) -> Any:
+    async def _execute_command(command: Any, kwargs: dict[str, Any]) -> Any:
         """
         Execute a command with context.
 

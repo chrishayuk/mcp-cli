@@ -11,6 +11,7 @@ import json
 from unittest.mock import patch
 
 from mcp_cli.ui.chat_display_manager import ChatDisplayManager
+from mcp_cli.chat.models import ToolExecutionState
 
 
 class TestChatDisplayManager:
@@ -132,9 +133,9 @@ class TestChatDisplayManager:
         assert manager.live_display_active is True
 
         current_tool = manager.current_tool
-        assert current_tool["name"] == tool_name
-        assert current_tool["arguments"] == arguments
-        assert "start_time" in current_tool
+        assert current_tool.name == tool_name
+        assert current_tool.arguments == arguments
+        assert isinstance(current_tool.start_time, float)
 
     def test_finish_tool_execution_success(self, manager):
         """Test finishing tool execution successfully."""
@@ -142,11 +143,11 @@ class TestChatDisplayManager:
 
         # Set up tool execution state
         manager.is_tool_executing = True
-        manager.current_tool = {
-            "name": "test_tool",
-            "arguments": {"param": "value"},
-            "start_time": time.time() - 1.5,
-        }
+        manager.current_tool = ToolExecutionState(
+            name="test_tool",
+            arguments={"param": "value"},
+            start_time=time.time() - 1.5,
+        )
         manager.live_display_active = True
 
         result = "Tool completed successfully"
@@ -170,11 +171,11 @@ class TestChatDisplayManager:
         from chuk_term.ui import output
 
         manager.is_tool_executing = True
-        manager.current_tool = {
-            "name": "failing_tool",
-            "arguments": {},
-            "start_time": time.time() - 0.5,
-        }
+        manager.current_tool = ToolExecutionState(
+            name="failing_tool",
+            arguments={},
+            start_time=time.time() - 0.5,
+        )
         manager.live_display_active = True
 
         error_result = "Tool failed with error"
@@ -317,11 +318,11 @@ class TestChatDisplayManager:
         mock_time.return_value = 200.5
 
         manager.is_tool_executing = True
-        manager.current_tool = {
-            "name": "test_tool",
-            "arguments": {"param": "value"},
-            "start_time": 200.0,
-        }
+        manager.current_tool = ToolExecutionState(
+            name="test_tool",
+            arguments={"param": "value"},
+            start_time=200.0,
+        )
 
         status = manager._create_live_status()
 
@@ -370,13 +371,14 @@ class TestChatDisplayManager:
         """Test showing successful tool result."""
         from chuk_term.ui import output
 
-        manager.current_tool = {
-            "name": "successful_tool",
-            "arguments": {"param": "value"},
-            "elapsed": 1.5,
-            "success": True,
-            "result": '{"status": "ok"}',
-        }
+        manager.current_tool = ToolExecutionState(
+            name="successful_tool",
+            arguments={"param": "value"},
+            start_time=time.time(),
+            elapsed=1.5,
+            success=True,
+            result='{"status": "ok"}',
+        )
 
         with (
             patch.object(output, "success") as mock_success,
@@ -395,13 +397,14 @@ class TestChatDisplayManager:
         """Test showing failed tool result."""
         from chuk_term.ui import output
 
-        manager.current_tool = {
-            "name": "failed_tool",
-            "arguments": {"param": "value"},
-            "elapsed": 0.8,
-            "success": False,
-            "result": "Error occurred during execution",
-        }
+        manager.current_tool = ToolExecutionState(
+            name="failed_tool",
+            arguments={"param": "value"},
+            start_time=time.time(),
+            elapsed=0.8,
+            success=False,
+            result="Error occurred during execution",
+        )
 
         with (
             patch.object(output, "error") as mock_error,
@@ -434,13 +437,14 @@ class TestChatDisplayManager:
 
         json_result = '{"status": "success", "data": {"items": [1, 2, 3]}}'
 
-        manager.current_tool = {
-            "name": "json_tool",
-            "arguments": {},
-            "elapsed": 1.0,
-            "success": True,
-            "result": json_result,
-        }
+        manager.current_tool = ToolExecutionState(
+            name="json_tool",
+            arguments={},
+            start_time=time.time(),
+            elapsed=1.0,
+            success=True,
+            result=json_result,
+        )
 
         with (
             patch.object(output, "success"),
@@ -462,13 +466,14 @@ class TestChatDisplayManager:
 
         invalid_json = "Not valid JSON content"
 
-        manager.current_tool = {
-            "name": "text_tool",
-            "arguments": {},
-            "elapsed": 1.0,
-            "success": True,
-            "result": invalid_json,
-        }
+        manager.current_tool = ToolExecutionState(
+            name="text_tool",
+            arguments={},
+            start_time=time.time(),
+            elapsed=1.0,
+            success=True,
+            result=invalid_json,
+        )
 
         with (
             patch.object(output, "success"),
@@ -486,19 +491,20 @@ class TestChatDisplayManager:
         """Test tool result with filtered arguments display."""
         from chuk_term.ui import output
 
-        manager.current_tool = {
-            "name": "test_tool",
-            "arguments": {
+        manager.current_tool = ToolExecutionState(
+            name="test_tool",
+            arguments={
                 "valid_param": "value",
                 "empty_param": "",
                 "none_param": None,
                 "whitespace_param": "   ",
                 "another_valid": "another_value",
             },
-            "elapsed": 1.0,
-            "success": True,
-            "result": "result",
-        }
+            start_time=time.time(),
+            elapsed=1.0,
+            success=True,
+            result="result",
+        )
 
         with (
             patch.object(output, "success"),

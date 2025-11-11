@@ -4,6 +4,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from mcp_cli.commands.definitions.conversation import ConversationCommand
+from mcp_cli.chat.models import Message, MessageRole
 
 
 @pytest.fixture
@@ -125,7 +126,9 @@ async def test_conversation_truncate_long_message(
 ):
     """Test that long messages get truncated in show."""
     long_message = "A" * 250  # Create a message longer than 200 chars
-    mock_chat_context.conversation_history = [{"role": "user", "content": long_message}]
+    mock_chat_context.conversation_history = [
+        Message(role=MessageRole.USER, content=long_message)
+    ]
 
     result = await conversation_command.execute(
         chat_context=mock_chat_context, action="show"
