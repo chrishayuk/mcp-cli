@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from chuk_term.ui import output
+from mcp_cli.commands.models.cmd import MessageRole, Message
 
 
 async def cmd_action_async(
@@ -210,11 +212,14 @@ async def _execute_prompt_mode(
         output.error(f"Failed to initialize LLM client: {e}")
         return
 
-    # Build messages
-    messages = []
+    # Build messages using Pydantic models
+    messages_models: list[Message] = []
     if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": full_prompt})
+        messages_models.append(Message(role=MessageRole.SYSTEM, content=system_prompt))
+    messages_models.append(Message(role=MessageRole.USER, content=full_prompt))
+
+    # Convert to dict only for external LLM API
+    messages = [msg.model_dump(exclude_none=True) for msg in messages_models]
 
     # Execute the conversation
     try:
@@ -266,13 +271,17 @@ async def _execute_prompt_mode(
 
 async def _handle_tool_calls(
     client,
-    messages: list,
+    messages: list[dict[str, Any]],
     tool_calls: list,
     response_text: str,
     max_turns: int,
     raw: bool,
 ) -> str:
-    """Handle tool calls in multi-turn conversation."""
+    """Handle tool calls in multi-turn conversation.
+
+    Note: messages list is dict format for LLM API compatibility.
+    We maintain it as dicts since it's passed directly to external LLM client.
+    """
     from mcp_cli.context import get_context
 
     context = get_context()
@@ -282,10 +291,10 @@ async def _handle_tool_calls(
         output.error("Tool manager not initialized")
         return response_text
 
-    # Add assistant message with tool calls
+    # Add assistant message with tool calls (dict format for LLM API)
     messages.append(
         {
-            "role": "assistant",
+            "role": MessageRole.ASSISTANT.value,
             "content": response_text,
             "tool_calls": tool_calls,
         }
@@ -330,7 +339,7 @@ async def _handle_tool_calls(
             # Add tool result to messages
             messages.append(
                 {
-                    "role": "tool",
+                    "role": MessageRole.TOOL.value,
                     "tool_call_id": tool_call_id,
                     "name": tool_name,
                     "content": result_str,
@@ -341,7 +350,7 @@ async def _handle_tool_calls(
             output.error(error_msg)
             messages.append(
                 {
-                    "role": "tool",
+                    "role": MessageRole.TOOL.value,
                     "tool_call_id": tool_call_id,
                     "name": tool_name,
                     "content": f"Error: {error_msg}",
@@ -370,7 +379,7 @@ async def _handle_tool_calls(
         # Add assistant message and execute tools
         messages.append(
             {
-                "role": "assistant",
+                "role": MessageRole.ASSISTANT.value,
                 "content": response_text,
                 "tool_calls": response_tool_calls,
             }
@@ -413,7 +422,7 @@ async def _handle_tool_calls(
 
                 messages.append(
                     {
-                        "role": "tool",
+                        "role": MessageRole.TOOL.value,
                         "tool_call_id": tool_call_id,
                         "name": tool_name,
                         "content": result_str,
@@ -424,7 +433,7 @@ async def _handle_tool_calls(
                 output.error(error_msg)
                 messages.append(
                     {
-                        "role": "tool",
+                        "role": MessageRole.TOOL.value,
                         "tool_call_id": tool_call_id,
                         "name": tool_name,
                         "content": f"Error: {error_msg}",

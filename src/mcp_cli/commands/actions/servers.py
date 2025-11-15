@@ -18,16 +18,29 @@ from chuk_term.ui import output, format_table
 from mcp_cli.context import get_context
 from mcp_cli.config.config_manager import ConfigManager, ServerConfig
 from mcp_cli.utils.preferences import get_preference_manager
-from mcp_cli.commands.models import ServerActionParams, ServerInfoResponse
+from mcp_cli.commands.models import (
+    ServerActionParams,
+    ServerInfoResponse,
+    ServerCapabilities,
+)
+from mcp_cli.commands.enums import ServerCommand, TransportType
 
 
-def _get_server_icon(capabilities: dict[str, Any], tool_count: int) -> str:
+def _get_server_icon(
+    capabilities: dict[str, Any] | ServerCapabilities, tool_count: int
+) -> str:
     """Determine server icon based on MCP capabilities."""
-    if capabilities.get("resources") and capabilities.get("prompts"):
+    # Convert dict to ServerCapabilities if needed
+    if isinstance(capabilities, dict):
+        caps = ServerCapabilities(**capabilities)
+    else:
+        caps = capabilities
+
+    if caps.resources and caps.prompts:
         return "🎯"  # Full-featured server
-    elif capabilities.get("resources"):
+    elif caps.resources:
         return "📁"  # Resource-capable server
-    elif capabilities.get("prompts"):
+    elif caps.prompts:
         return "💬"  # Prompt-capable server
     elif tool_count > 15:
         return "🔧"  # Tool-heavy server
@@ -52,26 +65,15 @@ def _format_performance(ping_ms: float | None) -> tuple[str, str]:
         return "🔴", f"{ping_ms:.1f}ms"
 
 
-def _format_capabilities(capabilities: dict[str, Any]) -> str:
+def _format_capabilities(capabilities: dict[str, Any] | ServerCapabilities) -> str:
     """Format server capabilities as readable string."""
-    caps = []
+    # Convert dict to ServerCapabilities if needed
+    if isinstance(capabilities, dict):
+        caps_model = ServerCapabilities(**capabilities)
+    else:
+        caps_model = capabilities
 
-    # Check standard MCP capabilities
-    if capabilities.get("tools"):
-        caps.append("Tools")
-    if capabilities.get("prompts"):
-        caps.append("Prompts")
-    if capabilities.get("resources"):
-        caps.append("Resources")
-
-    # Check experimental capabilities
-    experimental = capabilities.get("experimental", {})
-    if experimental.get("events"):
-        caps.append("Events*")
-    if experimental.get("streaming"):
-        caps.append("Streaming*")
-
-    return ", ".join(caps) if caps else "None"
+    return caps_model.to_display_string()
 
 
 def _get_server_status(
@@ -588,17 +590,17 @@ async def servers_action_async(params: ServerActionParams) -> list[ServerInfoRes
         sub = sub.lower()
 
         # List servers
-        if sub == "list":
+        if sub == ServerCommand.LIST.value:
             show_all = bool(rest and rest[0].lower() == "all")
             await _list_servers(show_all)
             return []
 
         # Add server with support for --transport, --env, --header
-        if sub == "add" and len(rest) >= 2:
+        if sub == ServerCommand.ADD.value and len(rest) >= 2:
             name = rest[0]
 
             # Parse options
-            transport = "stdio"  # default
+            transport = TransportType.STDIO.value  # default
             config_args = []
             env_vars = {}
             headers = {}
@@ -631,7 +633,11 @@ async def servers_action_async(params: ServerActionParams) -> list[ServerInfoRes
                     break
                 else:
                     # First non-option arg could be transport
-                    if i == 1 and arg in ["stdio", "http", "sse"]:
+                    if i == 1 and arg in [
+                        TransportType.STDIO.value,
+                        TransportType.HTTP.value,
+                        TransportType.SSE.value,
+                    ]:
                         transport = arg
                         i += 1
                     else:
@@ -642,17 +648,17 @@ async def servers_action_async(params: ServerActionParams) -> list[ServerInfoRes
             return []
 
         # Remove server
-        if sub == "remove" and rest:
+        if sub == ServerCommand.REMOVE.value and rest:
             await _remove_server(rest[0])
             return []
 
         # Enable server
-        if sub == "enable" and rest:
+        if sub == ServerCommand.ENABLE.value and rest:
             await _enable_disable_server(rest[0], True)
             return []
 
         # Disable server
-        if sub == "disable" and rest:
+        if sub == ServerCommand.DISABLE.value and rest:
             await _enable_disable_server(rest[0], False)
             return []
 

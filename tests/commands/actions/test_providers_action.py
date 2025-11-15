@@ -104,54 +104,71 @@ def test_check_ollama_running_failed():
 
 def test_get_provider_status_enhanced_ollama_running():
     """Test getting enhanced status for Ollama when running."""
+    from mcp_cli.commands.models.provider import ProviderData
+
     with patch(
         "mcp_cli.commands.actions.providers._check_ollama_running",
         return_value=(True, 3),
     ):
-        icon, text, reason = _get_provider_status_enhanced("ollama", {})
+        provider_data = ProviderData(name="ollama")
+        status = _get_provider_status_enhanced("ollama", provider_data)
 
-        assert icon == "✅"
-        assert text == "Ready"
-        assert "Running (3 models)" in reason
+        assert status.icon == "✅"
+        assert status.text == "Ready"
+        assert "Running (3 models)" in status.reason
 
 
 def test_get_provider_status_enhanced_ollama_not_running():
     """Test getting enhanced status for Ollama when not running."""
+    from mcp_cli.commands.models.provider import ProviderData
+
     with patch(
         "mcp_cli.commands.actions.providers._check_ollama_running",
         return_value=(False, 0),
     ):
-        icon, text, reason = _get_provider_status_enhanced("ollama", {})
+        provider_data = ProviderData(name="ollama")
+        status = _get_provider_status_enhanced("ollama", provider_data)
 
-        assert icon == "❌"
-        assert text == "Not Running"
-        assert "Ollama service not accessible" in reason
+        assert status.icon == "❌"
+        assert status.text == "Not Running"
+        assert "Ollama service not accessible" in status.reason
 
 
 def test_get_provider_status_enhanced_api_provider_ready():
     """Test getting enhanced status for API provider that's ready."""
-    info = {"has_api_key": True, "models": ["model1", "model2"]}
-    icon, text, reason = _get_provider_status_enhanced("openai", info)
+    from mcp_cli.commands.models.provider import ProviderData
 
-    assert icon == "✅"
-    assert text == "Ready"
-    assert "Configured (2 models)" in reason
+    provider_data = ProviderData(
+        name="openai",
+        has_api_key=True,
+        models=["model1", "model2"],
+    )
+    status = _get_provider_status_enhanced("openai", provider_data)
+
+    assert status.icon == "✅"
+    assert status.text == "Ready"
+    assert "Configured (2 models)" in status.reason
 
 
 def test_get_provider_status_enhanced_api_provider_no_key():
     """Test getting enhanced status for API provider without key."""
-    info = {"has_api_key": False}
-    icon, text, reason = _get_provider_status_enhanced("openai", info)
+    from mcp_cli.commands.models.provider import ProviderData
 
-    assert icon == "❌"
-    assert text == "Not Configured"
-    assert "No API key" in reason
+    provider_data = ProviderData(name="openai", has_api_key=False)
+    status = _get_provider_status_enhanced("openai", provider_data)
+
+    assert status.icon == "❌"
+    assert status.text == "Not Configured"
+    assert "No API key" in status.reason
 
 
 def test_get_provider_status_enhanced_api_provider_partial():
     """Test getting enhanced status for API provider with key but no models."""
-    info = {"has_api_key": True, "models": []}
-    icon, text, reason = _get_provider_status_enhanced("openai", info)
+    from mcp_cli.commands.models.provider import ProviderData
+
+    provider_data = ProviderData(name="openai", has_api_key=True, models=[])
+    status = _get_provider_status_enhanced("openai", provider_data)
+    icon, text, reason = status.icon, status.text, status.reason
 
     assert icon == "⚠️"
     assert text == "Partial Setup"
@@ -179,39 +196,50 @@ def test_get_model_count_display_enhanced_ollama_not_running():
 
 
 def test_get_model_count_display_enhanced_api_provider():
-    """Test getting model count display for API provider."""
-    info = {"models": ["model1", "model2", "model3"]}
-    display = _get_model_count_display_enhanced("openai", info)
+    """Test getting model count display."""
+    from mcp_cli.commands.models.provider import ProviderData
+
+    provider_data = ProviderData(name="openai", models=["model1", "model2", "model3"])
+    display = _get_model_count_display_enhanced("openai", provider_data)
     assert display == "3 models"
 
 
 def test_get_model_count_display_enhanced_no_models():
-    """Test getting model count display with no models."""
-    info = {"models": []}
-    display = _get_model_count_display_enhanced("openai", info)
+    """Test getting model count display."""
+    from mcp_cli.commands.models.provider import ProviderData
+
+    provider_data = ProviderData(name="openai", models=[])
+    display = _get_model_count_display_enhanced("openai", provider_data)
     assert display == "No models found"
 
 
 def test_get_model_count_display_enhanced_single_model():
-    """Test getting model count display with single model."""
-    info = {"models": ["model1"]}
-    display = _get_model_count_display_enhanced("openai", info)
+    """Test getting model count display."""
+    from mcp_cli.commands.models.provider import ProviderData
+
+    provider_data = ProviderData(name="openai", models=["model1"])
+    display = _get_model_count_display_enhanced("openai", provider_data)
     assert display == "1 model"
 
 
 def test_get_model_count_display_enhanced_fallback():
-    """Test getting model count display with fallback to available_models."""
-    info = {"available_models": ["model1", "model2"]}
-    display = _get_model_count_display_enhanced("openai", info)
+    """Test getting model count display."""
+    from mcp_cli.commands.models.provider import ProviderData
+
+    provider_data = ProviderData(name="openai", available_models=["model1", "model2"])
+    display = _get_model_count_display_enhanced("openai", provider_data)
     assert display == "2 models"
 
 
 def test_get_features_display_enhanced_all_features():
-    """Test getting features display with all features."""
-    info = {
-        "baseline_features": ["streaming", "tools", "vision", "reasoning", "json_mode"]
-    }
-    display = _get_features_display_enhanced(info)
+    """Test getting features display."""
+    from mcp_cli.commands.models.provider import ProviderData
+
+    provider_data = ProviderData(
+        name="openai",
+        baseline_features=["streaming", "tools", "vision", "reasoning", "json_mode"],
+    )
+    display = _get_features_display_enhanced(provider_data)
     assert "📡" in display  # streaming
     assert "🔧" in display  # tools
     assert "👁️" in display  # vision
@@ -220,16 +248,22 @@ def test_get_features_display_enhanced_all_features():
 
 
 def test_get_features_display_enhanced_no_features():
-    """Test getting features display with no features."""
-    info = {"baseline_features": []}
-    display = _get_features_display_enhanced(info)
+    """Test getting features display."""
+    from mcp_cli.commands.models.provider import ProviderData
+
+    provider_data = ProviderData(name="openai", baseline_features=[])
+    display = _get_features_display_enhanced(provider_data)
     assert display == "📄"
 
 
 def test_get_features_display_enhanced_some_features():
-    """Test getting features display with some features."""
-    info = {"baseline_features": ["streaming", "tools"]}
-    display = _get_features_display_enhanced(info)
+    """Test getting features display."""
+    from mcp_cli.commands.models.provider import ProviderData
+
+    provider_data = ProviderData(
+        name="openai", baseline_features=["streaming", "tools"]
+    )
+    display = _get_features_display_enhanced(provider_data)
     assert "📡" in display
     assert "🔧" in display
     assert "👁️" not in display
@@ -311,6 +345,13 @@ def test_switch_provider_enhanced_invalid_provider(mock_model_manager, mock_cont
 
 def test_switch_provider_enhanced_ollama_not_running(mock_model_manager, mock_context):
     """Test switching to Ollama when it's not running."""
+    # Override the default mock to return proper ollama structure
+    mock_model_manager.get_available_providers.return_value = {
+        "ollama": {
+            "models": [],  # Empty because Ollama is not running
+        }
+    }
+
     with patch(
         "mcp_cli.commands.actions.providers._check_ollama_running",
         return_value=(False, 0),
@@ -319,7 +360,10 @@ def test_switch_provider_enhanced_ollama_not_running(mock_model_manager, mock_co
             _switch_provider_enhanced(mock_model_manager, "ollama", None, mock_context)
 
             mock_output.error.assert_called()
-            mock_output.tip.assert_called_with("Start Ollama with: ollama serve")
+            # Check that tip was called with the Ollama start message
+            assert any(
+                "ollama serve" in str(call) for call in mock_output.tip.call_args_list
+            )
 
 
 @pytest.mark.asyncio

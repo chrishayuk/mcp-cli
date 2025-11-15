@@ -1,16 +1,20 @@
 # src/mcp_cli/commands/actions/providers.py
 """
-Provider command with all fixes applied and optimized.
-This version incorporates the diagnostic fixes with your existing architecture.
+Provider command with Pydantic models (no dict goop).
 """
 
 from __future__ import annotations
 import subprocess
-from typing import Any
 from mcp_cli.model_management import ModelManager
 from chuk_term.ui import output, format_table
 from mcp_cli.context import get_context, ApplicationContext
 from mcp_cli.commands.models import ProviderActionParams
+from mcp_cli.commands.models.provider import (
+    ProviderData,
+    ProviderStatus,
+    TokenSource,
+)
+from mcp_cli.commands.enums import ProviderCommand
 
 
 def _check_ollama_running() -> tuple[bool, int]:
@@ -32,49 +36,87 @@ def _check_ollama_running() -> tuple[bool, int]:
         return False, 0
 
 
+def _dict_to_provider_data(provider_name: str, data: dict) -> ProviderData:
+    """Convert a dict to ProviderData model for compatibility."""
+    if isinstance(data, ProviderData):
+        return data
+
+    return ProviderData(
+        name=provider_name,
+        has_api_key=data.get("has_api_key", False),
+        token_source=TokenSource(data.get("token_source", "none"))
+        if data.get("token_source") in ["env", "storage", "none"]
+        else TokenSource.NONE,
+        models=data.get("models", data.get("available_models", [])),
+        default_model=data.get("default_model"),
+        baseline_features=data.get("baseline_features", []),
+        is_custom=data.get("is_custom", False),
+        api_base=data.get("api_base"),
+        discovery_enabled=data.get("discovery_enabled", False),
+        error=data.get("error"),
+    )
+
+
 def _get_provider_status_enhanced(
-    provider_name: str, info: dict[str, Any]
-) -> tuple[str, str, str]:
+    provider_name: str, provider_data: ProviderData
+) -> ProviderStatus:
     """
     Enhanced status logic that handles all provider types correctly.
-    Returns (status_icon, status_text, status_reason)
+    Returns ProviderStatus with icon, text, and reason.
     """
     # Handle Ollama specially - it doesn't need API keys
     if provider_name.lower() == "ollama":
         is_running, model_count = _check_ollama_running()
         if is_running:
-            return "✅", "Ready", f"Running ({model_count} models)"
+            return ProviderStatus(
+                icon="✅",
+                text="Ready",
+                reason=f"Running ({model_count} models)",
+            )
         else:
-            return "❌", "Not Running", "Ollama service not accessible"
+            return ProviderStatus(
+                icon="❌",
+                text="Not Running",
+                reason="Ollama service not accessible",
+            )
 
     # For API-based providers, check configuration
-    has_api_key = info.get("has_api_key", False)
-    token_source = info.get("token_source", "none")
-
-    if not has_api_key:
-        return "❌", "Not Configured", "No API key"
+    if not provider_data.has_api_key:
+        return ProviderStatus(
+            icon="❌",
+            text="Not Configured",
+            reason="No API key",
+        )
 
     # If has API key, check model availability
-    models = info.get("models", info.get("available_models", []))
-    model_count = len(models) if isinstance(models, list) else 0
+    model_count = provider_data.model_count
 
     # Create status reason with token source info
-    if token_source == "env":
+    source_info = ""
+    if provider_data.token_source == TokenSource.ENV:
         source_info = " (env)"
-    elif token_source == "storage":
+    elif provider_data.token_source == TokenSource.STORAGE:
         source_info = " (storage)"
-    else:
-        source_info = ""
 
     if model_count == 0:
-        return "⚠️", "Partial Setup", f"API key set but no models found{source_info}"
+        return ProviderStatus(
+            icon="⚠️",
+            text="Partial Setup",
+            reason=f"API key set but no models found{source_info}",
+        )
 
-    return "✅", "Ready", f"Configured ({model_count} models){source_info}"
+    return ProviderStatus(
+        icon="✅",
+        text="Ready",
+        reason=f"Configured ({model_count} models){source_info}",
+    )
 
 
-def _get_model_count_display_enhanced(provider_name: str, info: dict[str, Any]) -> str:
+def _get_model_count_display_enhanced(
+    provider_name: str, provider_data: ProviderData
+) -> str:
     """
-    Enhanced model count display that handles Ollama and chuk-llm 0.7+ correctly.
+    Enhanced model count display that handles Ollama and all providers correctly.
     """
     # For Ollama, get live count from ollama command
     if provider_name.lower() == "ollama":
@@ -84,14 +126,8 @@ def _get_model_count_display_enhanced(provider_name: str, info: dict[str, Any]) 
         else:
             return "Ollama not running"
 
-    # For other providers, use chuk-llm data with proper key handling
-    # chuk-llm 0.7+ uses "models" key, but we'll check both for compatibility
-    models = info.get("models", info.get("available_models", []))
-
-    if not isinstance(models, list):
-        return "Unknown"
-
-    count = len(models)
+    # For other providers, use the model count from ProviderData
+    count = provider_data.model_count
     if count == 0:
         return "No models found"
     elif count == 1:
@@ -100,9 +136,9 @@ def _get_model_count_display_enhanced(provider_name: str, info: dict[str, Any]) 
         return f"{count} models"
 
 
-def _get_features_display_enhanced(info: dict[str, Any]) -> str:
+def _get_features_display_enhanced(provider_data: ProviderData) -> str:
     """Enhanced feature display with more comprehensive icons."""
-    baseline_features = info.get("baseline_features", [])
+    baseline_features = provider_data.baseline_features
 
     feature_icons = []
     if "streaming" in baseline_features:
@@ -121,7 +157,7 @@ def _get_features_display_enhanced(info: dict[str, Any]) -> str:
 
 def _render_list_optimized(model_manager: ModelManager) -> None:
     """
-    Optimized provider list that handles all the edge cases correctly.
+    Optimized provider list using Pydantic models.
     """
     # Create token manager for checking token sources
     from mcp_cli.auth import TokenManager, TokenStoreBackend
@@ -154,33 +190,36 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
             output.error("No providers found. Check chuk-llm installation.")
             return
 
-        # Build provider info dict
-        all_providers_info = {}
+        # Build provider info using Pydantic models
+        all_providers_data: dict[str, ProviderData] = {}
         for provider_name in provider_names:
             try:
                 models = model_manager.get_available_models(provider_name)
                 default_model = (
-                    model_manager.get_default_model(provider_name) if models else "-"
+                    model_manager.get_default_model(provider_name) if models else None
                 )
-                all_providers_info[provider_name] = {
-                    "models": models,
-                    "default_model": default_model,
-                    "model_count": len(models) if models else 0,
-                }
+                all_providers_data[provider_name] = ProviderData(
+                    name=provider_name,
+                    models=models or [],
+                    default_model=default_model,
+                )
             except Exception as e:
-                all_providers_info[provider_name] = {"error": str(e)}
+                all_providers_data[provider_name] = ProviderData(
+                    name=provider_name,
+                    error=str(e),
+                )
 
     except Exception as e:
         output.error(f"Error getting provider list: {e}")
         return
 
     # Sort providers to put current one first, then alphabetically
-    provider_items = list(all_providers_info.items())
+    provider_items = list(all_providers_data.items())
     provider_items.sort(key=lambda x: (x[0] != current_provider, x[0]))
 
-    for provider_name, provider_info in provider_items:
+    for provider_name, provider_data in provider_items:
         # Handle error cases
-        if "error" in provider_info:
+        if provider_data.error:
             table_data.append(
                 {
                     "Provider": provider_name,
@@ -188,7 +227,7 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
                     "Token": "-",
                     "Default Model": "-",
                     "Models Available": "-",
-                    "Features": str(provider_info["error"])[:20] + "...",
+                    "Features": provider_data.error[:20] + "...",
                 }
             )
             continue
@@ -200,42 +239,41 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
             else f"  {provider_name}"
         )
 
-        # Enhanced status using improved logic
-        status_icon, status_text, status_reason = _get_provider_status_enhanced(
-            provider_name, provider_info
-        )
-
-        # Format status text
-        status_display = f"{status_icon} {status_text}"
-
-        # Check token source ourselves (chuk_llm doesn't provide this)
-        token_source = "none"
+        # Check token source (chuk_llm doesn't provide this)
         if provider_name.lower() != "ollama" and token_manager:
             from mcp_cli.auth.provider_tokens import check_provider_token_status
 
             token_status = check_provider_token_status(provider_name, token_manager)
-            token_source = token_status.get("source", "none")
+            token_source_str = token_status.get("source", "none")
+            if token_source_str == "env":
+                provider_data.token_source = TokenSource.ENV
+            elif token_source_str == "storage":
+                provider_data.token_source = TokenSource.STORAGE
+
+        # Enhanced status using Pydantic model
+        status = _get_provider_status_enhanced(provider_name, provider_data)
+        status_display = f"{status.icon} {status.text}"
 
         # Display token source
         if provider_name.lower() == "ollama":
             token_display = "-"
-        elif token_source == "env":
+        elif provider_data.token_source == TokenSource.ENV:
             token_display = "🌍 env"
-        elif token_source == "storage":
+        elif provider_data.token_source == TokenSource.STORAGE:
             token_display = "🔐 storage"
         else:
             token_display = "❌ none"
 
         # Default model with proper fallback
-        default_model = str(provider_info.get("default_model", "-"))
-        if not default_model or default_model in ("None", "null"):
+        default_model = provider_data.default_model or "-"
+        if default_model in ("None", "null"):
             default_model = "-"
 
         # Enhanced model count display
-        models_display = _get_model_count_display_enhanced(provider_name, provider_info)
+        models_display = _get_model_count_display_enhanced(provider_name, provider_data)
 
         # Enhanced features
-        features_display = _get_features_display_enhanced(provider_info)
+        features_display = _get_features_display_enhanced(provider_data)
 
         table_data.append(
             {
@@ -273,14 +311,14 @@ def _render_list_optimized(model_manager: ModelManager) -> None:
     inactive_providers = []
     inactive_custom_providers = []
     custom_count = 0
-    for name, info in all_providers_info.items():
-        if info.get("is_custom"):
+    for name, data in all_providers_data.items():
+        if data.is_custom:
             custom_count += 1
-        if "error" not in info:
-            status_icon, _, _ = _get_provider_status_enhanced(name, info)
-            if status_icon == "❌":
+        if not data.error:
+            status = _get_provider_status_enhanced(name, data)
+            if status.icon == "❌":
                 inactive_providers.append(name)
-                if info.get("is_custom"):
+                if data.is_custom:
                     inactive_custom_providers.append(name)
 
     # Prioritize showing custom provider hints if any are unconfigured
@@ -341,39 +379,39 @@ def _render_diagnostic_optimized(
 
     for provider in providers_to_test:
         try:
-            provider_info = all_providers_data.get(provider, {})  # type: ignore[attr-defined]
+            provider_info_dict = all_providers_data.get(provider, {})  # type: ignore[attr-defined]
+
+            # Convert to ProviderData
+            provider_data = _dict_to_provider_data(provider, provider_info_dict)
 
             # Skip if provider has errors
-            if "error" in provider_info:
+            if provider_data.error:
                 table_data.append(
                     {
                         "Provider": provider,
                         "Status": "Error",
                         "Models": "-",
                         "Features": "-",
-                        "Details": provider_info["error"][:30] + "...",
+                        "Details": provider_data.error[:30] + "...",
                     }
                 )
                 continue
 
             # Enhanced status
-            status_icon, status_text, status_reason = _get_provider_status_enhanced(
-                provider, provider_info
-            )
-
-            status_display = f"{status_icon} {status_text}"
+            status = _get_provider_status_enhanced(provider, provider_data)
+            status_display = f"{status.icon} {status.text}"
 
             # Model count
-            models_display = _get_model_count_display_enhanced(provider, provider_info)
+            models_display = _get_model_count_display_enhanced(provider, provider_data)
 
             # Features
-            features_display = _get_features_display_enhanced(provider_info)
+            features_display = _get_features_display_enhanced(provider_data)
 
             # Additional details
             details = []
-            if provider_info.get("api_base"):
-                details.append(f"API: {provider_info['api_base']}")
-            if provider_info.get("discovery_enabled"):
+            if provider_data.api_base:
+                details.append(f"API: {provider_data.api_base}")
+            if provider_data.discovery_enabled:
                 details.append("Discovery: ✅")
             details_str = " | ".join(details) if details else "-"
 
@@ -420,24 +458,25 @@ def _switch_provider_enhanced(
     # Get provider info for validation
     try:
         all_providers_info = model_manager.get_available_providers()
-        provider_info = all_providers_info.get(provider_name, {})  # type: ignore[attr-defined]
+        provider_info_dict = all_providers_info.get(provider_name, {})  # type: ignore[attr-defined]
 
-        if "error" in provider_info:
-            output.error(f"Provider error: {provider_info['error']}")
+        # Convert to ProviderData
+        provider_data = _dict_to_provider_data(provider_name, provider_info_dict)
+
+        if provider_data.error:
+            output.error(f"Provider error: {provider_data.error}")
             return
 
         # Enhanced status validation
-        status_icon, status_text, status_reason = _get_provider_status_enhanced(
-            provider_name, provider_info
-        )
+        status = _get_provider_status_enhanced(provider_name, provider_data)
 
-        if status_icon == "❌":
-            output.error(f"Provider not ready: {status_reason}")
+        if status.icon == "❌":
+            output.error(f"Provider not ready: {status.reason}")
 
             # Provide specific help
             if provider_name.lower() == "ollama":
                 output.tip("Start Ollama with: ollama serve")
-            elif "No API key" in status_reason:
+            elif "No API key" in status.reason:
                 env_var = f"{provider_name.upper()}_API_KEY"
                 output.tip(
                     f"Set API key with: /provider set {provider_name} api_key YOUR_KEY"
@@ -446,8 +485,8 @@ def _switch_provider_enhanced(
 
             return
 
-        elif status_icon == "⚠️":
-            output.warning(f"{status_reason}")
+        elif status.icon == "⚠️":
+            output.warning(f"{status.reason}")
             output.info("Continuing anyway...")
 
     except Exception as e:
@@ -514,11 +553,9 @@ async def provider_action_async(params: ProviderActionParams) -> None:
 
         # Get enhanced status for current provider
         try:
-            # current_info not used anymore in new architecture
-            current_info: dict[str, str] = {}
-            status_icon, status_text, status_reason = _get_provider_status_enhanced(
-                provider, current_info
-            )
+            # Create a simple ProviderData for status check
+            provider_data = ProviderData(name=provider)
+            status = _get_provider_status_enhanced(provider, provider_data)
 
             # Display in a beautifully formatted panel
             output.rule("[bold]🔧 Provider Status[/bold]", style="primary")
@@ -527,13 +564,11 @@ async def provider_action_async(params: ProviderActionParams) -> None:
             # Create visually appealing status display
             output.print(f"  [bold]Provider:[/bold] {provider}")
             output.print(f"  [bold]Model:[/bold]    {model}")
-            output.print(f"  [bold]Status:[/bold]   {status_icon} {status_text}")
-            # Features info not available in new architecture - skip it
-            # output.print(f"  [bold]Features:[/bold] {_format_features({})}")
+            output.print(f"  [bold]Status:[/bold]   {status.icon} {status.text}")
 
-            if status_icon != "✅":
+            if status.icon != "✅":
                 output.print()
-                output.warning(f"  ⚠️  {status_reason}")
+                output.warning(f"  ⚠️  {status.reason}")
 
             output.print()
 
@@ -565,15 +600,15 @@ async def provider_action_async(params: ProviderActionParams) -> None:
     sub, *rest = params.args
     sub = sub.lower()
 
-    if sub == "list":
+    if sub == ProviderCommand.LIST.value:
         _render_list_optimized(model_manager)
         return
 
-    if sub == "custom":
+    if sub == ProviderCommand.CUSTOM.value:
         _list_custom_providers()
         return
 
-    if sub == "add" and len(rest) >= 2:
+    if sub == ProviderCommand.ADD.value and len(rest) >= 2:
         # /provider add <name> <api_base> [model1 model2 ...]
         name = rest[0]
         api_base = rest[1]
@@ -581,22 +616,22 @@ async def provider_action_async(params: ProviderActionParams) -> None:
         _add_custom_provider(name, api_base, models)
         return
 
-    if sub == "remove" and rest:
+    if sub == ProviderCommand.REMOVE.value and rest:
         # /provider remove <name>
         name = rest[0]
         _remove_custom_provider(name)
         return
 
-    if sub == "config":
+    if sub == ProviderCommand.CONFIG.value:
         _render_config(model_manager)
         return
 
-    if sub == "diagnostic":
+    if sub == ProviderCommand.DIAGNOSTIC.value:
         target = rest[0] if rest else None
         _render_diagnostic_optimized(model_manager, target)
         return
 
-    if sub == "set" and len(rest) >= 2:
+    if sub == ProviderCommand.SET.value and len(rest) >= 2:
         provider_name, setting = rest[0], rest[1]
         value = rest[2] if len(rest) >= 3 else None
         _mutate(model_manager, provider_name, setting, value)

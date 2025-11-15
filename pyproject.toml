@@ -67,3 +67,25 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+exclude = [
+    "^.venv/",
+    "^build/",
+    "^dist/",
+]
+
+# Ignore errors in site-packages (external libraries)
+[[tool.mypy.overrides]]
+module = [
+    "mlx.*",
+    "transformers.*",
+    "langchain.*",
+    "langchain_core.*",
+    "langchain_text_splitters.*",
+]
+ignore_errors = true

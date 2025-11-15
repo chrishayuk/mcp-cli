@@ -8,7 +8,12 @@ These models provide type safety, validation, and documentation for command acti
 from __future__ import annotations
 
 # Server models
-from .server import ServerActionParams, ServerStatusInfo, ServerPerformanceInfo
+from .server import (
+    ServerActionParams,
+    ServerStatusInfo,
+    ServerPerformanceInfo,
+    ServerCapabilities,
+)
 
 # Model models
 from .model import ModelActionParams, ModelInfo
@@ -40,6 +45,16 @@ from .theme import ThemeActionParams, ThemeInfo
 # Conversation models
 from .conversation import ConversationActionParams, ConversationInfo
 
+# Cmd models
+from .cmd import (
+    MessageRole,
+    Message,
+    ToolCall,
+    ToolCallFunction,
+    LLMResponse,
+    CmdActionParams,
+)
+
 # Response models
 from .responses import (
     ServerInfoResponse,
@@ -53,6 +68,7 @@ __all__ = [
     "ServerActionParams",
     "ServerStatusInfo",
     "ServerPerformanceInfo",
+    "ServerCapabilities",
     # Model models
     "ModelActionParams",
     "ModelInfo",
@@ -78,6 +94,13 @@ __all__ = [
     # Conversation models
     "ConversationActionParams",
     "ConversationInfo",
+    # Cmd models
+    "MessageRole",
+    "Message",
+    "ToolCall",
+    "ToolCallFunction",
+    "LLMResponse",
+    "CmdActionParams",
     # Response models
     "ServerInfoResponse",
     "ResourceInfoResponse",
