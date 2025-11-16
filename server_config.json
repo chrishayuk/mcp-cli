@@ -38,6 +38,10 @@
     "motion": {
       "command": "uv",
       "args": ["--directory", "/Users/christopherhay/chris-source/chuk-ai/mcp-servers/chuk-motion", "run", "chuk-motion", "stdio"]
+    },
+    "math": {
+      "command": "uvx",
+      "args": ["chuk-mcp-math-server"]
     }
   }
 }
