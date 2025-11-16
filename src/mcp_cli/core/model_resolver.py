@@ -4,9 +4,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional, Tuple
 
-from mcp_cli.model_manager import ModelManager
+from mcp_cli.model_management import ModelManager
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +13,7 @@ logger = logging.getLogger(__name__)
 class ModelResolver:
     """Handles provider and model resolution logic."""
 
-    def __init__(self, model_manager: Optional[ModelManager] = None):
+    def __init__(self, model_manager: ModelManager | None = None):
         """
         Initialize resolver with optional model manager.
 
@@ -24,8 +23,8 @@ class ModelResolver:
         self.model_manager = model_manager or ModelManager()
 
     def resolve(
-        self, provider: Optional[str] = None, model: Optional[str] = None
-    ) -> Tuple[str, str]:
+        self, provider: str | None = None, model: str | None = None
+    ) -> tuple[str, str]:
         """
         Resolve effective provider and model from user input.
 
@@ -78,7 +77,7 @@ class ModelResolver:
         """
         return self.model_manager.validate_provider(provider)
 
-    def validate_model(self, model: str, provider: Optional[str] = None) -> bool:
+    def validate_model(self, model: str, provider: str | None = None) -> bool:
         """
         Validate if a model exists for a provider.
 
@@ -102,7 +101,7 @@ class ModelResolver:
             True if valid, False otherwise (with error printed)
         """
         if not self.validate_provider(provider):
-            available = ", ".join(self.model_manager.list_providers())
+            available = ", ".join(self.model_manager.get_available_providers())
             print(f"[red]Error:[/red] Unknown provider: {provider}")
             print(f"[yellow]Available providers:[/yellow] {available}")
 
@@ -115,15 +114,15 @@ class ModelResolver:
 
     def get_available_providers(self) -> list[str]:
         """Get list of available providers."""
-        return self.model_manager.list_providers()
+        return self.model_manager.get_available_providers()
 
-    def get_available_models(self, provider: Optional[str] = None) -> list[str]:
+    def get_available_models(self, provider: str | None = None) -> list[str]:
         """Get list of available models for a provider."""
         return self.model_manager.get_available_models(provider)
 
     def switch_to(
-        self, provider: Optional[str] = None, model: Optional[str] = None
-    ) -> Tuple[str, str]:
+        self, provider: str | None = None, model: str | None = None
+    ) -> tuple[str, str]:
         """
         Switch to a provider/model combination and return the result.
 
@@ -139,7 +138,9 @@ class ModelResolver:
         elif provider:
             self.model_manager.switch_provider(provider)
         elif model:
-            self.model_manager.switch_to_model(model)
+            # Switch model in current provider
+            current_provider = self.model_manager.get_active_provider()
+            self.model_manager.switch_model(current_provider, model)
 
         return (
             self.model_manager.get_active_provider(),
@@ -149,8 +150,8 @@ class ModelResolver:
     def configure_provider(
         self,
         provider: str,
-        api_key: Optional[str] = None,
-        api_base: Optional[str] = None,
+        api_key: str | None = None,
+        api_base: str | None = None,
     ) -> None:
         """
         Configure a provider with API settings.
@@ -160,8 +161,8 @@ class ModelResolver:
             api_key: API key (optional)
             api_base: API base URL (optional)
         """
-        self.model_manager.configure_provider(
-            provider, api_key=api_key, api_base=api_base
+        self.model_manager.add_runtime_provider(
+            name=provider, api_key=api_key, api_base=api_base or ""
         )
 
     def get_status(self) -> dict:

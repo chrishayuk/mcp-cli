@@ -13,7 +13,6 @@ Public functions:
 from __future__ import annotations
 
 import inspect
-from typing import List
 
 from mcp_cli.utils.async_utils import run_blocking
 from chuk_term.ui import output, format_table
@@ -21,7 +20,7 @@ from mcp_cli.context import get_context
 from mcp_cli.commands.models import PromptInfoResponse
 
 
-async def prompts_action_async() -> List[PromptInfoResponse]:
+async def prompts_action_async() -> list[PromptInfoResponse]:
     """
     Fetch and display prompt templates from all connected MCP servers.
 
@@ -77,7 +76,7 @@ async def prompts_action_async() -> List[PromptInfoResponse]:
     return prompt_models
 
 
-def prompts_action() -> List[PromptInfoResponse]:
+def prompts_action() -> list[PromptInfoResponse]:
     """
     Sync wrapper for prompts_action_async.
 
@@ -90,7 +89,7 @@ def prompts_action() -> List[PromptInfoResponse]:
     return run_blocking(prompts_action_async())
 
 
-async def prompts_action_cmd() -> List[PromptInfoResponse]:
+async def prompts_action_cmd() -> list[PromptInfoResponse]:
     """
     Alias for prompts_action_async (backward compatibility).
 

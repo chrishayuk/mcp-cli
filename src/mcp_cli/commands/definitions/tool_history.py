@@ -6,7 +6,6 @@ Unified tool history command implementation (chat mode only).
 from __future__ import annotations
 
 import json
-from typing import List
 
 from mcp_cli.commands.base import (
     UnifiedCommand,
@@ -25,7 +24,7 @@ class ToolHistoryCommand(UnifiedCommand):
         return "toolhistory"
 
     @property
-    def aliases(self) -> List[str]:
+    def aliases(self) -> list[str]:
         return ["th"]
 
     @property
@@ -63,7 +62,7 @@ Note: This command is only available in chat mode.
         return CommandMode.CHAT
 
     @property
-    def parameters(self) -> List[CommandParameter]:
+    def parameters(self) -> list[CommandParameter]:
         return [
             CommandParameter(
                 name="row",

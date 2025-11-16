@@ -11,23 +11,36 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from mcp_cli.utils.async_utils import run_blocking
 from chuk_term.ui import output, format_table
 from mcp_cli.context import get_context
 from mcp_cli.config.config_manager import ConfigManager, ServerConfig
 from mcp_cli.utils.preferences import get_preference_manager
-from mcp_cli.commands.models import ServerActionParams, ServerInfoResponse
+from mcp_cli.commands.models import (
+    ServerActionParams,
+    ServerInfoResponse,
+    ServerCapabilities,
+)
+from mcp_cli.commands.enums import ServerCommand, TransportType
 
 
-def _get_server_icon(capabilities: Dict[str, Any], tool_count: int) -> str:
+def _get_server_icon(
+    capabilities: dict[str, Any] | ServerCapabilities, tool_count: int
+) -> str:
     """Determine server icon based on MCP capabilities."""
-    if capabilities.get("resources") and capabilities.get("prompts"):
+    # Convert dict to ServerCapabilities if needed
+    if isinstance(capabilities, dict):
+        caps = ServerCapabilities(**capabilities)
+    else:
+        caps = capabilities
+
+    if caps.resources and caps.prompts:
         return "🎯"  # Full-featured server
-    elif capabilities.get("resources"):
+    elif caps.resources:
         return "📁"  # Resource-capable server
-    elif capabilities.get("prompts"):
+    elif caps.prompts:
         return "💬"  # Prompt-capable server
     elif tool_count > 15:
         return "🔧"  # Tool-heavy server
@@ -52,30 +65,19 @@ def _format_performance(ping_ms: float | None) -> tuple[str, str]:
         return "🔴", f"{ping_ms:.1f}ms"
 
 
-def _format_capabilities(capabilities: Dict[str, Any]) -> str:
+def _format_capabilities(capabilities: dict[str, Any] | ServerCapabilities) -> str:
     """Format server capabilities as readable string."""
-    caps = []
+    # Convert dict to ServerCapabilities if needed
+    if isinstance(capabilities, dict):
+        caps_model = ServerCapabilities(**capabilities)
+    else:
+        caps_model = capabilities
 
-    # Check standard MCP capabilities
-    if capabilities.get("tools"):
-        caps.append("Tools")
-    if capabilities.get("prompts"):
-        caps.append("Prompts")
-    if capabilities.get("resources"):
-        caps.append("Resources")
-
-    # Check experimental capabilities
-    experimental = capabilities.get("experimental", {})
-    if experimental.get("events"):
-        caps.append("Events*")
-    if experimental.get("streaming"):
-        caps.append("Streaming*")
-
-    return ", ".join(caps) if caps else "None"
+    return caps_model.to_display_string()
 
 
 def _get_server_status(
-    server_config: Union[ServerConfig, Dict[str, Any]], connected: bool = False
+    server_config: ServerConfig | dict[str, Any], connected: bool = False
 ) -> tuple[str, str, str]:
     """
     Get server status.
@@ -281,9 +283,9 @@ async def _list_servers(show_all: bool = False) -> None:
 async def _add_server(
     name: str,
     transport: str,
-    config_args: List[str],
-    env_vars: Optional[Dict[str, str]] = None,
-    headers: Optional[Dict[str, str]] = None,
+    config_args: list[str],
+    env_vars: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> None:
     """
     Add a new MCP server to user preferences (~/.mcp-cli).
@@ -317,7 +319,7 @@ async def _add_server(
         pass
 
     # Build server configuration as a dictionary for preferences
-    server_config: Dict[str, Any] = {"transport": transport.lower()}
+    server_config: dict[str, Any] = {"transport": transport.lower()}
 
     if transport.lower() == "stdio":
         if not config_args:
@@ -557,7 +559,7 @@ async def _show_connected_server_details(server) -> None:
     output.tip("💡 Use: /servers to list all servers  |  /tools to see available tools")
 
 
-async def servers_action_async(params: ServerActionParams) -> List[ServerInfoResponse]:
+async def servers_action_async(params: ServerActionParams) -> list[ServerInfoResponse]:
     """
     MCP server management action.
 
@@ -588,17 +590,17 @@ async def servers_action_async(params: ServerActionParams) -> List[ServerInfoRes
         sub = sub.lower()
 
         # List servers
-        if sub == "list":
+        if sub == ServerCommand.LIST.value:
             show_all = bool(rest and rest[0].lower() == "all")
             await _list_servers(show_all)
             return []
 
         # Add server with support for --transport, --env, --header
-        if sub == "add" and len(rest) >= 2:
+        if sub == ServerCommand.ADD.value and len(rest) >= 2:
             name = rest[0]
 
             # Parse options
-            transport = "stdio"  # default
+            transport = TransportType.STDIO.value  # default
             config_args = []
             env_vars = {}
             headers = {}
@@ -631,7 +633,11 @@ async def servers_action_async(params: ServerActionParams) -> List[ServerInfoRes
                     break
                 else:
                     # First non-option arg could be transport
-                    if i == 1 and arg in ["stdio", "http", "sse"]:
+                    if i == 1 and arg in [
+                        TransportType.STDIO.value,
+                        TransportType.HTTP.value,
+                        TransportType.SSE.value,
+                    ]:
                         transport = arg
                         i += 1
                     else:
@@ -642,17 +648,17 @@ async def servers_action_async(params: ServerActionParams) -> List[ServerInfoRes
             return []
 
         # Remove server
-        if sub == "remove" and rest:
+        if sub == ServerCommand.REMOVE.value and rest:
             await _remove_server(rest[0])
             return []
 
         # Enable server
-        if sub == "enable" and rest:
+        if sub == ServerCommand.ENABLE.value and rest:
             await _enable_disable_server(rest[0], True)
             return []
 
         # Disable server
-        if sub == "disable" and rest:
+        if sub == ServerCommand.DISABLE.value and rest:
             await _enable_disable_server(rest[0], False)
             return []
 
@@ -681,7 +687,7 @@ async def servers_action_async(params: ServerActionParams) -> List[ServerInfoRes
         return []
 
     # Process server data
-    server_data: List[ServerInfoResponse] = []
+    server_data: list[ServerInfoResponse] = []
     for idx, server in enumerate(servers):
         # ServerInfo is a dataclass with these attributes
         name = server.name
@@ -723,10 +729,10 @@ async def servers_action_async(params: ServerActionParams) -> List[ServerInfoRes
         if params.ping_servers:
             columns.append("Ping")
 
-        table_data: List[Dict[str, Any]] = []
+        table_data: list[dict[str, Any]] = []
         for server_info in server_data:
             icon = _get_server_icon(server_info.capabilities, server_info.tool_count)
-            row: Dict[str, Any] = {
+            row: dict[str, Any] = {
                 "Icon": icon,
                 "Server": server_info.name,
                 "Transport": server_info.transport,
@@ -758,7 +764,7 @@ async def servers_action_async(params: ServerActionParams) -> List[ServerInfoRes
     return server_data
 
 
-def servers_action(**kwargs) -> List[ServerInfoResponse]:
+def servers_action(**kwargs) -> list[ServerInfoResponse]:
     """
     Sync wrapper for servers_action_async.
 

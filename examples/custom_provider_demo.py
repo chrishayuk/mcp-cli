@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from chuk_term.ui import output
 from chuk_term.ui.theme import set_theme
 from mcp_cli.utils.preferences import get_preference_manager
-from mcp_cli.model_manager import ModelManager
+from mcp_cli.model_management import ModelManager
 
 
 def run_command(cmd: str, capture=True):

@@ -9,7 +9,6 @@ import gc
 import os
 import signal
 import sys
-from typing import Optional, List
 
 import typer
 
@@ -64,11 +63,11 @@ def main_callback(
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
-    server: Optional[str] = typer.Option(None, help="Server to connect to"),
-    provider: Optional[str] = typer.Option(None, help="LLM provider name"),
-    model: Optional[str] = typer.Option(None, help="Model name"),
-    api_base: Optional[str] = typer.Option(None, "--api-base", help="API base URL"),
-    api_key: Optional[str] = typer.Option(None, "--api-key", help="API key"),
+    server: str | None = typer.Option(None, help="Server to connect to"),
+    provider: str | None = typer.Option(None, help="LLM provider name"),
+    model: str | None = typer.Option(None, help="Model name"),
+    api_base: str | None = typer.Option(None, "--api-base", help="API base URL"),
+    api_key: str | None = typer.Option(None, "--api-key", help="API key"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(
@@ -92,12 +91,12 @@ def main_callback(
         "--init-timeout",
         help="Server initialization timeout in seconds",
     ),
-    tool_timeout: Optional[float] = typer.Option(
+    tool_timeout: float | None = typer.Option(
         None,
         "--tool-timeout",
         help="Tool execution timeout in seconds (default: 120, can also set MCP_TOOL_TIMEOUT env var)",
     ),
-    token_backend: Optional[str] = typer.Option(
+    token_backend: str | None = typer.Option(
         None,
         "--token-backend",
         help="Token storage backend: auto, keychain, windows, secretservice, encrypted, vault",
@@ -175,7 +174,7 @@ def main_callback(
     logger.debug("Starting default chat mode")
 
     # Use ModelManager to get active provider/model if not specified
-    from mcp_cli.model_manager import ModelManager
+    from mcp_cli.model_management import ModelManager
 
     model_manager = ModelManager()
 
@@ -190,11 +189,21 @@ def main_callback(
             models = [m.strip() for m in model.split(",")]
             model = models[0]  # Use first as default
 
+        # FIXED: If no model specified, warn user
+        if not model:
+            output.warning(
+                f"No model specified for runtime provider '{provider}'. "
+                "You should specify --model with the provider's model name."
+            )
+            output.tip(
+                f"Example: --provider {provider} --api-base {api_base} --model <model-name>"
+            )
+
         model_manager.add_runtime_provider(
             name=provider,
             api_base=api_base,
             api_key=api_key,  # Will be kept in memory only
-            models=models,
+            models=list(models) if models else [],
         )
 
         output.info(f"Using runtime provider: {provider}")
@@ -210,7 +219,7 @@ def main_callback(
     # Validate provider if specified
     elif provider:
         if not model_manager.validate_provider(provider):
-            available = ", ".join(model_manager.list_providers())
+            available = ", ".join(model_manager.get_available_providers())
             output.error(f"Unknown provider: {provider}")
             output.info(f"Available providers: {available}")
             output.tip(f"Did you mean to run: mcp-cli provider {provider}")
@@ -278,6 +287,7 @@ def main_callback(
                 api_base=api_base,
                 api_key=api_key,
                 max_turns=max_turns,
+                model_manager=model_manager,  # FIXED: Pass the model manager with runtime provider
             )
             logger.debug(f"Chat mode completed with success: {success}")
         except asyncio.TimeoutError:
@@ -333,11 +343,11 @@ def _chat_command(
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
-    server: Optional[str] = typer.Option(None, help="Server to connect to"),
-    provider: Optional[str] = typer.Option(None, help="LLM provider name"),
-    model: Optional[str] = typer.Option(None, help="Model name"),
-    api_base: Optional[str] = typer.Option(None, "--api-base", help="API base URL"),
-    api_key: Optional[str] = typer.Option(None, "--api-key", help="API key"),
+    server: str | None = typer.Option(None, help="Server to connect to"),
+    provider: str | None = typer.Option(None, help="LLM provider name"),
+    model: str | None = typer.Option(None, help="Model name"),
+    api_base: str | None = typer.Option(None, "--api-base", help="API base URL"),
+    api_key: str | None = typer.Option(None, "--api-key", help="API key"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(
@@ -391,7 +401,7 @@ def _chat_command(
     logger.debug("Starting chat mode (via explicit chat command)")
 
     # Use ModelManager to get active provider/model if not specified
-    from mcp_cli.model_manager import ModelManager
+    from mcp_cli.model_management import ModelManager
 
     model_manager = ModelManager()
 
@@ -428,7 +438,7 @@ def _chat_command(
     # Validate provider if specified
     elif provider:
         if not model_manager.validate_provider(provider):
-            available = ", ".join(model_manager.list_providers())
+            available = ", ".join(model_manager.get_available_providers())
             output.error(f"Unknown provider: {provider}")
             output.info(f"Available providers: {available}")
             raise typer.Exit(1)
@@ -519,11 +529,11 @@ def _interactive_command(
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
-    server: Optional[str] = typer.Option(None, help="Server to connect to"),
-    provider: Optional[str] = typer.Option(None, help="LLM provider name"),
-    model: Optional[str] = typer.Option(None, help="Model name"),
-    api_base: Optional[str] = typer.Option(None, "--api-base", help="API base URL"),
-    api_key: Optional[str] = typer.Option(None, "--api-key", help="API key"),
+    server: str | None = typer.Option(None, help="Server to connect to"),
+    provider: str | None = typer.Option(None, help="LLM provider name"),
+    model: str | None = typer.Option(None, help="Model name"),
+    api_base: str | None = typer.Option(None, "--api-base", help="API base URL"),
+    api_key: str | None = typer.Option(None, "--api-key", help="API key"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(
@@ -577,7 +587,7 @@ def _interactive_command(
     logger.debug("Starting interactive command mode")
 
     # Use ModelManager to get active provider/model if not specified
-    from mcp_cli.model_manager import ModelManager
+    from mcp_cli.model_management import ModelManager
 
     model_manager = ModelManager()
 
@@ -693,21 +703,21 @@ def _setup_command_logging(
 # Provider command - FIXED to handle arguments properly
 @app.command("provider", help="Manage LLM providers")
 def provider_command(
-    subcommand: Optional[str] = typer.Argument(
+    subcommand: str | None = typer.Argument(
         None, help="Subcommand: list, config, diagnostic, set, or provider name"
     ),
-    provider_name: Optional[str] = typer.Argument(
+    provider_name: str | None = typer.Argument(
         None, help="Provider name (for set or switch commands)"
     ),
-    key: Optional[str] = typer.Argument(None, help="Config key (for set command)"),
-    value: Optional[str] = typer.Argument(None, help="Config value (for set command)"),
-    model: Optional[str] = typer.Option(
+    key: str | None = typer.Argument(None, help="Config key (for set command)"),
+    value: str | None = typer.Argument(None, help="Config value (for set command)"),
+    model: str | None = typer.Option(
         None, "--model", help="Model name (for switch commands)"
     ),
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
-    server: Optional[str] = typer.Option(None, help="Server to connect to"),
+    server: str | None = typer.Option(None, help="Server to connect to"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(
@@ -721,7 +731,7 @@ def provider_command(
     _setup_command_logging(quiet, verbose, log_level, theme)
 
     # Build arguments list for the provider action
-    args: List[str] = []
+    args: list[str] = []
 
     # Handle different command patterns
     if subcommand is None:
@@ -774,21 +784,21 @@ direct_registered.append("provider")
 # ADD: providers command as alias to provider (for consistency)
 @app.command("providers", help="List LLM providers (defaults to list)")
 def providers_command(
-    subcommand: Optional[str] = typer.Argument(
+    subcommand: str | None = typer.Argument(
         None, help="Subcommand: list, config, diagnostic, set, or provider name"
     ),
-    provider_name: Optional[str] = typer.Argument(
+    provider_name: str | None = typer.Argument(
         None, help="Provider name (for set or switch commands)"
     ),
-    key: Optional[str] = typer.Argument(None, help="Config key (for set command)"),
-    value: Optional[str] = typer.Argument(None, help="Config value (for set command)"),
-    model: Optional[str] = typer.Option(
+    key: str | None = typer.Argument(None, help="Config key (for set command)"),
+    value: str | None = typer.Argument(None, help="Config value (for set command)"),
+    model: str | None = typer.Option(
         None, "--model", help="Model name (for switch commands)"
     ),
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
-    server: Optional[str] = typer.Option(None, help="Server to connect to"),
+    server: str | None = typer.Option(None, help="Server to connect to"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(
@@ -844,9 +854,9 @@ def tools_command(
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
-    server: Optional[str] = typer.Option(None, help="Server to connect to"),
+    server: str | None = typer.Option(None, help="Server to connect to"),
     provider: str = typer.Option("openai", help="LLM provider name"),
-    model: Optional[str] = typer.Option(None, help="Model name"),
+    model: str | None = typer.Option(None, help="Model name"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(
@@ -920,9 +930,9 @@ def servers_command(
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
-    server: Optional[str] = typer.Option(None, help="Server to connect to"),
+    server: str | None = typer.Option(None, help="Server to connect to"),
     provider: str = typer.Option("openai", help="LLM provider name"),
-    model: Optional[str] = typer.Option(None, help="Model name"),
+    model: str | None = typer.Option(None, help="Model name"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(
@@ -985,9 +995,9 @@ def resources_command(
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
-    server: Optional[str] = typer.Option(None, help="Server to connect to"),
+    server: str | None = typer.Option(None, help="Server to connect to"),
     provider: str = typer.Option("openai", help="LLM provider name"),
-    model: Optional[str] = typer.Option(None, help="Model name"),
+    model: str | None = typer.Option(None, help="Model name"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(
@@ -1026,9 +1036,9 @@ def prompts_command(
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
-    server: Optional[str] = typer.Option(None, help="Server to connect to"),
+    server: str | None = typer.Option(None, help="Server to connect to"),
     provider: str = typer.Option("openai", help="LLM provider name"),
-    model: Optional[str] = typer.Option(None, help="Model name"),
+    model: str | None = typer.Option(None, help="Model name"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(
@@ -1064,7 +1074,7 @@ direct_registered.append("prompts")
 # Models command - show available models for current or specified provider
 @app.command("models", help="List available models for a provider")
 def models_command(
-    provider_name: Optional[str] = typer.Argument(
+    provider_name: str | None = typer.Argument(
         None, help="Provider name (defaults to current)"
     ),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
@@ -1078,7 +1088,7 @@ def models_command(
     # Configure logging and theme for this command
     _setup_command_logging(quiet, verbose, log_level, theme)
 
-    from mcp_cli.model_manager import ModelManager
+    from mcp_cli.model_management import ModelManager
     from rich.table import Table
 
     model_manager = ModelManager()
@@ -1091,12 +1101,13 @@ def models_command(
     # Validate provider exists
     if not model_manager.validate_provider(target_provider):
         output.error(f"Unknown provider: {target_provider}")
-        output.info(f"Available providers: {', '.join(model_manager.list_providers())}")
+        output.info(
+            f"Available providers: {', '.join(model_manager.get_available_providers())}"
+        )
         return
 
     # Get provider info
-    provider_info = model_manager.get_provider_info(target_provider)
-    default_model = provider_info.get("default_model", "Not specified")
+    default_model = model_manager.get_default_model(target_provider)
     available_models = model_manager.get_available_models(target_provider)
 
     # Create table
@@ -1138,11 +1149,9 @@ def models_command(
     # Show additional info
     output.print(f"\n[dim]Provider:[/dim] {target_provider}")
     output.print(f"[dim]Total models:[/dim] {len(available_models)}")
-    output.print(f"[dim]API Base:[/dim] {provider_info.get('api_base') or 'Default'}")
-    if provider_info.get("has_api_key"):
-        output.print("[dim]API Key:[/dim] ********")
-    else:
-        output.print("[dim]API Key:[/dim] [red]Not configured[/red]")
+    # API base and key info not readily available in new architecture
+    # output.print(f"[dim]API Base:[/dim] Default")
+    # output.print("[dim]API Key:[/dim] Configured")
 
     # Show switch command if not current provider
     if not is_current_provider:
@@ -1155,7 +1164,7 @@ direct_registered.append("models")
 # Theme command - manage UI themes
 @app.command("theme", help="Manage UI themes for MCP CLI")
 def theme_command(
-    theme_name: Optional[str] = typer.Argument(None, help="Theme name to switch to"),
+    theme_name: str | None = typer.Argument(None, help="Theme name to switch to"),
     list_themes: bool = typer.Option(
         False, "--list", "-l", help="List all available themes"
     ),
@@ -1190,17 +1199,17 @@ def token_command(
         ...,
         help="Action: list, set, get, delete, clear, backends, set-provider, get-provider, delete-provider",
     ),
-    name: Optional[str] = typer.Argument(
+    name: str | None = typer.Argument(
         None, help="Token/provider name (for set/get/delete actions)"
     ),
     token_type: str = typer.Option(
         "bearer", "--type", "-t", help="Token type (bearer, api-key, generic)"
     ),
-    value: Optional[str] = typer.Option(None, "--value", help="Token value"),
-    provider: Optional[str] = typer.Option(
+    value: str | None = typer.Option(None, "--value", help="Token value"),
+    provider: str | None = typer.Option(
         None, "--provider", "-p", help="Provider name (for API keys)"
     ),
-    namespace: Optional[str] = typer.Option(
+    namespace: str | None = typer.Option(
         None, "--namespace", "-n", help="Storage namespace"
     ),
     show_oauth: bool = typer.Option(
@@ -1341,21 +1350,21 @@ direct_registered.append("token")
 # Tokens command - plural form defaults to list (for consistency with providers)
 @app.command("tokens", help="List stored tokens (defaults to list)")
 def tokens_command(
-    action: Optional[str] = typer.Argument(
+    action: str | None = typer.Argument(
         None,
         help="Action: list, set, get, delete, clear, backends, set-provider, get-provider, delete-provider",
     ),
-    name: Optional[str] = typer.Argument(
+    name: str | None = typer.Argument(
         None, help="Token/provider name (for set/get/delete actions)"
     ),
     token_type: str = typer.Option(
         "bearer", "--type", "-t", help="Token type (bearer, api-key, generic)"
     ),
-    value: Optional[str] = typer.Option(None, "--value", help="Token value"),
-    provider: Optional[str] = typer.Option(
+    value: str | None = typer.Option(None, "--value", help="Token value"),
+    provider: str | None = typer.Option(
         None, "--provider", "-p", help="Provider name (for API keys)"
     ),
-    namespace: Optional[str] = typer.Option(
+    namespace: str | None = typer.Option(
         None, "--namespace", "-n", help="Storage namespace"
     ),
     show_oauth: bool = typer.Option(
@@ -1514,20 +1523,18 @@ direct_registered.append("tokens")
 # Cmd command - Unix-friendly automation mode
 @app.command("cmd", help="Command mode for Unix-friendly automation and scripting")
 def cmd_command(
-    input_file: Optional[str] = typer.Option(
+    input_file: str | None = typer.Option(
         None, "--input", "-i", help="Input file (use - for stdin)"
     ),
-    output_file: Optional[str] = typer.Option(
+    output_file: str | None = typer.Option(
         None, "--output", "-o", help="Output file (use - for stdout)"
     ),
-    prompt: Optional[str] = typer.Option(None, "--prompt", "-p", help="Prompt text"),
-    tool: Optional[str] = typer.Option(
-        None, "--tool", "-t", help="Tool name to execute"
-    ),
-    tool_args: Optional[str] = typer.Option(
+    prompt: str | None = typer.Option(None, "--prompt", "-p", help="Prompt text"),
+    tool: str | None = typer.Option(None, "--tool", "-t", help="Tool name to execute"),
+    tool_args: str | None = typer.Option(
         None, "--tool-args", help="Tool arguments as JSON"
     ),
-    system_prompt: Optional[str] = typer.Option(
+    system_prompt: str | None = typer.Option(
         None, "--system-prompt", help="Custom system prompt"
     ),
     raw: bool = typer.Option(False, "--raw", help="Raw output without formatting"),
@@ -1538,11 +1545,11 @@ def cmd_command(
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
-    server: Optional[str] = typer.Option(None, help="Server to connect to"),
-    provider: Optional[str] = typer.Option(None, help="LLM provider name"),
-    model: Optional[str] = typer.Option(None, help="Model name"),
-    api_base: Optional[str] = typer.Option(None, "--api-base", help="API base URL"),
-    api_key: Optional[str] = typer.Option(None, "--api-key", help="API key"),
+    server: str | None = typer.Option(None, help="Server to connect to"),
+    provider: str | None = typer.Option(None, help="LLM provider name"),
+    model: str | None = typer.Option(None, help="Model name"),
+    api_base: str | None = typer.Option(None, "--api-base", help="API base URL"),
+    api_key: str | None = typer.Option(None, "--api-key", help="API key"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(False, "--verbose", help="Enable verbose logging"),
@@ -1557,7 +1564,7 @@ def cmd_command(
     _setup_command_logging(quiet, verbose, log_level, theme)
 
     # Use ModelManager to resolve provider/model
-    from mcp_cli.model_manager import ModelManager
+    from mcp_cli.model_management import ModelManager
 
     model_manager = ModelManager()
 

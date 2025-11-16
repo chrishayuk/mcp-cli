@@ -1,15 +1,17 @@
-"""
-Centralized preference management for MCP CLI.
+"""Centralized preference management for MCP CLI.
 
 This module handles all user preferences including themes, provider settings,
 model preferences, and other configuration options in a centralized way.
 """
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
-from typing import Any, Dict, Optional, List
-from dataclasses import dataclass, asdict, field
+from typing import Any
 from enum import Enum
+
+from pydantic import BaseModel, Field
 
 
 class Theme(str, Enum):
@@ -41,23 +43,24 @@ class ToolRiskLevel(str, Enum):
     HIGH = "high"  # System-wide or destructive operations
 
 
-@dataclass
-class ToolConfirmationPreferences:
+class ToolConfirmationPreferences(BaseModel):
     """Tool confirmation preferences."""
 
     mode: str = "smart"  # Global confirmation mode
-    per_tool: Dict[str, str] = field(
-        default_factory=dict
-    )  # Per-tool overrides (always/never/ask)
-    patterns: List[Dict[str, str]] = field(default_factory=list)  # Pattern-based rules
-    risk_thresholds: Dict[str, bool] = field(
+    per_tool: dict[str, str] = Field(
+        default_factory=dict, description="Per-tool overrides (always/never/ask)"
+    )
+    patterns: list[dict[str, str]] = Field(
+        default_factory=list, description="Pattern-based rules"
+    )
+    risk_thresholds: dict[str, bool] = Field(
         default_factory=lambda: {
             "safe": False,  # Don't confirm safe tools
             "moderate": True,  # Confirm moderate risk tools
             "high": True,  # Always confirm high risk tools
         }
     )
-    categories: Dict[str, str] = field(
+    categories: dict[str, str] = Field(
         default_factory=lambda: {
             # Default risk categories for common tool patterns
             "read_*": "safe",
@@ -75,21 +78,19 @@ class ToolConfirmationPreferences:
     )
 
 
-@dataclass
-class UIPreferences:
+class UIPreferences(BaseModel):
     """UI-related preferences."""
 
     theme: str = "default"
     verbose: bool = True
     confirm_tools: bool = True
     show_reasoning: bool = True
-    tool_confirmation: ToolConfirmationPreferences = field(
+    tool_confirmation: ToolConfirmationPreferences = Field(
         default_factory=ToolConfirmationPreferences
     )
 
 
-@dataclass
-class CustomProvider:
+class CustomProvider(BaseModel):
     """Custom OpenAI-compatible provider configuration.
 
     API keys are stored in environment variables following the pattern:
@@ -98,32 +99,28 @@ class CustomProvider:
     For example, a provider named "myai" would use MYAI_API_KEY
     """
 
-    name: str
-    api_base: str
-    default_model: str = "gpt-4"
-    models: List[str] = field(default_factory=lambda: ["gpt-4", "gpt-3.5-turbo"])
-    env_var_name: Optional[str] = None  # Optional custom env var name
+    name: str = Field(min_length=1, description="Provider name")
+    api_base: str = Field(
+        min_length=1, pattern="^https?://", description="API base URL"
+    )
+    default_model: str = Field(
+        default="gpt-4", min_length=1, description="Default model"
+    )
+    models: list[str] = Field(
+        default_factory=lambda: ["gpt-4", "gpt-3.5-turbo"],
+        min_length=1,
+        description="Available models",
+    )
+    env_var_name: str | None = None  # Optional custom env var name
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary (no API key stored)."""
-        return {
-            "name": self.name,
-            "api_base": self.api_base,
-            "default_model": self.default_model,
-            "models": self.models,
-            "env_var_name": self.env_var_name,
-        }
+        return self.model_dump()  # type: ignore[no-any-return]
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "CustomProvider":
+    def from_dict(cls, data: dict[str, Any]) -> "CustomProvider":
         """Create from dictionary."""
-        return cls(
-            name=data["name"],
-            api_base=data["api_base"],
-            default_model=data.get("default_model", "gpt-4"),
-            models=data.get("models", ["gpt-4", "gpt-3.5-turbo"]),
-            env_var_name=data.get("env_var_name"),
-        )
+        return cls.model_validate(data)  # type: ignore[no-any-return]
 
     def get_env_var_name(self) -> str:
         """Get the environment variable name for this provider's API key."""
@@ -133,81 +130,51 @@ class CustomProvider:
         return f"{self.name.upper().replace('-', '_')}_API_KEY"
 
 
-@dataclass
-class ProviderPreferences:
+class ProviderPreferences(BaseModel):
     """Provider and model preferences."""
 
-    active_provider: Optional[str] = None
-    active_model: Optional[str] = None
-    provider_settings: Dict[str, Any] = field(default_factory=dict)
-    custom_providers: Dict[str, Dict[str, Any]] = field(
-        default_factory=dict
-    )  # Custom OpenAI-compatible providers
+    active_provider: str | None = None
+    active_model: str | None = None
+    provider_settings: dict[str, Any] = Field(default_factory=dict)
+    custom_providers: dict[str, dict[str, Any]] = Field(
+        default_factory=dict, description="Custom OpenAI-compatible providers"
+    )
 
 
-@dataclass
-class ServerPreferences:
+class ServerPreferences(BaseModel):
     """Server-related preferences."""
 
-    disabled_servers: Dict[str, bool] = field(default_factory=dict)
-    server_settings: Dict[str, Any] = field(default_factory=dict)
-    runtime_servers: Dict[str, Dict[str, Any]] = field(
-        default_factory=dict
-    )  # User-added servers
+    disabled_servers: dict[str, bool] = Field(default_factory=dict)
+    server_settings: dict[str, Any] = Field(default_factory=dict)
+    runtime_servers: dict[str, dict[str, Any]] = Field(
+        default_factory=dict, description="User-added servers"
+    )
 
 
-@dataclass
-class MCPPreferences:
+class MCPPreferences(BaseModel):
     """Complete MCP CLI preferences."""
 
-    ui: UIPreferences = field(default_factory=UIPreferences)
-    provider: ProviderPreferences = field(default_factory=ProviderPreferences)
-    servers: ServerPreferences = field(default_factory=ServerPreferences)
-    last_servers: Optional[str] = None
-    config_file: Optional[str] = None
+    ui: UIPreferences = Field(default_factory=UIPreferences)
+    provider: ProviderPreferences = Field(default_factory=ProviderPreferences)
+    servers: ServerPreferences = Field(default_factory=ServerPreferences)
+    last_servers: str | None = None
+    config_file: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert preferences to dictionary."""
-        return {
-            "ui": asdict(self.ui),
-            "provider": asdict(self.provider),
-            "servers": asdict(self.servers),
-            "last_servers": self.last_servers,
-            "config_file": self.config_file,
-        }
+        return self.model_dump()  # type: ignore[no-any-return]
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "MCPPreferences":
+    def from_dict(cls, data: dict[str, Any]) -> "MCPPreferences":
         """Create preferences from dictionary."""
-        ui_data = data.get("ui", {})
-        provider_data = data.get("provider", {})
-        servers_data = data.get("servers", {})
-
-        # Handle tool_confirmation nested data
-        if ui_data and "tool_confirmation" in ui_data:
-            tool_conf_data = ui_data["tool_confirmation"]
-            if isinstance(tool_conf_data, dict):
-                ui_data["tool_confirmation"] = ToolConfirmationPreferences(
-                    **tool_conf_data
-                )
-
-        return cls(
-            ui=UIPreferences(**ui_data) if ui_data else UIPreferences(),
-            provider=ProviderPreferences(**provider_data)
-            if provider_data
-            else ProviderPreferences(),
-            servers=ServerPreferences(**servers_data)
-            if servers_data
-            else ServerPreferences(),
-            last_servers=data.get("last_servers"),
-            config_file=data.get("config_file"),
-        )
+        # Pydantic will handle nested model validation automatically
+        return cls.model_validate(data)  # type: ignore[no-any-return]
 
 
 class PreferenceManager:
     """Manages MCP CLI preferences with file persistence."""
 
-    def __init__(self, config_dir: Optional[Path] = None):
+    def __init__(self, config_dir: Path | None = None):
         """Initialize preference manager.
 
         Args:
@@ -297,7 +264,7 @@ class PreferenceManager:
         self.preferences.ui.confirm_tools = mode != "never"
         self.save_preferences()
 
-    def get_tool_confirmation(self, tool_name: str) -> Optional[str]:
+    def get_tool_confirmation(self, tool_name: str) -> str | None:
         """Get confirmation setting for a specific tool.
 
         Args:
@@ -308,7 +275,7 @@ class PreferenceManager:
         """
         return self.preferences.ui.tool_confirmation.per_tool.get(tool_name)
 
-    def set_tool_confirmation(self, tool_name: str, setting: Optional[str]) -> None:
+    def set_tool_confirmation(self, tool_name: str, setting: str | None) -> None:
         """Set confirmation for a specific tool.
 
         Args:
@@ -323,7 +290,7 @@ class PreferenceManager:
             self.preferences.ui.tool_confirmation.per_tool[tool_name] = setting
         self.save_preferences()
 
-    def get_all_tool_confirmations(self) -> Dict[str, str]:
+    def get_all_tool_confirmations(self) -> dict[str, str]:
         """Get all per-tool confirmation settings."""
         return self.preferences.ui.tool_confirmation.per_tool.copy()
 
@@ -435,7 +402,7 @@ class PreferenceManager:
         )
         self.save_preferences()
 
-    def get_active_provider(self) -> Optional[str]:
+    def get_active_provider(self) -> str | None:
         """Get active provider."""
         return self.preferences.provider.active_provider
 
@@ -444,7 +411,7 @@ class PreferenceManager:
         self.preferences.provider.active_provider = provider
         self.save_preferences()
 
-    def get_active_model(self) -> Optional[str]:
+    def get_active_model(self) -> str | None:
         """Get active model."""
         return self.preferences.provider.active_model
 
@@ -453,7 +420,7 @@ class PreferenceManager:
         self.preferences.provider.active_model = model
         self.save_preferences()
 
-    def get_last_servers(self) -> Optional[str]:
+    def get_last_servers(self) -> str | None:
         """Get last used servers."""
         return self.preferences.last_servers
 
@@ -462,7 +429,7 @@ class PreferenceManager:
         self.preferences.last_servers = servers
         self.save_preferences()
 
-    def get_config_file(self) -> Optional[str]:
+    def get_config_file(self) -> str | None:
         """Get default config file path."""
         return self.preferences.config_file
 
@@ -519,7 +486,7 @@ class PreferenceManager:
         """Disable a server in preferences."""
         self.set_server_disabled(server_name, True)
 
-    def get_disabled_servers(self) -> Dict[str, bool]:
+    def get_disabled_servers(self) -> dict[str, bool]:
         """Get all disabled servers."""
         return self.preferences.servers.disabled_servers.copy()
 
@@ -528,7 +495,7 @@ class PreferenceManager:
         self.preferences.servers.disabled_servers.clear()
         self.save_preferences()
 
-    def add_runtime_server(self, name: str, config: Dict[str, Any]) -> None:
+    def add_runtime_server(self, name: str, config: dict[str, Any]) -> None:
         """Add a runtime server to preferences.
 
         Args:
@@ -553,11 +520,11 @@ class PreferenceManager:
             return True
         return False
 
-    def get_runtime_servers(self) -> Dict[str, Dict[str, Any]]:
+    def get_runtime_servers(self) -> dict[str, dict[str, Any]]:
         """Get all runtime servers."""
         return self.preferences.servers.runtime_servers.copy()
 
-    def get_runtime_server(self, name: str) -> Optional[Dict[str, Any]]:
+    def get_runtime_server(self, name: str) -> dict[str, Any] | None:
         """Get a specific runtime server configuration."""
         return self.preferences.servers.runtime_servers.get(name)
 
@@ -570,8 +537,8 @@ class PreferenceManager:
         name: str,
         api_base: str,
         default_model: str = "gpt-4",
-        models: Optional[List[str]] = None,
-        env_var_name: Optional[str] = None,
+        models: list[str] | None = None,
+        env_var_name: str | None = None,
     ) -> None:
         """Add a custom OpenAI-compatible provider.
 
@@ -614,11 +581,11 @@ class PreferenceManager:
             return True
         return False
 
-    def get_custom_providers(self) -> Dict[str, Dict[str, Any]]:
+    def get_custom_providers(self) -> dict[str, dict[str, Any]]:
         """Get all custom providers."""
         return self.preferences.provider.custom_providers.copy()
 
-    def get_custom_provider(self, name: str) -> Optional[Dict[str, Any]]:
+    def get_custom_provider(self, name: str) -> dict[str, Any] | None:
         """Get a specific custom provider configuration."""
         return self.preferences.provider.custom_providers.get(name)
 
@@ -629,10 +596,10 @@ class PreferenceManager:
     def update_custom_provider(
         self,
         name: str,
-        api_base: Optional[str] = None,
-        default_model: Optional[str] = None,
-        models: Optional[List[str]] = None,
-        env_var_name: Optional[str] = None,
+        api_base: str | None = None,
+        default_model: str | None = None,
+        models: list[str] | None = None,
+        env_var_name: str | None = None,
     ) -> bool:
         """Update an existing custom provider.
 
@@ -663,7 +630,7 @@ class PreferenceManager:
         self.save_preferences()
         return True
 
-    def get_custom_provider_api_key(self, name: str) -> Optional[str]:
+    def get_custom_provider_api_key(self, name: str) -> str | None:
         """Get the API key for a custom provider from environment variables.
 
         Args:
@@ -688,7 +655,7 @@ class PreferenceManager:
 
 
 # Global singleton instance
-_preference_manager: Optional[PreferenceManager] = None
+_preference_manager: PreferenceManager | None = None
 
 
 __all__ = [

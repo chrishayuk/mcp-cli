@@ -3,26 +3,23 @@
 
 from __future__ import annotations
 
-from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from mcp_cli.commands.models.base_model import CommandBaseModel
 
 
-class ConversationActionParams(BaseModel):
+class ConversationActionParams(CommandBaseModel):
     """Parameters for conversation actions."""
 
     action: str = Field(description="Action to perform (list/save/load/delete)")
-    name: Optional[str] = Field(default=None, description="Conversation name")
+    name: str | None = Field(default=None, description="Conversation name")
     format: str = Field(default="table", description="Output format")
 
-    model_config = {"frozen": False}
 
-
-class ConversationInfo(BaseModel):
+class ConversationInfo(CommandBaseModel):
     """Information about a saved conversation."""
 
     name: str = Field(description="Conversation name")
     timestamp: str = Field(description="Last modified timestamp")
     message_count: int = Field(default=0, description="Number of messages")
     size: int = Field(default=0, description="Size in bytes")
-
-    model_config = {"frozen": False}

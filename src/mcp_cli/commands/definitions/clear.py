@@ -5,7 +5,6 @@ Unified clear command implementation.
 
 from __future__ import annotations
 
-from typing import List
 
 from mcp_cli.commands.base import (
     UnifiedCommand,
@@ -22,7 +21,7 @@ class ClearCommand(UnifiedCommand):
         return "clear"
 
     @property
-    def aliases(self) -> List[str]:
+    def aliases(self) -> list[str]:
         return []
 
     @property
@@ -56,7 +55,7 @@ Aliases: cls
         # Import needed modules
         from chuk_term.ui import clear_screen, display_chat_banner
         from mcp_cli.context import get_context
-        from mcp_cli.model_manager import ModelManager
+        from mcp_cli.model_management import ModelManager
 
         # Clear the screen first
         clear_screen()

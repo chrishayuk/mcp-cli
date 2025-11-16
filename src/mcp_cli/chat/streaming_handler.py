@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from chuk_term.ui import output
 from mcp_cli.ui.streaming_display import StreamingContext
@@ -25,12 +25,12 @@ logger = get_logger("streaming")
 class StreamingResponseHandler:
     """Enhanced streaming handler with better UI integration and error handling."""
 
-    def __init__(self, console: Optional[Any] = None, chat_display=None):
+    def __init__(self, console: Any | None = None, chat_display=None):
         self.console = console  # For compatibility
         self.chat_display = chat_display  # Centralized display manager
         self.current_response = ""
-        self.live_display: Optional[Any] = None
-        self.streaming_context: Optional[StreamingContext] = None
+        self.live_display: Any | None = None
+        self.streaming_context: StreamingContext | None = None
         self.start_time = 0.0
         self.chunk_count = 0
         self.is_streaming = False
@@ -38,8 +38,8 @@ class StreamingResponseHandler:
         self._interrupted = False
 
         # Tool call tracking for streaming
-        self._accumulated_tool_calls: List[Dict[str, Any]] = []
-        self._current_tool_call: Optional[Dict[str, Any]] = None
+        self._accumulated_tool_calls: list[dict[str, Any]] = []
+        self._current_tool_call: dict[str, Any] | None = None
 
         # Track previous response to detect accumulated vs delta
         self._previous_response_field = ""
@@ -47,10 +47,10 @@ class StreamingResponseHandler:
     async def stream_response(
         self,
         client,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Dict[str, Any]]] = None,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any | None]] | None = None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Stream response from LLM with live UI updates and enhanced error handling.
 
@@ -131,12 +131,12 @@ class StreamingResponseHandler:
     async def _handle_chuk_llm_streaming(
         self,
         client,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Dict[str, Any]]] = None,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any | None]] | None = None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Handle chuk-llm's streaming with proper tool call accumulation."""
-        tool_calls: List[Dict[str, Any]] = []
+        tool_calls: list[dict[str, Any]] = []
 
         # Start live display
         self._start_live_display()
@@ -189,12 +189,12 @@ class StreamingResponseHandler:
     async def _handle_stream_completion(
         self,
         client,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Dict[str, Any]]] = None,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any | None]] | None = None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Handle alternative stream_completion method."""
-        tool_calls: List[Dict[str, Any]] = []
+        tool_calls: list[dict[str, Any]] = []
 
         # Start live display
         self._start_live_display()
@@ -231,10 +231,10 @@ class StreamingResponseHandler:
     async def _handle_regular_completion(
         self,
         client,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Dict[str, Any]]] = None,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any | None]] | None = None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Fallback to regular non-streaming completion."""
         logger.debug("Using non-streaming completion")
 
@@ -283,7 +283,7 @@ class StreamingResponseHandler:
         self.live_display = True
 
     async def _process_chunk(
-        self, chunk: Dict[str, Any], tool_calls: List[Dict[str, Any]]
+        self, chunk: dict[str, Any], tool_calls: list[dict[str, Any]]
     ):
         """Process a single streaming chunk with enhanced error handling and tool call support."""
         self.chunk_count += 1
@@ -330,7 +330,7 @@ class StreamingResponseHandler:
             logger.warning(f"Error processing chunk: {e}")
             # Continue processing other chunks
 
-    def _extract_chunk_content(self, chunk: Dict[str, Any]) -> str:
+    def _extract_chunk_content(self, chunk: dict[str, Any]) -> str:
         """Extract text content from a chuk-llm streaming chunk."""
         try:
             # chuk-llm streaming format - chunk has "response" field with content
@@ -381,8 +381,8 @@ class StreamingResponseHandler:
         return ""
 
     def _extract_tool_calls_from_chunk(
-        self, chunk: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, chunk: dict[str, Any]
+    ) -> dict[str, Any] | None:
         """Extract tool call data from a streaming chunk."""
         try:
             if isinstance(chunk, dict):
@@ -391,7 +391,7 @@ class StreamingResponseHandler:
                     logger.debug(
                         f"Found direct tool_calls in chunk: {chunk['tool_calls']}"
                     )
-                    result: Optional[Dict[str, Any]] = chunk["tool_calls"]
+                    result: dict[str, Any | None] = chunk["tool_calls"]
                     return result
 
                 # OpenAI-style delta format
@@ -403,7 +403,7 @@ class StreamingResponseHandler:
                             logger.debug(
                                 f"Found tool_calls in delta: {delta['tool_calls']}"
                             )
-                            delta_result: Optional[Dict[str, Any]] = delta["tool_calls"]
+                            delta_result: dict[str, Any | None] = delta["tool_calls"]
                             return delta_result
                         # Sometimes tool_calls come in function_call format
                         if "function_call" in delta:
@@ -425,7 +425,7 @@ class StreamingResponseHandler:
         return None
 
     def _process_tool_call_chunk(
-        self, tool_call_data: Dict[str, Any], tool_calls: List[Dict[str, Any]]
+        self, tool_call_data: dict[str, Any], tool_calls: list[dict[str, Any]]
     ):
         """Process tool call chunk data and accumulate complete tool calls."""
         try:
@@ -452,7 +452,7 @@ class StreamingResponseHandler:
             logger.warning(f"Error processing tool call chunk: {e}")
 
     def _accumulate_tool_call(
-        self, tool_call_item: Dict[str, Any], tool_calls: List[Dict[str, Any]]
+        self, tool_call_item: dict[str, Any], tool_calls: list[dict[str, Any]]
     ):
         """
         Accumulate streaming tool call data into complete tool calls.
@@ -651,7 +651,7 @@ class StreamingResponseHandler:
             logger.debug(f"Could not fix concatenated JSON: {json_str}")
             return json_str
 
-    async def _finalize_streaming_tool_calls(self, tool_calls: List[Dict[str, Any]]):
+    async def _finalize_streaming_tool_calls(self, tool_calls: list[dict[str, Any]]):
         """
         Finalize accumulated tool calls after streaming is complete.
 
@@ -717,8 +717,8 @@ class StreamingResponseHandler:
             logger.info(f"✅ Finalized tool call: {final_tc['function']['name']}")
 
     def _clean_tool_call_for_final_list(
-        self, tool_call: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, tool_call: dict[str, Any]
+    ) -> dict[str, Any]:
         """Clean up tool call for final list by removing internal tracking fields."""
         cleaned = dict(tool_call)
 

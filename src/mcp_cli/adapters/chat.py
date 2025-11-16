@@ -8,7 +8,7 @@ Adapts unified commands to work with chat mode's slash command system.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from mcp_cli.commands.base import CommandMode
 from mcp_cli.commands.registry import UnifiedCommandRegistry
@@ -28,7 +28,7 @@ class ChatCommandAdapter:
     """
 
     @staticmethod
-    async def _show_command_menu(context: Optional[Dict[str, Any]] = None) -> bool:
+    async def _show_command_menu(context: dict[str, Any] | None = None) -> bool:
         """Show available slash commands when just '/' is typed."""
         from chuk_term.ui import format_table
 
@@ -67,7 +67,7 @@ class ChatCommandAdapter:
 
     @staticmethod
     async def handle_command(
-        command_text: str, context: Optional[Dict[str, Any]] = None
+        command_text: str, context: dict[str, Any] | None = None
     ) -> bool:
         """
         Handle a chat command.
@@ -197,7 +197,7 @@ class ChatCommandAdapter:
             return False
 
     @staticmethod
-    def _parse_arguments(command: Any, args: List[str]) -> Dict[str, Any]:
+    def _parse_arguments(command: Any, args: list[str]) -> dict[str, Any]:
         """
         Parse command line arguments into kwargs.
 
@@ -206,7 +206,7 @@ class ChatCommandAdapter:
         - Options: --option value
         - Positional args (if command expects them)
         """
-        kwargs: Dict[str, Any] = {}
+        kwargs: dict[str, Any] = {}
         i = 0
 
         while i < len(args):
@@ -248,7 +248,7 @@ class ChatCommandAdapter:
         return kwargs
 
     @staticmethod
-    def get_completions(partial_text: str) -> List[str]:
+    def get_completions(partial_text: str) -> list[str]:
         """
         Get command completions for partial input.
 
@@ -299,7 +299,7 @@ class ChatCommandAdapter:
             return completions
 
     @staticmethod
-    def list_commands() -> List[str]:
+    def list_commands() -> list[str]:
         """
         Get a list of all available chat commands.
 

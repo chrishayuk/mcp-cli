@@ -101,17 +101,17 @@ class TestToolInfo:
                 "required": ["arg1"],
             },
         )
-        openai_format = ti.to_openai_format()
+        openai_format = ti.to_llm_format().to_dict()
 
         assert openai_format["type"] == "function"
         assert openai_format["function"]["name"] == "my_tool"
         assert openai_format["function"]["description"] == "Test tool"
         assert openai_format["function"]["parameters"]["required"] == ["arg1"]
 
-    def test_toolinfo_to_openai_format_no_description(self):
-        """Test to_openai_format with no description."""
+    def test_toolinfo_to_llm_format_no_description(self):
+        """Test to_llm_format with no description."""
         ti = ToolInfo(name="tool", namespace="ns")
-        openai_format = ti.to_openai_format()
+        openai_format = ti.to_llm_format().to_dict()
         assert openai_format["function"]["description"] == "No description provided"
 
 

@@ -8,7 +8,6 @@ This is the single source of truth for all commands across all modes.
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional
 
 from mcp_cli.commands.base import CommandMode, UnifiedCommand, CommandGroup
 
@@ -22,9 +21,9 @@ class UnifiedCommandRegistry:
     This replaces the separate registries in chat, CLI, and interactive modes.
     """
 
-    _instance: Optional[UnifiedCommandRegistry] = None
-    _commands: Dict[str, UnifiedCommand] = {}
-    _groups: Dict[str, CommandGroup] = {}
+    _instance: UnifiedCommandRegistry | None = None
+    _commands: dict[str, UnifiedCommand] = {}
+    _groups: dict[str, CommandGroup] = {}
     _initialized: bool = False
 
     def __new__(cls):
@@ -40,7 +39,7 @@ class UnifiedCommandRegistry:
             self._groups = {}
             self._initialized = True
 
-    def register(self, command: UnifiedCommand, group: Optional[str] = None) -> None:
+    def register(self, command: UnifiedCommand, group: str | None = None) -> None:
         """
         Register a command.
 
@@ -69,9 +68,7 @@ class UnifiedCommandRegistry:
 
             logger.debug(f"Registered command: {command.name}")
 
-    def get(
-        self, name: str, mode: Optional[CommandMode] = None
-    ) -> Optional[UnifiedCommand]:
+    def get(self, name: str, mode: CommandMode | None = None) -> UnifiedCommand | None:
         """
         Get a command by name.
 
@@ -105,7 +102,7 @@ class UnifiedCommandRegistry:
 
         return command
 
-    def list_commands(self, mode: Optional[CommandMode] = None) -> List[UnifiedCommand]:
+    def list_commands(self, mode: CommandMode | None = None) -> list[UnifiedCommand]:
         """
         List all registered commands.
 
@@ -137,8 +134,8 @@ class UnifiedCommandRegistry:
         return sorted(commands, key=lambda c: c.name)
 
     def get_command_names(
-        self, mode: Optional[CommandMode] = None, include_aliases: bool = False
-    ) -> List[str]:
+        self, mode: CommandMode | None = None, include_aliases: bool = False
+    ) -> list[str]:
         """
         Get all command names.
 

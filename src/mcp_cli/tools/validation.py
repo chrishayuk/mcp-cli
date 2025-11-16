@@ -1,12 +1,16 @@
 # mcp_cli/tools/validation.py
 """
+from __future__ import annotations
+
 Tool schema validation and filtering system.
 SIMPLIFIED: Focus on auto-fixing rather than strict validation.
 """
 
 import json
 import logging
-from typing import Dict, Any, List, Optional, Tuple, cast
+from typing import Any, cast
+
+from mcp_cli.tools.models import ValidationResult
 
 logger = logging.getLogger(__name__)
 
@@ -15,62 +19,69 @@ class ToolSchemaValidator:
     """Validates tool schemas for compatibility with different LLM providers."""
 
     @staticmethod
-    def validate_openai_schema(tool_def: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
+    def validate_openai_schema(tool_def: dict[str, Any]) -> ValidationResult:
         """
         Validate a tool definition against OpenAI's function calling schema.
         SIMPLIFIED: Always attempt auto-fix instead of strict validation.
 
         Returns:
-            Tuple of (is_valid, error_message)
+            ValidationResult with validation status and any errors
         """
         try:
             # Basic structure check - tool_def is already typed as Dict
             if "function" not in tool_def:
-                return False, "Tool definition missing 'function' property"
+                return ValidationResult.failure(
+                    "Tool definition missing 'function' property"
+                )
 
             function = tool_def.get("function", {})
             if not isinstance(function, dict):
-                return False, "Function must be a dictionary"
+                return ValidationResult.failure("Function must be a dictionary")
 
             # Check name
             name = function.get("name", "")
             if not name or not isinstance(name, str):
-                return False, "Function name must be a non-empty string"
+                return ValidationResult.failure(
+                    "Function name must be a non-empty string"
+                )
 
             # Check for forbidden characters in name
             import re
 
             if not re.match(r"^[a-zA-Z0-9_-]+$", name):
-                return (
-                    False,
-                    f"Function name '{name}' contains invalid characters. Only a-z, A-Z, 0-9, _, - allowed",
+                return ValidationResult.failure(
+                    f"Function name '{name}' contains invalid characters. Only a-z, A-Z, 0-9, _, - allowed"
                 )
 
             # Check for unsupported properties that would cause OpenAI errors
             unsupported_props = ["title", "examples", "deprecated", "version", "tags"]
             for prop in unsupported_props:
                 if prop in function:
-                    return False, f"Function contains unsupported property '{prop}'"
+                    return ValidationResult.failure(
+                        f"Function contains unsupported property '{prop}'"
+                    )
 
             # Check parameters if present
             if "parameters" in function:
                 parameters = function["parameters"]
                 if not isinstance(parameters, dict):
-                    return False, "Parameters must be a dictionary"
+                    return ValidationResult.failure("Parameters must be a dictionary")
 
                 # Check for array schemas without items
                 array_errors = ToolSchemaValidator._check_array_schemas(parameters)
                 if array_errors:
-                    return False, f"Array schema issues: {'; '.join(array_errors)}"
+                    return ValidationResult.failure(
+                        f"Array schema issues: {'; '.join(array_errors)}"
+                    )
 
             # If we get here, the tool looks good
-            return True, None
+            return ValidationResult.success()
 
         except Exception as e:
-            return False, f"Validation error: {str(e)}"
+            return ValidationResult.failure(f"Validation error: {str(e)}")
 
     @staticmethod
-    def _check_array_schemas(obj: Any, path: str = "") -> List[str]:
+    def _check_array_schemas(obj: Any, path: str = "") -> list[str]:
         """Recursively check for array schemas missing 'items' property."""
         errors = []
 
@@ -111,7 +122,7 @@ class ToolSchemaValidator:
         return errors
 
     @staticmethod
-    def fix_array_schemas(parameters: Dict[str, Any]) -> Dict[str, Any]:
+    def fix_array_schemas(parameters: dict[str, Any]) -> dict[str, Any]:
         """
         Attempt to fix common array schema issues.
 
@@ -124,7 +135,7 @@ class ToolSchemaValidator:
 
         fixed = json.loads(json.dumps(parameters))  # Deep copy
         ToolSchemaValidator._fix_array_schemas_recursive(fixed)
-        return cast(Dict[str, Any], fixed)
+        return cast(dict[str, Any], fixed)
 
     @staticmethod
     def _fix_array_schemas_recursive(obj: Any) -> None:
@@ -152,7 +163,7 @@ class ToolSchemaValidator:
                     ToolSchemaValidator._fix_array_schemas_recursive(item)
 
     @staticmethod
-    def fix_openai_compatibility(tool_def: Dict[str, Any]) -> Dict[str, Any]:
+    def fix_openai_compatibility(tool_def: dict[str, Any]) -> dict[str, Any]:
         """
         Fix OpenAI compatibility issues by removing unsupported properties.
 
@@ -212,12 +223,12 @@ class ToolSchemaValidator:
                         f"Removed unsupported parameter properties {param_removed}"
                     )
 
-        return cast(Dict[str, Any], fixed)
+        return cast(dict[str, Any], fixed)
 
     @staticmethod
     def validate_and_fix_tool(
-        tool_def: Dict[str, Any], provider: str = "openai"
-    ) -> Tuple[bool, Dict[str, Any], Optional[str]]:
+        tool_def: dict[str, Any], provider: str = "openai"
+    ) -> tuple[bool, dict[str, Any], str | None]:
         """
         Comprehensive tool validation and fixing.
 
@@ -233,9 +244,9 @@ class ToolSchemaValidator:
             fixed_tool = ToolSchemaValidator.fix_openai_compatibility(tool_def)
 
             # Then validate the fixed version
-            is_valid, error_msg = ToolSchemaValidator.validate_openai_schema(fixed_tool)
+            validation = ToolSchemaValidator.validate_openai_schema(fixed_tool)
 
-            return is_valid, fixed_tool, error_msg
+            return validation.is_valid, fixed_tool, validation.error_message
 
         except Exception as e:
             return False, tool_def, f"Error during fix/validation: {str(e)}"

@@ -14,7 +14,7 @@ from typing import List, Dict, Any
 from mcp_cli.chat.commands import handle_command, _COMMAND_HANDLERS
 from mcp_cli.context import initialize_context
 from mcp_cli.tools.manager import ToolManager
-from mcp_cli.model_manager import ModelManager
+from mcp_cli.model_management import ModelManager
 from mcp_cli.tools.models import ServerInfo, ToolInfo
 from mcp_cli.config import initialize_config
 from chuk_term.ui import output

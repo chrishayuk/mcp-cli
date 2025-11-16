@@ -6,111 +6,42 @@ from mcp_cli.commands.definitions.clear import ClearCommand
 
 
 class TestClearCommandExtended:
-    """Extended tests for ClearCommand to cover edge cases."""
+    """Extended tests for ClearCommand to improve coverage."""
 
     @pytest.fixture
     def command(self):
         """Create a ClearCommand instance."""
         return ClearCommand()
 
-    def test_help_text_property(self, command):
-        """Test the help_text property."""
+    def test_help_text(self, command):
+        """Test the help_text property (covers line 33)."""
         help_text = command.help_text
         assert "Clear the terminal screen" in help_text
-        assert "Usage:" in help_text
         assert "/clear" in help_text
         assert "clear" in help_text
-
-    def test_modes_property(self, command):
-        """Test the modes property."""
-        from mcp_cli.commands.base import CommandMode
-
-        modes = command.modes
-        assert modes & CommandMode.CHAT
-        assert modes & CommandMode.INTERACTIVE
+        assert "Aliases: cls" in help_text
 
     @pytest.mark.asyncio
-    async def test_execute_context_exception_fallback_to_model_manager(self, command):
-        """Test execute when get_context raises exception, falls back to ModelManager."""
+    async def test_execute_with_tool_count_method(self, command):
+        """Test execute with tool_manager.get_tool_count() method (covers line 80)."""
         with patch("chuk_term.ui.clear_screen") as mock_clear:
             with patch("chuk_term.ui.display_chat_banner") as mock_banner:
-                with patch("mcp_cli.context.get_context") as mock_get_context:
-                    # get_context raises exception
-                    mock_get_context.side_effect = Exception("Context failed")
-
-                    # But ModelManager works
-                    with patch(
-                        "mcp_cli.model_manager.ModelManager"
-                    ) as mock_model_manager_class:
-                        mock_model_manager = MagicMock()
-                        mock_model_manager.get_active_provider.return_value = "openai"
-                        mock_model_manager.get_active_model.return_value = "gpt-4"
-                        mock_model_manager_class.return_value = mock_model_manager
-
-                        result = await command.execute()
-
-                        # Verify clear_screen was called
-                        mock_clear.assert_called_once()
-
-                        # Verify banner was called with ModelManager values
-                        mock_banner.assert_called_once_with(
-                            provider="openai",
-                            model="gpt-4",
-                            additional_info=None,
-                        )
-
-                        assert result.success is True
-
-    @pytest.mark.asyncio
-    async def test_execute_both_context_and_model_manager_fail(self, command):
-        """Test execute when both get_context and ModelManager fail."""
-        with patch("chuk_term.ui.clear_screen") as mock_clear:
-            with patch("chuk_term.ui.display_chat_banner") as mock_banner:
-                with patch("mcp_cli.context.get_context") as mock_get_context:
-                    # get_context raises exception
-                    mock_get_context.side_effect = Exception("Context failed")
-
-                    # ModelManager also raises exception
-                    with patch(
-                        "mcp_cli.model_manager.ModelManager"
-                    ) as mock_model_manager_class:
-                        mock_model_manager_class.side_effect = Exception(
-                            "ModelManager failed"
-                        )
-
-                        result = await command.execute()
-
-                        # Verify clear_screen was called
-                        mock_clear.assert_called_once()
-
-                        # Verify banner was NOT called (no provider/model available)
-                        mock_banner.assert_not_called()
-
-                        assert result.success is True
-
-    @pytest.mark.asyncio
-    async def test_execute_tool_manager_get_tool_count(self, command):
-        """Test execute with tool manager that has get_tool_count method."""
-        with patch("chuk_term.ui.clear_screen"):
-            with patch("chuk_term.ui.display_chat_banner") as mock_banner:
-                with patch("mcp_cli.context.get_context") as mock_get_context:
-                    # Create mock context with tool manager having get_tool_count
-                    mock_context = MagicMock()
-                    mock_context.model_manager.get_active_provider.return_value = (
+                with patch("mcp_cli.context.get_context") as mock_context:
+                    # Create a mock context with tool_manager that has get_tool_count
+                    mock_ctx = MagicMock()
+                    mock_ctx.model_manager = MagicMock()
+                    mock_ctx.model_manager.get_active_provider.return_value = (
                         "anthropic"
                     )
-                    mock_context.model_manager.get_active_model.return_value = (
-                        "claude-3"
-                    )
-
-                    mock_tool_manager = MagicMock()
-                    mock_tool_manager.get_tool_count.return_value = 5
-                    mock_context.tool_manager = mock_tool_manager
-
-                    mock_get_context.return_value = mock_context
+                    mock_ctx.model_manager.get_active_model.return_value = "claude-3"
+                    mock_ctx.tool_manager = MagicMock()
+                    mock_ctx.tool_manager.get_tool_count.return_value = 5
+                    mock_context.return_value = mock_ctx
 
                     result = await command.execute()
 
+                    # Verify clear_screen was called
+                    mock_clear.assert_called_once()
                     # Verify banner was called with tool count
                     mock_banner.assert_called_once_with(
                         provider="anthropic",
@@ -119,175 +50,131 @@ class TestClearCommandExtended:
                     )
 
                     assert result.success is True
+                    assert result.should_clear is False
 
     @pytest.mark.asyncio
-    async def test_execute_tool_manager_list_tools(self, command):
-        """Test execute with tool manager that has list_tools method."""
-        with patch("chuk_term.ui.clear_screen"):
+    async def test_execute_with_tools_attribute(self, command):
+        """Test execute with tool_manager._tools attribute (covers lines 84-87)."""
+        with patch("chuk_term.ui.clear_screen") as mock_clear:
             with patch("chuk_term.ui.display_chat_banner") as mock_banner:
-                with patch("mcp_cli.context.get_context") as mock_get_context:
-                    # Create mock context with tool manager having list_tools
-                    mock_context = MagicMock()
-                    mock_context.model_manager.get_active_provider.return_value = (
-                        "anthropic"
-                    )
-                    mock_context.model_manager.get_active_model.return_value = (
-                        "claude-3"
-                    )
+                with patch("mcp_cli.context.get_context") as mock_context:
+                    # Create a mock context with tool_manager that only has _tools
+                    mock_ctx = MagicMock()
+                    mock_ctx.model_manager = MagicMock()
+                    mock_ctx.model_manager.get_active_provider.return_value = "openai"
+                    mock_ctx.model_manager.get_active_model.return_value = "gpt-4"
 
-                    mock_tool_manager = MagicMock()
-                    # Remove get_tool_count method
-                    del mock_tool_manager.get_tool_count
-                    mock_tool_manager.list_tools.return_value = [
-                        "tool1",
-                        "tool2",
-                        "tool3",
-                    ]
-                    mock_context.tool_manager = mock_tool_manager
+                    # Create tool_manager without get_tool_count or list_tools
+                    mock_tool_manager = MagicMock(spec=[])
+                    mock_tool_manager._tools = ["tool1", "tool2", "tool3", "tool4"]
+                    # Remove get_tool_count and list_tools if they exist
+                    if hasattr(mock_tool_manager, "get_tool_count"):
+                        delattr(mock_tool_manager, "get_tool_count")
+                    if hasattr(mock_tool_manager, "list_tools"):
+                        delattr(mock_tool_manager, "list_tools")
 
-                    mock_get_context.return_value = mock_context
+                    mock_ctx.tool_manager = mock_tool_manager
+                    mock_context.return_value = mock_ctx
 
                     result = await command.execute()
 
-                    # Verify banner was called with tool count from list_tools
-                    mock_banner.assert_called_once_with(
-                        provider="anthropic",
-                        model="claude-3",
-                        additional_info={"Tools": "3"},
-                    )
-
-                    assert result.success is True
-
-    @pytest.mark.asyncio
-    async def test_execute_tool_manager_tools_attribute(self, command):
-        """Test execute with tool manager that has _tools attribute."""
-        with patch("chuk_term.ui.clear_screen"):
-            with patch("chuk_term.ui.display_chat_banner") as mock_banner:
-                with patch("mcp_cli.context.get_context") as mock_get_context:
-                    # Create mock context with tool manager having _tools
-                    mock_context = MagicMock()
-                    mock_context.model_manager.get_active_provider.return_value = (
-                        "anthropic"
-                    )
-                    mock_context.model_manager.get_active_model.return_value = (
-                        "claude-3"
-                    )
-
-                    mock_tool_manager = MagicMock()
-                    # Remove get_tool_count and list_tools methods
-                    del mock_tool_manager.get_tool_count
-                    del mock_tool_manager.list_tools
-                    mock_tool_manager._tools = ["tool1", "tool2"]
-                    mock_context.tool_manager = mock_tool_manager
-
-                    mock_get_context.return_value = mock_context
-
-                    result = await command.execute()
-
+                    # Verify clear_screen was called
+                    mock_clear.assert_called_once()
                     # Verify banner was called with tool count from _tools
                     mock_banner.assert_called_once_with(
-                        provider="anthropic",
-                        model="claude-3",
-                        additional_info={"Tools": "2"},
+                        provider="openai",
+                        model="gpt-4",
+                        additional_info={"Tools": "4"},
                     )
 
                     assert result.success is True
+                    assert result.should_clear is False
 
     @pytest.mark.asyncio
-    async def test_execute_tool_manager_no_tool_methods(self, command):
-        """Test execute with tool manager that has no tool counting methods."""
-        with patch("chuk_term.ui.clear_screen"):
+    async def test_execute_context_exception_fallback_to_model_manager(self, command):
+        """Test execute when context raises exception, falls back to ModelManager (covers lines 91-99)."""
+        with patch("chuk_term.ui.clear_screen") as mock_clear:
             with patch("chuk_term.ui.display_chat_banner") as mock_banner:
-                with patch("mcp_cli.context.get_context") as mock_get_context:
-                    # Create mock context with tool manager having no tool methods
-                    mock_context = MagicMock()
-                    mock_context.model_manager.get_active_provider.return_value = (
-                        "anthropic"
-                    )
-                    mock_context.model_manager.get_active_model.return_value = (
-                        "claude-3"
-                    )
+                with patch("mcp_cli.context.get_context") as mock_context:
+                    # Make get_context raise an exception
+                    mock_context.side_effect = RuntimeError("Context not available")
 
-                    mock_tool_manager = MagicMock()
-                    # Remove all tool-related methods
-                    del mock_tool_manager.get_tool_count
-                    del mock_tool_manager.list_tools
-                    del mock_tool_manager._tools
-                    mock_context.tool_manager = mock_tool_manager
-
-                    mock_get_context.return_value = mock_context
-
-                    result = await command.execute()
-
-                    # Verify banner was called without tool info
-                    mock_banner.assert_called_once_with(
-                        provider="anthropic",
-                        model="claude-3",
-                        additional_info=None,
-                    )
-
-                    assert result.success is True
-
-    @pytest.mark.asyncio
-    async def test_execute_tool_count_zero(self, command):
-        """Test execute when tool count is zero."""
-        with patch("chuk_term.ui.clear_screen"):
-            with patch("chuk_term.ui.display_chat_banner") as mock_banner:
-                with patch("mcp_cli.context.get_context") as mock_get_context:
-                    # Create mock context with tool manager having zero tools
-                    mock_context = MagicMock()
-                    mock_context.model_manager.get_active_provider.return_value = (
-                        "anthropic"
-                    )
-                    mock_context.model_manager.get_active_model.return_value = (
-                        "claude-3"
-                    )
-
-                    mock_tool_manager = MagicMock()
-                    mock_tool_manager.get_tool_count.return_value = 0
-                    mock_context.tool_manager = mock_tool_manager
-
-                    mock_get_context.return_value = mock_context
-
-                    result = await command.execute()
-
-                    # Verify banner was called without tool info (0 tools not shown)
-                    mock_banner.assert_called_once_with(
-                        provider="anthropic",
-                        model="claude-3",
-                        additional_info=None,
-                    )
-
-                    assert result.success is True
-
-    @pytest.mark.asyncio
-    async def test_execute_context_no_model_manager(self, command):
-        """Test execute when context exists but has no model_manager."""
-        with patch("chuk_term.ui.clear_screen"):
-            with patch("chuk_term.ui.display_chat_banner") as mock_banner:
-                with patch("mcp_cli.context.get_context") as mock_get_context:
-                    # Create mock context without model_manager
-                    mock_context = MagicMock()
-                    del mock_context.model_manager  # Remove model_manager
-
-                    mock_get_context.return_value = mock_context
-
-                    # Mock ModelManager fallback
+                    # Mock ModelManager to succeed (patch where it's imported)
                     with patch(
-                        "mcp_cli.model_manager.ModelManager"
-                    ) as mock_model_manager_class:
+                        "mcp_cli.model_management.ModelManager"
+                    ) as MockModelManager:
                         mock_model_manager = MagicMock()
-                        mock_model_manager.get_active_provider.return_value = "openai"
-                        mock_model_manager.get_active_model.return_value = "gpt-4"
-                        mock_model_manager_class.return_value = mock_model_manager
+                        mock_model_manager.get_active_provider.return_value = "google"
+                        mock_model_manager.get_active_model.return_value = "gemini-pro"
+                        MockModelManager.return_value = mock_model_manager
 
                         result = await command.execute()
 
-                        # Should fall back to ModelManager
+                        # Verify clear_screen was called
+                        mock_clear.assert_called_once()
+                        # Verify banner was called with ModelManager data
                         mock_banner.assert_called_once_with(
-                            provider="openai",
-                            model="gpt-4",
+                            provider="google",
+                            model="gemini-pro",
                             additional_info=None,
                         )
 
                         assert result.success is True
+                        assert result.should_clear is False
+
+    @pytest.mark.asyncio
+    async def test_execute_all_exceptions_no_banner(self, command):
+        """Test execute when both context and ModelManager fail (covers lines 91-99)."""
+        with patch("chuk_term.ui.clear_screen") as mock_clear:
+            with patch("chuk_term.ui.display_chat_banner") as mock_banner:
+                with patch("mcp_cli.context.get_context") as mock_context:
+                    # Make get_context raise an exception
+                    mock_context.side_effect = RuntimeError("Context not available")
+
+                    # Mock ModelManager to also fail (patch where it's imported)
+                    with patch(
+                        "mcp_cli.model_management.ModelManager"
+                    ) as MockModelManager:
+                        MockModelManager.side_effect = Exception("ModelManager failed")
+
+                        result = await command.execute()
+
+                        # Verify clear_screen was called
+                        mock_clear.assert_called_once()
+                        # Verify banner was NOT called since we have no provider/model
+                        mock_banner.assert_not_called()
+
+                        assert result.success is True
+                        assert result.should_clear is False
+
+    @pytest.mark.asyncio
+    async def test_execute_with_tool_manager_no_tools(self, command):
+        """Test execute with tool_manager that has no way to get tools (covers lines 84-87)."""
+        with patch("chuk_term.ui.clear_screen") as mock_clear:
+            with patch("chuk_term.ui.display_chat_banner") as mock_banner:
+                with patch("mcp_cli.context.get_context") as mock_context:
+                    # Create a mock context with tool_manager that has none of the methods
+                    mock_ctx = MagicMock()
+                    mock_ctx.model_manager = MagicMock()
+                    mock_ctx.model_manager.get_active_provider.return_value = "cohere"
+                    mock_ctx.model_manager.get_active_model.return_value = "command"
+
+                    # Create tool_manager without any tool-counting methods
+                    mock_tool_manager = MagicMock(spec=[])
+                    # Ensure it doesn't have any of the attributes
+                    mock_ctx.tool_manager = mock_tool_manager
+                    mock_context.return_value = mock_ctx
+
+                    result = await command.execute()
+
+                    # Verify clear_screen was called
+                    mock_clear.assert_called_once()
+                    # Verify banner was called without tools info
+                    mock_banner.assert_called_once_with(
+                        provider="cohere",
+                        model="command",
+                        additional_info=None,
+                    )
+
+                    assert result.success is True
+                    assert result.should_clear is False

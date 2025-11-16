@@ -1,17 +1,19 @@
 # mcp_cli/async_config.py - FIXED VERSION
 """
+from __future__ import annotations
+
 Async configuration loading for MCP servers using chuk-tool-processor APIs.
 """
 
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 
 async def load_server_config(
     config_path: str, server_name: str | None = None
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Load the server configuration from a JSON file.
 
@@ -45,7 +47,7 @@ async def load_server_config(
             }
 
         # Return entire config for processing multiple servers
-        result: Dict[str, Any] = config
+        result: dict[str, Any] = config
         return result
 
     except FileNotFoundError:
@@ -60,7 +62,7 @@ async def load_server_config(
         raise
 
 
-async def load_all_server_configs(config_path: str) -> Dict[str, Dict[str, Any]]:
+async def load_all_server_configs(config_path: str) -> dict[str, dict[str, Any]]:
     """
     Load all server configurations from a JSON file.
 

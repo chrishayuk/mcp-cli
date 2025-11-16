@@ -1,22 +1,25 @@
 # src/mcp_cli/commands/actions/tools_manage.py
 """
+from __future__ import annotations
+
 Tool management commands for enabling/disabling tools and validation.
 """
 
 import asyncio
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from chuk_term.ui import output, format_table
 
 from mcp_cli.tools.manager import ToolManager
+from mcp_cli.commands.enums import ToolCommand
 
 logger = logging.getLogger(__name__)
 
 
 async def tools_manage_action_async(
-    tm: ToolManager, action: str, tool_name: Optional[str] = None, **kwargs
-) -> Dict[str, Any]:
+    tm: ToolManager, action: str, tool_name: str | None = None, **kwargs
+) -> dict[str, Any]:
     """
     Manage tools (enable/disable/validate).
 
@@ -29,7 +32,7 @@ async def tools_manage_action_async(
         Action result dictionary
     """
 
-    if action == "enable":
+    if action == ToolCommand.ENABLE.value:
         if not tool_name:
             output.error("Tool name required for enable action")
             return {"success": False, "error": "Tool name required"}
@@ -38,7 +41,7 @@ async def tools_manage_action_async(
         output.success(f"✓ Enabled tool: {tool_name}")
         return {"success": True, "action": "enable", "tool": tool_name}
 
-    elif action == "disable":
+    elif action == ToolCommand.DISABLE.value:
         if not tool_name:
             output.error("Tool name required for disable action")
             return {"success": False, "error": "Tool name required"}
@@ -47,7 +50,7 @@ async def tools_manage_action_async(
         output.warning(f"✗ Disabled tool: {tool_name}")
         return {"success": True, "action": "disable", "tool": tool_name}
 
-    elif action == "validate":
+    elif action == ToolCommand.VALIDATE.value:
         if tool_name:
             # Validate single tool
             is_valid, error_msg = await tm.validate_single_tool(tool_name)
@@ -77,7 +80,7 @@ async def tools_manage_action_async(
 
             return {"success": True, "action": "validate_all", "summary": summary}
 
-    elif action == "status":
+    elif action == ToolCommand.STATUS.value:
         summary = tm.get_validation_summary()
 
         # Create status table data
@@ -115,7 +118,7 @@ async def tools_manage_action_async(
         output.print_table(table)
         return {"success": True, "action": "status", "summary": summary}
 
-    elif action == "list-disabled":
+    elif action == ToolCommand.LIST_DISABLED.value:
         disabled_tools = tm.get_disabled_tools()
 
         if not disabled_tools:
@@ -137,7 +140,7 @@ async def tools_manage_action_async(
             "disabled_tools": disabled_tools,
         }
 
-    elif action == "details":
+    elif action == ToolCommand.DETAILS.value:
         if not tool_name:
             output.error("Tool name required for details action")
             return {"success": False, "error": "Tool name required"}
@@ -169,19 +172,19 @@ async def tools_manage_action_async(
             "details": details,
         }
 
-    elif action == "auto-fix":
+    elif action == ToolCommand.AUTO_FIX.value:
         setting = kwargs.get("enabled", True)
         tm.set_auto_fix_enabled(setting)
         status = "enabled" if setting else "disabled"
         output.info(f"Auto-fix {status}")
         return {"success": True, "action": "auto_fix", "enabled": setting}
 
-    elif action == "clear-validation":
+    elif action == ToolCommand.CLEAR_VALIDATION.value:
         tm.clear_validation_disabled_tools()
         output.success("Cleared all validation-disabled tools")
         return {"success": True, "action": "clear_validation"}
 
-    elif action == "validation-errors":
+    elif action == ToolCommand.VALIDATION_ERRORS.value:
         summary = tm.get_validation_summary()
         errors = summary.get("validation_errors", [])
 
@@ -200,7 +203,7 @@ async def tools_manage_action_async(
 
 
 def tools_manage_action(
-    tm: ToolManager, action: str, tool_name: Optional[str] = None, **kwargs
-) -> Dict[str, Any]:
+    tm: ToolManager, action: str, tool_name: str | None = None, **kwargs
+) -> dict[str, Any]:
     """Sync wrapper for tool management actions."""
     return asyncio.run(tools_manage_action_async(tm, action, tool_name, **kwargs))

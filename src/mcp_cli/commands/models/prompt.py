@@ -3,15 +3,14 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from mcp_cli.commands.models.base_model import CommandBaseModel
 
 
-class PromptActionParams(BaseModel):
+class PromptActionParams(CommandBaseModel):
     """Parameters for prompt actions."""
 
-    args: List[str] = Field(default_factory=list, description="Command arguments")
+    args: list[str] = Field(default_factory=list, description="Command arguments")
     detailed: bool = Field(default=False, description="Show detailed information")
-    server: Optional[str] = Field(default=None, description="Filter by server")
-
-    model_config = {"frozen": False}
+    server: str | None = Field(default=None, description="Filter by server")

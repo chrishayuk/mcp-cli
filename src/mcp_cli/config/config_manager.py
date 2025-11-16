@@ -11,12 +11,12 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from pydantic import BaseModel, Field
 
 from mcp_cli.auth import OAuthConfig
-from mcp_cli.tools.models import ServerInfo
+from mcp_cli.tools.models import ServerInfo, TransportType
 
 logger = logging.getLogger(__name__)
 
@@ -25,28 +25,29 @@ class ServerConfig(BaseModel):
     """Configuration for a single MCP server."""
 
     name: str
-    command: Optional[str] = None
-    args: List[str] = Field(default_factory=list)
-    env: Dict[str, str] = Field(default_factory=dict)
-    url: Optional[str] = None  # For HTTP/SSE servers
-    headers: Optional[Dict[str, str]] = None  # HTTP headers (e.g., Authorization)
-    oauth: Optional[OAuthConfig] = None  # OAuth configuration
+    command: str | None = None
+    args: list[str] = Field(default_factory=list)
+    env: dict[str, str] = Field(default_factory=dict)
+    url: str | None = None  # For HTTP/SSE servers
+    headers: dict[str, str] | None = None  # HTTP headers (e.g., Authorization)
+    oauth: OAuthConfig | None = None  # OAuth configuration
     disabled: bool = False
 
     model_config = {"frozen": False, "arbitrary_types_allowed": True}
 
     @property
-    def transport(self) -> str:
+    def transport(self) -> TransportType:
         """Determine transport type from config."""
         if self.url:
-            return "http"
+            return TransportType.HTTP
         elif self.command:
-            return "stdio"
+            return TransportType.STDIO
         else:
-            return "unknown"
+            # Return UNKNOWN when neither command nor url is provided
+            return TransportType.UNKNOWN
 
     @classmethod
-    def from_dict(cls, name: str, data: Dict[str, Any]) -> "ServerConfig":
+    def from_dict(cls, name: str, data: dict[str, Any]) -> "ServerConfig":
         """Create from dictionary format with environment variable handling."""
         # Get env from config
         env = data.get("env", {}).copy()
@@ -92,7 +93,7 @@ class ServerConfig(BaseModel):
 class MCPConfig(BaseModel):
     """Complete MCP configuration."""
 
-    servers: Dict[str, ServerConfig] = Field(default_factory=dict)
+    servers: dict[str, ServerConfig] = Field(default_factory=dict)
     default_provider: str = "openai"
     default_model: str = "gpt-4"
     theme: str = "default"
@@ -103,12 +104,12 @@ class MCPConfig(BaseModel):
     token_store_backend: str = (
         "auto"  # auto, keychain, windows, secretservice, vault, encrypted
     )
-    token_store_password: Optional[str] = None
-    vault_url: Optional[str] = None
-    vault_token: Optional[str] = None
+    token_store_password: str | None = None
+    vault_url: str | None = None
+    vault_token: str | None = None
     vault_mount_point: str = "secret"
     vault_path_prefix: str = "mcp-cli/oauth"
-    vault_namespace: Optional[str] = None
+    vault_namespace: str | None = None
 
     model_config = {"frozen": False, "arbitrary_types_allowed": True}
 
@@ -170,7 +171,7 @@ class MCPConfig(BaseModel):
         }
 
         # Add token storage configuration if non-default
-        token_storage: Dict[str, Any] = {}
+        token_storage: dict[str, Any] = {}
         if self.token_store_backend != "auto":
             token_storage["backend"] = self.token_store_backend
         if self.token_store_password:
@@ -192,7 +193,7 @@ class MCPConfig(BaseModel):
         with open(config_path, "w") as f:
             json.dump(data, f, indent=2)
 
-    def get_server(self, name: str) -> Optional[ServerConfig]:
+    def get_server(self, name: str) -> ServerConfig | None:
         """Get a server configuration by name."""
         return self.servers.get(name)
 
@@ -207,11 +208,11 @@ class MCPConfig(BaseModel):
             return True
         return False
 
-    def list_servers(self) -> List[ServerConfig]:
+    def list_servers(self) -> list[ServerConfig]:
         """Get list of all server configurations."""
         return list(self.servers.values())
 
-    def list_enabled_servers(self) -> List[ServerConfig]:
+    def list_enabled_servers(self) -> list[ServerConfig]:
         """Get list of enabled server configurations."""
         return [s for s in self.servers.values() if not s.disabled]
 
@@ -223,9 +224,9 @@ class ConfigManager:
     This provides a singleton-like pattern for managing configuration.
     """
 
-    _instance: Optional[ConfigManager] = None
-    _config: Optional[MCPConfig] = None
-    _config_path: Optional[Path] = None
+    _instance: ConfigManager | None = None
+    _config: MCPConfig | None = None
+    _config_path: Path | None = None
 
     def __new__(cls) -> ConfigManager:
         """Ensure singleton instance."""
@@ -233,7 +234,7 @@ class ConfigManager:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def initialize(self, config_path: Optional[Path] = None) -> MCPConfig:
+    def initialize(self, config_path: Path | None = None) -> MCPConfig:
         """
         Initialize or get the configuration.
 
@@ -322,7 +323,7 @@ def get_config() -> MCPConfig:
     return manager.get_config()
 
 
-def initialize_config(config_path: Optional[Path] = None) -> MCPConfig:
+def initialize_config(config_path: Path | None = None) -> MCPConfig:
     """
     Convenience function to initialize the configuration.
 
@@ -337,8 +338,8 @@ def initialize_config(config_path: Optional[Path] = None) -> MCPConfig:
 
 
 def detect_server_types(
-    cfg: MCPConfig, servers: List[str]
-) -> Tuple[List[dict], List[str]]:
+    cfg: MCPConfig, servers: list[str]
+) -> tuple[list[dict], list[str]]:
     """
     Detect which servers are HTTP vs STDIO based on configuration.
 
@@ -382,8 +383,8 @@ def detect_server_types(
 
 
 def validate_server_config(
-    cfg: MCPConfig, servers: List[str]
-) -> Tuple[bool, List[str]]:
+    cfg: MCPConfig, servers: list[str]
+) -> tuple[bool, list[str]]:
     """
     Validate server configuration and return status and errors.
 

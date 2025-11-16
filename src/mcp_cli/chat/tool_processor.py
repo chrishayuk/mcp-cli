@@ -11,10 +11,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from chuk_term.ui import output
 
+from mcp_cli.chat.models import Message, MessageRole
 from mcp_cli.ui.formatting import display_tool_call_result
 from mcp_cli.utils.preferences import get_preference_manager
 
@@ -42,7 +43,7 @@ class ToolProcessor:
         setattr(self.context, "tool_processor", self)
 
     async def process_tool_calls(
-        self, tool_calls: List[Any], name_mapping: Optional[Dict[str, str]] = None
+        self, tool_calls: list[Any], name_mapping: dict[str, str] | None = None
     ) -> None:
         """
         Execute tool_calls concurrently using the working tool_manager path.
@@ -94,7 +95,7 @@ class ToolProcessor:
                 task.cancel()
 
     async def _run_single_call(
-        self, idx: int, tool_call: Any, name_mapping: Dict[str, str]
+        self, idx: int, tool_call: Any, name_mapping: dict[str, str]
     ) -> None:
         """
         Execute one tool call using the clean tool_manager path.
@@ -242,16 +243,16 @@ class ToolProcessor:
                     llm_tool_name, call_id, raw_arguments, error_content
                 )
 
-    def _parse_arguments(self, raw_arguments: Any) -> Dict[str, Any]:
+    def _parse_arguments(self, raw_arguments: Any) -> dict[str, Any]:
         """Parse raw arguments into a dictionary."""
         try:
             if isinstance(raw_arguments, str):
                 if not raw_arguments.strip():
                     return {}
-                parsed: Dict[str, Any] = json.loads(raw_arguments)
+                parsed: dict[str, Any] = json.loads(raw_arguments)
                 return parsed
             else:
-                result: Dict[str, Any] = raw_arguments or {}
+                result: dict[str, Any] = raw_arguments or {}
                 return result
         except json.JSONDecodeError as e:
             log.warning(f"Invalid JSON in arguments: {e}")
@@ -283,10 +284,10 @@ class ToolProcessor:
 
             # Add assistant's tool call
             self.context.conversation_history.append(
-                {
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": [
+                Message(
+                    role=MessageRole.ASSISTANT,
+                    content=None,
+                    tool_calls=[
                         {
                             "id": call_id,
                             "type": "function",
@@ -296,17 +297,17 @@ class ToolProcessor:
                             },
                         }
                     ],
-                }
+                )
             )
 
             # Add tool's response
             self.context.conversation_history.append(
-                {
-                    "role": "tool",
-                    "name": llm_tool_name,
-                    "content": content,
-                    "tool_call_id": call_id,
-                }
+                Message(
+                    role=MessageRole.TOOL,
+                    name=llm_tool_name,
+                    content=content,
+                    tool_call_id=call_id,
+                )
             )
 
             log.debug(f"Added tool call to conversation history: {llm_tool_name}")
@@ -321,10 +322,10 @@ class ToolProcessor:
         try:
             # Add user cancellation
             self.context.conversation_history.append(
-                {
-                    "role": "user",
-                    "content": f"Cancel {llm_tool_name} tool execution.",
-                }
+                Message(
+                    role=MessageRole.USER,
+                    content=f"Cancel {llm_tool_name} tool execution.",
+                )
             )
 
             # Add assistant acknowledgment
@@ -335,10 +336,10 @@ class ToolProcessor:
             )
 
             self.context.conversation_history.append(
-                {
-                    "role": "assistant",
-                    "content": "User cancelled tool execution.",
-                    "tool_calls": [
+                Message(
+                    role=MessageRole.ASSISTANT,
+                    content="User cancelled tool execution.",
+                    tool_calls=[
                         {
                             "id": call_id,
                             "type": "function",
@@ -348,17 +349,17 @@ class ToolProcessor:
                             },
                         }
                     ],
-                }
+                )
             )
 
             # Add tool cancellation response
             self.context.conversation_history.append(
-                {
-                    "role": "tool",
-                    "name": llm_tool_name,
-                    "content": "Tool execution cancelled by user.",
-                    "tool_call_id": call_id,
-                }
+                Message(
+                    role=MessageRole.TOOL,
+                    name=llm_tool_name,
+                    content="Tool execution cancelled by user.",
+                    tool_call_id=call_id,
+                )
             )
 
         except Exception as e:

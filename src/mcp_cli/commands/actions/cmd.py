@@ -5,18 +5,19 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
 from chuk_term.ui import output
+from mcp_cli.commands.models.cmd import MessageRole, Message
 
 
 async def cmd_action_async(
-    input_file: Optional[str] = None,
-    output_file: Optional[str] = None,
-    prompt: Optional[str] = None,
-    tool: Optional[str] = None,
-    tool_args: Optional[str] = None,
-    system_prompt: Optional[str] = None,
+    input_file: str | None = None,
+    output_file: str | None = None,
+    prompt: str | None = None,
+    tool: str | None = None,
+    tool_args: str | None = None,
+    system_prompt: str | None = None,
     raw: bool = False,
     single_turn: bool = False,
     max_turns: int = 30,
@@ -86,8 +87,8 @@ async def cmd_action_async(
 
 async def _execute_tool_direct(
     tool_name: str,
-    tool_args_json: Optional[str],
-    output_file: Optional[str],
+    tool_args_json: str | None,
+    output_file: str | None,
     raw: bool,
 ) -> None:
     """Execute a tool directly without LLM interaction."""
@@ -153,10 +154,10 @@ async def _execute_tool_direct(
 
 
 async def _execute_prompt_mode(
-    input_file: Optional[str],
-    output_file: Optional[str],
-    prompt: Optional[str],
-    system_prompt: Optional[str],
+    input_file: str | None,
+    output_file: str | None,
+    prompt: str | None,
+    system_prompt: str | None,
     raw: bool,
     single_turn: bool,
     max_turns: int,
@@ -192,12 +193,15 @@ async def _execute_prompt_mode(
         model_manager = context.model_manager
         if not model_manager:
             # Fallback: create new one if context doesn't have it
-            from mcp_cli.model_manager import ModelManager
+            from mcp_cli.model_management import ModelManager
+
             model_manager = ModelManager()
             # Set it to the correct provider/model from context
             model_manager.switch_model(context.provider, context.model)
 
-        client = model_manager.get_client(provider=context.provider, model=context.model)
+        client = model_manager.get_client(
+            provider=context.provider, model=context.model
+        )
 
         if not client:
             output.error(
@@ -208,11 +212,14 @@ async def _execute_prompt_mode(
         output.error(f"Failed to initialize LLM client: {e}")
         return
 
-    # Build messages
-    messages = []
+    # Build messages using Pydantic models
+    messages_models: list[Message] = []
     if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": full_prompt})
+        messages_models.append(Message(role=MessageRole.SYSTEM, content=system_prompt))
+    messages_models.append(Message(role=MessageRole.USER, content=full_prompt))
+
+    # Convert to dict only for external LLM API
+    messages = [msg.model_dump(exclude_none=True) for msg in messages_models]
 
     # Execute the conversation
     try:
@@ -264,13 +271,17 @@ async def _execute_prompt_mode(
 
 async def _handle_tool_calls(
     client,
-    messages: list,
+    messages: list[dict[str, Any]],
     tool_calls: list,
     response_text: str,
     max_turns: int,
     raw: bool,
 ) -> str:
-    """Handle tool calls in multi-turn conversation."""
+    """Handle tool calls in multi-turn conversation.
+
+    Note: messages list is dict format for LLM API compatibility.
+    We maintain it as dicts since it's passed directly to external LLM client.
+    """
     from mcp_cli.context import get_context
 
     context = get_context()
@@ -280,10 +291,10 @@ async def _handle_tool_calls(
         output.error("Tool manager not initialized")
         return response_text
 
-    # Add assistant message with tool calls
+    # Add assistant message with tool calls (dict format for LLM API)
     messages.append(
         {
-            "role": "assistant",
+            "role": MessageRole.ASSISTANT.value,
             "content": response_text,
             "tool_calls": tool_calls,
         }
@@ -328,7 +339,7 @@ async def _handle_tool_calls(
             # Add tool result to messages
             messages.append(
                 {
-                    "role": "tool",
+                    "role": MessageRole.TOOL.value,
                     "tool_call_id": tool_call_id,
                     "name": tool_name,
                     "content": result_str,
@@ -339,7 +350,7 @@ async def _handle_tool_calls(
             output.error(error_msg)
             messages.append(
                 {
-                    "role": "tool",
+                    "role": MessageRole.TOOL.value,
                     "tool_call_id": tool_call_id,
                     "name": tool_name,
                     "content": f"Error: {error_msg}",
@@ -368,7 +379,7 @@ async def _handle_tool_calls(
         # Add assistant message and execute tools
         messages.append(
             {
-                "role": "assistant",
+                "role": MessageRole.ASSISTANT.value,
                 "content": response_text,
                 "tool_calls": response_tool_calls,
             }
@@ -411,7 +422,7 @@ async def _handle_tool_calls(
 
                 messages.append(
                     {
-                        "role": "tool",
+                        "role": MessageRole.TOOL.value,
                         "tool_call_id": tool_call_id,
                         "name": tool_name,
                         "content": result_str,
@@ -422,7 +433,7 @@ async def _handle_tool_calls(
                 output.error(error_msg)
                 messages.append(
                     {
-                        "role": "tool",
+                        "role": MessageRole.TOOL.value,
                         "tool_call_id": tool_call_id,
                         "name": tool_name,
                         "content": f"Error: {error_msg}",

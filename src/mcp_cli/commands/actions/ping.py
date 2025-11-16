@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Sequence
 
 from chuk_mcp.protocol.messages import send_ping
 
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 async def ping_action_async(
     tm: ToolManager,
-    server_names: Dict[int, str] | None = None,
+    server_names: dict[int, str] | None = None,
     targets: Sequence[str] = (),
 ) -> bool:
     """
@@ -75,7 +75,7 @@ async def _ping_server(
     read_stream: Any,
     write_stream: Any,
     timeout: float = 5.0,
-) -> Tuple[str, bool, float]:
+) -> tuple[str, bool, float]:
     """
     Ping a single server and measure latency.
 
@@ -106,7 +106,7 @@ async def _ping_server(
 
 def _get_server_name(
     idx: int,
-    explicit_names: Dict[int, str] | None,
+    explicit_names: dict[int, str] | None,
     server_infos: list,
 ) -> str:
     """
@@ -146,7 +146,7 @@ def _matches_target(idx: int, name: str, targets: Sequence[str]) -> bool:
     return False
 
 
-def _display_results(results: List[Tuple[str, bool, float]]) -> None:
+def _display_results(results: list[tuple[str, bool, float]]) -> None:
     """
     Display ping results in a formatted table.
 
@@ -191,7 +191,7 @@ def _display_results(results: List[Tuple[str, bool, float]]) -> None:
 
 def ping_action(
     tm: ToolManager,
-    server_names: Dict[int, str] | None = None,
+    server_names: dict[int, str] | None = None,
     targets: Sequence[str] = (),
 ) -> bool:
     """

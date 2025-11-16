@@ -6,14 +6,15 @@ Clean chat context focused on conversation state and tool coordination.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, AsyncIterator, Optional
+from typing import Any, AsyncIterator
 
 from chuk_term.ui import output
 
 from mcp_cli.chat.system_prompt import generate_system_prompt
+from mcp_cli.chat.models import Message, MessageRole, ToolExecutionRecord, ChatStatus
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.tools.models import ToolInfo, ServerInfo
-from mcp_cli.model_manager import ModelManager
+from mcp_cli.model_management import ModelManager
 
 logger = logging.getLogger(__name__)
 
@@ -43,18 +44,20 @@ class ChatContext:
 
         # Conversation state
         self.exit_requested = False
-        self.conversation_history: List[Dict[str, Any]] = []
-        self.tool_history: List[Dict[str, Any]] = []  # Track tool execution history
+        self.conversation_history: list[Message] = []
+        self.tool_history: list[
+            ToolExecutionRecord
+        ] = []  # Track tool execution history
 
         # Tool state (filled during initialization)
-        self.tools: List[ToolInfo] = []
-        self.internal_tools: List[ToolInfo] = []
-        self.server_info: List[ServerInfo] = []
-        self.tool_to_server_map: Dict[str, str] = {}
-        self.openai_tools: List[
-            Dict[str, Any]
+        self.tools: list[ToolInfo] = []
+        self.internal_tools: list[ToolInfo] = []
+        self.server_info: list[ServerInfo] = []
+        self.tool_to_server_map: dict[str, str] = {}
+        self.openai_tools: list[
+            dict[str, Any]
         ] = []  # These remain dicts for OpenAI API
-        self.tool_name_mapping: Dict[str, str] = {}
+        self.tool_name_mapping: dict[str, str] = {}
 
         logger.debug(f"ChatContext created with {self.provider}/{self.model}")
 
@@ -66,6 +69,7 @@ class ChatContext:
         model: str | None = None,
         api_base: str | None = None,
         api_key: str | None = None,
+        model_manager: ModelManager | None = None,  # FIXED: Accept model_manager
     ) -> "ChatContext":
         """
         Factory method for convenient creation.
@@ -76,25 +80,30 @@ class ChatContext:
             model: Model to switch to (optional)
             api_base: API base URL override (optional)
             api_key: API key override (optional)
+            model_manager: Pre-configured ModelManager (optional, creates new if None)
 
         Returns:
             Configured ChatContext instance
         """
-        model_manager = ModelManager()
+        # FIXED: Use provided model_manager if available, otherwise create new
+        if model_manager is None:
+            model_manager = ModelManager()
 
-        # Configure provider if API settings provided
-        if provider and (api_base or api_key):
-            model_manager.configure_provider(
-                provider, api_key=api_key, api_base=api_base
-            )
+            # Configure provider if API settings provided
+            if provider and (api_base or api_key):
+                model_manager.add_runtime_provider(
+                    name=provider, api_key=api_key, api_base=api_base or ""
+                )
 
-        # Switch model if requested
-        if provider and model:
-            model_manager.switch_model(provider, model)
-        elif provider:
-            model_manager.switch_provider(provider)
-        elif model:
-            model_manager.switch_to_model(model)
+            # Switch model if requested
+            if provider and model:
+                model_manager.switch_model(provider, model)
+            elif provider:
+                model_manager.switch_provider(provider)
+            elif model:
+                # Switch model in current provider
+                current_provider = model_manager.get_active_provider()
+                model_manager.switch_model(current_provider, model)
 
         return cls(tool_manager, model_manager)
 
@@ -153,7 +162,7 @@ class ChatContext:
         # Keep copy for system prompt
         self.internal_tools = list(self.tools)
 
-    def find_tool_by_name(self, name: str) -> Optional[ToolInfo]:
+    def find_tool_by_name(self, name: str) -> ToolInfo | None:
         """Find a tool by its name (handles both simple and namespaced names)."""
         # First try exact match
         for tool in self.tools:
@@ -168,7 +177,7 @@ class ChatContext:
 
         return None
 
-    def find_server_by_name(self, name: str) -> Optional[ServerInfo]:
+    def find_server_by_name(self, name: str) -> ServerInfo | None:
         """Find a server by its name."""
         for server in self.server_info:
             if server.name == name or server.namespace == name:
@@ -202,11 +211,13 @@ class ChatContext:
         # Convert ToolInfo objects to dicts for system prompt generation
         tools_for_prompt = []
         for tool in self.internal_tools:
-            # ToolInfo objects always have to_openai_format method
-            tools_for_prompt.append(tool.to_openai_format())
+            # Convert to LLM format and then to dict
+            tools_for_prompt.append(tool.to_llm_format().to_dict())
 
         system_prompt = generate_system_prompt(tools_for_prompt)
-        self.conversation_history = [{"role": "system", "content": system_prompt}]
+        self.conversation_history = [
+            Message(role=MessageRole.SYSTEM, content=system_prompt)
+        ]
 
     # ── Model change handling ─────────────────────────────────────────────
     async def refresh_after_model_change(self) -> None:
@@ -220,12 +231,12 @@ class ChatContext:
         logger.debug(f"ChatContext refreshed for {self.provider}/{self.model}")
 
     # ── Tool execution (delegate to ToolManager) ──────────────────────────
-    async def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
+    async def execute_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any:
         """Execute a tool."""
         return await self.tool_manager.execute_tool(tool_name, arguments)
 
     async def stream_execute_tool(
-        self, tool_name: str, arguments: Dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any]
     ) -> AsyncIterator[Any]:
         """Execute a tool with streaming."""
         async for result in self.tool_manager.stream_execute_tool(tool_name, arguments):
@@ -238,11 +249,15 @@ class ChatContext:
     # ── Conversation management ───────────────────────────────────────────
     def add_user_message(self, content: str) -> None:
         """Add user message to conversation."""
-        self.conversation_history.append({"role": "user", "content": content})
+        self.conversation_history.append(
+            Message(role=MessageRole.USER, content=content)
+        )
 
     def add_assistant_message(self, content: str) -> None:
         """Add assistant message to conversation."""
-        self.conversation_history.append({"role": "assistant", "content": content})
+        self.conversation_history.append(
+            Message(role=MessageRole.ASSISTANT, content=content)
+        )
 
     def get_conversation_length(self) -> int:
         """Get conversation length (excluding system prompt)."""
@@ -253,7 +268,7 @@ class ChatContext:
         if (
             keep_system_prompt
             and self.conversation_history
-            and self.conversation_history[0].get("role") == "system"
+            and self.conversation_history[0].role == MessageRole.SYSTEM
         ):
             system_prompt = self.conversation_history[0]
             self.conversation_history = [system_prompt]
@@ -265,12 +280,12 @@ class ChatContext:
         system_prompt = generate_system_prompt(self.internal_tools)
         if (
             self.conversation_history
-            and self.conversation_history[0].get("role") == "system"
+            and self.conversation_history[0].role == MessageRole.SYSTEM
         ):
-            self.conversation_history[0]["content"] = system_prompt
+            self.conversation_history[0].content = system_prompt
         else:
             self.conversation_history.insert(
-                0, {"role": "system", "content": system_prompt}
+                0, Message(role=MessageRole.SYSTEM, content=system_prompt)
             )
 
     # ── Simple getters ────────────────────────────────────────────────────
@@ -288,10 +303,12 @@ class ChatContext:
         return namespaced_tool_name
 
     # ── Serialization (simplified) ────────────────────────────────────────
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Export context for command handlers."""
         return {
-            "conversation_history": self.conversation_history,
+            "conversation_history": [
+                msg.to_dict() for msg in self.conversation_history
+            ],
             "tools": self.tools,
             "internal_tools": self.internal_tools,
             "client": self.client,
@@ -306,14 +323,19 @@ class ChatContext:
             "tool_manager": self.tool_manager,
         }
 
-    def update_from_dict(self, context_dict: Dict[str, Any]) -> None:
+    def update_from_dict(self, context_dict: dict[str, Any]) -> None:
         """Update context from dictionary (simplified)."""
         # Core state updates
         if "exit_requested" in context_dict:
             self.exit_requested = context_dict["exit_requested"]
 
         if "conversation_history" in context_dict:
-            self.conversation_history = context_dict["conversation_history"]
+            history = context_dict["conversation_history"]
+            # Handle both list of dicts and list of Message objects
+            if history and isinstance(history[0], dict):
+                self.conversation_history = [Message.from_dict(msg) for msg in history]
+            else:
+                self.conversation_history = history
 
         if "model_manager" in context_dict:
             self.model_manager = context_dict["model_manager"]
@@ -342,17 +364,17 @@ class ChatContext:
         pass  # ModelManager handles its own persistence
 
     # ── Debug info ────────────────────────────────────────────────────────
-    def get_status_summary(self) -> Dict[str, Any]:
+    def get_status_summary(self) -> ChatStatus:
         """Get status summary for debugging."""
-        return {
-            "provider": self.provider,
-            "model": self.model,
-            "tool_count": len(self.tools),
-            "server_count": len(self.server_info),
-            "conversation_length": self.get_conversation_length(),
-            "tools_adapted": bool(self.openai_tools),
-            "exit_requested": self.exit_requested,
-        }
+        return ChatStatus(
+            provider=self.provider,
+            model=self.model,
+            tool_count=len(self.tools),
+            internal_tool_count=len(self.internal_tools),
+            server_count=len(self.server_info),
+            message_count=self.get_conversation_length(),
+            tool_execution_count=len(self.tool_history),
+        )
 
     def __repr__(self) -> str:
         return (
@@ -412,7 +434,9 @@ class TestChatContext(ChatContext):
         elif provider:
             model_manager.switch_provider(provider)
         elif model:
-            model_manager.switch_to_model(model)
+            # Switch model in current provider
+            current_provider = model_manager.get_active_provider()
+            model_manager.switch_model(current_provider, model)
 
         return cls(stream_manager, model_manager)
 
@@ -449,7 +473,7 @@ class TestChatContext(ChatContext):
         # Copy for system prompt
         self.internal_tools = list(self.tools)
 
-    async def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
+    async def execute_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any:
         """Execute tool via stream_manager."""
         if hasattr(self.stream_manager, "call_tool"):
             return await self.stream_manager.call_tool(tool_name, arguments)

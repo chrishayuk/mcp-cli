@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List
+from typing import Any
 
 # MCP-CLI helpers
 from mcp_cli.ui.formatting import create_tools_table
@@ -39,7 +39,7 @@ async def tools_action_async(  # noqa: D401
     show_raw: bool = False,
     show_validation: bool = False,
     provider: str = "openai",
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Fetch the **deduplicated** tool list from *all* servers and print it.
 
@@ -182,7 +182,7 @@ async def tools_action_async(  # noqa: D401
     ]
 
 
-async def _show_validation_info(tm: ToolManager, provider: str) -> List[Dict[str, Any]]:
+async def _show_validation_info(tm: ToolManager, provider: str) -> list[dict[str, Any]]:
     """Show detailed validation information."""
     output.info(f"Tool Validation Report for {provider}")
 
@@ -268,7 +268,7 @@ def tools_action(
     show_raw: bool = False,
     show_validation: bool = False,
     provider: str = "openai",
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Blocking wrapper around :pyfunc:`tools_action_async`.
 

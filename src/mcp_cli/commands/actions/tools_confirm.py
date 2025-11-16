@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List
+from typing import Any
 
 # MCP-CLI helpers
 from mcp_cli.ui.formatting import create_tools_table
@@ -35,7 +35,7 @@ async def tools_action_async(  # noqa: D401
     *,
     show_details: bool = False,
     show_raw: bool = False,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Fetch the **deduplicated** tool list from *all* servers and print it.
 
@@ -106,7 +106,7 @@ def tools_action(
     *,
     show_details: bool = False,
     show_raw: bool = False,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Blocking wrapper around :pyfunc:`tools_action_async`.
 

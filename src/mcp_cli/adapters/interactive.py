@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import shlex
-from typing import Any, Dict, List
+from typing import Any
 
 from mcp_cli.commands.base import CommandMode
 from mcp_cli.commands.registry import registry
@@ -131,7 +131,7 @@ class InteractiveCommandAdapter:
             return True
 
     @staticmethod
-    def _parse_arguments(command: Any, args: List[str]) -> Dict[str, Any]:
+    def _parse_arguments(command: Any, args: list[str]) -> dict[str, Any]:
         """
         Parse shell-style arguments into kwargs.
 
@@ -140,9 +140,9 @@ class InteractiveCommandAdapter:
         - Options: --option value or --option=value
         - Positional arguments
         """
-        kwargs: Dict[str, Any] = {}
+        kwargs: dict[str, Any] = {}
         i = 0
-        positional: List[str] = []
+        positional: list[str] = []
 
         while i < len(args):
             arg = args[i]
@@ -196,7 +196,7 @@ class InteractiveCommandAdapter:
         return kwargs
 
     @staticmethod
-    def get_completions(partial_line: str, cursor_pos: int) -> List[str]:
+    def get_completions(partial_line: str, cursor_pos: int) -> list[str]:
         """
         Get tab completions for the current input.
 

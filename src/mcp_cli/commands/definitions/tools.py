@@ -6,7 +6,6 @@ Unified tools command implementation.
 from __future__ import annotations
 
 import json
-from typing import List
 
 from mcp_cli.commands.base import (
     UnifiedCommand,
@@ -25,7 +24,7 @@ class ToolsCommand(UnifiedCommand):
         return "tools"
 
     @property
-    def aliases(self) -> List[str]:
+    def aliases(self) -> list[str]:
         return []
 
     @property
@@ -54,7 +53,7 @@ Examples:
 """
 
     @property
-    def parameters(self) -> List[CommandParameter]:
+    def parameters(self) -> list[CommandParameter]:
         return [
             CommandParameter(
                 name="filter",
@@ -276,7 +275,7 @@ Examples:
         return CommandResult(success=True)
 
     def _show_tools_table(
-        self, tools: List, show_raw: bool, show_full_desc: bool, title: str
+        self, tools: list, show_raw: bool, show_full_desc: bool, title: str
     ) -> CommandResult:
         """Show tools in a table format."""
         if show_raw:

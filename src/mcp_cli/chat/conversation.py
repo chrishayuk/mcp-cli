@@ -1,15 +1,17 @@
 # mcp_cli/chat/conversation.py - FIXED VERSION
 """
+from __future__ import annotations
+
 FIXED: Updated to work with the new OpenAI client universal tool compatibility system.
 """
 
 import time
 import asyncio
 import logging
-from typing import Optional
 from chuk_term.ui import output
 
 # mcp cli imports
+from mcp_cli.chat.models import Message, MessageRole
 from mcp_cli.chat.tool_processor import ToolProcessor
 
 log = logging.getLogger(__name__)
@@ -46,11 +48,14 @@ class ConversationProcessor:
                     last_msg = (
                         self.context.conversation_history[-1]
                         if self.context.conversation_history
-                        else {}
+                        else None
                     )
-                    content = last_msg.get("content", "")
-                    if last_msg.get("role") == "user" and content.startswith("/"):
-                        return
+                    if last_msg:
+                        content = last_msg.content or ""
+                        if last_msg.role == MessageRole.USER and content.startswith(
+                            "/"
+                        ):
+                            return
 
                     # Ensure OpenAI tools are loaded for function calling
                     if not getattr(self.context, "openai_tools", None):
@@ -120,10 +125,10 @@ class ConversationProcessor:
                                 f"Maximum conversation turns ({max_turns}) reached. Stopping to prevent infinite loop."
                             )
                             self.context.conversation_history.append(
-                                {
-                                    "role": "assistant",
-                                    "content": "I've reached the maximum number of conversation turns. The tool results have been provided above.",
-                                }
+                                Message(
+                                    role=MessageRole.ASSISTANT,
+                                    content="I've reached the maximum number of conversation turns. The tool results have been provided above.",
+                                )
                             )
                             break
 
@@ -196,7 +201,7 @@ class ConversationProcessor:
 
                     # Add to conversation history
                     self.context.conversation_history.append(
-                        {"role": "assistant", "content": response_content}
+                        Message(role=MessageRole.ASSISTANT, content=response_content)
                     )
                     break
 
@@ -208,16 +213,16 @@ class ConversationProcessor:
 
                     traceback.print_exc()
                     self.context.conversation_history.append(
-                        {
-                            "role": "assistant",
-                            "content": f"I encountered an error: {exc}",
-                        }
+                        Message(
+                            role=MessageRole.ASSISTANT,
+                            content=f"I encountered an error: {exc}",
+                        )
                     )
                     break
         except asyncio.CancelledError:
             raise
 
-    async def _handle_streaming_completion(self, tools: Optional[list] = None) -> dict:
+    async def _handle_streaming_completion(self, tools: list | None = None) -> dict:
         """Handle streaming completion with UI integration.
 
         Args:
@@ -237,7 +242,7 @@ class ConversationProcessor:
         try:
             completion = await streaming_handler.stream_response(
                 client=self.context.client,
-                messages=self.context.conversation_history,
+                messages=[msg.to_dict() for msg in self.context.conversation_history],
                 tools=tools,
             )
 
@@ -270,7 +275,7 @@ class ConversationProcessor:
             # Will be cleared after finalization in main conversation loop
             pass
 
-    async def _handle_regular_completion(self, tools: Optional[list] = None) -> dict:
+    async def _handle_regular_completion(self, tools: list | None = None) -> dict:
         """Handle regular (non-streaming) completion.
 
         Args:
@@ -279,8 +284,11 @@ class ConversationProcessor:
         start_time = time.time()
 
         try:
+            messages_as_dicts = [
+                msg.to_dict() for msg in self.context.conversation_history
+            ]
             completion = await self.context.client.create_completion(
-                messages=self.context.conversation_history,
+                messages=messages_as_dicts,
                 tools=tools,
             )
         except Exception as e:
@@ -291,8 +299,11 @@ class ConversationProcessor:
                 output.warning(
                     "Tool definitions rejected by model, retrying without tools..."
                 )
+                messages_as_dicts = [
+                    msg.to_dict() for msg in self.context.conversation_history
+                ]
                 completion = await self.context.client.create_completion(
-                    messages=self.context.conversation_history
+                    messages=messages_as_dicts
                 )
             else:
                 raise
@@ -345,7 +356,7 @@ class ConversationProcessor:
             log.error(f"Error validating streaming tool call: {e}")
             return False
 
-    def _fix_tool_call_structure(self, tool_call: dict) -> Optional[dict]:
+    def _fix_tool_call_structure(self, tool_call: dict) -> dict | None:
         """Try to fix common issues with tool call structure from streaming."""
         try:
             fixed = dict(tool_call)  # Make a copy

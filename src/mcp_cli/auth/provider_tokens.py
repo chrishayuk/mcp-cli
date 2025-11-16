@@ -9,7 +9,7 @@ with a clear hierarchy: environment variables > token storage > config.
 from __future__ import annotations
 
 import os
-from typing import Optional, Dict, Any
+from typing import Any
 import logging
 
 from chuk_mcp_client_oauth import TokenManager
@@ -58,8 +58,8 @@ def get_provider_env_var_name(provider_name: str) -> str:
 
 def get_provider_token_with_hierarchy(
     provider_name: str,
-    token_manager: Optional[TokenManager] = None,
-) -> tuple[Optional[str], str]:
+    token_manager: TokenManager | None = None,
+) -> tuple[str | None, str]:
     """
     Get provider API key using hierarchical resolution.
 
@@ -106,8 +106,8 @@ def get_provider_token_with_hierarchy(
 
 def check_provider_token_status(
     provider_name: str,
-    token_manager: Optional[TokenManager] = None,
-) -> Dict[str, Any]:
+    token_manager: TokenManager | None = None,
+) -> dict[str, Any]:
     """
     Check the status of a provider's API key.
 
@@ -233,7 +233,7 @@ def delete_provider_token(
 
 def get_provider_token_display_status(
     provider_name: str,
-    token_manager: Optional[TokenManager] = None,
+    token_manager: TokenManager | None = None,
 ) -> str:
     """
     Get a human-readable status indicator for a provider's token.
@@ -257,7 +257,7 @@ def get_provider_token_display_status(
 
 def list_all_provider_tokens(
     token_manager: TokenManager,
-) -> Dict[str, Dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
     """
     List all provider tokens stored in secure storage.
 

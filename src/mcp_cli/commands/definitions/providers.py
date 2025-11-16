@@ -6,7 +6,6 @@ Uses the existing enhanced provider commands from mcp_cli.commands.provider
 
 from __future__ import annotations
 
-from typing import List
 
 from mcp_cli.commands.base import (
     UnifiedCommand,
@@ -31,7 +30,7 @@ class ProviderCommand(CommandGroup):
         return "providers"
 
     @property
-    def aliases(self) -> List[str]:
+    def aliases(self) -> list[str]:
         return []  # Remove provider alias - it's now its own command
 
     @property
@@ -163,7 +162,7 @@ class ProviderListCommand(UnifiedCommand):
         return "list"
 
     @property
-    def aliases(self) -> List[str]:
+    def aliases(self) -> list[str]:
         return ["ls"]
 
     @property
@@ -171,7 +170,7 @@ class ProviderListCommand(UnifiedCommand):
         return "List all available LLM providers"
 
     @property
-    def parameters(self) -> List[CommandParameter]:
+    def parameters(self) -> list[CommandParameter]:
         return [
             CommandParameter(
                 name="detailed",
@@ -215,7 +214,7 @@ class ProviderSetCommand(UnifiedCommand):
         return "set"
 
     @property
-    def aliases(self) -> List[str]:
+    def aliases(self) -> list[str]:
         return ["use", "switch"]
 
     @property
@@ -223,7 +222,7 @@ class ProviderSetCommand(UnifiedCommand):
         return "Set the active LLM provider"
 
     @property
-    def parameters(self) -> List[CommandParameter]:
+    def parameters(self) -> list[CommandParameter]:
         return [
             CommandParameter(
                 name="provider_name",
@@ -279,7 +278,7 @@ class ProviderShowCommand(UnifiedCommand):
         return "show"
 
     @property
-    def aliases(self) -> List[str]:
+    def aliases(self) -> list[str]:
         return ["current", "status"]
 
     @property

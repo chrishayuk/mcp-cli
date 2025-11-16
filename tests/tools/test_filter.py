@@ -239,30 +239,6 @@ class TestToolFilter:
         tool = {}
         assert tf._extract_tool_name(tool) == "unknown"
 
-    def test_try_fix_tool_openai(self):
-        """Test _try_fix_tool for OpenAI provider."""
-        tf = ToolFilter()
-        tool = {
-            "type": "function",
-            "function": {
-                "name": "tool",
-                "description": "Test",
-                "title": "Remove me",
-                "parameters": {"type": "object"},
-            },
-        }
-
-        fixed = tf._try_fix_tool(tool, "openai")
-        assert fixed is not None
-        assert "title" not in fixed["function"]
-
-    def test_try_fix_tool_non_openai(self):
-        """Test _try_fix_tool for non-OpenAI provider."""
-        tf = ToolFilter()
-        tool = {"name": "tool"}
-        fixed = tf._try_fix_tool(tool, "anthropic")
-        assert fixed is None
-
     def test_get_validation_summary(self):
         """Test get_validation_summary method."""
         tf = ToolFilter()

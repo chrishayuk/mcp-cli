@@ -15,7 +15,7 @@ import logging
 import signal
 import time
 from types import FrameType
-from typing import Any, Dict, List, Optional, Union, Callable
+from typing import Any, Callable
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
@@ -27,6 +27,7 @@ from chuk_term.ui import prompts
 from chuk_term.ui.theme import get_theme
 
 from mcp_cli.ui.color_converter import create_transparent_completion_style
+from mcp_cli.chat.models import ToolExecutionState
 
 from mcp_cli.chat.command_completer import ChatCommandCompleter
 
@@ -50,15 +51,15 @@ class ChatUIManager:
         self.confirm_tool_execution = True  # Legacy attribute for compatibility
 
         # Tool tracking
-        self.tool_calls: List[Dict[str, Any]] = []
-        self.tool_times: List[float] = []
-        self.tool_start_time: Optional[float] = None
-        self.current_tool_start_time: Optional[float] = None
+        self.tool_calls: list[dict[str, Any]] = []
+        self.tool_times: list[float] = []
+        self.tool_start_time: float | None = None
+        self.current_tool_start_time: float | None = None
 
         # Streaming state
         self.is_streaming_response = False
-        self.streaming_handler: Optional[Any] = None
-        self._pending_tool: Optional[Dict[str, Any]] = None
+        self.streaming_handler: Any | None = None
+        self._pending_tool: ToolExecutionState | None = None
 
         # Centralized display manager
         from mcp_cli.ui.chat_display_manager import ChatDisplayManager
@@ -69,15 +70,15 @@ class ChatUIManager:
         self.console = None  # Not using Rich console, using chuk-term instead
 
         # Signal handling - signal.signal returns various types
-        self._prev_sigint_handler: Optional[
-            Union[Callable[[int, Optional[FrameType]], Any], int, signal.Handlers]
-        ] = None
+        self._prev_sigint_handler: (
+            Callable[[int, FrameType | None, Any], int] | signal.Handlers | None
+        ) = None
         self._interrupt_count = 0
         self._last_interrupt_time = 0.0
 
         # Initialize prompt session
         self._init_prompt_session()
-        self.last_input: Optional[str] = None
+        self.last_input: str | None = None
 
     def _init_prompt_session(self) -> None:
         """Initialize the prompt_toolkit session."""
@@ -180,7 +181,9 @@ class ChatUIManager:
             # Always defer tool display until after streaming completes
             logger.debug(f"Storing tool call for later display: {tool_name}")
             # Store tool info for display after streaming
-            self._pending_tool = {"name": tool_name, "args": processed_args}
+            self._pending_tool = ToolExecutionState(
+                name=tool_name, arguments=processed_args, start_time=0.0
+            )
             return
 
         except Exception as exc:
@@ -210,13 +213,13 @@ class ChatUIManager:
             logger.info(f"Tool call: {tool_name} with args: {processed_args}")
 
     def finish_tool_execution(
-        self, result: Optional[str] = None, success: bool = True
+        self, result: str | None = None, success: bool = True
     ) -> None:
         """Finish tool execution in centralized display."""
         # Show pending tool if we have one (after streaming completes)
         if self._pending_tool:
             self.display.start_tool_execution(
-                self._pending_tool["name"], self._pending_tool["args"]
+                self._pending_tool.name, self._pending_tool.arguments
             )
             # Brief pause to let animation show
             import time
@@ -254,7 +257,7 @@ class ChatUIManager:
     # ─── Tool Confirmation ───────────────────────────────────────────────
 
     def do_confirm_tool_execution(
-        self, tool_name: Optional[str] = None, arguments: Any = None
+        self, tool_name: str | None = None, arguments: Any = None
     ) -> bool:
         """
         Prompt user to confirm tool execution with risk information.
@@ -341,7 +344,7 @@ class ChatUIManager:
         """Set up Ctrl-C handler for tool interruption."""
         try:
 
-            def _handler(signum: int, frame: Optional[FrameType]) -> None:
+            def _handler(signum: int, frame: FrameType | None) -> None:
                 current_time = time.time()
 
                 # Reset counter if too much time passed
@@ -367,7 +370,7 @@ class ChatUIManager:
                     self.stop_tool_calls()
 
             # Save and set handler
-            self._prev_sigint_handler = signal.signal(signal.SIGINT, _handler)
+            self._prev_sigint_handler = signal.signal(signal.SIGINT, _handler)  # type: ignore[assignment]
 
         except Exception as exc:
             logger.warning(f"Could not set up interrupt handler: {exc}")
@@ -376,7 +379,7 @@ class ChatUIManager:
         """Restore the previous signal handler."""
         if self._prev_sigint_handler:
             try:
-                signal.signal(signal.SIGINT, self._prev_sigint_handler)
+                signal.signal(signal.SIGINT, self._prev_sigint_handler)  # type: ignore[arg-type]
                 self._prev_sigint_handler = None
             except Exception as exc:
                 logger.warning(f"Could not restore signal handler: {exc}")

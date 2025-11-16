@@ -15,7 +15,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from chuk_term.ui import output
 
@@ -30,7 +30,7 @@ from mcp_cli.config import (
 logger = logging.getLogger(__name__)
 
 
-def load_config(config_file: str) -> Optional[MCPConfig]:
+def load_config(config_file: str) -> MCPConfig | None:
     """Load MCP server config file with fallback to bundled package config."""
     try:
         config_path = Path(config_file)
@@ -74,8 +74,8 @@ def load_config(config_file: str) -> Optional[MCPConfig]:
 
 
 def extract_server_names(
-    cfg: Optional[MCPConfig], specified: List[str] | None = None
-) -> Dict[int, str]:
+    cfg: MCPConfig | None, specified: list[str] | None = None
+) -> dict[int, str]:
     """Extract server names from config with HTTP server support, respecting disabled status from preferences."""
     if not cfg or not cfg.servers:
         return {}
@@ -126,13 +126,13 @@ def inject_logging_env_vars(cfg: MCPConfig, quiet: bool = False) -> None:
 
 
 def process_options(
-    server: Optional[str],
+    server: str | None,
     disable_filesystem: bool,
     provider: str,
-    model: Optional[str],
+    model: str | None,
     config_file: str = "server_config.json",
     quiet: bool = False,
-) -> Tuple[List[str], List[str], Dict[int, str]]:
+) -> tuple[list[str], list[str], dict[int, str]]:
     """
     Process CLI options. Sets up environment, triggers discovery, and parses config.
     ENHANCED: Now validates server configuration and provides better error messages.
@@ -247,7 +247,7 @@ def process_options(
     return servers_list, user_specified, server_names
 
 
-def get_config_summary(config_file: str) -> Dict[str, Any]:
+def get_config_summary(config_file: str) -> dict[str, Any]:
     """Get a summary of the configuration for debugging."""
     cfg = load_config(config_file)
 

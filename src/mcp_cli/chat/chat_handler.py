@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import gc
 import logging
-from typing import Optional
 
 # NEW: Use the new UI module instead of rich directly
 from chuk_term.ui import (
@@ -37,6 +36,7 @@ async def handle_chat_mode(
     api_key: str | None = None,
     confirm_mode: str | None = None,
     max_turns: int = 30,
+    model_manager=None,  # FIXED: Accept model_manager from caller
 ) -> bool:
     """
     Launch the interactive chat loop with streaming support.
@@ -49,11 +49,12 @@ async def handle_chat_mode(
         api_key: API key override (optional)
         confirm_mode: Tool confirmation mode override (optional)
         max_turns: Maximum conversation turns before forcing exit (default: 30)
+        model_manager: Pre-configured ModelManager (optional, creates new if None)
 
     Returns:
         True if session ended normally, False on failure
     """
-    ui: Optional[ChatUIManager] = None
+    ui: ChatUIManager | None = None
 
     try:
         # Initialize configuration manager
@@ -68,16 +69,19 @@ async def handle_chat_mode(
             model=model or "gpt-4",
             api_base=api_base,
             api_key=api_key,
+            model_manager=model_manager,  # FIXED: Pass model_manager with runtime providers
         )
 
         # Create chat context using clean factory
         with output.loading("Initializing chat context..."):
+            # FIXED: Use the model_manager from app_context to ensure consistency
             ctx = ChatContext.create(
                 tool_manager=tool_manager,
                 provider=provider,
                 model=model,
                 api_base=api_base,
                 api_key=api_key,
+                model_manager=app_context.model_manager,  # Use the same instance
             )
 
             if not await ctx.initialize():
@@ -182,7 +186,7 @@ async def handle_chat_mode_for_testing(
     Returns:
         True if session ended normally, False on failure
     """
-    ui: Optional[ChatUIManager] = None
+    ui: ChatUIManager | None = None
 
     try:
         # Create test chat context
@@ -350,47 +354,6 @@ async def handle_interrupt_command(ui: ChatUIManager) -> bool:
         output.info("Nothing currently running to interrupt.")
 
     return True
-
-
-# ═══════════════════════════════════════════════════════════════════════════════════
-# Legacy wrapper for backward compatibility (can be removed eventually)
-# ═══════════════════════════════════════════════════════════════════════════════════
-
-
-async def handle_chat_mode_legacy(
-    manager,  # ToolManager or stream_manager
-    provider: str = "openai",
-    model: str = "gpt-4o-mini",
-    api_base: str | None = None,
-    api_key: str | None = None,
-    **kwargs,  # Ignore other legacy parameters
-) -> bool:
-    """
-    Legacy wrapper for backward compatibility.
-
-    This can be removed once all callers are updated.
-    """
-    import warnings
-
-    warnings.warn(
-        "handle_chat_mode_legacy is deprecated, use handle_chat_mode or handle_chat_mode_for_testing",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-
-    if isinstance(manager, ToolManager):
-        return await handle_chat_mode(
-            tool_manager=manager,
-            provider=provider,
-            model=model,
-            api_base=api_base,
-            api_key=api_key,
-        )
-    else:
-        # Assume test mode
-        return await handle_chat_mode_for_testing(
-            stream_manager=manager, provider=provider, model=model
-        )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════

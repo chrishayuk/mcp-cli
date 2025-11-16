@@ -142,12 +142,12 @@ async def test_process_tool_calls_successful_tool():
     response_record = context.conversation_history[1]
 
     # Verify the tool call record contains the correct id.
-    assert "tool_calls" in call_record
-    assert any(item.get("id") == "call_echo" for item in call_record["tool_calls"])
+    assert call_record.tool_calls is not None
+    assert any(item.get("id") == "call_echo" for item in call_record.tool_calls)
 
     # Verify the response record.
-    assert response_record["role"] == "tool"
-    assert response_record["content"] == "Tool executed successfully"
+    assert response_record.role.value == "tool"
+    assert response_record.content == "Tool executed successfully"
 
 
 @pytest.mark.asyncio
@@ -173,7 +173,7 @@ async def test_process_tool_calls_with_argument_parsing():
     # Check that the response record content is formatted as a JSON string.
     response_record = context.conversation_history[1]
     expected_formatted = json.dumps(result_dict["content"], indent=2)
-    assert response_record["content"] == expected_formatted
+    assert response_record.content == expected_formatted
 
 
 @pytest.mark.asyncio
@@ -198,8 +198,8 @@ async def test_process_tool_calls_tool_call_error():
 
     # Conversation history should include a tool record with an error message.
     response_record = context.conversation_history[1]
-    assert response_record["role"] == "tool"
-    assert "Error: Simulated error" in response_record["content"]
+    assert response_record.role.value == "tool"
+    assert "Error: Simulated error" in response_record.content
 
 
 @pytest.mark.asyncio
@@ -220,9 +220,9 @@ async def test_process_tool_calls_no_stream_manager(capfd):
 
     # The actual error message is "No tool manager available for tool execution"
     error_msgs = [
-        entry.get("content", "")
+        entry.content
         for entry in context.conversation_history
-        if entry.get("content") is not None
+        if entry.content is not None
     ]
     assert any("No tool manager available" in msg for msg in error_msgs)
 
@@ -246,10 +246,8 @@ async def test_process_tool_calls_exception_in_call():
     error_entries = [
         entry
         for entry in context.conversation_history
-        if entry.get("role") == "tool" and "Error:" in entry.get("content", "")
+        if entry.role.value == "tool" and entry.content and "Error:" in entry.content
     ]
     assert len(error_entries) >= 1
     # The error should contain the exception message
-    assert any(
-        "Simulated execute_tool exception" in e["content"] for e in error_entries
-    )
+    assert any("Simulated execute_tool exception" in e.content for e in error_entries)

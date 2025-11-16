@@ -32,10 +32,8 @@ def mock_model_manager():
     manager.get_active_provider.return_value = "test-provider"
     manager.get_active_model.return_value = "test-model"
     manager.get_available_models.return_value = ["model1", "model2", "test-model"]
-    manager.get_provider_info.return_value = {"models": ["model1", "model2"]}
-    manager.get_discovery_status.return_value = {"ollama_enabled": True}
-    manager.validate_model_for_provider.return_value = True
-    manager.refresh_discovery.return_value = True
+    manager.validate_model.return_value = True
+    manager.refresh_models.return_value = 0  # Returns count of new models
     return manager
 
 
@@ -224,9 +222,14 @@ async def test_list_models_with_static_models(mock_model_manager):
 @pytest.mark.asyncio
 async def test_refresh_models_success(mock_model_manager):
     """Test successful model refresh."""
-    mock_model_manager.get_available_models.side_effect = [
-        ["model1", "model2"],  # Before
-        ["model1", "model2", "model3", "model4"],  # After
+    # Mock refresh_models to return 2 new models
+    mock_model_manager.refresh_models.return_value = 2
+    # After refresh, there are 4 models total
+    mock_model_manager.get_available_models.return_value = [
+        "model1",
+        "model2",
+        "model3",
+        "model4",
     ]
 
     with patch("mcp_cli.commands.actions.models.output") as mock_output:
@@ -241,6 +244,7 @@ async def test_refresh_models_success(mock_model_manager):
 @pytest.mark.asyncio
 async def test_refresh_models_no_new_models(mock_model_manager):
     """Test refresh with no new models discovered."""
+    mock_model_manager.refresh_models.return_value = 0  # No new models
     mock_model_manager.get_available_models.return_value = ["model1", "model2"]
 
     with patch("mcp_cli.commands.actions.models.output") as mock_output:
@@ -250,20 +254,10 @@ async def test_refresh_models_no_new_models(mock_model_manager):
 
 
 @pytest.mark.asyncio
-async def test_refresh_models_failure(mock_model_manager):
-    """Test failed model refresh."""
-    mock_model_manager.refresh_discovery.return_value = False
-
-    with patch("mcp_cli.commands.actions.models.output") as mock_output:
-        await _refresh_models(mock_model_manager, "test-provider")
-
-        mock_output.error.assert_called_with("Refresh failed")
-
-
-@pytest.mark.asyncio
 async def test_refresh_models_exception(mock_model_manager):
     """Test refresh with exception."""
-    mock_model_manager.refresh_discovery.side_effect = Exception("Test error")
+    mock_model_manager.refresh_models.side_effect = Exception("Test error")
+    mock_model_manager.get_available_models.return_value = ["model1", "model2"]
 
     with patch("mcp_cli.commands.actions.models.output") as mock_output:
         await _refresh_models(mock_model_manager, "test-provider")
@@ -288,10 +282,14 @@ async def test_switch_model_success(mock_model_manager, mock_context):
                 mock_context,
             )
 
-            mock_model_manager.validate_model_for_provider.assert_called_with(
+            # New API: validate_model(model, provider) - note swapped args
+            mock_model_manager.validate_model.assert_called_with(
+                "new-model", "test-provider"
+            )
+            # New API: switch_model(provider, model)
+            mock_model_manager.switch_model.assert_called_with(
                 "test-provider", "new-model"
             )
-            mock_model_manager.set_active_model.assert_called_with("new-model")
             assert mock_context.model == "new-model"
             mock_output.success.assert_called_with("Switched to model: new-model")
 
@@ -299,7 +297,7 @@ async def test_switch_model_success(mock_model_manager, mock_context):
 @pytest.mark.asyncio
 async def test_switch_model_invalid(mock_model_manager, mock_context):
     """Test switching to invalid model."""
-    mock_model_manager.validate_model_for_provider.return_value = False
+    mock_model_manager.validate_model.return_value = False
 
     with patch("mcp_cli.commands.actions.models.output") as mock_output:
         await _switch_model(

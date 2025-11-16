@@ -34,6 +34,10 @@
     },
     "linkedin": {
       "url": "https://linkedin.chukai.io/mcp"
+    },
+    "motion": {
+      "command": "uv",
+      "args": ["--directory", "/Users/christopherhay/chris-source/chuk-ai/mcp-servers/chuk-motion", "run", "chuk-motion", "stdio"]
     }
   }
 }

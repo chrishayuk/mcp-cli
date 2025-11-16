@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 from pydantic import Field, field_validator
 
 from .base_model import CommandBaseModel
@@ -26,12 +26,12 @@ class ServerInfoResponse(CommandBaseModel):
 
     name: str = Field(min_length=1, description="Server name")
     transport: str = Field(pattern="^(stdio|http|sse)$", description="Transport type")
-    capabilities: Dict[str, Any] = Field(
+    capabilities: dict[str, Any] = Field(
         default_factory=dict, description="Server capabilities"
     )
     tool_count: int = Field(default=0, ge=0, description="Number of tools")
     status: str = Field(min_length=1, description="Server status")
-    ping_ms: Optional[float] = Field(
+    ping_ms: float | None = Field(
         default=None, ge=0, description="Ping latency in milliseconds"
     )
 
@@ -58,9 +58,9 @@ class ResourceInfoResponse(CommandBaseModel):
     """
 
     uri: str = Field(min_length=1, description="Resource URI")
-    name: Optional[str] = Field(default=None, description="Resource name")
-    description: Optional[str] = Field(default=None, description="Resource description")
-    mime_type: Optional[str] = Field(default=None, description="MIME type")
+    name: str | None = Field(default=None, description="Resource name")
+    description: str | None = Field(default=None, description="Resource description")
+    mime_type: str | None = Field(default=None, description="MIME type")
     server: str = Field(min_length=1, description="Server name providing this resource")
 
 
@@ -78,8 +78,8 @@ class PromptInfoResponse(CommandBaseModel):
     """
 
     name: str = Field(min_length=1, description="Prompt name")
-    description: Optional[str] = Field(default=None, description="Prompt description")
-    arguments: List[Dict[str, Any]] = Field(
+    description: str | None = Field(default=None, description="Prompt description")
+    arguments: list[dict[str, Any]] = Field(
         default_factory=list, description="Prompt arguments"
     )
     server: str = Field(min_length=1, description="Server name providing this prompt")
@@ -100,7 +100,7 @@ class ToolInfoResponse(CommandBaseModel):
 
     name: str = Field(min_length=1, description="Tool name")
     namespace: str = Field(min_length=1, description="Tool namespace/server")
-    description: Optional[str] = Field(default=None, description="Tool description")
-    parameters: Dict[str, Any] = Field(
+    description: str | None = Field(default=None, description="Tool description")
+    parameters: dict[str, Any] = Field(
         default_factory=dict, description="Tool parameters schema"
     )

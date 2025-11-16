@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Dict, Any, Optional
+from typing import Any
 from dataclasses import dataclass
 
-from mcp_cli.model_manager import ModelManager  # ← CHANGED
+from mcp_cli.model_management import ModelManager  # ← CHANGED
 
 
 @dataclass
@@ -21,9 +21,9 @@ class ProbeResult:
     """Result of a provider/model availability probe."""
 
     success: bool
-    error_message: Optional[str] = None
-    client: Optional[Any] = None
-    response: Optional[Dict[str, Any]] = None
+    error_message: str | None = None
+    client: Any | None = None
+    response: dict[str, Any] | None = None
 
 
 class LLMProbe:
@@ -41,7 +41,7 @@ class LLMProbe:
         """
         self.model_manager = model_manager  # ← CHANGED
         self.suppress_logging = suppress_logging
-        self._original_log_level: Optional[int] = None
+        self._original_log_level: int | None = None
 
     def __enter__(self):
         """Context manager entry - suppress logging if requested."""
@@ -87,7 +87,7 @@ class LLMProbe:
         """
         try:
             # Create client using ModelManager's client creation method
-            client = self.model_manager.get_client_for_provider(provider, model)
+            client = self.model_manager.get_client(provider, model)
 
             # Test with a simple completion
             response = await client.create_completion(
@@ -135,8 +135,9 @@ class LLMProbe:
         """
         try:
             # Validate provider exists in configuration
-            self.model_manager.get_provider_info(provider)  # ← CHANGED
-            model = self.model_manager.get_default_model(provider)  # ← CHANGED
+            if not self.model_manager.validate_provider(provider):
+                raise ValueError(f"Provider {provider} not found")
+            model = self.model_manager.get_default_model(provider)
             return await self.test_provider_model(provider, model, test_message)
         except ValueError as e:
             return ProbeResult(success=False, error_message=str(e))

@@ -1,8 +1,10 @@
 # mcp_cli/llm/tools_handler.py
+from __future__ import annotations
+
 import json
 import logging
 import uuid
-from typing import Any, Dict, Optional, List, Union
+from typing import Any
 
 # Import CHUK tool registry for tool conversions
 
@@ -10,7 +12,7 @@ from mcp_cli.tools.manager import ToolManager
 from mcp_cli.tools.models import ToolCallResult
 
 
-def format_tool_response(response_content: Union[List[Dict[str, Any]], Any]) -> str:
+def format_tool_response(response_content: list[dict[str, Any]] | Any) -> str:
     """Format the response content from a tool.
 
     Preserves structured data in a readable format, ensuring that all data is
@@ -52,11 +54,11 @@ def format_tool_response(response_content: Union[List[Dict[str, Any]], Any]) -> 
 
 
 async def handle_tool_call(
-    tool_call: Union[Dict[str, Any], Any],
-    conversation_history: List[Dict[str, Any]],
+    tool_call: dict[str, Any] | Any,
+    conversation_history: list[dict[str, Any]],
     server_streams=None,  # Kept for backward compatibility but ignored
     stream_manager=None,  # Kept for backward compatibility but recommended to use tool_manager
-    tool_manager: Optional[ToolManager] = None,  # Preferred parameter
+    tool_manager: ToolManager | None = None,  # Preferred parameter
 ) -> None:
     """
     Handle a single tool call using the centralized ToolManager.
@@ -80,8 +82,8 @@ async def handle_tool_call(
         return
 
     tool_name: str = "unknown_tool"
-    tool_args: Dict[str, Any] = {}
-    tool_call_id: Optional[str] = None
+    tool_args: dict[str, Any] = {}
+    tool_call_id: str | None = None
 
     try:
         # Extract tool call information
@@ -227,37 +229,3 @@ async def handle_tool_call(
 
     except Exception as e:
         logging.error(f"Error handling tool call '{tool_name}': {str(e)}")
-
-
-def convert_to_openai_tools(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Convert a list of MCP-style tool metadata dictionaries into the
-    OpenAI “function call” JSON schema.
-
-    ⚠️  **Deprecated** - new code should call `ToolManager.get_tools_for_llm()`.
-    This helper remains for older tests / scripts.
-    """
-    # Already-converted? → return unchanged
-    if tools and isinstance(tools[0], dict) and tools[0].get("type") == "function":
-        return tools
-
-    openai_tools: List[Dict[str, Any]] = []
-    for tool in tools:
-        if not isinstance(tool, dict):  # skip un-recognised entries
-            continue  # type: ignore[unreachable]
-
-        openai_tools.append(
-            {
-                "type": "function",
-                "function": {
-                    "name": tool.get("name", "unknown"),
-                    # NEW: carry over the human-readable description
-                    "description": tool.get("description", ""),
-                    # Accept either `parameters` (already OpenAI-style) or
-                    # legacy `inputSchema`
-                    "parameters": tool.get("parameters", tool.get("inputSchema", {})),
-                },
-            }
-        )
-
-    return openai_tools

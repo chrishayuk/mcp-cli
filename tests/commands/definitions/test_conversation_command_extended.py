@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from mcp_cli.commands.definitions.conversation import ConversationCommand
 from mcp_cli.commands.base import CommandMode
+from mcp_cli.chat.models import Message, MessageRole
 
 
 @pytest.fixture
@@ -18,8 +19,8 @@ def mock_chat_context():
     """Create a mock chat context."""
     context = MagicMock()
     context.conversation_history = [
-        {"role": "user", "content": "Hello"},
-        {"role": "assistant", "content": "Hi there!"},
+        Message(role=MessageRole.USER, content="Hello"),
+        Message(role=MessageRole.ASSISTANT, content="Hi there!"),
     ]
     return context
 
@@ -48,8 +49,8 @@ async def test_conversation_without_context(conversation_command):
 async def test_conversation_show_history(conversation_command, mock_chat_context):
     """Test showing conversation history."""
     mock_chat_context.conversation_history = [
-        {"role": "user", "content": "Hello"},
-        {"role": "assistant", "content": "Hi there!"},
+        Message(role=MessageRole.USER, content="Hello"),
+        Message(role=MessageRole.ASSISTANT, content="Hi there!"),
     ]
 
     result = await conversation_command.execute(chat_context=mock_chat_context)
@@ -78,20 +79,23 @@ async def test_conversation_clear_history(conversation_command, mock_chat_contex
 async def test_conversation_save_history(conversation_command, mock_chat_context):
     """Test saving conversation history."""
     mock_chat_context.conversation_history = [
-        {"role": "user", "content": "Test message"}
+        Message(role=MessageRole.USER, content="Test message")
     ]
 
     with patch("builtins.open", create=True) as mock_open:
-        mock_file = MagicMock()
-        mock_open.return_value.__enter__.return_value = mock_file
+        with patch("json.dump"):
+            mock_file = MagicMock()
+            mock_open.return_value.__enter__.return_value = mock_file
 
-        result = await conversation_command.execute(
-            chat_context=mock_chat_context, action="save", filename="conversation.json"
-        )
+            result = await conversation_command.execute(
+                chat_context=mock_chat_context,
+                action="save",
+                filename="conversation.json",
+            )
 
-        assert result.success is True
-        assert "saved" in result.output.lower()
-        mock_open.assert_called_once_with("conversation.json", "w")
+            assert result.success is True
+            assert "saved" in result.output.lower()
+            mock_open.assert_called_once_with("conversation.json", "w")
 
 
 @pytest.mark.asyncio
@@ -110,7 +114,7 @@ async def test_conversation_export_history(conversation_command, mock_chat_conte
 async def test_conversation_with_limit(conversation_command, mock_chat_context):
     """Test showing conversation with limit."""
     mock_chat_context.conversation_history = [
-        {"role": "user", "content": f"Message {i}"} for i in range(10)
+        Message(role=MessageRole.USER, content=f"Message {i}") for i in range(10)
     ]
 
     # The actual implementation doesn't support limit parameter
@@ -124,7 +128,9 @@ async def test_conversation_with_limit(conversation_command, mock_chat_context):
 @pytest.mark.asyncio
 async def test_conversation_with_raw_format(conversation_command, mock_chat_context):
     """Test showing conversation in raw format."""
-    mock_chat_context.conversation_history = [{"role": "user", "content": "Test"}]
+    mock_chat_context.conversation_history = [
+        Message(role=MessageRole.USER, content="Test")
+    ]
 
     # Raw format is not supported in the actual implementation
     result = await conversation_command.execute(
@@ -150,7 +156,9 @@ async def test_conversation_invalid_action(conversation_command, mock_chat_conte
 @pytest.mark.asyncio
 async def test_conversation_save_error(conversation_command, mock_chat_context):
     """Test save with file error."""
-    mock_chat_context.conversation_history = [{"role": "user", "content": "Test"}]
+    mock_chat_context.conversation_history = [
+        Message(role=MessageRole.USER, content="Test")
+    ]
 
     with patch("builtins.open", side_effect=IOError("Cannot write file")):
         result = await conversation_command.execute(

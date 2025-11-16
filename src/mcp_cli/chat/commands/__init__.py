@@ -1,21 +1,23 @@
 # mcp_cli/chat/commands/__init__.py
 """
+from __future__ import annotations
+
 Command handling system for the MCP CLI chat interface.
 """
 
-from typing import Dict, List, Any, Callable, Awaitable
+from typing import Any, Callable, Awaitable
 
 # Type for command handlers
-CommandHandler = Callable[[List[str]], Awaitable[bool]]
+CommandHandler = Callable[[list[str]], Awaitable[bool]]
 
 # Global registries
-_COMMAND_HANDLERS: Dict[str, CommandHandler] = {}
-_COMMAND_COMPLETIONS: Dict[str, List[str]] = {}
-_COMMAND_ALIASES: Dict[str, str] = {}
+_COMMAND_HANDLERS: dict[str, CommandHandler] = {}
+_COMMAND_COMPLETIONS: dict[str, list[str]] = {}
+_COMMAND_ALIASES: dict[str, str] = {}
 
 
 def register_command(
-    command: str, handler: CommandHandler, completions: List[str] | None = None
+    command: str, handler: CommandHandler, completions: list[str] | None = None
 ) -> None:
     """
     Register a command handler.
@@ -58,7 +60,7 @@ def register_alias(alias: str, target: str) -> None:
 
 
 async def handle_command(
-    command_text: str, context: Dict[str, Any] | None = None
+    command_text: str, context: dict[str, Any] | None = None
 ) -> bool:
     """
     Handle a command and return whether it was handled.
@@ -92,7 +94,7 @@ async def handle_command(
     return await handler(parts)
 
 
-def get_command_completions(partial_text: str) -> List[str]:
+def get_command_completions(partial_text: str) -> list[str]:
     """
     Get command completions for a partial command.
 

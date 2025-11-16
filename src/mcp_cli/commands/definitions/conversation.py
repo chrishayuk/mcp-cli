@@ -6,7 +6,6 @@ Unified conversation command implementation (chat mode only).
 from __future__ import annotations
 
 import json
-from typing import List
 
 from mcp_cli.commands.base import (
     UnifiedCommand,
@@ -14,6 +13,7 @@ from mcp_cli.commands.base import (
     CommandParameter,
     CommandResult,
 )
+from mcp_cli.chat.models import MessageRole
 from chuk_term.ui import output, format_table
 
 
@@ -25,7 +25,7 @@ class ConversationCommand(UnifiedCommand):
         return "conversation"
 
     @property
-    def aliases(self) -> List[str]:
+    def aliases(self) -> list[str]:
         return ["history", "ch"]
 
     @property
@@ -58,7 +58,7 @@ Examples:
         return CommandMode.CHAT
 
     @property
-    def parameters(self) -> List[CommandParameter]:
+    def parameters(self) -> list[CommandParameter]:
         return [
             CommandParameter(
                 name="action",
@@ -128,14 +128,18 @@ Examples:
             # Validate row number
             if 1 <= row_num <= len(history):
                 msg = history[row_num - 1]
-                role = msg.get("role", "unknown")
-                content = msg.get("content", "")
+                role = (
+                    msg.role.value
+                    if isinstance(msg.role, MessageRole)
+                    else str(msg.role)
+                )
+                content = msg.content or ""
 
                 # Handle None content
-                if content is None:
-                    if "tool_calls" in msg:
+                if not content:
+                    if msg.tool_calls:
                         # Format tool calls for display
-                        tool_calls = msg.get("tool_calls", [])
+                        tool_calls = msg.tool_calls
                         content = "Tool Calls:\n"
                         for tc in tool_calls:
                             func = tc.get("function", {})
@@ -171,13 +175,17 @@ Examples:
                 # Build table data
                 table_data = []
                 for i, msg in enumerate(history, 1):
-                    role = msg.get("role", "unknown")
-                    content = msg.get("content", "")
+                    role = (
+                        msg.role.value
+                        if isinstance(msg.role, MessageRole)
+                        else str(msg.role)
+                    )
+                    content = msg.content or ""
 
                     # Handle None content (e.g., from tool calls)
-                    if content is None:
+                    if not content:
                         # Check if this is a tool call message
-                        if "tool_calls" in msg:
+                        if msg.tool_calls:
                             content = "[Tool call - see /toolhistory]"
                         else:
                             content = ""
@@ -238,7 +246,7 @@ Examples:
                     # For tests, return output for assertions
                     test_lines = ["Conversation History", ""]
                     for i in range(len(history)):
-                        content = history[i].get("content")
+                        content = history[i].content
                         if content is not None:
                             # Apply truncation for test output too
                             if len(content) > 100:
