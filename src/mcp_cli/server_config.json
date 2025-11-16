@@ -36,6 +36,10 @@
     },
     "linkedin": {
       "url": "https://linkedin.chukai.io/mcp"
+    },
+    "math": {
+      "command": "uvx",
+      "args": ["chuk-mcp-math-server"]
     }
   }
 }
