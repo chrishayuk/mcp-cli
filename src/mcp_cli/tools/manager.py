@@ -1077,14 +1077,46 @@ class ToolManager:
             )
             logger.info(f"get_all_tools: Found {len(registry_items)} tools in registry")
 
-            for ns, name in registry_items:
-                try:
-                    metadata = await asyncio.wait_for(
-                        self._registry.get_metadata(name, ns), timeout=5.0
-                    )
+            # Check if registry_items are already ToolInfo objects or tuples
+            # Note: registry may return ToolInfo from chuk_tool_processor (with just name/namespace)
+            if registry_items and not isinstance(registry_items[0], tuple):
+                # ToolInfo objects (from chuk_tool_processor) - need to get full metadata
+                logger.debug("Registry items are ToolInfo objects, fetching full metadata")
+                for tool in registry_items:
+                    try:
+                        metadata = await asyncio.wait_for(
+                            self._registry.get_metadata(tool.name, tool.namespace), timeout=5.0
+                        )
 
-                    tools.append(
-                        ToolInfo(
+                        tool_info = ToolInfo(
+                            name=tool.name,
+                            namespace=tool.namespace,
+                            description=metadata.description if metadata else "",
+                            parameters=metadata.argument_schema if metadata else {},
+                            is_async=metadata.is_async if metadata else False,
+                            tags=list(metadata.tags) if metadata else [],
+                            supports_streaming=getattr(
+                                metadata, "supports_streaming", False
+                            )
+                            if metadata
+                            else False,
+                        )
+                        tools.append(tool_info)
+
+                    except asyncio.TimeoutError:
+                        logger.warning(f"Timeout getting metadata for {tool.namespace}.{tool.name}")
+                    except Exception as e:
+                        logger.warning(f"Error converting tool {tool.name}: {e}")
+            else:
+                # Registry items are tuples, need to convert them
+                logger.debug("Registry items are tuples, converting to ToolInfo")
+                for ns, name in registry_items:
+                    try:
+                        metadata = await asyncio.wait_for(
+                            self._registry.get_metadata(name, ns), timeout=5.0
+                        )
+
+                        tool_info = ToolInfo(
                             name=name,
                             namespace=ns,
                             description=metadata.description if metadata else "",
@@ -1097,16 +1129,19 @@ class ToolManager:
                             if metadata
                             else False,
                         )
-                    )
+                        tools.append(tool_info)
 
-                except asyncio.TimeoutError:
-                    logger.warning(f"Timeout getting metadata for {ns}.{name}")
-                except Exception as e:
-                    logger.warning(f"Error getting metadata for {ns}.{name}: {e}")
+                    except asyncio.TimeoutError:
+                        logger.warning(f"Timeout getting metadata for {ns}.{name}")
+                    except Exception as e:
+                        logger.warning(f"Error getting metadata for {ns}.{name}: {e}")
 
+        except asyncio.TimeoutError:
+            logger.error("Timeout listing tools from registry")
         except Exception as exc:
             logger.error(f"Error discovering tools: {exc}")
 
+        logger.debug(f"get_all_tools returning {len(tools)} tools")
         return tools
 
     async def get_unique_tools(self) -> List[ToolInfo]:
@@ -1114,12 +1149,16 @@ class ToolManager:
         seen = set()
         unique = []
 
-        for tool in await self.get_all_tools():
+        all_tools = await self.get_all_tools()
+        logger.debug(f"get_unique_tools: processing {len(all_tools)} tools")
+
+        for tool in all_tools:
             if tool.namespace == "default" or tool.name in seen:
                 continue
             seen.add(tool.name)
             unique.append(tool)
 
+        logger.debug(f"get_unique_tools returning {len(unique)} unique tools")
         return unique
 
     async def get_tool_by_name(
@@ -1479,16 +1518,29 @@ class ToolManager:
                 f"Looking for tool '{tool_name}' in {len(registry_items)} registry entries"
             )
 
-            # Find the tool and its namespace
-            for namespace, name in registry_items:
-                if name == tool_name:
-                    logger.info(f"Found tool '{tool_name}' in namespace '{namespace}'")
-                    return namespace, name
+            # Check if registry_items are ToolInfo objects or tuples
+            if registry_items and not isinstance(registry_items[0], tuple):
+                # ToolInfo objects from chuk_tool_processor
+                for tool in registry_items:
+                    if tool.name == tool_name:
+                        logger.info(f"Found tool '{tool_name}' in namespace '{tool.namespace}'")
+                        return tool.namespace, tool.name
 
-            logger.error(f"Tool '{tool_name}' not found in any namespace")
-            logger.debug("Available tools:")
-            for namespace, name in registry_items[:10]:  # Show first 10 for debugging
-                logger.debug(f"  {namespace}/{name}")
+                logger.error(f"Tool '{tool_name}' not found in any namespace")
+                logger.debug("Available tools:")
+                for tool in registry_items[:10]:  # Show first 10 for debugging
+                    logger.debug(f"  {tool.namespace}/{tool.name}")
+            else:
+                # Tuples (legacy format)
+                for namespace, name in registry_items:
+                    if name == tool_name:
+                        logger.info(f"Found tool '{tool_name}' in namespace '{namespace}'")
+                        return namespace, name
+
+                logger.error(f"Tool '{tool_name}' not found in any namespace")
+                logger.debug("Available tools:")
+                for namespace, name in registry_items[:10]:  # Show first 10 for debugging
+                    logger.debug(f"  {namespace}/{name}")
 
             return "", ""
 
