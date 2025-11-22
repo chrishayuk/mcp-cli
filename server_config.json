@@ -42,6 +42,10 @@
     "math": {
       "command": "uvx",
       "args": ["chuk-mcp-math-server"]
+    },
+    "powerpoint": {
+      "command": "uv",
+      "args": ["--directory", "/Users/christopherhay/chris-source/chuk-ai/mcp-servers/chuk-mcp-pptx", "run", "chuk-mcp-pptx", "stdio"]
     }
   }
 }

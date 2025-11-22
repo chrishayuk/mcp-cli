@@ -1,5 +1,4 @@
 # src/mcp_cli/commands/decorators.py
-# mypy: disable-error-code="no-any-return,arg-type,return-value,misc,attr-defined,unused-ignore,no-redef"
 """
 Decorators for command action functions.
 
@@ -10,16 +9,18 @@ from __future__ import annotations
 
 import functools
 import inspect
-from typing import Callable, TypeVar, ParamSpec
+from typing import Any, Awaitable, Callable, TypeVar
 
 from pydantic import BaseModel, ValidationError
 from chuk_term.ui import output
 
-P = ParamSpec("P")
-T = TypeVar("T")
+# Type variable for the Pydantic model
+ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
-def validate_params(model_class: type[BaseModel]):
+def validate_params(
+    model_class: type[ModelT],
+) -> Callable[[Callable[[ModelT], Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
     """
     Decorator to validate function parameters using a Pydantic model.
 
@@ -36,17 +37,19 @@ def validate_params(model_class: type[BaseModel]):
         >>>     pass
     """
 
-    def decorator(func: Callable[P, T]) -> Callable[P, T]:
+    def decorator(
+        func: Callable[[ModelT], Awaitable[Any]],
+    ) -> Callable[..., Awaitable[Any]]:
         @functools.wraps(func)
-        async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:  # type: ignore[return]
+        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 # If first arg is already the model, use it
                 if args and isinstance(args[0], model_class):
-                    return await func(*args, **kwargs)  # type: ignore[return-value,misc]
+                    return await func(*args, **kwargs)
 
                 # Otherwise, create model from kwargs
                 params = model_class(**kwargs)
-                return await func(  # type: ignore[return-value,misc,arg-type]
+                return await func(
                     params,
                     **{
                         k: v
@@ -60,51 +63,27 @@ def validate_params(model_class: type[BaseModel]):
                 for error in e.errors():
                     field = ".".join(str(loc) for loc in error["loc"])
                     output.error(f"  {field}: {error['msg']}")
-                return None  # type: ignore[return-value]
+                return None
             except Exception as e:
                 output.error(f"Error: {e}")
                 raise
 
-        @functools.wraps(func)
-        def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:  # type: ignore[return]
-            try:
-                # If first arg is already the model, use it
-                if args and isinstance(args[0], model_class):
-                    return func(*args, **kwargs)  # type: ignore[return-value]
-
-                # Otherwise, create model from kwargs
-                params = model_class(**kwargs)
-                return func(  # type: ignore[arg-type]
-                    params,
-                    **{
-                        k: v
-                        for k, v in kwargs.items()
-                        if k not in model_class.model_fields
-                    },
-                )
-
-            except ValidationError as e:
-                output.error(f"Invalid parameters: {e}")
-                for error in e.errors():
-                    field = ".".join(str(loc) for loc in error["loc"])
-                    output.error(f"  {field}: {error['msg']}")
-                return None  # type: ignore[return-value]
-            except Exception as e:
-                output.error(f"Error: {e}")
-                raise
-
-        # Return appropriate wrapper based on whether function is async
+        # Only return async wrapper since we only support async functions
         if inspect.iscoroutinefunction(func):
-            return async_wrapper  # type: ignore[return-value]
+            return async_wrapper
         else:
-            return sync_wrapper  # type: ignore[return-value]
+            raise TypeError(
+                f"validate_params decorator only supports async functions, got {func}"
+            )
 
     return decorator
 
 
-def handle_errors(message: str = "Command failed"):
+def handle_errors(
+    message: str = "Command failed",
+) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
     """
-    Decorator to handle common errors in command actions.
+    Decorator to handle common errors in async command actions.
 
     Args:
         message: Error message prefix to display
@@ -116,26 +95,21 @@ def handle_errors(message: str = "Command failed"):
         >>>     pass
     """
 
-    def decorator(func: Callable[P, T]) -> Callable[P, T]:
+    def decorator(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
         @functools.wraps(func)
-        async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:  # type: ignore[return]
+        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
-                return await func(*args, **kwargs)  # type: ignore[return-value,misc]
+                return await func(*args, **kwargs)
             except Exception as e:
                 output.error(f"{message}: {e}")
                 raise
 
-        @functools.wraps(func)
-        def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:  # type: ignore[return]
-            try:
-                return func(*args, **kwargs)  # type: ignore[return-value]
-            except Exception as e:
-                output.error(f"{message}: {e}")
-                raise
-
+        # Only support async functions
         if inspect.iscoroutinefunction(func):
-            return async_wrapper  # type: ignore[return-value]
+            return async_wrapper
         else:
-            return sync_wrapper  # type: ignore[return-value]
+            raise TypeError(
+                f"handle_errors decorator only supports async functions, got {func}"
+            )
 
     return decorator

@@ -93,22 +93,23 @@ async def display_registry_tools(
 ) -> List[Tuple[str, str]]:
     """Display all tools in the registry, optionally filtered by namespace."""
     # Get tools, optionally filtered by namespace
+    all_tools = await registry.list_tools()
     if namespace_filter:
         tools = [
-            (ns, name)
-            for ns, name in await registry.list_tools()
-            if ns == namespace_filter
+            tool_info
+            for tool_info in all_tools
+            if tool_info.namespace == namespace_filter
         ]
     else:
-        tools = await registry.list_tools()
+        tools = all_tools
 
     # Print tools
     print(Fore.CYAN + f"🔧  Registered MCP tools ({len(tools)}):")
 
-    for ns, name in tools:
-        md = await registry.get_metadata(name, ns)
+    for tool_info in tools:
+        md = await registry.get_metadata(tool_info.name, tool_info.namespace)
         print(
-            f"  • {Fore.GREEN}{ns}.{name:<20}{Style.RESET_ALL} - {md.description or '<no description>'}"
+            f"  • {Fore.GREEN}{tool_info.namespace}.{tool_info.name:<20}{Style.RESET_ALL} - {md.description or '<no description>'}"
         )
     print()
 

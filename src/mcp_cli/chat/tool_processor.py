@@ -374,13 +374,7 @@ class ToolProcessor:
         Returns:
             True if tool should be confirmed, False otherwise
         """
-        # First check if UI manager has legacy confirm_tool_execution attribute
-        if hasattr(self.ui_manager, "confirm_tool_execution"):
-            # If explicitly set to False, don't confirm
-            if not self.ui_manager.confirm_tool_execution:
-                return False
-
-        # Use preference manager for nuanced decision
+        # Use preference manager for tool confirmation decision
         try:
             prefs = get_preference_manager()
             return prefs.should_confirm_tool(tool_name)

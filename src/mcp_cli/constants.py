@@ -1,5 +1,7 @@
 """Central constants for MCP CLI."""
 
+from importlib.metadata import version, PackageNotFoundError
+
 # Application namespace for token storage
 # This is used to namespace all tokens stored by mcp-cli
 # to avoid conflicts with other applications using the same libraries
@@ -12,4 +14,10 @@ GENERIC_NAMESPACE = "generic"  # Generic bearer tokens and API keys
 
 # Application metadata
 APP_NAME = "mcp-cli"
-APP_VERSION = "0.1.0"  # TODO: Get from package metadata
+
+# Get version from package metadata
+try:
+    APP_VERSION = version("mcp-cli")
+except PackageNotFoundError:
+    # Fallback for development/editable installs
+    APP_VERSION = "0.0.0-dev"

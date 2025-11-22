@@ -395,8 +395,8 @@ redis = [
 
 [[package]]
 name = "chuk-llm"
-version = "0.12.7"
-source = { registry = "https://pypi.org/simple" }
+version = "0.14"
+source = { directory = "../chuk-ai/chuk-llm" }
 dependencies = [
     { name = "aiohttp" },
     { name = "anthropic" },
@@ -415,10 +415,6 @@ dependencies = [
     { name = "tiktoken" },
     { name = "transformers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cf/13/556bdce45bcc8907afcd2bafeda3d4cd9ab8ff8ad4de1717a6f2022e67d1/chuk_llm-0.12.7.tar.gz", hash = "sha256:0c052f191a60adba6fd1e62ea17ad82beb200b17c2ce5b6e00cec5799c245702", size = 247219, upload-time = "2025-10-14T14:31:14.165Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/95/e1/e5f0b422672e07fb1a419a3214f9325511dbc9d8dfd9a2d5d3b2021e7467/chuk_llm-0.12.7-py3-none-any.whl", hash = "sha256:dc3839780074f914e5dc33f23b9fafa941155b865a10a9daa397b35e8945ae02", size = 271586, upload-time = "2025-10-14T14:31:12.417Z" },
-]
 
 [package.optional-dependencies]
 all = [
@@ -426,18 +422,70 @@ all = [
     { name = "rich" },
 ]
 
+[package.metadata]
+requires-dist = [
+    { name = "aiohttp", specifier = ">=3.12.15" },
+    { name = "anthropic", specifier = ">=0.62.0" },
+    { name = "asyncio", specifier = ">=4.0.0" },
+    { name = "chuk-ai-session-manager", specifier = ">=0.7" },
+    { name = "chuk-ai-session-manager", extras = ["redis"], marker = "extra == 'all'", specifier = ">=0.7" },
+    { name = "chuk-ai-session-manager", extras = ["redis"], marker = "extra == 'redis'", specifier = ">=0.7" },
+    { name = "google-genai", specifier = ">=1.29.0" },
+    { name = "groq", specifier = ">=0.25.0" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "ibm-watsonx-ai", specifier = ">=1.3.30" },
+    { name = "ibm-watsonx-ai", marker = "extra == 'watsonx'" },
+    { name = "jinja2", specifier = ">=3.1.6" },
+    { name = "jinja2", marker = "extra == 'watsonx'", specifier = ">=3.1.6" },
+    { name = "mistralai", specifier = ">=1.9.3" },
+    { name = "ollama", specifier = ">=0.5.3" },
+    { name = "openai", specifier = ">=1.79.0" },
+    { name = "orjson", marker = "extra == 'dev'", specifier = ">=3.10.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.5" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.26.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6.1.1" },
+    { name = "python-dotenv", specifier = ">=1.1.0" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "rich", marker = "extra == 'all'", specifier = ">=14.0.0" },
+    { name = "rich", marker = "extra == 'cli'", specifier = ">=14.0.0" },
+    { name = "rich", marker = "extra == 'dev'", specifier = ">=14.0.0" },
+    { name = "tiktoken", specifier = ">=0.11.0" },
+    { name = "transformers", specifier = ">=4.53.2" },
+    { name = "transformers", marker = "extra == 'watsonx'", specifier = ">=4.53.2" },
+    { name = "ujson", marker = "extra == 'dev'", specifier = ">=5.10.0" },
+]
+provides-extras = ["redis", "watsonx", "cli", "dev", "all"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "black", specifier = ">=24.10.0" },
+    { name = "build", specifier = ">=1.2.0" },
+    { name = "isort", specifier = ">=5.13.0" },
+    { name = "mypy", specifier = ">=1.14.0" },
+    { name = "pillow" },
+    { name = "pre-commit", specifier = ">=4.0.0" },
+    { name = "pytest", specifier = ">=8.3.5" },
+    { name = "pytest-asyncio", specifier = ">=0.26.0" },
+    { name = "pytest-cov", specifier = ">=6.1.1" },
+    { name = "rich", specifier = ">=14.0.0" },
+    { name = "ruff", specifier = ">=0.8.0" },
+    { name = "twine", specifier = ">=6.0.0" },
+    { name = "types-pyyaml", specifier = ">=6.0.0" },
+    { name = "types-requests", specifier = ">=2.31.0" },
+]
+
 [[package]]
 name = "chuk-mcp"
-version = "0.8.1"
+version = "0.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
     { name = "httpx" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/36/31/48e2c2c0a9f8e0f83594ed0ce72b6b9ac2b803c41b158a0c9926019e4ba7/chuk_mcp-0.8.1.tar.gz", hash = "sha256:6913651b1c5696dbe2868ab33e920ef1491f1f2a908d61c742c7b5a8f7f4adbd", size = 150091, upload-time = "2025-11-02T14:33:02.528Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d4/0f/b7f958e95d4c4313b6fcbdd7a7bd0212f61d32345b302c522d2a20fc6482/chuk_mcp-0.9.tar.gz", hash = "sha256:1544f85aa35d60c8f6a5017ec8f1ef659be238da4d1f21fcb4495ba87c91df31", size = 156868, upload-time = "2025-11-19T00:52:44.941Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8f/69/40988763461afb09ae4fe8934d295da2b98cc47a5ab636a081a536757cfc/chuk_mcp-0.8.1-py3-none-any.whl", hash = "sha256:372e4a06987210dc6d635f12ec6fb9d6a0335b8cc3895b8453df7808f21ec819", size = 136228, upload-time = "2025-11-02T14:33:00.881Z" },
+    { url = "https://files.pythonhosted.org/packages/1b/ca/7d3381df501c6636a0eaa1f1ae3ff82b3a0f80ef830b8b0a7b3915617bc6/chuk_mcp-0.9-py3-none-any.whl", hash = "sha256:ea821711741db3802e25ad8c183d9933a267ca40a9ef176a2236e17a4ea06666", size = 140648, upload-time = "2025-11-19T00:52:43.527Z" },
 ]
 
 [[package]]
@@ -487,8 +535,8 @@ wheels = [
 
 [[package]]
 name = "chuk-tool-processor"
-version = "0.9.7"
-source = { registry = "https://pypi.org/simple" }
+version = "0.11.1"
+source = { directory = "../chuk-ai/chuk-tool-processor" }
 dependencies = [
     { name = "chuk-mcp" },
     { name = "dotenv" },
@@ -496,9 +544,40 @@ dependencies = [
     { name = "pydantic" },
     { name = "uuid" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c9/6e/8ad269c72743aa9b4926c7baffa1c0c79aaa52b4f81ea0af0886ca7f0316/chuk_tool_processor-0.9.7.tar.gz", hash = "sha256:33d69ed56c69ddba36639d87d983c548b408d76d74473548bee0cfbd009354bf", size = 156810, upload-time = "2025-11-02T15:35:54.221Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e1/81/588f03d01abe71445175f40f8193c93753801d637e26fad91d11e169c16d/chuk_tool_processor-0.9.7-py3-none-any.whl", hash = "sha256:0f543e410d037eb3cd15229408c87e76de9c783427dd978aae4fbf6605412df8", size = 155555, upload-time = "2025-11-02T15:35:52.236Z" },
+
+[package.metadata]
+requires-dist = [
+    { name = "chuk-mcp", specifier = ">=0.9" },
+    { name = "dotenv", specifier = ">=0.9.9" },
+    { name = "orjson", marker = "extra == 'fast-json'", specifier = ">=3.10.0,<4" },
+    { name = "orjson", marker = "extra == 'full'", specifier = ">=3.10.0,<4" },
+    { name = "psutil", specifier = ">=7.0.0" },
+    { name = "pydantic", specifier = ">=2.11.3" },
+    { name = "uuid", specifier = ">=1.30" },
+]
+provides-extras = ["fast-json", "full"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "bandit", specifier = ">=1.7.0" },
+    { name = "colorama", specifier = ">=0.4.6" },
+    { name = "coverage", extras = ["toml"], specifier = ">=7.6.0" },
+    { name = "fastapi", specifier = ">=0.115.12" },
+    { name = "langchain", specifier = ">=0.3.25" },
+    { name = "mypy", specifier = ">=1.13.0" },
+    { name = "orjson", specifier = ">=3.10.0" },
+    { name = "pre-commit", specifier = ">=3.8.0" },
+    { name = "pytest", specifier = ">=8.3.5" },
+    { name = "pytest-asyncio", specifier = ">=0.26.0" },
+    { name = "pytest-cov", specifier = ">=5.0.0" },
+    { name = "ruff", specifier = ">=0.7.1" },
+    { name = "uvicorn", specifier = ">=0.34.2" },
+]
+observability = [
+    { name = "opentelemetry-api", specifier = ">=1.28.0" },
+    { name = "opentelemetry-exporter-otlp", specifier = ">=1.28.0" },
+    { name = "opentelemetry-sdk", specifier = ">=1.28.0" },
+    { name = "prometheus-client", specifier = ">=0.21.0" },
 ]
 
 [[package]]
@@ -1413,10 +1492,10 @@ dev = [
 requires-dist = [
     { name = "asyncio", specifier = ">=3.4.3" },
     { name = "asyncio", marker = "extra == 'dev'", specifier = ">=3.4.3" },
-    { name = "chuk-llm", extras = ["all"], specifier = ">=0.12.7" },
+    { name = "chuk-llm", extras = ["all"], directory = "../chuk-ai/chuk-llm" },
     { name = "chuk-mcp-client-oauth", specifier = ">=0.3.5" },
     { name = "chuk-term", specifier = ">=0.1.3" },
-    { name = "chuk-tool-processor", specifier = "==0.9.7" },
+    { name = "chuk-tool-processor", directory = "../chuk-ai/chuk-tool-processor" },
     { name = "cryptography", specifier = ">=44.0.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "hvac", marker = "extra == 'vault'", specifier = ">=2.0.0" },

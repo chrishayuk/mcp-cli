@@ -102,10 +102,10 @@ async def round_trip(
 
     # list registered tools
     print("\n🔧  Registered tools:")
-    for ns, nm in await registry.list_tools():
-        meta = await registry.get_metadata(nm, ns)
+    for tool_info in await registry.list_tools():
+        meta = await registry.get_metadata(tool_info.name, tool_info.namespace)
         desc = f" - {meta.description}" if meta and meta.description else ""
-        print(f"  • {ns}.{nm}{desc}")
+        print(f"  • {tool_info.namespace}.{tool_info.name}{desc}")
     print()
 
     while True:
