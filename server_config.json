@@ -46,6 +46,13 @@
     "powerpoint": {
       "command": "uv",
       "args": ["--directory", "/Users/christopherhay/chris-source/chuk-ai/mcp-servers/chuk-mcp-pptx", "run", "chuk-mcp-pptx", "stdio"]
+    },
+    "weather": {
+      "url": "https://weather.chukai.io/mcp"
+    },
+    "playbook": {
+      "command": "uv",
+      "args": ["--directory", "/Users/christopherhay/chris-source/chuk-ai/mcp-servers/chuk-mcp-playbook", "run", "chuk-mcp-playbook", "--transport", "stdio"]
     }
   }
 }

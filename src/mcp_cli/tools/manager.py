@@ -122,6 +122,8 @@ class ToolManager:
         self.stream_manager = StreamManager()
 
         try:
+            # Initialize all server types (not mutually exclusive)
+            # Changed from elif to if statements to support multiple transport types
             if self._http_servers:
                 logger.info(f"Initializing {len(self._http_servers)} HTTP servers")
                 await self.stream_manager.initialize_with_http_streamable(
@@ -130,7 +132,7 @@ class ToolManager:
                     initialization_timeout=self.initialization_timeout,
                     oauth_refresh_callback=self._create_oauth_refresh_callback(),
                 )
-            elif self._sse_servers:
+            if self._sse_servers:
                 logger.info(f"Initializing {len(self._sse_servers)} SSE servers")
                 await self.stream_manager.initialize_with_sse(
                     servers=self._sse_servers,
@@ -138,14 +140,15 @@ class ToolManager:
                     initialization_timeout=self.initialization_timeout,
                     oauth_refresh_callback=self._create_oauth_refresh_callback(),
                 )
-            elif self._stdio_servers:
+            if self._stdio_servers:
                 logger.info(f"Initializing {len(self._stdio_servers)} STDIO servers")
                 await self.stream_manager.initialize_with_stdio(
                     servers=self._stdio_servers,
                     server_names=self.server_names,
                     initialization_timeout=self.initialization_timeout,
                 )
-            else:
+
+            if not (self._http_servers or self._sse_servers or self._stdio_servers):
                 logger.info("No servers detected")
                 return True
 
@@ -407,7 +410,7 @@ class ToolManager:
         namespace: str | None = None,
         timeout: float | None = None,
     ) -> ToolCallResult:
-        """Execute tool and return ToolCallResult."""
+        """Execute tool and return ToolCallResult with automatic recovery on transport errors."""
         if not self.stream_manager:
             return ToolCallResult(
                 tool_name=tool_name, success=False, error="ToolManager not initialized"
@@ -423,8 +426,21 @@ class ToolManager:
             return ToolCallResult(tool_name=tool_name, success=True, result=result)
 
         except Exception as e:
-            logger.error(f"Tool execution failed: {e}")
-            return ToolCallResult(tool_name=tool_name, success=False, error=str(e))
+            error_msg = str(e)
+            logger.error(f"Tool execution failed: {error_msg}")
+
+            # Check if this is a transport error that might be recoverable
+            if "Transport not initialized" in error_msg or "transport" in error_msg.lower():
+                logger.warning(f"Transport error detected for tool {tool_name}, attempting recovery...")
+
+                # Attempt to recover by reconnecting to the affected server
+                recovery_result = await self._attempt_transport_recovery(
+                    tool_name, arguments, namespace, timeout
+                )
+                if recovery_result:
+                    return recovery_result
+
+            return ToolCallResult(tool_name=tool_name, success=False, error=error_msg)
 
     # ================================================================
     # LLM Integration (filtering + adaptation)
@@ -541,6 +557,71 @@ class ToolManager:
 
         except Exception as e:
             return False, str(e)
+
+    async def _attempt_transport_recovery(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        namespace: str | None = None,
+        timeout: float | None = None,
+    ) -> ToolCallResult | None:
+        """
+        Attempt to recover from transport errors by reconnecting to the server.
+
+        This handles cases where the MCP server transport gets into a bad state
+        after timeouts or concurrent requests.
+
+        Returns:
+            ToolCallResult if recovery succeeded and tool was executed, None otherwise
+        """
+        try:
+            # First, try to identify which server this tool belongs to
+            server_name = namespace
+            if not server_name:
+                # Try to find the server by looking at available tools
+                tools = await self.get_all_tools()
+                for tool in tools:
+                    if tool.name == tool_name:
+                        server_name = tool.server_name
+                        break
+
+            if not server_name:
+                logger.warning(f"Could not identify server for tool {tool_name}")
+                return None
+
+            logger.info(f"Attempting to reconnect to server '{server_name}' for tool '{tool_name}'")
+
+            # Try to reconnect the specific server through StreamManager
+            if hasattr(self.stream_manager, 'reconnect_server'):
+                await self.stream_manager.reconnect_server(server_name)
+            elif hasattr(self.stream_manager, 'restart_server'):
+                await self.stream_manager.restart_server(server_name)
+            else:
+                # If no specific reconnect method, log warning
+                logger.warning(
+                    f"StreamManager doesn't support reconnection - server {server_name} may remain in bad state"
+                )
+                return None
+
+            # Wait a moment for reconnection
+            import asyncio
+            await asyncio.sleep(0.5)
+
+            # Retry the tool call once
+            logger.info(f"Retrying tool {tool_name} after transport recovery")
+            result = await self.stream_manager.call_tool(
+                tool_name=tool_name,
+                arguments=arguments,
+                server_name=namespace,
+                timeout=timeout or self.tool_timeout,
+            )
+
+            logger.info(f"Tool {tool_name} succeeded after recovery")
+            return ToolCallResult(tool_name=tool_name, success=True, result=result)
+
+        except Exception as recovery_error:
+            logger.error(f"Transport recovery failed: {recovery_error}")
+            return None
 
     async def revalidate_tools(self, provider: str = "openai") -> dict[str, Any]:
         """Revalidate all tools and return summary."""

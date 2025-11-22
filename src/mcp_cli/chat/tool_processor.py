@@ -39,6 +39,10 @@ class ToolProcessor:
         self._sem = asyncio.Semaphore(max_concurrency)
         self._pending: list[asyncio.Task] = []
 
+        # Track transport failures for recovery detection
+        self._transport_failures = 0
+        self._consecutive_transport_failures = 0
+
         # Give the UI a back-pointer for Ctrl-C cancellation
         setattr(self.context, "tool_processor", self)
 
@@ -194,6 +198,29 @@ class ToolProcessor:
                 log.info(
                     f"Tool result: success={tool_result.success}, error='{tool_result.error}'"
                 )
+
+                # Track transport failures for recovery
+                if not tool_result.success and tool_result.error:
+                    if "Transport not initialized" in tool_result.error or "transport" in tool_result.error.lower():
+                        self._transport_failures += 1
+                        self._consecutive_transport_failures += 1
+
+                        # Warn after 3 consecutive transport failures
+                        if self._consecutive_transport_failures >= 3:
+                            log.warning(
+                                f"Detected {self._consecutive_transport_failures} consecutive transport failures. "
+                                "Transport may be in a bad state."
+                            )
+                            output.warning(
+                                f"⚠️  Multiple transport errors detected ({self._consecutive_transport_failures}). "
+                                "The connection may need to be restarted."
+                            )
+                    else:
+                        # Reset consecutive counter on non-transport errors
+                        self._consecutive_transport_failures = 0
+                else:
+                    # Reset on success
+                    self._consecutive_transport_failures = 0
 
                 # Prepare content for conversation history
                 if tool_result.success:

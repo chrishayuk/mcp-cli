@@ -135,22 +135,40 @@ class StreamingResponseHandler:
         tools: list[dict[str, Any | None]] | None = None,
         **kwargs,
     ) -> dict[str, Any]:
-        """Handle chuk-llm's streaming with proper tool call accumulation."""
+        """Handle chuk-llm's streaming with proper tool call accumulation and timeout protection."""
         tool_calls: list[dict[str, Any]] = []
+
+        # Log conversation state for debugging
+        logger.debug(f"Starting streaming with {len(messages)} messages in history")
+        logger.debug(f"Tools available: {len(tools) if tools else 0}")
+        if messages:
+            last_msg = messages[-1]
+            logger.debug(f"Last message role: {last_msg.get('role')}, has content: {bool(last_msg.get('content'))}")
 
         # Start live display
         self._start_live_display()
 
         try:
-            # Use chuk-llm's streaming approach
-            async for chunk in client.create_completion(
-                messages=messages, tools=tools, stream=True, **kwargs
-            ):
-                if self._interrupted:
-                    logger.debug("Breaking from stream due to interruption")
-                    break
+            # Use chuk-llm's streaming approach with timeout protection
+            # Wrap the entire streaming process in a timeout (120 seconds total)
+            async def stream_with_timeout():
+                logger.debug("Creating streaming completion...")
+                async for chunk in client.create_completion(
+                    messages=messages, tools=tools, stream=True, **kwargs
+                ):
+                    if self._interrupted:
+                        logger.debug("Breaking from stream due to interruption")
+                        break
+                    await self._process_chunk(chunk, tool_calls)
+                logger.debug("Streaming iteration completed normally")
 
-                await self._process_chunk(chunk, tool_calls)
+            try:
+                logger.debug("Starting stream_with_timeout() with 120s timeout")
+                await asyncio.wait_for(stream_with_timeout(), timeout=120.0)
+                logger.debug("stream_with_timeout() completed successfully")
+            except asyncio.TimeoutError:
+                logger.error("Streaming timed out after 120 seconds")
+                raise RuntimeError("Streaming response timed out - the API may be experiencing issues")
 
             # IMPORTANT: After streaming is complete, finalize any remaining tool calls
             await self._finalize_streaming_tool_calls(tool_calls)
