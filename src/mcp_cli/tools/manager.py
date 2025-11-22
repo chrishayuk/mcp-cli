@@ -409,7 +409,9 @@ class ToolManager:
     ) -> ToolCallResult:
         """Execute tool and return ToolCallResult."""
         if not self.stream_manager:
-            return ToolCallResult(success=False, error="ToolManager not initialized")
+            return ToolCallResult(
+                tool_name=tool_name, success=False, error="ToolManager not initialized"
+            )
 
         try:
             result = await self.stream_manager.call_tool(
@@ -418,11 +420,11 @@ class ToolManager:
                 server_name=namespace,
                 timeout=timeout or self.tool_timeout,
             )
-            return ToolCallResult(success=True, result=result)
+            return ToolCallResult(tool_name=tool_name, success=True, result=result)
 
         except Exception as e:
             logger.error(f"Tool execution failed: {e}")
-            return ToolCallResult(success=False, error=str(e))
+            return ToolCallResult(tool_name=tool_name, success=False, error=str(e))
 
     # ================================================================
     # LLM Integration (filtering + adaptation)
