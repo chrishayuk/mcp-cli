@@ -247,6 +247,23 @@ class ToolCallResult(BaseModel):
             return str(machine_val) if machine_val is not None else None
         return None
 
+    def _extract_mcp_text_content(self, result: Any) -> str | None:
+        """Extract text content from MCP SDK ToolResult structure."""
+        if isinstance(result, dict):
+            # Check for MCP response structure: {'isError': bool, 'content': ToolResult}
+            if 'content' in result and hasattr(result['content'], 'content'):
+                # Extract content array from MCP ToolResult
+                tool_result_content = result['content'].content
+                if isinstance(tool_result_content, list):
+                    # Extract text from content blocks
+                    text_parts = []
+                    for block in tool_result_content:
+                        if isinstance(block, dict) and block.get('type') == 'text':
+                            text_parts.append(block.get('text', ''))
+                    if text_parts:
+                        return '\n'.join(text_parts)
+        return None
+
     @property
     def display_result(self) -> str:
         """Get a display-friendly result string."""
@@ -254,11 +271,19 @@ class ToolCallResult(BaseModel):
             error_msg = self.error or "Unknown error"
             return f"Error: {error_msg}"
 
+        # Try to extract MCP text content first
+        mcp_text = self._extract_mcp_text_content(self.result)
+        if mcp_text is not None:
+            return mcp_text
+
         # Format result based on type
         import json
 
         if isinstance(self.result, dict):
-            return json.dumps(self.result, indent=2)
+            try:
+                return json.dumps(self.result, indent=2)
+            except (TypeError, ValueError):
+                return str(self.result)
         elif isinstance(self.result, str):
             return self.result
         elif self.result is not None:
@@ -277,11 +302,19 @@ class ToolCallResult(BaseModel):
             error_msg = self.error or "Unknown error"
             return f"Tool execution failed: {error_msg}"
 
+        # Try to extract MCP text content first
+        mcp_text = self._extract_mcp_text_content(self.result)
+        if mcp_text is not None:
+            return mcp_text
+
         # Return result as string
         if isinstance(self.result, dict):
             import json
 
-            return json.dumps(self.result, indent=2)
+            try:
+                return json.dumps(self.result, indent=2)
+            except (TypeError, ValueError):
+                return str(self.result)
         elif isinstance(self.result, str):
             return self.result
         elif self.result is not None:
