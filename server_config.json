@@ -35,24 +35,12 @@
     "linkedin": {
       "url": "https://linkedin.chukai.io/mcp"
     },
-    "motion": {
-      "command": "uv",
-      "args": ["--directory", "/Users/christopherhay/chris-source/chuk-ai/mcp-servers/chuk-motion", "run", "chuk-motion", "stdio"]
-    },
     "math": {
       "command": "uvx",
       "args": ["chuk-mcp-math-server"]
     },
-    "powerpoint": {
-      "command": "uv",
-      "args": ["--directory", "/Users/christopherhay/chris-source/chuk-ai/mcp-servers/chuk-mcp-pptx", "run", "chuk-mcp-pptx", "stdio"]
-    },
     "weather": {
       "url": "https://weather.chukai.io/mcp"
-    },
-    "playbook": {
-      "command": "uv",
-      "args": ["--directory", "/Users/christopherhay/chris-source/chuk-ai/mcp-servers/chuk-mcp-playbook", "run", "chuk-mcp-playbook", "--transport", "stdio"]
     }
   }
 }
