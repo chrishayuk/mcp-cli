@@ -13,11 +13,6 @@ from .providers import provider_action_async
 from .resources import resources_action_async
 from .prompts import prompts_action_async
 from .tools import tools_action_async
-# These don't have async versions or have different names
-# from .theme import _interactive_theme_selection
-# from .ping import ping_action_async
-# from .clear import clear_action
-# from .help import help_action
 
 __all__ = [
     "servers_action_async",

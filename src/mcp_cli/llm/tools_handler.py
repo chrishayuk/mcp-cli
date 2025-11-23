@@ -56,9 +56,7 @@ def format_tool_response(response_content: list[dict[str, Any]] | Any) -> str:
 async def handle_tool_call(
     tool_call: dict[str, Any] | Any,
     conversation_history: list[dict[str, Any]],
-    server_streams=None,  # Kept for backward compatibility but ignored
-    stream_manager=None,  # Kept for backward compatibility but recommended to use tool_manager
-    tool_manager: ToolManager | None = None,  # Preferred parameter
+    tool_manager: ToolManager,
 ) -> None:
     """
     Handle a single tool call using the centralized ToolManager.
@@ -68,19 +66,8 @@ async def handle_tool_call(
     Args:
         tool_call: The tool call object
         conversation_history: The conversation history to update
-        server_streams: Legacy parameter (ignored)
-        stream_manager: Legacy StreamManager instance (optional)
-        tool_manager: Preferred ToolManager instance
+        tool_manager: ToolManager instance for executing tools
     """
-    # Use tool_manager if provided, otherwise fall back to stream_manager
-    manager = tool_manager or stream_manager
-
-    if manager is None:
-        logging.error(
-            "Either tool_manager or stream_manager is required for handle_tool_call"
-        )
-        return
-
     tool_name: str = "unknown_tool"
     tool_args: dict[str, Any] = {}
     tool_call_id: str | None = None
@@ -114,86 +101,47 @@ async def handle_tool_call(
             tool_call_id = f"call_{tool_name}_{str(uuid.uuid4())[:8]}"
 
         # Log which tool we're calling
-        if hasattr(manager, "get_server_for_tool"):
-            server_name = manager.get_server_for_tool(tool_name)
+        if hasattr(tool_manager, "get_server_for_tool"):
+            server_name = tool_manager.get_server_for_tool(tool_name)
             logging.debug(f"Calling tool '{tool_name}' on server '{server_name}'")
 
-        # Call the tool using either manager
-        if isinstance(manager, ToolManager):
-            # Use ToolManager (preferred)
-            result: ToolCallResult = await manager.execute_tool(tool_name, tool_args)
+        # Call the tool using ToolManager
+        result: ToolCallResult = await tool_manager.execute_tool(tool_name, tool_args)
 
-            if not result.success:
-                error_msg = result.error or "Unknown error"
-                logging.debug(f"Error calling tool '{tool_name}': {error_msg}")
+        if not result.success:
+            error_msg = result.error or "Unknown error"
+            logging.debug(f"Error calling tool '{tool_name}': {error_msg}")
 
-                # Add failed tool call to conversation history
-                conversation_history.append(
-                    {
-                        "role": "assistant",
-                        "content": None,
-                        "tool_calls": [
-                            {
-                                "id": tool_call_id,
-                                "type": "function",
-                                "function": {
-                                    "name": tool_name,
-                                    "arguments": json.dumps(tool_args),
-                                },
-                            }
-                        ],
-                    }
-                )
+            # Add failed tool call to conversation history
+            conversation_history.append(
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": tool_call_id,
+                            "type": "function",
+                            "function": {
+                                "name": tool_name,
+                                "arguments": json.dumps(tool_args),
+                            },
+                        }
+                    ],
+                }
+            )
 
-                # Add error response
-                conversation_history.append(
-                    {
-                        "role": "tool",
-                        "name": tool_name,
-                        "content": f"Error: {error_msg}",
-                        "tool_call_id": tool_call_id,
-                    }
-                )
-                return
+            # Add error response
+            conversation_history.append(
+                {
+                    "role": "tool",
+                    "name": tool_name,
+                    "content": f"Error: {error_msg}",
+                    "tool_call_id": tool_call_id,
+                }
+            )
+            return
 
-            raw_content = result.result
-        else:
-            # Use StreamManager (backward compatibility)
-            tool_response = await manager.call_tool(tool_name, tool_args)
-
-            if tool_response.get("isError"):
-                error_msg = tool_response.get("error", "Unknown error")
-                logging.debug(f"Error calling tool '{tool_name}': {error_msg}")
-
-                # Handle error similar to above
-                conversation_history.append(
-                    {
-                        "role": "assistant",
-                        "content": None,
-                        "tool_calls": [
-                            {
-                                "id": tool_call_id,
-                                "type": "function",
-                                "function": {
-                                    "name": tool_name,
-                                    "arguments": json.dumps(tool_args),
-                                },
-                            }
-                        ],
-                    }
-                )
-
-                conversation_history.append(
-                    {
-                        "role": "tool",
-                        "name": tool_name,
-                        "content": f"Error: {error_msg}",
-                        "tool_call_id": tool_call_id,
-                    }
-                )
-                return
-
-            raw_content = tool_response.get("content", [])
+        raw_content = result.result
 
         # Format the tool response
         formatted_response: str = format_tool_response(raw_content)

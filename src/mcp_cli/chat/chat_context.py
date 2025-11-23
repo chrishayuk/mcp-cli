@@ -149,6 +149,7 @@ class ChatContext:
         """Initialize tool discovery and adaptation."""
         # Get tools from ToolManager - already returns ToolInfo objects
         self.tools = await self.tool_manager.get_unique_tools()
+        logger.debug(f"ChatContext: Initialized with {len(self.tools)} tools")
 
         # Get server info - already returns ServerInfo objects
         self.server_info = await self.tool_manager.get_server_info()

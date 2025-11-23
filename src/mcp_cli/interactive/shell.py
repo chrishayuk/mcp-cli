@@ -61,8 +61,7 @@ async def interactive_mode(
     # Register unified commands
     register_unified_commands()
 
-    # Get command names for completion
-    # TODO: Get from unified registry instead
+    # Get command names for completion from unified registry
     from mcp_cli.commands.registry import registry
 
     cmd_names = registry.get_command_names(include_aliases=True)

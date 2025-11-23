@@ -48,7 +48,6 @@ class ChatUIManager:
         self.verbose_mode = False  # Default to compact mode for cleaner output
         self.tools_running = False
         self.interrupt_requested = False
-        self.confirm_tool_execution = True  # Legacy attribute for compatibility
 
         # Tool tracking
         self.tool_calls: list[dict[str, Any]] = []

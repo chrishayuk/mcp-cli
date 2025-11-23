@@ -4,12 +4,29 @@ A powerful, feature-rich command-line interface for interacting with Model Conte
 
 **Default Configuration**: MCP CLI defaults to using Ollama with the `gpt-oss` reasoning model for local, privacy-focused operation without requiring API keys.
 
+## 🆕 Recent Updates (v0.11)
+
+### Architecture & Performance
+- **Updated to chuk-llm v0.14**: Dynamic model discovery with capability-based selection, llama.cpp integration (1.53x faster), 52x faster imports
+- **Updated to chuk-tool-processor v0.11.2**: Production-grade middleware with timeouts, retries, circuit breakers, and comprehensive observability
+- **Slimmed ToolManager**: Reduced from 2000+ lines to ~800 lines by delegating to StreamManager while keeping OAuth, filtering, and LLM adaptation
+
+### Reliability Improvements
+- **Transport Failure Detection**: Automatic tracking of consecutive transport failures with warnings and recovery suggestions
+- **Enhanced Tool Processing**: Improved MCP SDK ToolResult handling with proper content extraction from nested structures
+- **Connection Monitoring**: Built-in health checks with automatic detection of unhealthy connections
+
+### Bug Fixes
+- **Fixed cmd mode**: `--provider` and `--model` flags now work correctly in command mode (PR #188)
+- **OAuth Improvements**: Enhanced OAuth token handling and storage
+- **Pydantic Migration**: Clean migration to Pydantic for better validation and type safety
+
 ## 🔄 Architecture Overview
 
 The MCP CLI is built on a modular architecture with clean separation of concerns:
 
-- **[CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor)**: Async-native tool execution and MCP server communication
-- **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)**: Unified LLM provider configuration and client management with 200+ auto-generated functions
+- **[CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor)**: Production-grade async tool execution with middleware (timeouts, retries, circuit breakers), multiple execution strategies (in-process, subprocess, remote MCP), and comprehensive observability
+- **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)**: Unified LLM provider with dynamic model discovery, capability-based selection, and llama.cpp integration (1.53x faster than Ollama with automatic model reuse)
 - **[CHUK-Term](https://github.com/chrishayuk/chuk-term)**: Enhanced terminal UI with themes, cross-platform terminal management, and rich formatting
 - **MCP CLI**: Command orchestration and integration layer (this project)
 
@@ -45,12 +62,15 @@ MCP CLI supports all providers and models from CHUK-LLM, including cutting-edge 
 | **IBM watsonx** 🏢 | Granite, Llama models | Enterprise compliance |
 | **Mistral AI** 🇪🇺 | Mistral Large, Medium | European, efficient models |
 
-### Robust Tool System
+### Robust Tool System (Powered by CHUK Tool Processor v0.11+)
 - **Automatic Discovery**: Server-provided tools are automatically detected and catalogued
 - **Provider Adaptation**: Tool names are automatically sanitized for provider compatibility
+- **Production-Grade Execution**: Middleware layers with timeouts, retries, exponential backoff, caching, and circuit breakers
+- **Multiple Execution Strategies**: In-process (fast), isolated subprocess (safe), or remote via MCP
 - **Concurrent Execution**: Multiple tools can run simultaneously with proper coordination
 - **Rich Progress Display**: Real-time progress indicators and execution timing
 - **Tool History**: Complete audit trail of all tool executions
+- **Observability**: Built-in OpenTelemetry tracing and Prometheus metrics for production monitoring
 - **Streaming Tool Calls**: Support for tools that return streaming data
 
 ### Advanced Configuration Management
@@ -568,7 +588,9 @@ ls *.txt | parallel mcp-cli cmd --server sqlite --input {} --output {}.summary -
 
 ### Ollama Configuration (Default)
 
-Ollama runs locally by default on `http://localhost:11434`. To use reasoning and other models:
+Ollama runs locally by default on `http://localhost:11434`. MCP CLI v0.11+ with CHUK-LLM v0.14 includes **llama.cpp integration** that automatically discovers and reuses Ollama's downloaded models for 1.53x faster inference (311 vs 204 tokens/sec) without re-downloading.
+
+To use reasoning and other models:
 
 ```bash
 # Pull reasoning and other models for Ollama
@@ -722,26 +744,41 @@ This means you can:
 
 ### Bundled Default Servers
 
-MCP CLI comes with these pre-configured servers in the bundled `server_config.json`:
+MCP CLI v0.11+ comes with an expanded set of pre-configured servers in the bundled `server_config.json`:
 
 | Server | Type | Description | Configuration |
 |--------|------|-------------|---------------|
 | **sqlite** | STDIO | SQLite database operations | `uvx mcp-server-sqlite --db-path test.db` |
 | **echo** | STDIO | Echo server for testing | `uvx chuk-mcp-echo stdio` |
-| **notion** | HTTP | Notion workspace integration (requires OAuth) | `https://mcp.notion.com/mcp` |
-| **cloudflare_workers** | HTTP | Cloudflare Workers bindings (requires OAuth) | `https://bindings.mcp.cloudflare.com/mcp` |
+| **math** | STDIO | Mathematical computations | `uvx chuk-mcp-math-server` |
+| **playwright** | STDIO | Browser automation | `npx @playwright/mcp@latest` |
+| **brave_search** | STDIO | Web search via Brave API | Requires `BRAVE_API_KEY` token |
+| **notion** | HTTP | Notion workspace integration | `https://mcp.notion.com/mcp` (OAuth) |
+| **cloudflare_workers** | HTTP | Cloudflare Workers bindings | `https://bindings.mcp.cloudflare.com/mcp` (OAuth) |
+| **monday** | HTTP | Monday.com integration | `https://mcp.monday.com/mcp` (OAuth) |
+| **linkedin** | HTTP | LinkedIn integration | `https://linkedin.chukai.io/mcp` |
+| **weather** | HTTP | Weather data service | `https://weather.chukai.io/mcp` |
 
-**Note**: HTTP servers (notion, cloudflare_workers) require OAuth authentication. Use the [Token Management](docs/TOKEN_MANAGEMENT.md) system to configure access tokens.
+**Note**: HTTP servers and API-based servers require authentication. Use the [Token Management](docs/TOKEN_MANAGEMENT.md) system to configure access tokens.
 
 To use these servers:
 ```bash
 # Use bundled servers from anywhere
 uvx mcp-cli --server sqlite
 uvx mcp-cli --server echo
+uvx mcp-cli --server math
+uvx mcp-cli --server playwright
 
-# HTTP servers require authentication first
+# API-based servers require tokens
+mcp-cli token set brave_search --type bearer
+uvx mcp-cli --server brave_search
+
+# HTTP/OAuth servers require OAuth authentication
 uvx mcp-cli token set notion --oauth
 uvx mcp-cli --server notion
+
+# Use multiple servers simultaneously
+uvx mcp-cli --server sqlite,math,playwright
 ```
 
 ### Project Configuration
@@ -1090,21 +1127,41 @@ mcp-cli --log-level DEBUG interactive --server sqlite
 
 ## 🔒 Security Considerations
 
+### Privacy & Local-First
 - **Local by Default**: Ollama with gpt-oss runs locally, keeping your data private
+- **No Cloud Required**: Full functionality without external API dependencies
+
+### Token & Authentication Security
 - **Secure Token Storage**: Tokens stored in OS-native credential stores (macOS Keychain, Windows Credential Manager, Linux Secret Service) under the "mcp-cli" service identifier
 - **Multiple Storage Backends**: Choose between keychain, encrypted files, or HashiCorp Vault based on security requirements
 - **API Keys**: Only needed for cloud providers (OpenAI, Anthropic, etc.), stored securely using token management system
-- **File Access**: Filesystem access can be disabled with `--disable-filesystem`
-- **Tool Validation**: All tool calls are validated before execution
-- **Timeout Protection**: Configurable timeouts prevent hanging operations
-- **Server Isolation**: Each server runs in its own process
 - **OAuth 2.0 Support**: Secure authentication for MCP servers using PKCE and resource indicators (RFC 7636, RFC 8707)
+
+### Execution Security
+- **Tool Validation**: All tool calls are validated before execution
+- **Timeout Protection**: Configurable timeouts prevent hanging operations (v0.11.2+)
+- **Circuit Breakers**: Automatic failure detection and recovery to prevent cascading failures (v0.11.2+)
+- **Server Isolation**: Each server runs in its own process
+- **File Access**: Filesystem access can be disabled with `--disable-filesystem`
+- **Transport Monitoring**: Automatic detection of connection failures with warnings (v0.11+)
 
 ## 🚀 Performance Features
 
+### LLM Provider Performance (v0.14)
+- **52x Faster Imports**: Reduced from 735ms to 14ms through lazy loading
+- **112x Faster Client Creation**: Automatic thread-safe caching
+- **llama.cpp Integration**: 1.53x faster inference (311 vs 204 tokens/sec) with automatic Ollama model reuse
+- **Dynamic Model Discovery**: Zero overhead capability-based model selection
+
+### Tool Execution Performance (v0.11.2)
+- **Production Middleware**: Timeouts, retries with exponential backoff, circuit breakers, and result caching
+- **Concurrent Tool Execution**: Multiple tools can run simultaneously with proper coordination
+- **Connection Health Monitoring**: Automatic detection and recovery from transport failures
+- **Optimized Tool Manager**: Reduced from 2000+ to ~800 lines while maintaining all functionality
+
+### Runtime Performance
 - **Local Processing**: Default Ollama provider minimizes latency
 - **Reasoning Visibility**: See AI thinking process with gpt-oss, GPT-5, Claude 4
-- **Concurrent Tool Execution**: Multiple tools can run simultaneously
 - **Streaming Responses**: Real-time response generation
 - **Connection Pooling**: Efficient reuse of client connections
 - **Caching**: Tool metadata and provider configurations are cached
@@ -1116,8 +1173,8 @@ Core dependencies are organized into feature groups:
 
 - **cli**: Terminal UI and command framework (Rich, Typer, chuk-term)
 - **dev**: Development tools, testing utilities, linting
-- **chuk-tool-processor**: Core tool execution and MCP communication
-- **chuk-llm**: Unified LLM provider management with 200+ auto-generated functions
+- **chuk-tool-processor v0.11.2+**: Production-grade tool execution with middleware, multiple execution strategies, and observability (OpenTelemetry, Prometheus)
+- **chuk-llm v0.14+**: Unified LLM provider with dynamic model discovery, capability-based selection, and llama.cpp integration for 52x faster imports and 112x faster client creation
 - **chuk-term**: Enhanced terminal UI with themes, prompts, and cross-platform support
 
 Install with specific features:
@@ -1189,8 +1246,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- **[CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor)** - Async-native tool execution
-- **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)** - Unified LLM provider management with GPT-5, Claude 4, and reasoning model support
+- **[CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor)** - Production-grade async tool execution with middleware and observability (v0.11.2+)
+- **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)** - Unified LLM provider with dynamic model discovery, llama.cpp integration, and GPT-5/Claude 4 support (v0.14+)
 - **[CHUK-Term](https://github.com/chrishayuk/chuk-term)** - Enhanced terminal UI with themes and cross-platform support
 - **[Rich](https://github.com/Textualize/rich)** - Beautiful terminal formatting
 - **[Typer](https://typer.tiangolo.com/)** - CLI framework
@@ -1200,6 +1257,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - **[Model Context Protocol](https://modelcontextprotocol.io/)** - Core protocol specification
 - **[MCP Servers](https://github.com/modelcontextprotocol/servers)** - Official MCP server implementations
-- **[CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor)** - Tool execution engine
-- **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)** - LLM provider abstraction with GPT-5, Claude 4, O3 series support
+- **[CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor)** - Production-grade tool execution with middleware and observability
+- **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)** - LLM provider abstraction with dynamic model discovery, GPT-5, Claude 4, O3 series support, and llama.cpp integration
 - **[CHUK-Term](https://github.com/chrishayuk/chuk-term)** - Terminal UI library with themes and cross-platform support

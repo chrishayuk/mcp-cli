@@ -1149,9 +1149,6 @@ def models_command(
     # Show additional info
     output.print(f"\n[dim]Provider:[/dim] {target_provider}")
     output.print(f"[dim]Total models:[/dim] {len(available_models)}")
-    # API base and key info not readily available in new architecture
-    # output.print(f"[dim]API Base:[/dim] Default")
-    # output.print("[dim]API Key:[/dim] Configured")
 
     # Show switch command if not current provider
     if not is_current_provider:

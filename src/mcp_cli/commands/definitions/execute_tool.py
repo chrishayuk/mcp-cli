@@ -152,6 +152,15 @@ Tips:
             all_tools = await tool_manager.get_all_tools()
             matching_tools = [t for t in all_tools if t.name.lower() == tool.lower()]
 
+            # Filter by server/namespace if specified
+            if server:
+                matching_tools = [
+                    t for t in matching_tools if t.namespace.lower() == server.lower()
+                ]
+                if not matching_tools:
+                    output.error(f"Tool '{tool}' not found on server '{server}'")
+                    return await self._list_tools(tool_manager)
+
             if not matching_tools:
                 output.error(f"Tool not found: {tool}")
                 return await self._list_tools(tool_manager)
@@ -159,11 +168,6 @@ Tips:
             tool_info = matching_tools[0]
         except Exception as e:
             return CommandResult(success=False, error=f"Failed to get tools: {e}")
-
-        # If server specified, filter to that server
-        if server:
-            # TODO: Implement server filtering
-            pass
 
         # If no params, show tool info
         if not params:

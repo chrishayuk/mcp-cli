@@ -5,6 +5,7 @@ from typing import Dict, List, Tuple
 
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.tools.models import ToolInfo
+from chuk_tool_processor import ToolInfo as RegistryToolInfo
 
 
 class DummyMeta:
@@ -29,7 +30,8 @@ class DummyRegistry:
     # Async API expected by ToolManager
     # ------------------------------------------------------------------ #
     async def list_tools(self):
-        return self._items
+        # Return ToolInfo objects instead of tuples
+        return [RegistryToolInfo(namespace=ns, name=name) for ns, name in self._items]
 
     async def get_metadata(self, name, ns):
         return self._meta.get((ns, name))

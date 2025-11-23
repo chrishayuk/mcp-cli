@@ -1,4 +1,4 @@
-# mcp_cli/async_config.py - FIXED VERSION
+# mcp_cli/async_config.py
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ async def load_server_config(
     """
     Load the server configuration from a JSON file.
 
-    FIXED: Updated to work with chuk-tool-processor instead of old chuk_mcp APIs.
+    Uses chuk-tool-processor APIs for server configuration.
     """
     try:
         # Debug logging

@@ -70,6 +70,16 @@ class ConversationProcessor:
                         f"Passing {len(tools_for_completion) if tools_for_completion else 0} tools to completion"
                     )
 
+                    # Log conversation history size for debugging
+                    history_size = len(self.context.conversation_history)
+                    log.debug(f"Conversation history has {history_size} messages")
+
+                    # Log last few messages for debugging (truncated)
+                    for i, msg in enumerate(self.context.conversation_history[-3:]):
+                        role = msg.role if hasattr(msg, 'role') else msg.get('role', 'unknown')
+                        content_preview = str(msg.content)[:100] if hasattr(msg, 'content') else str(msg.get('content', ''))[:100]
+                        log.debug(f"  Message {history_size - 3 + i}: role={role}, content_preview={content_preview}")
+
                     # Check if client supports streaming
                     client = self.context.client
 

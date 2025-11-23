@@ -113,7 +113,20 @@ def chat_context(dummy_tool_manager, monkeypatch):
     monkeypatch.setattr(
         "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools: "SYS_PROMPT"
     )
-    ctx = ChatContext.create(tool_manager=dummy_tool_manager)
+
+    # Mock ModelManager to avoid model discovery issues
+    from unittest.mock import Mock
+    from mcp_cli.model_management import ModelManager
+
+    # Create a minimal mock ModelManager
+    mock_model_manager = Mock(spec=ModelManager)
+    mock_model_manager.provider = "mock"
+    mock_model_manager.model = "mock-model"
+    mock_model_manager.get_client.return_value = None
+
+    ctx = ChatContext.create(
+        tool_manager=dummy_tool_manager, model_manager=mock_model_manager
+    )
     return ctx
 
 

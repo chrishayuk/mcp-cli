@@ -751,10 +751,3 @@ async def token_backends_action_async() -> None:
     except Exception as e:
         output.error(f"Error listing backends: {e}")
         raise
-
-
-# Export action for use in main.py
-async def servers_action_async(**kwargs) -> None:
-    """Handle token subcommands (placeholder for main.py integration)."""
-    # This will be called from main.py with appropriate routing
-    pass
