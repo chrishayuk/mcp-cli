@@ -18,7 +18,7 @@ from typing import Any, cast
 
 from chuk_tool_processor import StreamManager, ToolProcessor
 
-from mcp_cli.auth import TokenManager, TokenStoreBackend
+from mcp_cli.auth import TokenManager, TokenStoreBackend, OAuthHandler
 from mcp_cli.constants import NAMESPACE
 from mcp_cli.tools.filter import ToolFilter
 from mcp_cli.tools.models import ServerInfo, ToolCallResult, ToolInfo, TransportType
@@ -76,6 +76,7 @@ class ToolManager:
             namespace=NAMESPACE,
             service_name="mcp-cli",
         )
+        self.oauth_handler = OAuthHandler(token_manager=self._token_manager)
 
     # ================================================================
     # Initialization
@@ -96,8 +97,11 @@ class ToolManager:
 
             self._detect_server_types(config)
 
-            # Process OAuth
-            await self._process_oauth_for_servers(config)
+            # Process OAuth for HTTP/SSE servers before connecting
+            if self._http_servers:
+                await self._process_oauth_for_servers(self._http_servers)
+            if self._sse_servers:
+                await self._process_oauth_for_servers(self._sse_servers)
 
             # Initialize StreamManager based on detected types
             success = await self._initialize_stream_manager(namespace)
@@ -266,10 +270,83 @@ class ToolManager:
     # OAuth Integration
     # ================================================================
 
-    async def _process_oauth_for_servers(self, config: dict[str, Any]) -> None:
-        """Pre-fetch OAuth tokens for servers that need them."""
-        # This is a simplified version - full OAuth logic can be added if needed
-        pass
+    async def _process_oauth_for_servers(self, servers: list[dict[str, Any]]) -> None:
+        """Process OAuth authentication for servers that require it."""
+        from pathlib import Path
+        from mcp_cli.config.config_manager import initialize_config
+
+        # Initialize config manager if not already initialized
+        config = initialize_config(Path(self.config_file))
+
+        for server_entry in servers:
+            server_name = server_entry["name"]
+            server_config = config.get_server(server_name)
+
+            if not server_config:
+                continue
+
+            # Remote MCP servers (with URL) automatically use MCP OAuth
+            # Servers with explicit oauth config use that config
+            # Skip servers that already have Authorization headers (they don't need OAuth)
+            is_remote_mcp = server_config.url and not server_config.command
+            has_explicit_oauth = server_config.oauth is not None
+            has_auth_header = (
+                server_config.headers and "Authorization" in server_config.headers
+            )
+
+            # Skip servers that:
+            # 1. Don't need OAuth (not remote MCP and no explicit OAuth config)
+            # 2. Already have Authorization headers (pre-configured auth)
+            if (not is_remote_mcp and not has_explicit_oauth) or has_auth_header:
+                # Skip servers that don't need OAuth
+                continue
+
+            try:
+                # Perform OAuth and get authorization header
+                headers = await self.oauth_handler.prepare_server_headers(server_config)
+
+                # IMPORTANT: HTTP Streamable transport prioritizes configured_headers over api_key
+                # To avoid conflicts, we should set EITHER headers OR api_key, not both
+                # For OAuth, we use api_key field (which gets converted to Authorization header)
+                if "Authorization" in headers:
+                    # Extract just the token value (remove "Bearer " prefix if present)
+                    # The http_streamable_transport will add "Bearer " prefix automatically
+                    auth_value = headers["Authorization"]
+                    if auth_value.startswith("Bearer "):
+                        auth_value = auth_value[7:]  # Remove "Bearer " prefix
+                    server_entry["api_key"] = auth_value
+                    logger.debug(f"Set api_key for {server_name}: {auth_value[:20]}...")
+
+                # Merge any other headers (non-Authorization)
+                other_headers = {
+                    k: v for k, v in headers.items() if k != "Authorization"
+                }
+                if other_headers:
+                    server_entry.setdefault("headers", {}).update(other_headers)
+
+            except Exception as e:
+                error_msg = str(e)
+
+                # Check if this is a "server doesn't support OAuth" error (404 on .well-known)
+                if "404" in error_msg and ".well-known/oauth-authorization-server" in error_msg:
+                    logger.debug(f"Server {server_name} does not support OAuth (no .well-known endpoint), continuing without authentication")
+                    # This is fine - not all remote servers require OAuth
+                    continue
+
+                # Check for timeout errors (user might need to authenticate)
+                if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+                    logger.warning(f"OAuth setup timed out for {server_name}. This might indicate:")
+                    logger.warning("  - Network connectivity issues")
+                    logger.warning("  - OAuth server being slow")
+                    logger.warning("  - Need to complete authentication in browser")
+                    # Don't fail - let the connection attempt continue
+                    continue
+
+                # For other errors, log but continue (don't block initialization)
+                logger.warning(f"OAuth setup failed for {server_name}: {e}")
+                logger.debug("Continuing without OAuth for this server")
+                # Don't raise - allow connection without OAuth
+                continue
 
     def _create_oauth_refresh_callback(self):
         """Create OAuth token refresh callback for StreamManager."""

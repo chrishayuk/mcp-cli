@@ -408,6 +408,87 @@ class ModelManager:
         available = self.get_available_models(target_provider)
         return model in available
 
+    def detect_provider_for_model(self, model: str) -> str | None:
+        """
+        Detect which provider supports a given model.
+
+        Uses a two-phase approach:
+        1. Check providers with specific models (exact match)
+        2. Use pattern-based detection for providers with wildcard models
+
+        Args:
+            model: Model name to search for
+
+        Returns:
+            Provider name if found, None otherwise
+        """
+        if not model:
+            return None
+
+        available_providers = self.get_available_providers()
+
+        # Phase 1: Check for exact matches (providers with specific models)
+        exact_matches = []
+        wildcard_providers = []
+
+        for provider in available_providers:
+            available_models = self.get_available_models(provider)
+
+            # Check if this is a wildcard provider (returns ["*"])
+            if available_models == ["*"]:
+                wildcard_providers.append(provider)
+            elif model in available_models:
+                exact_matches.append(provider)
+            # Special handling for ollama-style tags (e.g., "llama3.2" matches "llama3.2:latest")
+            elif provider == "ollama":
+                for available_model in available_models:
+                    if ":" in available_model and available_model.startswith(
+                        model + ":"
+                    ):
+                        exact_matches.append(provider)
+                        break
+
+        # If we have exact matches, prefer those
+        if exact_matches:
+            if len(exact_matches) == 1:
+                logger.info(f"Detected provider '{exact_matches[0]}' for model '{model}'")
+                return exact_matches[0]
+
+            # Multiple exact matches - prefer non-ollama
+            for provider in exact_matches:
+                if provider != "ollama":
+                    logger.info(
+                        f"Detected provider '{provider}' for model '{model}' (multiple matches, preferring non-ollama)"
+                    )
+                    return provider
+            return exact_matches[0]
+
+        # Phase 2: Pattern-based detection for wildcard providers
+        model_lower = model.lower()
+
+        # Common model name patterns
+        pattern_map = {
+            "gpt-": "openai",
+            "o1": "openai",
+            "claude": "anthropic",
+            "gemini": "gemini",
+            "llama": "groq",  # Prefer groq for llama models (faster than ollama for API)
+            "mixtral": "mistral",
+            "mistral": "mistral",
+            "deepseek": "deepseek",
+        }
+
+        for pattern, provider in pattern_map.items():
+            if model_lower.startswith(pattern) and provider in wildcard_providers:
+                logger.info(
+                    f"Detected provider '{provider}' for model '{model}' (pattern-based)"
+                )
+                return provider
+
+        # No pattern match - return None (caller will fall back to current provider)
+        logger.debug(f"No provider found for model: {model}")
+        return None
+
     # ── Utility Methods ───────────────────────────────────────────────────────
 
     def __str__(self):

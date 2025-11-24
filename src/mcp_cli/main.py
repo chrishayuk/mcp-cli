@@ -236,34 +236,11 @@ def main_callback(
             )
             raise typer.Exit(1)
 
-    # Smart provider/model resolution:
-    # 1. If both specified: use both
-    # 2. If only provider specified: use provider + its default model
-    # 3. If neither specified: use active provider + active model
-    if provider and model:
-        # Both specified explicitly
-        effective_provider = provider
-        effective_model = model
-        logger.debug(f"Using explicit provider/model: {provider}/{model}")
-    elif provider and not model:
-        # Provider specified, get its default model
-        effective_provider = provider
-        effective_model = model_manager.get_default_model(provider)
-        logger.debug(f"Using provider with default model: {provider}/{effective_model}")
-    elif not provider and model:
-        # Model specified, use current provider
-        effective_provider = model_manager.get_active_provider()
-        effective_model = model
-        logger.debug(
-            f"Using current provider with specified model: {effective_provider}/{model}"
-        )
-    else:
-        # Neither specified, use active configuration
-        effective_provider = model_manager.get_active_provider()
-        effective_model = model_manager.get_active_model()
-        logger.debug(
-            f"Using active configuration: {effective_provider}/{effective_model}"
-        )
+    # Use ModelResolver for smart provider/model resolution
+    from mcp_cli.core.model_resolver import ModelResolver
+
+    resolver = ModelResolver(model_manager)
+    effective_provider, effective_model = resolver.resolve(provider, model)
 
     servers, _, server_names = process_options(
         server,
@@ -451,19 +428,11 @@ def _chat_command(
             output.info(f"Available providers: {available}")
             raise typer.Exit(1)
 
-    # Smart provider/model resolution
-    if provider and model:
-        effective_provider = provider
-        effective_model = model
-    elif provider and not model:
-        effective_provider = provider
-        effective_model = model_manager.get_default_model(provider)
-    elif not provider and model:
-        effective_provider = model_manager.get_active_provider()
-        effective_model = model
-    else:
-        effective_provider = model_manager.get_active_provider()
-        effective_model = model_manager.get_active_model()
+    # Use ModelResolver for smart provider/model resolution
+    from mcp_cli.core.model_resolver import ModelResolver
+
+    resolver = ModelResolver(model_manager)
+    effective_provider, effective_model = resolver.resolve(provider, model)
 
     servers, _, server_names = process_options(
         server,
@@ -599,34 +568,11 @@ def _interactive_command(
 
     model_manager = ModelManager()
 
-    # Smart provider/model resolution:
-    # 1. If both specified: use both
-    # 2. If only provider specified: use provider + its default model
-    # 3. If neither specified: use active provider + active model
-    if provider and model:
-        # Both specified explicitly
-        effective_provider = provider
-        effective_model = model
-        logger.debug(f"Using explicit provider/model: {provider}/{model}")
-    elif provider and not model:
-        # Provider specified, get its default model
-        effective_provider = provider
-        effective_model = model_manager.get_default_model(provider)
-        logger.debug(f"Using provider with default model: {provider}/{effective_model}")
-    elif not provider and model:
-        # Model specified, use current provider
-        effective_provider = model_manager.get_active_provider()
-        effective_model = model
-        logger.debug(
-            f"Using current provider with specified model: {effective_provider}/{model}"
-        )
-    else:
-        # Neither specified, use active configuration
-        effective_provider = model_manager.get_active_provider()
-        effective_model = model_manager.get_active_model()
-        logger.debug(
-            f"Using active configuration: {effective_provider}/{effective_model}"
-        )
+    # Use ModelResolver for smart provider/model resolution
+    from mcp_cli.core.model_resolver import ModelResolver
+
+    resolver = ModelResolver(model_manager)
+    effective_provider, effective_model = resolver.resolve(provider, model)
 
     servers, _, server_names = process_options(
         server,
@@ -687,12 +633,15 @@ direct_registered = ["chat"]  # Chat is registered directly via @app.command
 def _run_provider_command(args, log_prefix="Provider command"):
     """Shared function to run provider commands."""
     from mcp_cli.commands.actions.providers import provider_action_async
+    from mcp_cli.commands.models import ProviderActionParams
 
     # Initialize context for the provider command
     initialize_context()
 
     try:
-        asyncio.run(provider_action_async(args))
+        # Wrap args in ProviderActionParams
+        params = ProviderActionParams(args=args)
+        asyncio.run(provider_action_async(params))
     except Exception as e:
         output.error(f"Error: {e}")
         raise typer.Exit(1)
@@ -1258,13 +1207,16 @@ def token_command(
 
     async def _token_wrapper():
         if action == "list":
-            return await token_list_action_async(
+            from mcp_cli.commands.models import TokenListParams
+
+            params = TokenListParams(
                 namespace=namespace,
                 show_oauth=show_oauth,
                 show_bearer=show_bearer,
                 show_api_keys=show_api_keys,
                 show_providers=show_providers,
             )
+            return await token_list_action_async(params)
         elif action == "set":
             if not name:
                 output.error("Token name is required for 'set' action")
@@ -1324,20 +1276,26 @@ def token_command(
             if not name:
                 output.error("Provider name is required for 'set-provider' action")
                 raise typer.Exit(1)
-            return await token_set_provider_action_async(
-                provider=name,
-                api_key=value,
-            )
+            from mcp_cli.commands.models import TokenProviderParams
+
+            params = TokenProviderParams(provider=name, api_key=value)
+            return await token_set_provider_action_async(params)
         elif action == "get-provider":
             if not name:
                 output.error("Provider name is required for 'get-provider' action")
                 raise typer.Exit(1)
-            return await token_get_provider_action_async(provider=name)
+            from mcp_cli.commands.models import TokenProviderParams
+
+            params = TokenProviderParams(provider=name)
+            return await token_get_provider_action_async(params)
         elif action == "delete-provider":
             if not name:
                 output.error("Provider name is required for 'delete-provider' action")
                 raise typer.Exit(1)
-            return await token_delete_provider_action_async(provider=name)
+            from mcp_cli.commands.models import TokenProviderParams
+
+            params = TokenProviderParams(provider=name)
+            return await token_delete_provider_action_async(params)
         else:
             output.error(f"Unknown action: {action}")
             output.hint(
@@ -1570,22 +1528,11 @@ def cmd_command(
 
     # Use ModelManager to resolve provider/model
     from mcp_cli.model_management import ModelManager
+    from mcp_cli.core.model_resolver import ModelResolver
 
     model_manager = ModelManager()
-
-    # Smart provider/model resolution
-    if provider and model:
-        effective_provider = provider
-        effective_model = model
-    elif provider and not model:
-        effective_provider = provider
-        effective_model = model_manager.get_default_model(provider)
-    elif not provider and model:
-        effective_provider = model_manager.get_active_provider()
-        effective_model = model
-    else:
-        effective_provider = model_manager.get_active_provider()
-        effective_model = model_manager.get_active_model()
+    resolver = ModelResolver(model_manager)
+    effective_provider, effective_model = resolver.resolve(provider, model)
 
     # Process server options
     servers, _, server_names = process_options(

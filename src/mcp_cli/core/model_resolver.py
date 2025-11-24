@@ -28,6 +28,9 @@ class ModelResolver:
         """
         Resolve effective provider and model from user input.
 
+        When only a model is specified, attempts to detect the provider
+        by searching all configured providers for that model.
+
         Args:
             provider: User-specified provider (optional)
             model: User-specified model (optional)
@@ -49,12 +52,21 @@ class ModelResolver:
             return provider, default_model
 
         elif not provider and model:
-            # Model specified, use current provider
-            current_provider = self.model_manager.get_active_provider()
-            logger.debug(
-                f"Using current provider with specified model: {current_provider}/{model}"
-            )
-            return current_provider, model
+            # Model specified, try to detect provider
+            detected_provider = self.model_manager.detect_provider_for_model(model)
+
+            if detected_provider:
+                logger.debug(
+                    f"Detected provider '{detected_provider}' for model '{model}'"
+                )
+                return detected_provider, model
+            else:
+                # Fall back to current provider if detection fails
+                current_provider = self.model_manager.get_active_provider()
+                logger.warning(
+                    f"Could not detect provider for model '{model}', using current provider '{current_provider}'"
+                )
+                return current_provider, model
 
         else:
             # Neither specified, use active configuration
