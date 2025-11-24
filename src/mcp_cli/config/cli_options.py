@@ -98,8 +98,13 @@ def extract_server_names(
 
         # IMPORTANT: Auto-add playbook server if enabled (even when user specifies servers)
         if pref_manager.is_playbook_enabled():
-            if playbook_server_name not in valid_servers and playbook_server_name in cfg.servers:
-                logger.debug(f"Auto-adding playbook server (enabled): {playbook_server_name}")
+            if (
+                playbook_server_name not in valid_servers
+                and playbook_server_name in cfg.servers
+            ):
+                logger.debug(
+                    f"Auto-adding playbook server (enabled): {playbook_server_name}"
+                )
                 valid_servers.append(playbook_server_name)
 
         return {i: name for i, name in enumerate(valid_servers)}
@@ -210,8 +215,13 @@ def process_options(
         # IMPORTANT: Auto-add playbook server if enabled (even when user specifies servers)
         playbook_server_name = pref_manager.get_playbook_server_name()
         if pref_manager.is_playbook_enabled():
-            if playbook_server_name not in servers_list and playbook_server_name in cfg.servers:
-                logger.debug(f"Auto-adding playbook server to servers_list: {playbook_server_name}")
+            if (
+                playbook_server_name not in servers_list
+                and playbook_server_name in cfg.servers
+            ):
+                logger.debug(
+                    f"Auto-adding playbook server to servers_list: {playbook_server_name}"
+                )
                 servers_list.append(playbook_server_name)
 
         if not servers_list and user_specified:

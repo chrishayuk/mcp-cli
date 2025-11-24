@@ -328,14 +328,21 @@ class ToolManager:
                 error_msg = str(e)
 
                 # Check if this is a "server doesn't support OAuth" error (404 on .well-known)
-                if "404" in error_msg and ".well-known/oauth-authorization-server" in error_msg:
-                    logger.debug(f"Server {server_name} does not support OAuth (no .well-known endpoint), continuing without authentication")
+                if (
+                    "404" in error_msg
+                    and ".well-known/oauth-authorization-server" in error_msg
+                ):
+                    logger.debug(
+                        f"Server {server_name} does not support OAuth (no .well-known endpoint), continuing without authentication"
+                    )
                     # This is fine - not all remote servers require OAuth
                     continue
 
                 # Check for timeout errors (user might need to authenticate)
                 if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
-                    logger.warning(f"OAuth setup timed out for {server_name}. This might indicate:")
+                    logger.warning(
+                        f"OAuth setup timed out for {server_name}. This might indicate:"
+                    )
                     logger.warning("  - Network connectivity issues")
                     logger.warning("  - OAuth server being slow")
                     logger.warning("  - Need to complete authentication in browser")
@@ -507,8 +514,13 @@ class ToolManager:
             logger.error(f"Tool execution failed: {error_msg}")
 
             # Check if this is a transport error that might be recoverable
-            if "Transport not initialized" in error_msg or "transport" in error_msg.lower():
-                logger.warning(f"Transport error detected for tool {tool_name}, attempting recovery...")
+            if (
+                "Transport not initialized" in error_msg
+                or "transport" in error_msg.lower()
+            ):
+                logger.warning(
+                    f"Transport error detected for tool {tool_name}, attempting recovery..."
+                )
 
                 # Attempt to recover by reconnecting to the affected server
                 recovery_result = await self._attempt_transport_recovery(
@@ -666,12 +678,19 @@ class ToolManager:
                 logger.warning(f"Could not identify server for tool {tool_name}")
                 return None
 
-            logger.info(f"Attempting to reconnect to server '{server_name}' for tool '{tool_name}'")
+            # Check if stream_manager is initialized
+            if not self.stream_manager:
+                logger.warning("StreamManager not initialized, cannot attempt recovery")
+                return None
+
+            logger.info(
+                f"Attempting to reconnect to server '{server_name}' for tool '{tool_name}'"
+            )
 
             # Try to reconnect the specific server through StreamManager
-            if hasattr(self.stream_manager, 'reconnect_server'):
+            if hasattr(self.stream_manager, "reconnect_server"):
                 await self.stream_manager.reconnect_server(server_name)
-            elif hasattr(self.stream_manager, 'restart_server'):
+            elif hasattr(self.stream_manager, "restart_server"):
                 await self.stream_manager.restart_server(server_name)
             else:
                 # If no specific reconnect method, log warning
@@ -682,6 +701,7 @@ class ToolManager:
 
             # Wait a moment for reconnection
             import asyncio
+
             await asyncio.sleep(0.5)
 
             # Retry the tool call once

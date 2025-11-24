@@ -103,7 +103,9 @@ def main_callback(
         help="Token storage backend: auto, keychain, windows, secretservice, encrypted, vault",
     ),
     max_turns: int = typer.Option(30, "--max-turns", help="Maximum conversation turns"),
-    playbook: Optional[bool] = typer.Option(None, "--playbook/--no-playbook", help="Enable/disable playbook integration"),
+    playbook: Optional[bool] = typer.Option(
+        None, "--playbook/--no-playbook", help="Enable/disable playbook integration"
+    ),
 ) -> None:
     """MCP CLI - If no subcommand is given, start chat mode."""
 
@@ -113,6 +115,7 @@ def main_callback(
     # Set playbook preference if specified
     if playbook is not None:
         from mcp_cli.utils.preferences import get_preference_manager
+
         pref_manager = get_preference_manager()
         pref_manager.set_playbook_enabled(playbook)
 
@@ -1493,7 +1496,9 @@ def cmd_command(
         None, "--output", "-o", help="Output file (use - for stdout)"
     ),
     prompt: Optional[str] = typer.Option(None, "--prompt", "-p", help="Prompt text"),
-    tool: Optional[str] = typer.Option(None, "--tool", "-t", help="Tool name to execute"),
+    tool: Optional[str] = typer.Option(
+        None, "--tool", "-t", help="Tool name to execute"
+    ),
     tool_args: Optional[str] = typer.Option(
         None, "--tool-args", help="Tool arguments as JSON"
     ),

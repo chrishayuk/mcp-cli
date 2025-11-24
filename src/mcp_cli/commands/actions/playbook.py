@@ -29,18 +29,14 @@ async def playbook_action_async(params: PlaybookActionParams) -> str | dict[str,
     if action == "enable":
         pref_manager.set_playbook_enabled(True)
         output.success("✓ Playbook integration enabled")
-        output.warning(
-            "Note: Please restart your session for changes to take effect"
-        )
+        output.warning("Note: Please restart your session for changes to take effect")
         output.hint("The playbook server will be bound on next startup")
         return "Playbook enabled (restart required)"
 
     elif action == "disable":
         pref_manager.set_playbook_enabled(False)
         output.success("✓ Playbook integration disabled")
-        output.warning(
-            "Note: Please restart your session for changes to take effect"
-        )
+        output.warning("Note: Please restart your session for changes to take effect")
         output.hint("The playbook server will not be bound on next startup")
         return "Playbook disabled (restart required)"
 
@@ -51,14 +47,14 @@ async def playbook_action_async(params: PlaybookActionParams) -> str | dict[str,
         local_dir = pref_manager.get_local_playbook_dir()
 
         status_str = "enabled" if enabled else "disabled"
-        output.print(f"\n[bold]Playbook Status:[/bold]")
+        output.print("\n[bold]Playbook Status:[/bold]")
         output.print(f"  Status: [{'green' if enabled else 'red'}]{status_str}[/]")
         output.print(f"  Server: {server_name}")
         output.print(f"  Top K: {top_k}")
         if local_dir:
             output.print(f"  Local playbooks: {local_dir}")
         else:
-            output.print(f"  Local playbooks: [dim]not configured[/dim]")
+            output.print("  Local playbooks: [dim]not configured[/dim]")
 
         if not enabled:
             output.hint("Use '/playbook enable' to enable playbook integration")
@@ -102,7 +98,5 @@ async def playbook_action_async(params: PlaybookActionParams) -> str | dict[str,
 
     else:
         output.error(f"Unknown action: {action}")
-        output.hint(
-            "Valid actions: enable, disable, status, list"
-        )
+        output.hint("Valid actions: enable, disable, status, list")
         return f"Unknown action: {action}"

@@ -36,7 +36,9 @@ class ConversationProcessor:
             max_turns: Maximum number of conversation turns before forcing exit (default: 30)
         """
         turn_count = 0
-        last_tool_signature = None  # Track last tool call to detect duplicates
+        last_tool_signature: str | None = (
+            None  # Track last tool call to detect duplicates
+        )
         tools_for_completion = None  # Will be set based on context
         try:
             while turn_count < max_turns:
@@ -76,9 +78,19 @@ class ConversationProcessor:
 
                     # Log last few messages for debugging (truncated)
                     for i, msg in enumerate(self.context.conversation_history[-3:]):
-                        role = msg.role if hasattr(msg, 'role') else msg.get('role', 'unknown')
-                        content_preview = str(msg.content)[:100] if hasattr(msg, 'content') else str(msg.get('content', ''))[:100]
-                        log.debug(f"  Message {history_size - 3 + i}: role={role}, content_preview={content_preview}")
+                        role = (
+                            msg.role
+                            if hasattr(msg, "role")
+                            else msg.get("role", "unknown")
+                        )
+                        content_preview = (
+                            str(msg.content)[:100]
+                            if hasattr(msg, "content")
+                            else str(msg.get("content", ""))[:100]
+                        )
+                        log.debug(
+                            f"  Message {history_size - 3 + i}: role={role}, content_preview={content_preview}"
+                        )
 
                     # Check if client supports streaming
                     client = self.context.client

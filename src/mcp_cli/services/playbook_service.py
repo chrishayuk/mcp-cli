@@ -69,7 +69,9 @@ class PlaybookService:
             elif isinstance(result, str):
                 return result
             else:
-                logger.warning(f"Unexpected result type from query_playbook: {type(result)}")
+                logger.warning(
+                    f"Unexpected result type from query_playbook: {type(result)}"
+                )
                 return None
 
         except Exception as e:
@@ -97,7 +99,8 @@ class PlaybookService:
             if isinstance(result, list):
                 return result
             elif isinstance(result, dict):
-                return result.get("playbooks", [])
+                playbooks: list[str] = result.get("playbooks", [])
+                return playbooks
             else:
                 return []
 
@@ -180,4 +183,3 @@ class PlaybookService:
         except Exception as e:
             logger.error(f"Error submitting playbook: {e}")
             return False
-

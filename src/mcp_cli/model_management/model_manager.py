@@ -451,7 +451,9 @@ class ModelManager:
         # If we have exact matches, prefer those
         if exact_matches:
             if len(exact_matches) == 1:
-                logger.info(f"Detected provider '{exact_matches[0]}' for model '{model}'")
+                logger.info(
+                    f"Detected provider '{exact_matches[0]}' for model '{model}'"
+                )
                 return exact_matches[0]
 
             # Multiple exact matches - prefer non-ollama
