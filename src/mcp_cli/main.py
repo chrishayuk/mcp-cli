@@ -9,6 +9,7 @@ import gc
 import os
 import signal
 import sys
+from typing import Optional
 
 import typer
 
@@ -63,11 +64,11 @@ def main_callback(
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
-    server: str | None = typer.Option(None, help="Server to connect to"),
-    provider: str | None = typer.Option(None, help="LLM provider name"),
-    model: str | None = typer.Option(None, help="Model name"),
-    api_base: str | None = typer.Option(None, "--api-base", help="API base URL"),
-    api_key: str | None = typer.Option(None, "--api-key", help="API key"),
+    server: Optional[str] = typer.Option(None, help="Server to connect to"),
+    provider: Optional[str] = typer.Option(None, help="LLM provider name"),
+    model: Optional[str] = typer.Option(None, help="Model name"),
+    api_base: Optional[str] = typer.Option(None, "--api-base", help="API base URL"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", help="API key"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(
@@ -81,7 +82,7 @@ def main_callback(
     theme: str = typer.Option(
         "default", "--theme", help="UI theme (default, dark, light, minimal, terminal)"
     ),
-    confirm_mode: str = typer.Option(
+    confirm_mode: Optional[str] = typer.Option(
         None,
         "--confirm-mode",
         help="Tool confirmation mode: always, never, or smart (risk-based)",
@@ -91,22 +92,29 @@ def main_callback(
         "--init-timeout",
         help="Server initialization timeout in seconds",
     ),
-    tool_timeout: float | None = typer.Option(
+    tool_timeout: Optional[float] = typer.Option(
         None,
         "--tool-timeout",
         help="Tool execution timeout in seconds (default: 120, can also set MCP_TOOL_TIMEOUT env var)",
     ),
-    token_backend: str | None = typer.Option(
+    token_backend: Optional[str] = typer.Option(
         None,
         "--token-backend",
         help="Token storage backend: auto, keychain, windows, secretservice, encrypted, vault",
     ),
     max_turns: int = typer.Option(30, "--max-turns", help="Maximum conversation turns"),
+    playbook: Optional[bool] = typer.Option(None, "--playbook/--no-playbook", help="Enable/disable playbook integration"),
 ) -> None:
     """MCP CLI - If no subcommand is given, start chat mode."""
 
     # Re-configure logging based on user options (this overrides the default ERROR level)
     setup_logging(level=log_level, quiet=quiet, verbose=verbose)
+
+    # Set playbook preference if specified
+    if playbook is not None:
+        from mcp_cli.utils.preferences import get_preference_manager
+        pref_manager = get_preference_manager()
+        pref_manager.set_playbook_enabled(playbook)
 
     # Store tool timeout if specified
     if tool_timeout is not None:
@@ -343,11 +351,11 @@ def _chat_command(
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
-    server: str | None = typer.Option(None, help="Server to connect to"),
-    provider: str | None = typer.Option(None, help="LLM provider name"),
-    model: str | None = typer.Option(None, help="Model name"),
-    api_base: str | None = typer.Option(None, "--api-base", help="API base URL"),
-    api_key: str | None = typer.Option(None, "--api-key", help="API key"),
+    server: Optional[str] = typer.Option(None, help="Server to connect to"),
+    provider: Optional[str] = typer.Option(None, help="LLM provider name"),
+    model: Optional[str] = typer.Option(None, help="Model name"),
+    api_base: Optional[str] = typer.Option(None, "--api-base", help="API base URL"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", help="API key"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(
@@ -529,11 +537,11 @@ def _interactive_command(
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
-    server: str | None = typer.Option(None, help="Server to connect to"),
-    provider: str | None = typer.Option(None, help="LLM provider name"),
-    model: str | None = typer.Option(None, help="Model name"),
-    api_base: str | None = typer.Option(None, "--api-base", help="API base URL"),
-    api_key: str | None = typer.Option(None, "--api-key", help="API key"),
+    server: Optional[str] = typer.Option(None, help="Server to connect to"),
+    provider: Optional[str] = typer.Option(None, help="LLM provider name"),
+    model: Optional[str] = typer.Option(None, help="Model name"),
+    api_base: Optional[str] = typer.Option(None, "--api-base", help="API base URL"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", help="API key"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(
@@ -703,21 +711,21 @@ def _setup_command_logging(
 # Provider command - FIXED to handle arguments properly
 @app.command("provider", help="Manage LLM providers")
 def provider_command(
-    subcommand: str | None = typer.Argument(
+    subcommand: Optional[str] = typer.Argument(
         None, help="Subcommand: list, config, diagnostic, set, or provider name"
     ),
-    provider_name: str | None = typer.Argument(
+    provider_name: Optional[str] = typer.Argument(
         None, help="Provider name (for set or switch commands)"
     ),
-    key: str | None = typer.Argument(None, help="Config key (for set command)"),
-    value: str | None = typer.Argument(None, help="Config value (for set command)"),
-    model: str | None = typer.Option(
+    key: Optional[str] = typer.Argument(None, help="Config key (for set command)"),
+    value: Optional[str] = typer.Argument(None, help="Config value (for set command)"),
+    model: Optional[str] = typer.Option(
         None, "--model", help="Model name (for switch commands)"
     ),
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
-    server: str | None = typer.Option(None, help="Server to connect to"),
+    server: Optional[str] = typer.Option(None, help="Server to connect to"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(
@@ -784,21 +792,21 @@ direct_registered.append("provider")
 # ADD: providers command as alias to provider (for consistency)
 @app.command("providers", help="List LLM providers (defaults to list)")
 def providers_command(
-    subcommand: str | None = typer.Argument(
+    subcommand: Optional[str] = typer.Argument(
         None, help="Subcommand: list, config, diagnostic, set, or provider name"
     ),
-    provider_name: str | None = typer.Argument(
+    provider_name: Optional[str] = typer.Argument(
         None, help="Provider name (for set or switch commands)"
     ),
-    key: str | None = typer.Argument(None, help="Config key (for set command)"),
-    value: str | None = typer.Argument(None, help="Config value (for set command)"),
-    model: str | None = typer.Option(
+    key: Optional[str] = typer.Argument(None, help="Config key (for set command)"),
+    value: Optional[str] = typer.Argument(None, help="Config value (for set command)"),
+    model: Optional[str] = typer.Option(
         None, "--model", help="Model name (for switch commands)"
     ),
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
-    server: str | None = typer.Option(None, help="Server to connect to"),
+    server: Optional[str] = typer.Option(None, help="Server to connect to"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(
@@ -854,9 +862,9 @@ def tools_command(
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
-    server: str | None = typer.Option(None, help="Server to connect to"),
+    server: Optional[str] = typer.Option(None, help="Server to connect to"),
     provider: str = typer.Option("openai", help="LLM provider name"),
-    model: str | None = typer.Option(None, help="Model name"),
+    model: Optional[str] = typer.Option(None, help="Model name"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(
@@ -930,9 +938,9 @@ def servers_command(
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
-    server: str | None = typer.Option(None, help="Server to connect to"),
+    server: Optional[str] = typer.Option(None, help="Server to connect to"),
     provider: str = typer.Option("openai", help="LLM provider name"),
-    model: str | None = typer.Option(None, help="Model name"),
+    model: Optional[str] = typer.Option(None, help="Model name"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(
@@ -995,9 +1003,9 @@ def resources_command(
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
-    server: str | None = typer.Option(None, help="Server to connect to"),
+    server: Optional[str] = typer.Option(None, help="Server to connect to"),
     provider: str = typer.Option("openai", help="LLM provider name"),
-    model: str | None = typer.Option(None, help="Model name"),
+    model: Optional[str] = typer.Option(None, help="Model name"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(
@@ -1036,9 +1044,9 @@ def prompts_command(
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
-    server: str | None = typer.Option(None, help="Server to connect to"),
+    server: Optional[str] = typer.Option(None, help="Server to connect to"),
     provider: str = typer.Option("openai", help="LLM provider name"),
-    model: str | None = typer.Option(None, help="Model name"),
+    model: Optional[str] = typer.Option(None, help="Model name"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(
@@ -1074,7 +1082,7 @@ direct_registered.append("prompts")
 # Models command - show available models for current or specified provider
 @app.command("models", help="List available models for a provider")
 def models_command(
-    provider_name: str | None = typer.Argument(
+    provider_name: Optional[str] = typer.Argument(
         None, help="Provider name (defaults to current)"
     ),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
@@ -1161,7 +1169,7 @@ direct_registered.append("models")
 # Theme command - manage UI themes
 @app.command("theme", help="Manage UI themes for MCP CLI")
 def theme_command(
-    theme_name: str | None = typer.Argument(None, help="Theme name to switch to"),
+    theme_name: Optional[str] = typer.Argument(None, help="Theme name to switch to"),
     list_themes: bool = typer.Option(
         False, "--list", "-l", help="List all available themes"
     ),
@@ -1196,17 +1204,17 @@ def token_command(
         ...,
         help="Action: list, set, get, delete, clear, backends, set-provider, get-provider, delete-provider",
     ),
-    name: str | None = typer.Argument(
+    name: Optional[str] = typer.Argument(
         None, help="Token/provider name (for set/get/delete actions)"
     ),
     token_type: str = typer.Option(
         "bearer", "--type", "-t", help="Token type (bearer, api-key, generic)"
     ),
-    value: str | None = typer.Option(None, "--value", help="Token value"),
-    provider: str | None = typer.Option(
+    value: Optional[str] = typer.Option(None, "--value", help="Token value"),
+    provider: Optional[str] = typer.Option(
         None, "--provider", "-p", help="Provider name (for API keys)"
     ),
-    namespace: str | None = typer.Option(
+    namespace: Optional[str] = typer.Option(
         None, "--namespace", "-n", help="Storage namespace"
     ),
     show_oauth: bool = typer.Option(
@@ -1347,21 +1355,21 @@ direct_registered.append("token")
 # Tokens command - plural form defaults to list (for consistency with providers)
 @app.command("tokens", help="List stored tokens (defaults to list)")
 def tokens_command(
-    action: str | None = typer.Argument(
+    action: Optional[str] = typer.Argument(
         None,
         help="Action: list, set, get, delete, clear, backends, set-provider, get-provider, delete-provider",
     ),
-    name: str | None = typer.Argument(
+    name: Optional[str] = typer.Argument(
         None, help="Token/provider name (for set/get/delete actions)"
     ),
     token_type: str = typer.Option(
         "bearer", "--type", "-t", help="Token type (bearer, api-key, generic)"
     ),
-    value: str | None = typer.Option(None, "--value", help="Token value"),
-    provider: str | None = typer.Option(
+    value: Optional[str] = typer.Option(None, "--value", help="Token value"),
+    provider: Optional[str] = typer.Option(
         None, "--provider", "-p", help="Provider name (for API keys)"
     ),
-    namespace: str | None = typer.Option(
+    namespace: Optional[str] = typer.Option(
         None, "--namespace", "-n", help="Storage namespace"
     ),
     show_oauth: bool = typer.Option(
@@ -1520,18 +1528,18 @@ direct_registered.append("tokens")
 # Cmd command - Unix-friendly automation mode
 @app.command("cmd", help="Command mode for Unix-friendly automation and scripting")
 def cmd_command(
-    input_file: str | None = typer.Option(
+    input_file: Optional[str] = typer.Option(
         None, "--input", "-i", help="Input file (use - for stdin)"
     ),
-    output_file: str | None = typer.Option(
+    output_file: Optional[str] = typer.Option(
         None, "--output", "-o", help="Output file (use - for stdout)"
     ),
-    prompt: str | None = typer.Option(None, "--prompt", "-p", help="Prompt text"),
-    tool: str | None = typer.Option(None, "--tool", "-t", help="Tool name to execute"),
-    tool_args: str | None = typer.Option(
+    prompt: Optional[str] = typer.Option(None, "--prompt", "-p", help="Prompt text"),
+    tool: Optional[str] = typer.Option(None, "--tool", "-t", help="Tool name to execute"),
+    tool_args: Optional[str] = typer.Option(
         None, "--tool-args", help="Tool arguments as JSON"
     ),
-    system_prompt: str | None = typer.Option(
+    system_prompt: Optional[str] = typer.Option(
         None, "--system-prompt", help="Custom system prompt"
     ),
     raw: bool = typer.Option(False, "--raw", help="Raw output without formatting"),
@@ -1542,11 +1550,11 @@ def cmd_command(
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
-    server: str | None = typer.Option(None, help="Server to connect to"),
-    provider: str | None = typer.Option(None, help="LLM provider name"),
-    model: str | None = typer.Option(None, help="Model name"),
-    api_base: str | None = typer.Option(None, "--api-base", help="API base URL"),
-    api_key: str | None = typer.Option(None, "--api-key", help="API key"),
+    server: Optional[str] = typer.Option(None, help="Server to connect to"),
+    provider: Optional[str] = typer.Option(None, help="LLM provider name"),
+    model: Optional[str] = typer.Option(None, help="Model name"),
+    api_base: Optional[str] = typer.Option(None, "--api-base", help="API base URL"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", help="API key"),
     disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
     quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
     verbose: bool = typer.Option(False, "--verbose", help="Enable verbose logging"),

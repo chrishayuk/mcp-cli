@@ -1,5 +1,9 @@
 {
   "mcpServers": {
+    "playbook-repo": {
+      "command": "uv",
+      "args": ["run", "--directory", "/Users/christopherhay/chris-source/chuk-ai/mcp-servers/chuk-mcp-playbook", "chuk-mcp-playbook"]
+    },
     "sqlite": {
       "command": "uvx",
       "args": ["mcp-server-sqlite", "--db-path", "test.db"]
@@ -35,6 +39,10 @@
     },
     "weather": {
       "url": "https://weather.chukai.io/mcp"
+    },
+    "telnet": {
+      "command": "uvx",
+      "args": ["chuk-mcp-telnet-client"]
     }
   }
 }

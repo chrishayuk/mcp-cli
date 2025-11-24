@@ -88,17 +88,36 @@ def extract_server_names(
     if specified:
         # Filter to only specified servers that exist in config
         valid_servers = []
+        playbook_server_name = pref_manager.get_playbook_server_name()
+
         for server in specified:
             if server in cfg.servers:
                 valid_servers.append(server)
             else:
                 logger.warning(f"Server '{server}' not found in configuration")
+
+        # IMPORTANT: Auto-add playbook server if enabled (even when user specifies servers)
+        if pref_manager.is_playbook_enabled():
+            if playbook_server_name not in valid_servers and playbook_server_name in cfg.servers:
+                logger.debug(f"Auto-adding playbook server (enabled): {playbook_server_name}")
+                valid_servers.append(playbook_server_name)
+
         return {i: name for i, name in enumerate(valid_servers)}
     else:
         # Only include enabled servers based on preferences
         enabled_servers = []
+        playbook_server_name = pref_manager.get_playbook_server_name()
+
         for server_name in cfg.servers.keys():
-            if not pref_manager.is_server_disabled(server_name):
+            # Special handling for playbook server - only include if playbook is enabled
+            if server_name == playbook_server_name:
+                if pref_manager.is_playbook_enabled():
+                    logger.debug(f"Including playbook server: {server_name}")
+                    enabled_servers.append(server_name)
+                else:
+                    logger.debug(f"Skipping playbook server (disabled): {server_name}")
+            # Regular server - include unless explicitly disabled
+            elif not pref_manager.is_server_disabled(server_name):
                 enabled_servers.append(server_name)
         return {i: name for i, name in enumerate(enabled_servers)}
 
@@ -187,6 +206,13 @@ def process_options(
             else:
                 enabled_from_requested.append(server)
         servers_list = enabled_from_requested
+
+        # IMPORTANT: Auto-add playbook server if enabled (even when user specifies servers)
+        playbook_server_name = pref_manager.get_playbook_server_name()
+        if pref_manager.is_playbook_enabled():
+            if playbook_server_name not in servers_list and playbook_server_name in cfg.servers:
+                logger.debug(f"Auto-adding playbook server to servers_list: {playbook_server_name}")
+                servers_list.append(playbook_server_name)
 
         if not servers_list and user_specified:
             output.warning("All requested servers are disabled")

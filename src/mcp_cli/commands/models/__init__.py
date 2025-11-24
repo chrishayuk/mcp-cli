@@ -45,6 +45,9 @@ from .theme import ThemeActionParams, ThemeInfo
 # Conversation models
 from .conversation import ConversationActionParams, ConversationInfo
 
+# Playbook models
+from .playbook import PlaybookActionParams
+
 # Cmd models
 from .cmd import (
     MessageRole,
@@ -94,6 +97,8 @@ __all__ = [
     # Conversation models
     "ConversationActionParams",
     "ConversationInfo",
+    # Playbook models
+    "PlaybookActionParams",
     # Cmd models
     "MessageRole",
     "Message",
