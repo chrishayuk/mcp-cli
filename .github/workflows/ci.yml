@@ -1,0 +1,150 @@
+name: CI
+
+on:
+   push:
+      branches:
+         - main
+   pull_request:
+
+jobs:
+   lint-and-typecheck:
+      runs-on: ubuntu-latest
+      steps:
+         - name: Checkout code
+           uses: actions/checkout@v6
+
+         #      - name: Set up Python
+         #        uses: actions/setup-python@v5
+         #        with:
+         #          python-version: '3.11'
+
+         - name: Install uv
+           run: |
+              curl -LsSf https://astral.sh/uv/install.sh | sh
+              echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+         - name: Install dependencies
+           run: uv sync --group dev
+
+         - name: Run linters
+           run: |
+              set +e
+              make lint > lint_output.txt 2>&1
+              LINT_EXIT=$?
+              set -e
+
+              echo "## Lint Results" >> $GITHUB_STEP_SUMMARY
+              if [ $LINT_EXIT -eq 0 ]; then
+                echo "✅ No linting errors found" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "❌ Linting errors found:" >> $GITHUB_STEP_SUMMARY
+                echo '```' >> $GITHUB_STEP_SUMMARY
+                cat lint_output.txt >> $GITHUB_STEP_SUMMARY
+                echo '```' >> $GITHUB_STEP_SUMMARY
+              fi
+
+         - name: Run type checker
+           run: |
+              set +e
+              make typecheck > typecheck_output.txt 2>&1
+              TYPECHECK_EXIT=$?
+              set -e
+
+              echo "## Type Check Results" >> $GITHUB_STEP_SUMMARY
+              if [ $TYPECHECK_EXIT -eq 0 ]; then
+                echo "✅ No type errors found" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "❌ Type errors found:" >> $GITHUB_STEP_SUMMARY
+                echo '```' >> $GITHUB_STEP_SUMMARY
+                cat typecheck_output.txt >> $GITHUB_STEP_SUMMARY
+                echo '```' >> $GITHUB_STEP_SUMMARY
+              fi
+
+   test:
+      needs: lint-and-typecheck
+      runs-on: ubuntu-latest
+      strategy:
+         matrix:
+            test-path:
+               - tests/adapters
+               - tests/auth
+               - tests/chat
+               - tests/cli
+               - tests/commands
+               - tests/config
+               - tests/interactive
+               - tests/llm
+               - tests/model_management
+               - tests/tools
+               - tests/ui
+               - tests/utils
+               - tests/test_command_consistency.py
+      steps:
+         - name: Checkout code
+           uses: actions/checkout@v6
+
+         #      - name: Set up Python
+         #        uses: actions/setup-python@v5
+         #        with:
+         #          python-version: '3.11'
+
+         - name: Install uv
+           run: |
+              curl -LsSf https://astral.sh/uv/install.sh | sh
+              echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+         - name: Install dependencies
+           run: uv sync --group dev
+
+         - name: Run tests
+           run: uv run pytest --cov=src --cov-report= "${{ matrix.test-path }}"
+
+         - name: Rename coverage file
+           run: mv .coverage ".coverage.${{ strategy.job-index }}"
+
+         - name: Upload coverage artifact
+           uses: actions/upload-artifact@v5
+           with:
+              name: coverage-${{ strategy.job-index }}
+              path: .coverage.${{ strategy.job-index }}
+              include-hidden-files: true
+              if-no-files-found: error
+
+   report-coverage:
+      needs: test
+      runs-on: ubuntu-latest
+      steps:
+         - name: Checkout code
+           uses: actions/checkout@v6
+
+         #      - name: Set up Python
+         #        uses: actions/setup-python@v5
+         #        with:
+         #          python-version: '3.11'
+
+         - name: Install uv
+           run: |
+              curl -LsSf https://astral.sh/uv/install.sh | sh
+              echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+         - name: Install dependencies
+           run: |
+              uv venv
+              uv pip install coverage[toml]
+
+         - name: Download coverage reports
+           uses: actions/download-artifact@v6
+           with:
+              pattern: coverage-*
+              merge-multiple: true
+
+         - name: Combine coverage reports
+           run: uv run coverage combine
+
+         - name: Generate coverage summary
+           run: |
+              echo "## Code Coverage Report" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              uv run coverage report -m >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
