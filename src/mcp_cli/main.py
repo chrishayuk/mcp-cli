@@ -1632,6 +1632,66 @@ def cmd_command(
 
 direct_registered.append("cmd")
 
+
+# Ping command - test connectivity
+@app.command("ping", help="Test connectivity to MCP servers")
+def ping_command(
+    targets: list[str] = typer.Argument(
+        None, help="Server names or indices to ping (omit for all)"
+    ),
+    config_file: str = typer.Option(
+        "server_config.json", help="Configuration file path"
+    ),
+    server: str | None = typer.Option(None, help="Server to connect to"),
+    provider: str = typer.Option("openai", help="LLM provider name"),
+    model: str | None = typer.Option(None, help="Model name"),
+    disable_filesystem: bool = typer.Option(False, help="Disable filesystem access"),
+    quiet: bool = typer.Option(False, "-q", "--quiet", help="Suppress most log output"),
+    verbose: bool = typer.Option(
+        False, "-v", "--verbose", help="Enable verbose logging"
+    ),
+    log_level: str = typer.Option("WARNING", "--log-level", help="Set log level"),
+    theme: str = typer.Option("default", "--theme", help="UI theme"),
+) -> None:
+    """Test connectivity to MCP servers."""
+    # Configure logging and theme for this command
+    _setup_command_logging(quiet, verbose, log_level, theme)
+
+    # Process options to get server config and names
+    servers, _, server_names = process_options(
+        server, disable_filesystem, provider, model, config_file, quiet=quiet
+    )
+
+    # Import and use the ping action
+    from mcp_cli.commands.actions.ping import ping_action_async
+
+    # Wrapper for the async action
+    async def _ping_wrapper(**params):
+        # Get the tool manager from the global context, which is initialized by run_command_sync
+        from mcp_cli.context import get_context
+        tm = get_context().tool_manager
+
+        return await ping_action_async(
+            tm=tm,
+            server_names=params.get("server_names"),
+            targets=params.get("targets", []),
+        )
+
+    # Execute via run_command_sync
+    run_command_sync(
+        _ping_wrapper,
+        config_file,
+        servers,
+        extra_params={
+            "targets": targets,
+            "server_names": server_names,
+        },
+    )
+
+
+direct_registered.append("ping")
+
+
 # Show what we actually registered
 all_registered = registry_registered + direct_registered
 output.success("✓ MCP CLI ready")
