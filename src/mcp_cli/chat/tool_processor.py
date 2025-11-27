@@ -201,7 +201,10 @@ class ToolProcessor:
 
                 # Track transport failures for recovery
                 if not tool_result.success and tool_result.error:
-                    if "Transport not initialized" in tool_result.error or "transport" in tool_result.error.lower():
+                    if (
+                        "Transport not initialized" in tool_result.error
+                        or "transport" in tool_result.error.lower()
+                    ):
                         self._transport_failures += 1
                         self._consecutive_transport_failures += 1
 
@@ -293,17 +296,17 @@ class ToolProcessor:
         # Handle MCP SDK ToolResult objects (nested in result dict)
         if isinstance(result, dict):
             # Check for MCP response structure: {'isError': bool, 'content': ToolResult}
-            if 'content' in result and hasattr(result['content'], 'content'):
+            if "content" in result and hasattr(result["content"], "content"):
                 # Extract content array from MCP ToolResult
-                tool_result_content = result['content'].content
+                tool_result_content = result["content"].content
                 if isinstance(tool_result_content, list):
                     # Extract text from content blocks
                     text_parts = []
                     for block in tool_result_content:
-                        if isinstance(block, dict) and block.get('type') == 'text':
-                            text_parts.append(block.get('text', ''))
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            text_parts.append(block.get("text", ""))
                     if text_parts:
-                        return '\n'.join(text_parts)
+                        return "\n".join(text_parts)
 
             # Try normal JSON serialization
             try:

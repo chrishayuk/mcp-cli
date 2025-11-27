@@ -90,12 +90,14 @@ def register_all_commands() -> None:
     from mcp_cli.commands.definitions.tool_history import ToolHistoryCommand
     from mcp_cli.commands.definitions.execute_tool import ExecuteToolCommand
     from mcp_cli.commands.definitions.token import TokenCommand
+    from mcp_cli.commands.definitions.playbook import PlaybookCommand
 
     # Register basic commands
     registry.register(HelpCommand())
     registry.register(ExitCommand())
     registry.register(ClearCommand())
     registry.register(TokenCommand())
+    registry.register(PlaybookCommand())
 
     # Register server commands (singular and plural)
     registry.register(ServerSingularCommand())  # /server <name> - show details

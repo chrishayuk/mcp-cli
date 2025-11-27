@@ -151,12 +151,22 @@ class ServerPreferences(BaseModel):
     )
 
 
+class PlaybookPreferences(BaseModel):
+    """Playbook integration preferences."""
+
+    enabled: bool = False  # Enable/disable playbook feature (disabled by default during experimentation)
+    mcp_server_name: str = "playbook-repo"  # Name of the MCP playbook server
+    local_playbook_dir: str | None = None  # Path to agent's local playbooks
+    top_k: int = 3  # Number of playbook results to consider
+
+
 class MCPPreferences(BaseModel):
     """Complete MCP CLI preferences."""
 
     ui: UIPreferences = Field(default_factory=UIPreferences)
     provider: ProviderPreferences = Field(default_factory=ProviderPreferences)
     servers: ServerPreferences = Field(default_factory=ServerPreferences)
+    playbook: PlaybookPreferences = Field(default_factory=PlaybookPreferences)
     last_servers: str | None = None
     config_file: str | None = None
 
@@ -653,6 +663,45 @@ class PreferenceManager:
 
         return os.environ.get(env_var)
 
+    # Playbook preference methods
+    def is_playbook_enabled(self) -> bool:
+        """Check if playbook integration is enabled."""
+        return self.preferences.playbook.enabled
+
+    def set_playbook_enabled(self, enabled: bool) -> None:
+        """Enable or disable playbook integration."""
+        self.preferences.playbook.enabled = enabled
+        self.save_preferences()
+
+    def get_playbook_server_name(self) -> str:
+        """Get the configured playbook MCP server name."""
+        return self.preferences.playbook.mcp_server_name
+
+    def set_playbook_server_name(self, server_name: str) -> None:
+        """Set the playbook MCP server name."""
+        self.preferences.playbook.mcp_server_name = server_name
+        self.save_preferences()
+
+    def get_local_playbook_dir(self) -> str | None:
+        """Get the local playbook directory path."""
+        return self.preferences.playbook.local_playbook_dir
+
+    def set_local_playbook_dir(self, path: str | None) -> None:
+        """Set the local playbook directory path."""
+        self.preferences.playbook.local_playbook_dir = path
+        self.save_preferences()
+
+    def get_playbook_top_k(self) -> int:
+        """Get the number of playbook results to consider."""
+        return self.preferences.playbook.top_k
+
+    def set_playbook_top_k(self, top_k: int) -> None:
+        """Set the number of playbook results to consider."""
+        if top_k < 1 or top_k > 10:
+            raise ValueError("top_k must be between 1 and 10")
+        self.preferences.playbook.top_k = top_k
+        self.save_preferences()
+
 
 # Global singleton instance
 _preference_manager: PreferenceManager | None = None
@@ -665,6 +714,7 @@ __all__ = [
     "UIPreferences",
     "ProviderPreferences",
     "ServerPreferences",
+    "PlaybookPreferences",
     "ToolConfirmationPreferences",
     "CustomProvider",
     "Theme",

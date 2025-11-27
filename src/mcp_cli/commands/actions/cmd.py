@@ -11,6 +11,88 @@ from chuk_term.ui import output
 from mcp_cli.commands.models.cmd import MessageRole, Message
 
 
+def _serialize_tool_result(result: Any) -> str:
+    """
+    Safely serialize a tool result to a string.
+
+    Handles ToolResult objects from chuk-tool-processor and various data types.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    # Handle None
+    if result is None:
+        return ""
+
+    # Handle strings directly
+    if isinstance(result, str):
+        return result
+
+    # Log the type for debugging
+    logger.debug(f"Serializing tool result of type: {type(result)}")
+
+    # Handle ToolResult objects (from chuk-tool-processor)
+    if hasattr(result, "content"):
+        logger.debug("Result has 'content' attribute - treating as ToolResult")
+        # ToolResult has a content attribute
+        content = result.content
+        if isinstance(content, str):
+            return content
+        elif isinstance(content, list):
+            # MCP format: list of text records
+            if all(
+                isinstance(item, dict) and item.get("type") == "text"
+                for item in content
+            ):
+                return "\n".join(item.get("text", "") for item in content)
+            # Try to serialize, with fallback
+            try:
+                return json.dumps(content, indent=2, default=str)
+            except Exception as e:
+                logger.warning(f"Failed to JSON serialize content list: {e}")
+                return str(content)
+        else:
+            try:
+                return json.dumps(content, indent=2, default=str)
+            except Exception as e:
+                logger.warning(f"Failed to JSON serialize content: {e}")
+                return str(content)
+
+    # Handle list of text records (MCP format)
+    if isinstance(result, list):
+        if all(
+            isinstance(item, dict) and item.get("type") == "text" for item in result
+        ):
+            return "\n".join(item.get("text", "") for item in result)
+        try:
+            return json.dumps(result, indent=2, default=str)
+        except Exception as e:
+            logger.warning(f"Failed to JSON serialize list: {e}")
+            return str(result)
+
+    # Handle dicts
+    if isinstance(result, dict):
+        try:
+            return json.dumps(result, indent=2, default=str)
+        except Exception as e:
+            logger.warning(f"Failed to JSON serialize dict: {e}")
+            return str(result)
+
+    # Handle other objects - try to convert to dict first
+    if hasattr(result, "__dict__"):
+        try:
+            return json.dumps(result.__dict__, indent=2, default=str)
+        except (TypeError, ValueError) as e:
+            logger.warning(f"Failed to JSON serialize object __dict__: {e}")
+            # Fallback to string representation
+            return str(result)
+
+    # Last resort - convert to string
+    logger.debug(f"Using str() fallback for type {type(result)}")
+    return str(result)
+
+
 async def cmd_action_async(
     input_file: str | None = None,
     output_file: str | None = None,
@@ -122,22 +204,8 @@ async def _execute_tool_direct(
             output.error(f"Tool execution failed: {tool_call_result.error}")
             return
 
-        # Extract the actual result
-        result_data = tool_call_result.result
-
-        # Format output
-        if raw:
-            result_str = (
-                json.dumps(result_data)
-                if not isinstance(result_data, str)
-                else result_data
-            )
-        else:
-            result_str = (
-                json.dumps(result_data, indent=2)
-                if not isinstance(result_data, str)
-                else result_data
-            )
+        # Extract and serialize the result
+        result_str = _serialize_tool_result(tool_call_result.result)
 
         # Write output
         if output_file and output_file != "-":
@@ -232,8 +300,8 @@ async def _execute_prompt_mode(
             tools = await context.tool_manager.get_tools_for_llm()
 
         # Make the LLM call using chuk-llm interface
+        # Note: client is already configured with the model via get_client()
         response = await client.create_completion(
-            model=context.model,
             messages=messages,
             tools=tools,
             max_tokens=4096,
@@ -325,16 +393,18 @@ async def _handle_tool_calls(
         try:
             tool_call_result = await tool_manager.execute_tool(tool_name, tool_args)
             # Extract result data and format as string
-            result_data = (
-                tool_call_result.result
-                if tool_call_result.success
-                else f"Error: {tool_call_result.error}"
-            )
-            result_str = (
-                json.dumps(result_data)
-                if not isinstance(result_data, str)
-                else result_data
-            )
+            if tool_call_result.success:
+                try:
+                    result_str = _serialize_tool_result(tool_call_result.result)
+                except Exception as serialize_err:
+                    import logging
+
+                    logging.getLogger(__name__).error(
+                        f"Serialization failed: {serialize_err}", exc_info=True
+                    )
+                    result_str = f"Error serializing result: {serialize_err}"
+            else:
+                result_str = f"Error: {tool_call_result.error}"
 
             # Add tool result to messages
             messages.append(
@@ -346,8 +416,14 @@ async def _handle_tool_calls(
                 }
             )
         except Exception as e:
-            error_msg = f"Tool execution failed: {e}"
-            output.error(error_msg)
+            import logging
+            import traceback
+
+            logging.getLogger(__name__).error(
+                f"Tool execution exception: {e}", exc_info=True
+            )
+            error_msg = f"Tool execution failed: {e}\n{traceback.format_exc()}"
+            output.error(f"Tool execution failed: {e}")
             messages.append(
                 {
                     "role": MessageRole.TOOL.value,
@@ -361,8 +437,8 @@ async def _handle_tool_calls(
     turns = 1
     while turns < max_turns:
         tools = await tool_manager.get_tools_for_llm() if tool_manager else None
+        # Note: client is already configured with the model via get_client()
         response = await client.create_completion(
-            model=context.model,
             messages=messages,
             tools=tools,
             max_tokens=4096,
@@ -409,16 +485,18 @@ async def _handle_tool_calls(
             try:
                 tool_call_result = await tool_manager.execute_tool(tool_name, tool_args)
                 # Extract result data and format as string
-                result_data = (
-                    tool_call_result.result
-                    if tool_call_result.success
-                    else f"Error: {tool_call_result.error}"
-                )
-                result_str = (
-                    json.dumps(result_data)
-                    if not isinstance(result_data, str)
-                    else result_data
-                )
+                if tool_call_result.success:
+                    try:
+                        result_str = _serialize_tool_result(tool_call_result.result)
+                    except Exception as serialize_err:
+                        import logging
+
+                        logging.getLogger(__name__).error(
+                            f"Serialization failed: {serialize_err}", exc_info=True
+                        )
+                        result_str = f"Error serializing result: {serialize_err}"
+                else:
+                    result_str = f"Error: {tool_call_result.error}"
 
                 messages.append(
                     {
@@ -429,6 +507,12 @@ async def _handle_tool_calls(
                     }
                 )
             except Exception as e:
+                import logging
+                import traceback
+
+                logging.getLogger(__name__).error(
+                    f"Tool execution exception: {e}", exc_info=True
+                )
                 error_msg = f"Tool execution failed: {e}"
                 output.error(error_msg)
                 messages.append(

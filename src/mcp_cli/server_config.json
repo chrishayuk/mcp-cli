@@ -35,6 +35,10 @@
     },
     "weather": {
       "url": "https://weather.chukai.io/mcp"
+    },
+    "telnet": {
+      "command": "uvx",
+      "args": ["chuk-mcp-telnet-client"]
     }
   }
 }

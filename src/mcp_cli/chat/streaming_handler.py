@@ -143,7 +143,9 @@ class StreamingResponseHandler:
         logger.debug(f"Tools available: {len(tools) if tools else 0}")
         if messages:
             last_msg = messages[-1]
-            logger.debug(f"Last message role: {last_msg.get('role')}, has content: {bool(last_msg.get('content'))}")
+            logger.debug(
+                f"Last message role: {last_msg.get('role')}, has content: {bool(last_msg.get('content'))}"
+            )
 
         # Start live display
         self._start_live_display()
@@ -168,7 +170,9 @@ class StreamingResponseHandler:
                 logger.debug("stream_with_timeout() completed successfully")
             except asyncio.TimeoutError:
                 logger.error("Streaming timed out after 120 seconds")
-                raise RuntimeError("Streaming response timed out - the API may be experiencing issues")
+                raise RuntimeError(
+                    "Streaming response timed out - the API may be experiencing issues"
+                )
 
             # IMPORTANT: After streaming is complete, finalize any remaining tool calls
             await self._finalize_streaming_tool_calls(tool_calls)
