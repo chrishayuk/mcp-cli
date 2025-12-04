@@ -1,5 +1,8 @@
 # MCP CLI - Model Context Protocol Command Line Interface
 
+[![CI](https://github.com/chrishayuk/mcp-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/chrishayuk/mcp-cli/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/mcp-cli.svg)](https://pypi.org/project/mcp-cli/)
+
 A powerful, feature-rich command-line interface for interacting with Model Context Protocol servers. This client enables seamless communication with LLMs through integration with the [CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor) and [CHUK-LLM](https://github.com/chrishayuk/chuk-llm), providing tool usage, conversation management, and multiple operational modes.
 
 **Default Configuration**: MCP CLI defaults to using Ollama with the `gpt-oss` reasoning model for local, privacy-focused operation without requiring API keys.
