@@ -102,6 +102,21 @@ def main_callback(
         help="Token storage backend: auto, keychain, windows, secretservice, encrypted, vault",
     ),
     max_turns: int = typer.Option(30, "--max-turns", help="Maximum conversation turns"),
+    include_tools: str | None = typer.Option(
+        None,
+        "--include-tools",
+        help="Comma-separated list of tool names to include (filters out all others)",
+    ),
+    exclude_tools: str | None = typer.Option(
+        None,
+        "--exclude-tools",
+        help="Comma-separated list of tool names to exclude",
+    ),
+    dynamic_tools: bool = typer.Option(
+        False,
+        "--dynamic-tools",
+        help="Enable dynamic tool discovery mode (uses meta-tools for on-demand loading)",
+    ),
 ) -> None:
     """MCP CLI - If no subcommand is given, start chat mode."""
 
@@ -115,6 +130,14 @@ def main_callback(
     # Store token backend preference if specified
     if token_backend:
         os.environ["MCP_CLI_TOKEN_BACKEND"] = token_backend
+
+    # Store tool filtering options if specified
+    if include_tools:
+        os.environ["MCP_CLI_INCLUDE_TOOLS"] = include_tools
+    if exclude_tools:
+        os.environ["MCP_CLI_EXCLUDE_TOOLS"] = exclude_tools
+    if dynamic_tools:
+        os.environ["MCP_CLI_DYNAMIC_TOOLS"] = "1"
 
     # Set UI theme and confirmation mode - use preference if not specified
     from mcp_cli.utils.preferences import get_preference_manager

@@ -22,6 +22,7 @@ from mcp_cli.auth import TokenManager, TokenStoreBackend
 from mcp_cli.constants import NAMESPACE
 from mcp_cli.tools.filter import ToolFilter
 from mcp_cli.tools.models import ServerInfo, ToolCallResult, ToolInfo, TransportType
+from mcp_cli.tools.meta_tools import MetaToolProvider
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,9 @@ class ToolManager:
             namespace=NAMESPACE,
             service_name="mcp-cli",
         )
+
+        # Setup meta-tool provider for dynamic tool discovery
+        self.meta_tool_provider = MetaToolProvider(self)
 
     # ================================================================
     # Initialization
@@ -274,9 +278,92 @@ class ToolManager:
     def _create_oauth_refresh_callback(self):
         """Create OAuth token refresh callback for StreamManager."""
 
-        async def refresh_oauth_token():
-            # Simplified - can be expanded with actual refresh logic
-            logger.debug("OAuth refresh callback triggered")
+        async def refresh_oauth_token(server_url: str | None = None) -> dict[str, str] | None:
+            """
+            Refresh OAuth token for a server and return updated headers.
+
+            Args:
+                server_url: URL of the server that needs token refresh
+
+            Returns:
+                Dictionary with updated Authorization header, or None if refresh failed
+            """
+            logger.info(f"OAuth token refresh triggered for URL: {server_url}")
+
+            if not server_url:
+                logger.warning("Cannot refresh OAuth token: server URL not provided")
+                return None
+
+            # Map URL back to server name
+            # Remove /mcp suffix if present for matching
+            base_url = server_url.replace("/mcp", "")
+            server_name = None
+
+            # Search all server lists for matching URL
+            for server_list in [self._http_servers, self._sse_servers]:
+                for server_config in server_list:
+                    config_url = server_config.get("url", "").replace("/mcp", "")
+                    if config_url == base_url or server_config.get("url") == server_url:
+                        server_name = server_config.get("name")
+                        break
+                if server_name:
+                    break
+
+            if not server_name:
+                logger.error(f"Cannot map URL {server_url} to a known server")
+                return None
+
+            logger.debug(f"Mapped URL {server_url} to server: {server_name}")
+
+            try:
+                # Get token manager
+                token_mgr = TokenManager(backend=TokenStoreBackend.AUTO, namespace=NAMESPACE, service_name="mcp-cli")
+
+                # Get existing token data
+                token_data = token_mgr.get_token(server_name)
+
+                if not token_data:
+                    logger.warning(f"No token found for server: {server_name}")
+                    return None
+
+                # Check if we have a refresh token
+                refresh_token = token_data.get("refresh_token")
+
+                if not refresh_token:
+                    logger.warning(f"No refresh_token available for server: {server_name}, re-authentication required")
+                    return None
+
+                # Attempt to refresh the token using the OAuth library
+                from mcp_cli.auth import OAuthHandler
+
+                # Create OAuth handler for this server (use base URL without /mcp)
+                oauth_handler = OAuthHandler(base_url)
+
+                # Refresh the token
+                logger.debug(f"Attempting to refresh OAuth token for {server_name}...")
+                new_tokens = await oauth_handler.refresh_access_token(refresh_token)
+
+                if not new_tokens or "access_token" not in new_tokens:
+                    logger.error(f"Token refresh failed for {server_name}")
+                    return None
+
+                # Store the new tokens
+                token_mgr.store_token(
+                    name=server_name,
+                    token_data=new_tokens,
+                    token_type="oauth"
+                )
+
+                logger.info(f"OAuth token refreshed successfully for {server_name}")
+
+                # Return updated Authorization header
+                return {
+                    "Authorization": f"Bearer {new_tokens['access_token']}"
+                }
+
+            except Exception as e:
+                logger.error(f"OAuth token refresh failed for {server_name}: {e}", exc_info=True)
+                return None
 
         return refresh_oauth_token
 
@@ -410,7 +497,22 @@ class ToolManager:
         namespace: str | None = None,
         timeout: float | None = None,
     ) -> ToolCallResult:
-        """Execute tool and return ToolCallResult with automatic recovery on transport errors."""
+        """Execute tool and return ToolCallResult with automatic recovery on transport errors.
+
+        Handles both regular MCP tools and meta-tools for dynamic discovery.
+        """
+        # Check if this is a meta-tool
+        if self.meta_tool_provider.is_meta_tool(tool_name):
+            logger.info(f"Executing meta-tool: {tool_name}")
+            try:
+                result = await self.meta_tool_provider.execute_meta_tool(tool_name, arguments)
+                return ToolCallResult(tool_name=tool_name, success=True, result=result)
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"Meta-tool execution failed: {error_msg}")
+                return ToolCallResult(tool_name=tool_name, success=False, error=error_msg)
+
+        # Regular MCP tool execution
         if not self.stream_manager:
             return ToolCallResult(
                 tool_name=tool_name, success=False, error="ToolManager not initialized"
@@ -447,8 +549,53 @@ class ToolManager:
     # ================================================================
 
     async def get_tools_for_llm(self, provider: str = "openai") -> list[dict[str, Any]]:
-        """Get tools filtered and validated for LLM."""
+        """Get tools filtered and validated for LLM.
+
+        Supports two modes:
+        1. Static mode (default): Returns all tools upfront
+        2. Dynamic mode (MCP_CLI_DYNAMIC_TOOLS=1): Returns only meta-tools for on-demand discovery
+        """
         try:
+            import os
+
+            # Check if dynamic tools mode is enabled
+            dynamic_mode = os.environ.get("MCP_CLI_DYNAMIC_TOOLS") == "1"
+
+            if dynamic_mode:
+                # Dynamic mode: Return meta-tools PLUS lightweight tool stubs
+                meta_tools = self.meta_tool_provider.get_meta_tools()
+
+                # Get all tools but with minimal schemas (just name + brief description)
+                all_tools = await self.get_all_tools()
+                lightweight_tools = []
+
+                for t in all_tools:
+                    # Truncate description to first sentence or 100 chars
+                    desc = t.description or "No description"
+                    if '.' in desc:
+                        desc = desc.split('.')[0] + '.'
+                    if len(desc) > 100:
+                        desc = desc[:97] + '...'
+
+                    lightweight_tools.append({
+                        "type": "function",
+                        "function": {
+                            "name": t.name,
+                            "description": desc + " (Use get_tool_schema for full details)",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {},
+                                "description": "Call get_tool_schema('" + t.name + "') for parameter details"
+                            },
+                        },
+                    })
+
+                # Combine meta-tools and lightweight tools
+                all_combined = meta_tools + lightweight_tools
+                logger.info(f"Dynamic tools mode: Returning {len(meta_tools)} meta-tools + {len(lightweight_tools)} lightweight tool stubs")
+                return all_combined
+
+            # Static mode: load all tools upfront
             # Get all tools first (handles both stream_manager and registry paths)
             all_tools = await self.get_all_tools()
 
@@ -466,8 +613,33 @@ class ToolManager:
                 for t in all_tools
             ]
 
+            # Apply include/exclude filtering from environment variables
+            include_tools = os.environ.get("MCP_CLI_INCLUDE_TOOLS")
+            exclude_tools = os.environ.get("MCP_CLI_EXCLUDE_TOOLS")
+
+            if include_tools:
+                include_set = {name.strip() for name in include_tools.split(",")}
+                raw_tools = [
+                    tool for tool in raw_tools
+                    if tool["function"]["name"] in include_set
+                ]
+                logger.info(f"Filtered to {len(raw_tools)} tools using include list: {include_set}")
+
+            if exclude_tools:
+                exclude_set = {name.strip() for name in exclude_tools.split(",")}
+                raw_tools = [
+                    tool for tool in raw_tools
+                    if tool["function"]["name"] not in exclude_set
+                ]
+                logger.info(f"Filtered to {len(raw_tools)} tools using exclude list: {exclude_set}")
+
             # Filter and validate for provider
             valid_tools, _ = self.tool_filter.filter_tools(raw_tools, provider=provider)
+
+            logger.info(f"Returning {len(valid_tools)} tools for LLM after all filtering")
+            if len(valid_tools) <= 10:
+                for tool in valid_tools:
+                    logger.info(f"  - {tool['function']['name']}")
 
             return valid_tools
 
