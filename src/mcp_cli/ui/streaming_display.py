@@ -63,6 +63,8 @@ class CompactStreamingDisplay:
         self.max_preview_lines = 4
         self.detected_type: str | None = None
         self.content = ""  # Store full content
+        self.reasoning_content = ""  # Store reasoning content (for DeepSeek reasoner)
+        self.reasoning_chars = 0  # Track reasoning length
 
     def detect_content_type(self, text: str):
         """Detect what type of content is being generated."""
@@ -214,6 +216,11 @@ class CompactStreamingDisplay:
             # Just count lines after preview is captured
             self.total_lines += text.count("\n")
 
+    def add_reasoning(self, reasoning: str):
+        """Update reasoning content (for models like DeepSeek reasoner)."""
+        self.reasoning_content = reasoning
+        self.reasoning_chars = len(reasoning)
+
     def get_panel(self, elapsed: float) -> Panel:
         """Get the compact display panel."""
         self.spinner_index = (self.spinner_index + 1) % len(self.spinner_frames)
@@ -222,52 +229,65 @@ class CompactStreamingDisplay:
         # Build display parts
         display_parts = []
 
-        # Status line with spinner and dynamic phase
-        phase = self.get_phase_message()
-        status = f"{spinner} {phase}..."
-        display_parts.append(Text(status, style="yellow"))
-
-        # Info line with statistics
-        if self.detected_type and self.detected_type != "text":
-            info = (
-                f"⎿  {self.total_chars:,} chars • {elapsed:.1f}s • {self.detected_type}"
-            )
+        # If we have reasoning but no content yet, show reasoning status
+        if self.reasoning_chars > 0 and self.total_chars == 0:
+            status = f"{spinner} Thinking (DeepSeek Reasoner)..."
+            display_parts.append(Text(status, style="magenta"))
+            info = f"⎿  {self.reasoning_chars:,} chars of reasoning • {elapsed:.1f}s"
+            display_parts.append(Text(info, style="dim"))
+            display_parts.append(Text(""))  # Empty line
+            display_parts.append(Text("   The model is analyzing the request...", style="dim italic"))
+            display_parts.append(Text("   💭 Reasoning in progress", style="cyan"))
         else:
-            info = f"⎿  {self.total_chars:,} chars • {elapsed:.1f}s"
-        display_parts.append(Text(info, style="dim"))
-        display_parts.append(Text(""))  # Empty line
+            # Status line with spinner and dynamic phase
+            phase = self.get_phase_message()
+            status = f"{spinner} {phase}..."
+            display_parts.append(Text(status, style="yellow"))
 
-        # Show the first few lines (preview)
-        if self.first_lines:
-            display_parts.append(Text("   Preview:", style="dim italic"))
-            for i, line in enumerate(self.first_lines[:3]):
-                line = line.strip()
-                if line:
-                    # Style based on detected type
-                    if self.detected_type == "code" and (
-                        line.startswith("def ") or line.startswith("class ")
-                    ):
-                        style = "green"
-                    elif self.detected_type == "markdown" and line.startswith("#"):
-                        style = "bold cyan"
-                    elif self.detected_type == "table" and "|" in line:
-                        style = "blue"
-                    else:
-                        style = "dim cyan"
-
-                    if len(line) > 55:
-                        display_parts.append(Text(f"   {line[:52]}...", style=style))
-                    else:
-                        display_parts.append(Text(f"   {line}", style=style))
-
-            # Add continuation indicator
-            if self.total_chars > 200:
-                display_parts.append(
-                    Text("   ... generating content", style="dim italic")
+            # Info line with statistics
+            if self.reasoning_chars > 0:
+                # Show both reasoning and content stats
+                info = f"⎿  {self.total_chars:,} chars • {self.reasoning_chars:,} reasoning chars • {elapsed:.1f}s"
+            elif self.detected_type and self.detected_type != "text":
+                info = (
+                    f"⎿  {self.total_chars:,} chars • {elapsed:.1f}s • {self.detected_type}"
                 )
-        else:
-            # Just show a simple cursor while starting
-            display_parts.append(Text("   ▌", style="yellow blink"))
+            else:
+                info = f"⎿  {self.total_chars:,} chars • {elapsed:.1f}s"
+            display_parts.append(Text(info, style="dim"))
+            display_parts.append(Text(""))  # Empty line
+
+            # Show the first few lines (preview)
+            if self.first_lines:
+                display_parts.append(Text("   Preview:", style="dim italic"))
+                for i, line in enumerate(self.first_lines[:3]):
+                    line = line.strip()
+                    if line:
+                        # Style based on detected type
+                        if self.detected_type == "code" and (
+                            line.startswith("def ") or line.startswith("class ")
+                        ):
+                            style = "green"
+                        elif self.detected_type == "markdown" and line.startswith("#"):
+                            style = "bold cyan"
+                        elif self.detected_type == "table" and "|" in line:
+                            style = "blue"
+                        else:
+                            style = "dim cyan"
+
+                        if len(line) > 55:
+                            display_parts.append(Text(f"   {line[:52]}...", style=style))
+                        else:
+                            display_parts.append(Text(f"   {line}", style=style))
+
+                # Add continuation indicator
+                if self.total_chars > 200:
+                    display_parts.append(
+                        Text("   ... generating content", style="dim italic")
+                    )
+            else:
+                # Just show a simple cursor while starting
+                display_parts.append(Text("   ▌", style="yellow blink"))
 
         return Panel(
             Group(*display_parts),
@@ -380,6 +400,13 @@ class StreamingContext:
     def update(self, content: str):
         """Update the streaming display with new content."""
         self.display.add_content(content)
+        elapsed = time.time() - self.start_time
+        if self.live:
+            self.live.update(self.display.get_panel(elapsed))  # type: ignore[unreachable]
+
+    def update_reasoning(self, reasoning: str):
+        """Update the reasoning display (for models like DeepSeek reasoner)."""
+        self.display.add_reasoning(reasoning)
         elapsed = time.time() - self.start_time
         if self.live:
             self.live.update(self.display.get_panel(elapsed))  # type: ignore[unreachable]

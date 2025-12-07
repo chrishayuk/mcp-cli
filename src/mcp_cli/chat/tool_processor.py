@@ -47,7 +47,7 @@ class ToolProcessor:
         setattr(self.context, "tool_processor", self)
 
     async def process_tool_calls(
-        self, tool_calls: list[Any], name_mapping: dict[str, str] | None = None
+        self, tool_calls: list[Any], name_mapping: dict[str, str] | None = None, reasoning_content: str | None = None
     ) -> None:
         """
         Execute tool_calls concurrently using the working tool_manager path.
@@ -55,6 +55,7 @@ class ToolProcessor:
         Args:
             tool_calls: List of tool call objects from the LLM
             name_mapping: Mapping from LLM tool names to actual tool names
+            reasoning_content: Optional reasoning content from the LLM (for DeepSeek reasoner)
         """
         if not tool_calls:
             output.warning("Empty tool_calls list received.")
@@ -66,6 +67,11 @@ class ToolProcessor:
         log.info(
             f"Processing {len(tool_calls)} tool calls with {len(name_mapping)} name mappings"
         )
+
+        # CRITICAL FIX: Add ONE assistant message with ALL tool calls to history BEFORE executing
+        # This ensures the conversation history follows the correct format:
+        # ASSISTANT (with all tool_calls) -> TOOL (result 1) -> TOOL (result 2) -> ...
+        self._add_assistant_message_with_tool_calls(tool_calls, reasoning_content)
 
         for idx, call in enumerate(tool_calls):
             if getattr(self.ui_manager, "interrupt_requested", False):
@@ -228,9 +234,10 @@ class ToolProcessor:
                 else:
                     content = f"Error: {tool_result.error}"
 
-                # Add to conversation history
-                self._add_tool_call_to_history(
-                    llm_tool_name, call_id, arguments, content
+                # Add only the tool result to conversation history
+                # (The assistant message with tool calls was already added)
+                self._add_tool_result_to_history(
+                    llm_tool_name, call_id, content
                 )
 
                 # Add to tool history (for /toolhistory command)
@@ -264,10 +271,11 @@ class ToolProcessor:
             except Exception as exc:
                 log.exception(f"Error executing tool call #{idx}")
 
-                # Add error to conversation history
+                # Add error to conversation history as a tool result
+                # (The assistant message with tool calls was already added)
                 error_content = f"Error: Could not execute tool. {exc}"
-                self._add_tool_call_to_history(
-                    llm_tool_name, call_id, raw_arguments, error_content
+                self._add_tool_result_to_history(
+                    llm_tool_name, call_id, error_content
                 )
 
     def _parse_arguments(self, raw_arguments: Any) -> dict[str, Any]:
@@ -318,35 +326,71 @@ class ToolProcessor:
         else:
             return str(result)
 
-    def _add_tool_call_to_history(
-        self, llm_tool_name: str, call_id: str, arguments: Any, content: str
+    def _add_assistant_message_with_tool_calls(
+        self, tool_calls: list[Any], reasoning_content: str | None = None
     ) -> None:
-        """Add tool call and response to conversation history."""
-        try:
-            # Format arguments for history
-            if isinstance(arguments, dict):
-                arg_json = json.dumps(arguments)
-            else:
-                arg_json = str(arguments)
+        """Add ONE assistant message with ALL tool calls to conversation history.
 
-            # Add assistant's tool call
-            self.context.conversation_history.append(
-                Message(
-                    role=MessageRole.ASSISTANT,
-                    content=None,
-                    tool_calls=[
-                        {
-                            "id": call_id,
-                            "type": "function",
-                            "function": {
-                                "name": llm_tool_name,
-                                "arguments": arg_json,
-                            },
-                        }
-                    ],
-                )
+        This must be called BEFORE executing tools to ensure correct conversation format.
+        """
+        try:
+            # Convert tool calls to dict format for history
+            formatted_tool_calls = []
+            for call in tool_calls:
+                if hasattr(call, "function"):
+                    fn = call.function
+                    llm_tool_name = getattr(fn, "name", "unknown_tool")
+                    raw_arguments = getattr(fn, "arguments", {})
+                    call_id = getattr(call, "id", f"call_{len(formatted_tool_calls)}")
+                elif isinstance(call, dict) and "function" in call:
+                    fn = call["function"]
+                    llm_tool_name = fn.get("name", "unknown_tool")
+                    raw_arguments = fn.get("arguments", {})
+                    call_id = call.get("id", f"call_{len(formatted_tool_calls)}")
+                else:
+                    log.warning(f"Unrecognized tool call format: {type(call)}")
+                    continue
+
+                # Format arguments for history
+                if isinstance(raw_arguments, dict):
+                    arg_json = json.dumps(raw_arguments)
+                else:
+                    arg_json = str(raw_arguments)
+
+                formatted_tool_calls.append({
+                    "id": call_id,
+                    "type": "function",
+                    "function": {
+                        "name": llm_tool_name,
+                        "arguments": arg_json,
+                    },
+                })
+
+            # Create ONE assistant message with all tool calls
+            assistant_msg = Message(
+                role=MessageRole.ASSISTANT,
+                content=None,
+                tool_calls=formatted_tool_calls,
             )
 
+            # Add reasoning_content if provided (for DeepSeek reasoner)
+            if reasoning_content:
+                assistant_msg.reasoning_content = reasoning_content
+
+            self.context.conversation_history.append(assistant_msg)
+            log.debug(f"Added assistant message with {len(formatted_tool_calls)} tool calls to history")
+
+        except Exception as e:
+            log.error(f"Error adding assistant message to history: {e}")
+
+    def _add_tool_result_to_history(
+        self, llm_tool_name: str, call_id: str, content: str
+    ) -> None:
+        """Add only the tool result to conversation history.
+
+        The assistant message with tool calls should already be in history.
+        """
+        try:
             # Add tool's response
             self.context.conversation_history.append(
                 Message(
@@ -357,7 +401,7 @@ class ToolProcessor:
                 )
             )
 
-            log.debug(f"Added tool call to conversation history: {llm_tool_name}")
+            log.debug(f"Added tool result to conversation history: {llm_tool_name}")
 
         except Exception as e:
             log.error(f"Error updating conversation history: {e}")

@@ -86,12 +86,24 @@ class Message(BaseModel):
     tool_call_id: str | None = Field(
         default=None, description="Tool call ID (for tool response messages)"
     )
+    reasoning_content: str | None = Field(
+        default=None, description="Reasoning content (for models like DeepSeek reasoner)"
+    )
 
     model_config = {"frozen": False}
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for LLM API calls."""
-        return self.model_dump(exclude_none=True, mode="json")  # type: ignore[no-any-return]
+        result = self.model_dump(exclude_none=True, mode="json")
+
+        # CRITICAL FIX: OpenAI (especially newer models like gpt-5-mini) requires
+        # the 'content' field to be present in assistant messages with tool_calls,
+        # even if it's null. Without this, some models may hang or reject the request.
+        if self.role == MessageRole.ASSISTANT and "tool_calls" in result:
+            if "content" not in result:
+                result["content"] = None
+
+        return result  # type: ignore[no-any-return]
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Message:

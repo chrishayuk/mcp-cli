@@ -52,7 +52,15 @@ class ToolManager:
         self.config_file = config_file
         self.servers = servers
         self.server_names = server_names or {}
-        self.tool_timeout = tool_timeout or 30.0
+        # Read from environment variable if not provided, default to 120.0
+        import os
+        env_timeout = os.environ.get("MCP_TOOL_TIMEOUT")
+        if tool_timeout is not None:
+            self.tool_timeout = tool_timeout
+        elif env_timeout:
+            self.tool_timeout = float(env_timeout)
+        else:
+            self.tool_timeout = 120.0
         self.max_concurrency = max_concurrency
         self.initialization_timeout = initialization_timeout
 
@@ -562,38 +570,11 @@ class ToolManager:
             dynamic_mode = os.environ.get("MCP_CLI_DYNAMIC_TOOLS") == "1"
 
             if dynamic_mode:
-                # Dynamic mode: Return meta-tools PLUS lightweight tool stubs
+                # Dynamic mode: Return ONLY meta-tools to stay within provider limits
+                # The LLM can discover available tools using list_tools() and get schemas using get_tool_schema()
                 meta_tools = self.meta_tool_provider.get_meta_tools()
-
-                # Get all tools but with minimal schemas (just name + brief description)
-                all_tools = await self.get_all_tools()
-                lightweight_tools = []
-
-                for t in all_tools:
-                    # Truncate description to first sentence or 100 chars
-                    desc = t.description or "No description"
-                    if '.' in desc:
-                        desc = desc.split('.')[0] + '.'
-                    if len(desc) > 100:
-                        desc = desc[:97] + '...'
-
-                    lightweight_tools.append({
-                        "type": "function",
-                        "function": {
-                            "name": t.name,
-                            "description": desc + " (Use get_tool_schema for full details)",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {},
-                                "description": "Call get_tool_schema('" + t.name + "') for parameter details"
-                            },
-                        },
-                    })
-
-                # Combine meta-tools and lightweight tools
-                all_combined = meta_tools + lightweight_tools
-                logger.info(f"Dynamic tools mode: Returning {len(meta_tools)} meta-tools + {len(lightweight_tools)} lightweight tool stubs")
-                return all_combined
+                logger.info(f"Dynamic tools mode: Returning {len(meta_tools)} meta-tools only")
+                return meta_tools
 
             # Static mode: load all tools upfront
             # Get all tools first (handles both stream_manager and registry paths)

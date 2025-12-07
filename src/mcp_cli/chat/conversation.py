@@ -124,6 +124,19 @@ class ConversationProcessor:
 
                     response_content = completion.get("response", "No response")
                     tool_calls = completion.get("tool_calls", [])
+                    reasoning_content = completion.get("reasoning_content")  # Extract reasoning content
+
+                    # DEBUG: Log what we got from the model
+                    log.info(f"=== COMPLETION RESULT ===")
+                    log.info(f"Response length: {len(response_content) if response_content else 0}")
+                    log.info(f"Tool calls count: {len(tool_calls) if tool_calls else 0}")
+                    log.info(f"Reasoning length: {len(reasoning_content) if reasoning_content else 0}")
+                    if response_content and response_content != "No response":
+                        log.info(f"Response preview: {response_content[:200]}")
+                    if tool_calls:
+                        for i, tc in enumerate(tool_calls):
+                            if isinstance(tc, dict) and "function" in tc:
+                                log.info(f"Tool call {i}: {tc['function'].get('name', 'unknown')}")
 
                     # If model requested tool calls, execute them
                     if tool_calls and len(tool_calls) > 0:
@@ -140,6 +153,11 @@ class ConversationProcessor:
                                     content="I've reached the maximum number of conversation turns. The tool results have been provided above.",
                                 )
                             )
+                            # Stop streaming UI before breaking
+                            if self.ui_manager.is_streaming_response:
+                                self.ui_manager.stop_streaming_response()
+                            if hasattr(self.ui_manager, "streaming_handler"):
+                                self.ui_manager.streaming_handler = None
                             break
 
                         # Create signature to detect duplicate tool calls
@@ -169,9 +187,16 @@ class ConversationProcessor:
                             log.warning(
                                 f"Duplicate tool call detected: {current_sig_str}"
                             )
-                            output.info(
-                                "Tool has already been executed. Results are shown above."
+                            output.warning(
+                                "The model attempted to call the same tools again instead of processing the results.\n"
+                                "This may indicate the model didn't understand the tool outputs.\n"
+                                "Returning to prompt."
                             )
+                            # CRITICAL: Stop streaming UI before breaking
+                            if self.ui_manager.is_streaming_response:
+                                self.ui_manager.stop_streaming_response()
+                            if hasattr(self.ui_manager, "streaming_handler"):
+                                self.ui_manager.streaming_handler = None
                             break
 
                         last_tool_signature = current_sig_str
@@ -186,7 +211,7 @@ class ConversationProcessor:
 
                         # Process tool calls - this will handle streaming display
                         await self.tool_processor.process_tool_calls(
-                            tool_calls, name_mapping
+                            tool_calls, name_mapping, reasoning_content=reasoning_content
                         )
                         continue
 
@@ -210,9 +235,11 @@ class ConversationProcessor:
                             self.ui_manager.streaming_handler = None
 
                     # Add to conversation history
-                    self.context.conversation_history.append(
-                        Message(role=MessageRole.ASSISTANT, content=response_content)
-                    )
+                    # Include reasoning_content if present (for DeepSeek reasoner and similar models)
+                    message = Message(role=MessageRole.ASSISTANT, content=response_content)
+                    if reasoning_content:
+                        message.reasoning_content = reasoning_content
+                    self.context.conversation_history.append(message)
                     break
 
                 except asyncio.CancelledError:
@@ -228,6 +255,11 @@ class ConversationProcessor:
                             content=f"I encountered an error: {exc}",
                         )
                     )
+                    # Stop streaming UI before breaking
+                    if self.ui_manager.is_streaming_response:
+                        self.ui_manager.stop_streaming_response()
+                    if hasattr(self.ui_manager, "streaming_handler"):
+                        self.ui_manager.streaming_handler = None
                     break
         except asyncio.CancelledError:
             raise

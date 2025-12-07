@@ -44,6 +44,9 @@ class StreamingResponseHandler:
         # Track previous response to detect accumulated vs delta
         self._previous_response_field = ""
 
+        # Track reasoning content (for DeepSeek reasoner and similar models)
+        self._reasoning_content: str = ""
+
     async def stream_response(
         self,
         client,
@@ -72,6 +75,7 @@ class StreamingResponseHandler:
         self._accumulated_tool_calls = []
         self._current_tool_call = None
         self._previous_response_field = ""  # Reset for new streaming session
+        self._reasoning_content = ""  # Reset reasoning content for new session
 
         try:
             # Check if client supports streaming via create_completion with stream=True
@@ -150,24 +154,84 @@ class StreamingResponseHandler:
 
         try:
             # Use chuk-llm's streaming approach with timeout protection
-            # Wrap the entire streaming process in a timeout (120 seconds total)
-            async def stream_with_timeout():
+            # CRITICAL FIX: Add per-chunk timeout to detect when stream stalls
+            async def stream_with_chunk_timeout():
                 logger.debug("Creating streaming completion...")
-                async for chunk in client.create_completion(
+                logger.debug(f"Message count: {len(messages)}, Tools: {len(tools) if tools else 0}")
+
+                # Log last few messages for debugging (without full content to avoid spam)
+                if messages:
+                    for i, msg in enumerate(messages[-3:], start=max(0, len(messages) - 3)):
+                        role = msg.get('role') if isinstance(msg, dict) else getattr(msg, 'role', 'unknown')
+                        has_tools = bool(msg.get('tool_calls') if isinstance(msg, dict) else getattr(msg, 'tool_calls', None))
+                        has_content = bool(msg.get('content') if isinstance(msg, dict) else getattr(msg, 'content', None))
+                        logger.debug(f"  Message {i}: role={role}, has_content={has_content}, has_tool_calls={has_tools}")
+
+                chunk_timeout = 45.0  # 45 seconds between chunks (DeepSeek reasoner can be slow)
+
+                stream = client.create_completion(
                     messages=messages, tools=tools, stream=True, **kwargs
-                ):
-                    if self._interrupted:
-                        logger.debug("Breaking from stream due to interruption")
+                )
+
+                stream_iter = stream.__aiter__()
+                chunks_received = 0
+                last_chunk_time = time.time()
+
+                while True:
+                    try:
+                        # Wait for next chunk with timeout
+                        chunk = await asyncio.wait_for(
+                            stream_iter.__anext__(),
+                            timeout=chunk_timeout
+                        )
+                        chunks_received += 1
+                        last_chunk_time = time.time()
+
+                        if self._interrupted:
+                            logger.debug("Breaking from stream due to interruption")
+                            # CRITICAL: Close the stream iterator to prevent hanging
+                            try:
+                                await stream_iter.aclose()
+                            except Exception as e:
+                                logger.debug(f"Error closing stream iterator on interrupt: {e}")
+                            break
+
+                        await self._process_chunk(chunk, tool_calls)
+
+                    except StopAsyncIteration:
+                        # Stream ended normally
+                        logger.debug(f"Stream completed normally after {chunks_received} chunks")
                         break
-                    await self._process_chunk(chunk, tool_calls)
-                logger.debug("Streaming iteration completed normally")
+                    except asyncio.TimeoutError:
+                        # No chunk received within timeout
+                        time_waiting = time.time() - last_chunk_time
+                        warning_msg = (
+                            f"⚠️  Stream stalled after {chunks_received} chunks. "
+                            f"No data received for {time_waiting:.1f}s. "
+                            f"Finalizing with what we have..."
+                        )
+                        logger.warning(warning_msg)
+
+                        # Show warning to user via display
+                        if self.chat_display:
+                            from chuk_term.ui import output
+                            output.warning(warning_msg)
+
+                        # CRITICAL: Close the stream iterator to prevent hanging
+                        try:
+                            await stream_iter.aclose()
+                        except Exception as e:
+                            logger.debug(f"Error closing stream iterator: {e}")
+
+                        # Break and finalize what we have so far
+                        break
 
             try:
-                logger.debug("Starting stream_with_timeout() with 120s timeout")
-                await asyncio.wait_for(stream_with_timeout(), timeout=120.0)
-                logger.debug("stream_with_timeout() completed successfully")
+                logger.debug("Starting stream with chunk timeout protection...")
+                await asyncio.wait_for(stream_with_chunk_timeout(), timeout=300.0)
+                logger.debug("Streaming completed successfully")
             except asyncio.TimeoutError:
-                logger.error("Streaming timed out after 120 seconds")
+                logger.error("Streaming timed out after 300 seconds")
                 raise RuntimeError("Streaming response timed out - the API may be experiencing issues")
 
             # IMPORTANT: After streaming is complete, finalize any remaining tool calls
@@ -195,6 +259,10 @@ class StreamingResponseHandler:
             "streaming": True,
             "interrupted": self._interrupted,
         }
+
+        # Add reasoning_content if it was captured during streaming
+        if hasattr(self, '_reasoning_content') and self._reasoning_content:
+            result["reasoning_content"] = self._reasoning_content
 
         logger.debug(f"Streaming completed: {len(tool_calls)} tool calls extracted")
         for i, tc in enumerate(tool_calls):
@@ -308,6 +376,8 @@ class StreamingResponseHandler:
 
         try:
             # Log chunk for debugging
+            if self.chunk_count % 100 == 0:
+                logger.info(f"Processing chunk {self.chunk_count}")
             logger.debug(f"Processing chunk {self.chunk_count}: {chunk}")
 
             # Extract content from chunk
@@ -325,9 +395,38 @@ class StreamingResponseHandler:
                 logger.debug(f"Extracted tool call data: {tool_call_data}")
                 self._process_tool_call_chunk(tool_call_data, tool_calls)
 
-            # Update display with streaming content
-            if not self._interrupted and content:
-                if self.chat_display:
+            # Handle reasoning_content in chunks (for DeepSeek reasoner and similar models)
+            if "reasoning_content" in chunk and chunk["reasoning_content"]:
+                reasoning = chunk["reasoning_content"]
+                if isinstance(reasoning, str):
+                    # Check if it's accumulated or delta
+                    if reasoning.startswith(self._reasoning_content):
+                        # Accumulated - just update
+                        self._reasoning_content = reasoning
+                    else:
+                        # Delta - append
+                        self._reasoning_content += reasoning
+
+                    # Log every 1000 chars to show progress
+                    if len(self._reasoning_content) % 1000 < 100:
+                        logger.info(f"Reasoning progress: {len(self._reasoning_content)} chars")
+                    else:
+                        logger.debug(f"Captured reasoning_content: {len(self._reasoning_content)} chars")
+
+                    # Update display to show reasoning progress
+                    if self.chat_display and hasattr(self.chat_display, 'update_reasoning'):
+                        self.chat_display.update_reasoning(self._reasoning_content)
+                    elif self.streaming_context and hasattr(self.streaming_context, 'update_reasoning'):
+                        self.streaming_context.update_reasoning(self._reasoning_content)
+
+            # Update display with streaming content and chunk count
+            if not self._interrupted and self.chat_display:
+                # Update chunk count on every chunk (even empty ones)
+                if hasattr(self.chat_display, 'update_chunk_count'):
+                    self.chat_display.update_chunk_count(self.chunk_count)
+
+                # Update content if present
+                if content:
                     self.chat_display.update_streaming(content)
                     logger.debug(
                         f"Updated centralized display with: {repr(content[:50])}"
@@ -675,6 +774,8 @@ class StreamingResponseHandler:
 
         This is where we decide which tool calls are complete and ready to execute.
         """
+        logger.info("=== FINALIZING STREAMING TOOL CALLS ===")
+        logger.info(f"Accumulated tool calls to process: {len(self._accumulated_tool_calls)}")
         logger.debug("Finalizing streaming tool calls after completion")
 
         for tc in self._accumulated_tool_calls:
@@ -693,7 +794,7 @@ class StreamingResponseHandler:
 
             # Must have a name
             if not name:
-                logger.debug("Skipping tool call without name")
+                logger.warning(f"⚠️  SKIPPING tool call without name - state: {state}")
                 continue
 
             # Generic parameter validation - no hard-coded tool names
@@ -726,7 +827,7 @@ class StreamingResponseHandler:
                         func["arguments"] = fixed_args
                         logger.debug(f"Fixed JSON for tool: {name}")
                     except json.JSONDecodeError:
-                        logger.warning(f"Cannot fix JSON for tool {name}, skipping")
+                        logger.warning(f"⚠️  SKIPPING tool call {name} - Cannot fix invalid JSON arguments: {args}")
                         continue
 
             # Clean up and add to final list

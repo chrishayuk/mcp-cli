@@ -94,7 +94,7 @@ def main_callback(
     tool_timeout: float | None = typer.Option(
         None,
         "--tool-timeout",
-        help="Tool execution timeout in seconds (default: 120, can also set MCP_TOOL_TIMEOUT env var)",
+        help="Tool execution timeout in seconds (default: 120, streaming timeout: 300, can also set MCP_TOOL_TIMEOUT env var)",
     ),
     token_backend: str | None = typer.Option(
         None,

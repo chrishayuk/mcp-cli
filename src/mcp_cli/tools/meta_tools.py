@@ -37,6 +37,23 @@ class MetaToolProvider:
             {
                 "type": "function",
                 "function": {
+                    "name": "list_tools",
+                    "description": "List all available tools. Use this to see what tools you can use. Returns tool names and brief descriptions.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "limit": {
+                                "type": "integer",
+                                "description": "Maximum number of tools to return (default: 50)",
+                                "default": 50,
+                            },
+                        },
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "search_tools",
                     "description": "Search for available tools by name or description. Use this to discover what tools are available before using them.",
                     "parameters": {
@@ -73,7 +90,62 @@ class MetaToolProvider:
                     },
                 },
             },
+            {
+                "type": "function",
+                "function": {
+                    "name": "call_tool",
+                    "description": "Execute any discovered tool with the specified arguments. First use search_tools or list_tools to find tools, then get_tool_schema to see what parameters are needed, then call_tool to execute it. Pass tool parameters as individual properties (e.g., for tool 'add' with params 'a' and 'b', use: {\"tool_name\": \"add\", \"a\": 1, \"b\": 2}).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "tool_name": {
+                                "type": "string",
+                                "description": "Name of the tool to execute",
+                            },
+                        },
+                        "required": ["tool_name"],
+                        "additionalProperties": True,
+                    },
+                },
+            },
         ]
+
+    async def list_tools(self, limit: int = 50) -> list[dict[str, Any]]:
+        """List all available tools with brief descriptions.
+
+        Args:
+            limit: Maximum number of tools to return
+
+        Returns:
+            List of tools with name and brief description
+        """
+        try:
+            # Get all available tools
+            all_tools = await self.tool_manager.get_all_tools()
+
+            # Limit results
+            limited_tools = all_tools[:limit]
+
+            # Return summary info
+            results = []
+            for tool in limited_tools:
+                # Truncate description to keep it brief
+                desc = tool.description or "No description"
+                if len(desc) > 200:
+                    desc = desc[:197] + "..."
+
+                results.append({
+                    "name": tool.name,
+                    "description": desc,
+                    "namespace": tool.namespace,
+                })
+
+            logger.info(f"list_tools() returned {len(results)} tools (total available: {len(all_tools)})")
+            return results
+
+        except Exception as e:
+            logger.error(f"Error in list_tools: {e}")
+            return []
 
     async def search_tools(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         """Search for tools matching the query.
@@ -175,6 +247,77 @@ class MetaToolProvider:
             logger.error(f"Error in get_tool_schema: {e}")
             return {"error": str(e)}
 
+    async def call_tool(
+        self, tool_name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Execute a tool by name with given arguments.
+
+        This is the proxy method that allows the LLM to call any discovered tool.
+
+        Args:
+            tool_name: Name of the tool to execute
+            arguments: Arguments to pass to the tool
+
+        Returns:
+            Tool execution result
+        """
+        try:
+            # Delegate to the tool manager's execute_tool method
+            result = await self.tool_manager.execute_tool(
+                tool_name=tool_name,
+                arguments=arguments,
+                namespace=None,  # Let tool manager figure out the namespace
+                timeout=None,  # Use default timeout
+            )
+
+            if result.success:
+                logger.info(f"call_tool('{tool_name}') succeeded, result type: {type(result.result)}")
+                # Extract the actual result value, unwrapping nested structures
+                actual_result = result.result
+
+                # Unwrap nested ToolResult/dict structures
+                max_depth = 5
+                for _ in range(max_depth):
+                    # If it's a ToolResult, extract the result field
+                    if hasattr(actual_result, 'result'):
+                        actual_result = actual_result.result
+                        logger.debug(f"Unwrapped ToolResult, new type: {type(actual_result)}")
+                    # If it's a dict with 'content' key, extract content
+                    elif isinstance(actual_result, dict) and 'content' in actual_result:
+                        actual_result = actual_result['content']
+                        logger.debug(f"Extracted 'content', new type: {type(actual_result)}")
+                    else:
+                        break
+
+                # Format the result for the LLM
+                try:
+                    formatted_result = self.tool_manager.format_tool_response(actual_result)
+                    logger.debug(f"Formatted result: {formatted_result}")
+                    return {
+                        "success": True,
+                        "result": formatted_result,
+                    }
+                except Exception as fmt_error:
+                    logger.error(f"Error formatting result: {fmt_error}", exc_info=True)
+                    # Try to convert to string as fallback
+                    return {
+                        "success": True,
+                        "result": str(actual_result),
+                    }
+            else:
+                logger.warning(f"call_tool('{tool_name}') failed: {result.error}")
+                return {
+                    "success": False,
+                    "error": result.error or "Tool execution failed",
+                }
+
+        except Exception as e:
+            logger.error(f"Error in call_tool('{tool_name}'): {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
     async def execute_meta_tool(
         self, tool_name: str, arguments: dict[str, Any]
     ) -> dict[str, Any]:
@@ -187,7 +330,12 @@ class MetaToolProvider:
         Returns:
             Tool execution result
         """
-        if tool_name == "search_tools":
+        if tool_name == "list_tools":
+            limit = arguments.get("limit", 50)
+            results = await self.list_tools(limit)
+            return {"results": results, "count": len(results), "total_available": len(await self.tool_manager.get_all_tools())}
+
+        elif tool_name == "search_tools":
             query = arguments.get("query", "")
             limit = arguments.get("limit", 10)
             results = await self.search_tools(query, limit)
@@ -197,6 +345,14 @@ class MetaToolProvider:
             tool_name_arg = arguments.get("tool_name", "")
             schema = await self.get_tool_schema(tool_name_arg)
             return schema
+
+        elif tool_name == "call_tool":
+            tool_name_arg = arguments.get("tool_name", "")
+            # Extract tool arguments from the remaining parameters
+            # Remove 'tool_name' from arguments to get the actual tool parameters
+            tool_arguments = {k: v for k, v in arguments.items() if k != "tool_name"}
+            result = await self.call_tool(tool_name_arg, tool_arguments)
+            return result
 
         else:
             return {"error": f"Unknown meta-tool: {tool_name}"}
@@ -210,4 +366,4 @@ class MetaToolProvider:
         Returns:
             True if it's a meta-tool
         """
-        return tool_name in ["search_tools", "get_tool_schema"]
+        return tool_name in ["list_tools", "search_tools", "get_tool_schema", "call_tool"]

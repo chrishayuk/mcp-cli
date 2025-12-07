@@ -5,6 +5,7 @@ Clean chat handler that uses ModelManager and ChatContext with streaming support
 
 from __future__ import annotations
 
+import asyncio
 import gc
 import logging
 
@@ -286,8 +287,9 @@ async def _run_enhanced_chat_loop(
             # Use the enhanced conversation processor that handles streaming
             await convo.process_conversation(max_turns=max_turns)
 
-        except KeyboardInterrupt:
-            # Handle Ctrl+C gracefully
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            # Handle Ctrl+C gracefully (KeyboardInterrupt or asyncio.CancelledError in async code)
+            logger.info(f"Interrupt in chat loop - streaming={ui.is_streaming_response}, tools_running={ui.tools_running}")
             if ui.is_streaming_response:
                 output.warning("\nStreaming interrupted - type 'exit' to quit.")
                 ui.interrupt_streaming()
@@ -296,6 +298,9 @@ async def _run_enhanced_chat_loop(
                 ui._interrupt_now()
             else:
                 output.warning("\nInterrupted - type 'exit' to quit.")
+            # CRITICAL: Continue the loop instead of exiting
+            logger.info("Continuing chat loop after interrupt...")
+            continue
         except EOFError:
             output.panel("EOF detected - exiting chat.", style="red", title="Exit")
             break

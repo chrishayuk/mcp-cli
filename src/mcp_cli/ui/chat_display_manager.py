@@ -17,6 +17,7 @@ Replaces scattered UI logic from:
 
 import time
 import json
+import asyncio
 from typing import Any
 
 from chuk_term.ui import output
@@ -40,6 +41,11 @@ class ChatDisplayManager:
         self.current_tool: ToolExecutionState | None = None
         self.tool_start_time = 0.0
 
+        # Reasoning state (for models like DeepSeek reasoner)
+        self.reasoning_content = ""
+        self.reasoning_chars = 0
+        self.reasoning_last_update = 0.0
+
         # Spinner animation
         self.spinner_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
         self.spinner_index = 0
@@ -48,14 +54,26 @@ class ChatDisplayManager:
         self.live_display_active = False
         self.last_status_line = ""
 
+        # Background refresh task
+        self._refresh_task: asyncio.Task | None = None
+        self._stop_refresh = False
+
+        # Chunk tracking for debugging
+        self.chunks_received = 0
+
     # ==================== STREAMING METHODS ====================
 
     def start_streaming(self):
         """Start streaming response display."""
         self.is_streaming = True
         self.streaming_content = ""
+        self.reasoning_content = ""
+        self.reasoning_chars = 0
+        self.reasoning_last_update = 0.0
+        self.chunks_received = 0
         self.streaming_start_time = time.time()
         self._ensure_live_display()
+        self._start_refresh_task()
 
     def update_streaming(self, content: str):
         """Update streaming content."""
@@ -63,12 +81,26 @@ class ChatDisplayManager:
             self.streaming_content += content
             self._refresh_display()
 
+    def update_reasoning(self, reasoning: str):
+        """Update reasoning content (for models like DeepSeek reasoner)."""
+        if self.is_streaming:
+            self.reasoning_content = reasoning
+            self.reasoning_chars = len(reasoning)
+            self.reasoning_last_update = time.time()
+            self._refresh_display()
+
+    def update_chunk_count(self, count: int):
+        """Update the number of chunks received (for debugging)."""
+        if self.is_streaming:
+            self.chunks_received = count
+
     def finish_streaming(self):
         """Finish streaming and show final response."""
         if not self.is_streaming:
             return
 
         self.is_streaming = False
+        self._stop_refresh_task()
         self._stop_live_display()
 
         # Show final response
@@ -87,6 +119,7 @@ class ChatDisplayManager:
 
         # Start animated tool execution
         self._ensure_live_display()
+        self._start_refresh_task()
 
     def finish_tool_execution(self, result: str, success: bool = True):
         """Finish tool execution and show final result."""
@@ -101,6 +134,7 @@ class ChatDisplayManager:
         self.current_tool.completed = True
 
         self.is_tool_executing = False
+        self._stop_refresh_task()
         self._stop_live_display()
 
         # Show final tool result
@@ -160,7 +194,33 @@ class ChatDisplayManager:
         if self.is_streaming:
             elapsed = time.time() - self.streaming_start_time
             char_count = len(self.streaming_content)
-            status = f"{spinner} Generating response... {char_count:,} chars • {elapsed:.1f}s"
+
+            # If we have reasoning but no content yet, show reasoning status
+            if self.reasoning_chars > 0 and char_count == 0:
+                # Check if reasoning has stalled (no updates for 5+ seconds)
+                reasoning_stalled = (
+                    self.reasoning_last_update > 0 and
+                    (time.time() - self.reasoning_last_update) > 5.0
+                )
+                if reasoning_stalled:
+                    status = f"{spinner} Processing response (reasoning complete: {self.reasoning_chars:,} chars) • {elapsed:.1f}s"
+                else:
+                    status = f"{spinner} Reasoning... {self.reasoning_chars:,} chars • {elapsed:.1f}s"
+            elif self.reasoning_chars > 0:
+                # Show both reasoning and response
+                status = f"{spinner} Responding... {char_count:,} chars (reasoning: {self.reasoning_chars:,}) • {elapsed:.1f}s"
+            elif char_count == 0:
+                # No content yet - show "thinking" status
+                # Show chunk count for debugging if we've received chunks but no content
+                if self.chunks_received > 0:
+                    status = f"{spinner} Thinking... ({self.chunks_received} chunks, no content) • {elapsed:.1f}s"
+                elif elapsed > 30.0:
+                    status = f"{spinner} Thinking... (no response yet) • {elapsed:.1f}s"
+                else:
+                    status = f"{spinner} Thinking... • {elapsed:.1f}s"
+            else:
+                # Show character count as content is being generated
+                status = f"{spinner} Responding... {char_count:,} chars • {elapsed:.1f}s"
             return status
 
         # Tool execution section
@@ -243,3 +303,36 @@ class ChatDisplayManager:
             except (json.JSONDecodeError, TypeError):
                 # Use as plain text
                 output.print(str(result))
+
+    # ==================== BACKGROUND REFRESH METHODS ====================
+
+    def _start_refresh_task(self):
+        """Start background task to refresh display periodically."""
+        if self._refresh_task is None or self._refresh_task.done():
+            self._stop_refresh = False
+            try:
+                # Try to get the running event loop
+                loop = asyncio.get_running_loop()
+                self._refresh_task = loop.create_task(self._refresh_loop())
+                # Task created successfully
+            except RuntimeError:
+                # No event loop running or not in async context
+                # This is okay - we'll just skip the background refresh
+                # and rely on manual refresh calls
+                pass
+
+    def _stop_refresh_task(self):
+        """Stop the background refresh task."""
+        self._stop_refresh = True
+        if self._refresh_task and not self._refresh_task.done():
+            self._refresh_task.cancel()
+            self._refresh_task = None
+
+    async def _refresh_loop(self):
+        """Background loop to refresh display every 100ms."""
+        try:
+            while not self._stop_refresh and (self.is_streaming or self.is_tool_executing):
+                self._refresh_display()
+                await asyncio.sleep(0.1)  # Refresh every 100ms
+        except asyncio.CancelledError:
+            pass

@@ -324,18 +324,27 @@ class ChatUIManager:
         logger.debug("Started streaming response")
 
     def stop_streaming_response(self) -> None:
-        """Mark that streaming has stopped."""
+        """Mark that streaming has stopped and clean up display."""
         self.is_streaming_response = False
+        # CRITICAL: Stop the background refresh task in the display manager
+        if hasattr(self, 'display') and self.display and self.display.is_streaming:
+            self.display.finish_streaming()
         logger.debug("Stopped streaming response")
 
     def interrupt_streaming(self) -> None:
         """Interrupt streaming if active."""
         if self.is_streaming_response and self.streaming_handler:
             try:
-                self.streaming_handler.interrupt()
+                self.streaming_handler.interrupt_streaming()
                 logger.debug("Interrupted streaming")
             except Exception as e:
                 logger.warning(f"Could not interrupt streaming: {e}")
+
+        # CRITICAL: Always stop streaming UI when interrupted
+        if self.is_streaming_response:
+            self.stop_streaming_response()
+        if hasattr(self, "streaming_handler"):
+            self.streaming_handler = None
 
     # ─── Signal Handling ─────────────────────────────────────────────────
 

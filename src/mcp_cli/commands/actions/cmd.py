@@ -5,19 +5,19 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from chuk_term.ui import output
 from mcp_cli.commands.models.cmd import MessageRole, Message
 
 
 async def cmd_action_async(
-    input_file: str | None = None,
-    output_file: str | None = None,
-    prompt: str | None = None,
-    tool: str | None = None,
-    tool_args: str | None = None,
-    system_prompt: str | None = None,
+    input_file: Optional[str] = None,
+    output_file: Optional[str] = None,
+    prompt: Optional[str] = None,
+    tool: Optional[str] = None,
+    tool_args: Optional[str] = None,
+    system_prompt: Optional[str] = None,
     raw: bool = False,
     single_turn: bool = False,
     max_turns: int = 30,
@@ -87,8 +87,8 @@ async def cmd_action_async(
 
 async def _execute_tool_direct(
     tool_name: str,
-    tool_args_json: str | None,
-    output_file: str | None,
+    tool_args_json: Optional[str],
+    output_file: Optional[str],
     raw: bool,
 ) -> None:
     """Execute a tool directly without LLM interaction."""
@@ -125,6 +125,29 @@ async def _execute_tool_direct(
         # Extract the actual result
         result_data = tool_call_result.result
 
+        # Handle dict wrapper with ToolResult inside
+        if isinstance(result_data, dict) and 'content' in result_data:
+            content = result_data['content']
+            if hasattr(content, 'content'):
+                # Extract text from MCP ToolResult content blocks
+                text_parts = []
+                for item in content.content:
+                    if isinstance(item, dict) and item.get('type') == 'text':
+                        text_parts.append(item.get('text', ''))
+                    elif hasattr(item, 'text'):
+                        text_parts.append(item.text)
+                result_data = '\n'.join(text_parts) if text_parts else str(content)
+        # Handle ToolResult objects directly
+        elif hasattr(result_data, 'content'):
+            # Extract text from MCP ToolResult content blocks
+            text_parts = []
+            for item in result_data.content:
+                if isinstance(item, dict) and item.get('type') == 'text':
+                    text_parts.append(item.get('text', ''))
+                elif hasattr(item, 'text'):
+                    text_parts.append(item.text)
+            result_data = '\n'.join(text_parts) if text_parts else str(result_data)
+
         # Format output
         if raw:
             result_str = (
@@ -154,10 +177,10 @@ async def _execute_tool_direct(
 
 
 async def _execute_prompt_mode(
-    input_file: str | None,
-    output_file: str | None,
-    prompt: str | None,
-    system_prompt: str | None,
+    input_file: Optional[str],
+    output_file: Optional[str],
+    prompt: Optional[str],
+    system_prompt: Optional[str],
     raw: bool,
     single_turn: bool,
     max_turns: int,
@@ -330,6 +353,29 @@ async def _handle_tool_calls(
                 if tool_call_result.success
                 else f"Error: {tool_call_result.error}"
             )
+
+            # Handle dict wrapper with ToolResult inside
+            if isinstance(result_data, dict) and 'content' in result_data:
+                content = result_data['content']
+                if hasattr(content, 'content'):
+                    text_parts = []
+                    for item in content.content:
+                        if isinstance(item, dict) and item.get('type') == 'text':
+                            text_parts.append(item.get('text', ''))
+                        elif hasattr(item, 'text'):
+                            text_parts.append(item.text)
+                    result_data = '\n'.join(text_parts) if text_parts else str(content)
+            # Handle ToolResult objects directly
+            elif hasattr(result_data, 'content'):
+                # Extract text from MCP ToolResult content blocks
+                text_parts = []
+                for item in result_data.content:
+                    if isinstance(item, dict) and item.get('type') == 'text':
+                        text_parts.append(item.get('text', ''))
+                    elif hasattr(item, 'text'):
+                        text_parts.append(item.text)
+                result_data = '\n'.join(text_parts) if text_parts else str(result_data)
+
             result_str = (
                 json.dumps(result_data)
                 if not isinstance(result_data, str)
@@ -414,6 +460,29 @@ async def _handle_tool_calls(
                     if tool_call_result.success
                     else f"Error: {tool_call_result.error}"
                 )
+
+                # Handle dict wrapper with ToolResult inside
+                if isinstance(result_data, dict) and 'content' in result_data:
+                    content = result_data['content']
+                    if hasattr(content, 'content'):
+                        text_parts = []
+                        for item in content.content:
+                            if isinstance(item, dict) and item.get('type') == 'text':
+                                text_parts.append(item.get('text', ''))
+                            elif hasattr(item, 'text'):
+                                text_parts.append(item.text)
+                        result_data = '\n'.join(text_parts) if text_parts else str(content)
+                # Handle ToolResult objects directly
+                elif hasattr(result_data, 'content'):
+                    # Extract text from MCP ToolResult content blocks
+                    text_parts = []
+                    for item in result_data.content:
+                        if isinstance(item, dict) and item.get('type') == 'text':
+                            text_parts.append(item.get('text', ''))
+                        elif hasattr(item, 'text'):
+                            text_parts.append(item.text)
+                    result_data = '\n'.join(text_parts) if text_parts else str(result_data)
+
                 result_str = (
                     json.dumps(result_data)
                     if not isinstance(result_data, str)
