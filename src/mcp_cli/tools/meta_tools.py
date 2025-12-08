@@ -10,7 +10,6 @@ import json
 import logging
 from typing import Any
 
-from mcp_cli.tools.models import ToolInfo
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +93,7 @@ class MetaToolProvider:
                 "type": "function",
                 "function": {
                     "name": "call_tool",
-                    "description": "Execute any discovered tool with the specified arguments. First use search_tools or list_tools to find tools, then get_tool_schema to see what parameters are needed, then call_tool to execute it. Pass tool parameters as individual properties (e.g., for tool 'add' with params 'a' and 'b', use: {\"tool_name\": \"add\", \"a\": 1, \"b\": 2}).",
+                    "description": 'Execute any discovered tool with the specified arguments. First use search_tools or list_tools to find tools, then get_tool_schema to see what parameters are needed, then call_tool to execute it. Pass tool parameters as individual properties (e.g., for tool \'add\' with params \'a\' and \'b\', use: {"tool_name": "add", "a": 1, "b": 2}).',
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -134,13 +133,17 @@ class MetaToolProvider:
                 if len(desc) > 200:
                     desc = desc[:197] + "..."
 
-                results.append({
-                    "name": tool.name,
-                    "description": desc,
-                    "namespace": tool.namespace,
-                })
+                results.append(
+                    {
+                        "name": tool.name,
+                        "description": desc,
+                        "namespace": tool.namespace,
+                    }
+                )
 
-            logger.info(f"list_tools() returned {len(results)} tools (total available: {len(all_tools)})")
+            logger.info(
+                f"list_tools() returned {len(results)} tools (total available: {len(all_tools)})"
+            )
             return results
 
         except Exception as e:
@@ -189,11 +192,13 @@ class MetaToolProvider:
                 if len(desc) > 200:
                     desc = desc[:197] + "..."
 
-                results.append({
-                    "name": tool.name,
-                    "description": desc,
-                    "namespace": tool.namespace,
-                })
+                results.append(
+                    {
+                        "name": tool.name,
+                        "description": desc,
+                        "namespace": tool.namespace,
+                    }
+                )
 
             logger.info(f"search_tools('{query}') found {len(results)} matches")
             return results
@@ -227,15 +232,19 @@ class MetaToolProvider:
                         "type": "function",
                         "function": {
                             "name": tool.name,
-                            "description": tool.description or "No description provided",
-                            "parameters": tool.parameters or {"type": "object", "properties": {}},
+                            "description": tool.description
+                            or "No description provided",
+                            "parameters": tool.parameters
+                            or {"type": "object", "properties": {}},
                         },
                     }
 
                     # Cache it
                     self._tool_cache[tool_name] = schema
 
-                    logger.info(f"get_tool_schema('{tool_name}') returned {len(json.dumps(schema))} chars")
+                    logger.info(
+                        f"get_tool_schema('{tool_name}') returned {len(json.dumps(schema))} chars"
+                    )
                     return schema
 
             # Not found
@@ -271,7 +280,9 @@ class MetaToolProvider:
             )
 
             if result.success:
-                logger.info(f"call_tool('{tool_name}') succeeded, result type: {type(result.result)}")
+                logger.info(
+                    f"call_tool('{tool_name}') succeeded, result type: {type(result.result)}"
+                )
                 # Extract the actual result value, unwrapping nested structures
                 actual_result = result.result
 
@@ -279,19 +290,25 @@ class MetaToolProvider:
                 max_depth = 5
                 for _ in range(max_depth):
                     # If it's a ToolResult, extract the result field
-                    if hasattr(actual_result, 'result'):
+                    if hasattr(actual_result, "result"):
                         actual_result = actual_result.result
-                        logger.debug(f"Unwrapped ToolResult, new type: {type(actual_result)}")
+                        logger.debug(
+                            f"Unwrapped ToolResult, new type: {type(actual_result)}"
+                        )
                     # If it's a dict with 'content' key, extract content
-                    elif isinstance(actual_result, dict) and 'content' in actual_result:
-                        actual_result = actual_result['content']
-                        logger.debug(f"Extracted 'content', new type: {type(actual_result)}")
+                    elif isinstance(actual_result, dict) and "content" in actual_result:
+                        actual_result = actual_result["content"]
+                        logger.debug(
+                            f"Extracted 'content', new type: {type(actual_result)}"
+                        )
                     else:
                         break
 
                 # Format the result for the LLM
                 try:
-                    formatted_result = self.tool_manager.format_tool_response(actual_result)
+                    formatted_result = self.tool_manager.format_tool_response(
+                        actual_result
+                    )
                     logger.debug(f"Formatted result: {formatted_result}")
                     return {
                         "success": True,
@@ -333,7 +350,11 @@ class MetaToolProvider:
         if tool_name == "list_tools":
             limit = arguments.get("limit", 50)
             results = await self.list_tools(limit)
-            return {"results": results, "count": len(results), "total_available": len(await self.tool_manager.get_all_tools())}
+            return {
+                "results": results,
+                "count": len(results),
+                "total_available": len(await self.tool_manager.get_all_tools()),
+            }
 
         elif tool_name == "search_tools":
             query = arguments.get("query", "")
@@ -366,4 +387,9 @@ class MetaToolProvider:
         Returns:
             True if it's a meta-tool
         """
-        return tool_name in ["list_tools", "search_tools", "get_tool_schema", "call_tool"]
+        return tool_name in [
+            "list_tools",
+            "search_tools",
+            "get_tool_schema",
+            "call_tool",
+        ]

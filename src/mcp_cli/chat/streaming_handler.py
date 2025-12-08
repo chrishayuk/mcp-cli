@@ -1,10 +1,10 @@
-# mcp_cli/chat/streaming_handler.py - COMPLETE FINAL VERSION
-"""
-Enhanced streaming response handler for MCP CLI chat interface.
-Handles async chunk yielding from chuk-llm with live UI updates and better integration.
-Now includes proper tool call extraction from streaming chunks.
+"""Refactored streaming response handler using unified display system.
 
-FINAL FIX: Proper parameter accumulation across multiple streaming chunks.
+This is a clean, async-native implementation using:
+- Pydantic models for all state (zero dictionaries!)
+- StreamingDisplayManager for UI (chuk-term only)
+- No fallback display paths
+- Type-safe throughout
 """
 
 from __future__ import annotations
@@ -12,859 +12,398 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from enum import Enum
 from typing import Any
 
-from chuk_term.ui import output
-from mcp_cli.ui.streaming_display import StreamingContext
+from pydantic import BaseModel, Field
 
+from mcp_cli.display import StreamingDisplayManager
+from mcp_cli.chat.models import ToolCallData
 from mcp_cli.logging_config import get_logger
 
 logger = get_logger("streaming")
 
 
+class StreamingResponseField(str, Enum):
+    """Field names for streaming response serialization."""
+
+    RESPONSE = "response"
+    TOOL_CALLS = "tool_calls"
+    CHUNKS_RECEIVED = "chunks_received"
+    ELAPSED_TIME = "elapsed_time"
+    STREAMING = "streaming"
+    INTERRUPTED = "interrupted"
+    REASONING_CONTENT = "reasoning_content"
+
+
+class StreamingResponse(BaseModel):
+    """Container for streaming response data.
+
+    Pydantic model for type-safe streaming responses.
+    """
+
+    content: str = Field(description="Response content")
+    tool_calls: list[dict[str, Any]] = Field(
+        default_factory=list, description="Tool calls from the model"
+    )
+    chunks_received: int = Field(default=0, description="Number of chunks processed")
+    elapsed_time: float = Field(description="Time taken for the response")
+    interrupted: bool = Field(
+        default=False, description="Whether streaming was interrupted"
+    )
+    reasoning_content: str | None = Field(
+        default=None, description="Reasoning content (for DeepSeek reasoner)"
+    )
+    streaming: bool = Field(
+        default=True, description="Whether this was a streaming response"
+    )
+
+    model_config = {"frozen": False}
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dict for backwards compatibility using enums."""
+        return {
+            StreamingResponseField.RESPONSE: self.content,
+            StreamingResponseField.TOOL_CALLS: self.tool_calls,
+            StreamingResponseField.CHUNKS_RECEIVED: self.chunks_received,
+            StreamingResponseField.ELAPSED_TIME: self.elapsed_time,
+            StreamingResponseField.STREAMING: self.streaming,
+            StreamingResponseField.INTERRUPTED: self.interrupted,
+            StreamingResponseField.REASONING_CONTENT: self.reasoning_content,
+        }
+
+
+class ToolCallAccumulator:
+    """Manages accumulation of tool calls across streaming chunks.
+
+    Uses Pydantic models for type-safe state management.
+    Handles fragmented JSON and validates tool call structure.
+    """
+
+    def __init__(self):
+        self._accumulated: list[ToolCallData] = []
+
+    def process_chunk_tool_calls(self, chunk_tool_calls: list[dict[str, Any]]) -> None:
+        """Process tool calls from a chunk and accumulate them.
+
+        Args:
+            chunk_tool_calls: Tool calls extracted from current chunk
+        """
+        for tc_dict in chunk_tool_calls:
+            # Convert dict to Pydantic model
+            tc = ToolCallData.from_dict(tc_dict)
+
+            # Find or create accumulator for this tool call
+            existing = self._find_accumulated_call(tc.id, tc.index)
+
+            if existing:
+                # Merge chunk data using intelligent JSON merging
+                self._merge_tool_call(existing, tc)
+            else:
+                # New tool call - add to accumulated list
+                self._accumulated.append(tc)
+
+    def _find_accumulated_call(self, tc_id: str, tc_index: int) -> ToolCallData | None:
+        """Find existing accumulated tool call by ID or index."""
+        for tc in self._accumulated:
+            if tc.id == tc_id or tc.index == tc_index:
+                return tc
+        return None
+
+    def _merge_tool_call(self, existing: ToolCallData, new: ToolCallData) -> None:
+        """Merge new tool call data into existing accumulator."""
+        # Update function name if provided
+        if new.function.name:
+            existing.function.name = new.function.name
+
+        # Accumulate arguments using intelligent JSON merging
+        if new.function.arguments:
+            merged_args = self._merge_json_strings(
+                existing.function.arguments, new.function.arguments
+            )
+            existing.function.arguments = merged_args
+
+    def _merge_json_strings(self, current: str, new: str) -> str:
+        """Merge two JSON strings intelligently.
+
+        Tries multiple strategies:
+        1. Parse both and merge dicts
+        2. Concatenate and validate
+        3. Fix common issues
+        """
+        if not current:
+            return new
+        if not new:
+            return current
+
+        # Strategy 1: Both valid JSON objects - merge
+        try:
+            current_obj = json.loads(current)
+            new_obj = json.loads(new)
+            if isinstance(current_obj, dict) and isinstance(new_obj, dict):
+                current_obj.update(new_obj)
+                return json.dumps(current_obj)
+        except json.JSONDecodeError:
+            pass
+
+        # Strategy 2: Concatenate
+        combined = current + new
+
+        # Try validating
+        try:
+            json.loads(combined)
+            return combined
+        except json.JSONDecodeError:
+            pass
+
+        # Strategy 3: Fix common issues
+        # Try adding missing braces
+        if not combined.startswith("{"):
+            combined = "{" + combined
+        if not combined.endswith("}"):
+            combined = combined + "}"
+
+        # Fix duplicated braces: }{  ->  },{
+        combined = combined.replace("}{", "},{")
+
+        try:
+            json.loads(combined)
+            return combined
+        except json.JSONDecodeError:
+            # Give up, return concatenated
+            logger.warning(f"Could not merge JSON: {current[:50]}... + {new[:50]}...")
+            return current + new
+
+    def finalize(self) -> list[dict[str, Any]]:
+        """Finalize and validate all accumulated tool calls.
+
+        Returns only valid, complete tool calls as dicts for API compatibility.
+        """
+        finalized = []
+
+        for tc in self._accumulated:
+            # Must have name
+            if not tc.function.name:
+                logger.debug(f"Skipping tool call with no name: {tc.id}")
+                continue
+
+            # Validate arguments JSON
+            args = tc.function.arguments
+            if not args or args.strip() == "{}":
+                args = "{}"
+            else:
+                try:
+                    json.loads(args)
+                except json.JSONDecodeError:
+                    logger.warning(
+                        f"Invalid JSON in tool call arguments, skipping: {args[:100]}"
+                    )
+                    continue
+
+            # Convert Pydantic model to dict for API
+            cleaned = tc.to_dict()
+            finalized.append(cleaned)
+
+            logger.debug(f"Finalized tool call: {tc.function.name}")
+
+        return finalized
+
+
 class StreamingResponseHandler:
-    """Enhanced streaming handler with better UI integration and error handling."""
+    """Clean, async-native streaming handler.
 
-    def __init__(self, console: Any | None = None, chat_display=None):
-        self.console = console  # For compatibility
-        self.chat_display = chat_display  # Centralized display manager
-        self.current_response = ""
-        self.live_display: Any | None = None
-        self.streaming_context: StreamingContext | None = None
-        self.start_time = 0.0
-        self.chunk_count = 0
-        self.is_streaming = False
-        self._response_complete = False
+    Uses unified display system - no fallbacks, no dual paths.
+    """
+
+    def __init__(self, display: StreamingDisplayManager):
+        """Initialize handler.
+
+        Args:
+            display: The unified display manager (required, no fallback)
+        """
+        self.display = display
+        self.tool_accumulator = ToolCallAccumulator()
         self._interrupted = False
-
-        # Tool call tracking for streaming
-        self._accumulated_tool_calls: list[dict[str, Any]] = []
-        self._current_tool_call: dict[str, Any] | None = None
-
-        # Track previous response to detect accumulated vs delta
-        self._previous_response_field = ""
-
-        # Track reasoning content (for DeepSeek reasoner and similar models)
-        self._reasoning_content: str = ""
 
     async def stream_response(
         self,
         client,
         messages: list[dict[str, Any]],
-        tools: list[dict[str, Any | None]] | None = None,
+        tools: list[dict[str, Any]] | None = None,
         **kwargs,
     ) -> dict[str, Any]:
-        """
-        Stream response from LLM with live UI updates and enhanced error handling.
+        """Stream response from LLM client.
 
         Args:
             client: LLM client with streaming support
             messages: Conversation messages
             tools: Available tools for function calling
-            **kwargs: Additional arguments for completion
+            **kwargs: Additional arguments for client
 
         Returns:
-            Complete response dictionary
+            Response dictionary (for backwards compatibility)
         """
-        self.current_response = ""
-        self.chunk_count = 0
-        self.start_time = time.time()
-        self.is_streaming = True
-        self._response_complete = False
+        # Reset state
         self._interrupted = False
-        self._accumulated_tool_calls = []
-        self._current_tool_call = None
-        self._previous_response_field = ""  # Reset for new streaming session
-        self._reasoning_content = ""  # Reset reasoning content for new session
+        self.tool_accumulator = ToolCallAccumulator()
+
+        # Start display
+        await self.display.start_streaming()
+        start_time = time.time()
 
         try:
-            # Check if client supports streaming via create_completion with stream=True
-            if hasattr(client, "create_completion"):
-                return await self._handle_chuk_llm_streaming(
-                    client, messages, tools, **kwargs
-                )
-            else:
-                # Client doesn't support completion, fallback
-                logger.debug(
-                    "Client doesn't support create_completion, falling back to regular completion"
-                )
-                return await self._handle_regular_completion(
+            # Check client capabilities
+            if not hasattr(client, "create_completion"):
+                logger.warning("Client doesn't support create_completion")
+                return await self._handle_non_streaming(
                     client, messages, tools, **kwargs
                 )
 
-        finally:
-            self.is_streaming = False
-            # Ensure streaming is properly finalized for both display systems
-            if not self._response_complete:
-                self._show_final_response()
-            self.live_display = None
+            # Stream with chunk timeout protection
+            await self._stream_with_timeout(client, messages, tools, **kwargs)
 
-    def interrupt_streaming(self):
-        """Interrupt the current streaming operation."""
-        self._interrupted = True
-        logger.debug("Streaming interrupted by user")
+            # Finalize tool calls
+            tool_calls = self.tool_accumulator.finalize()
 
-    def _show_final_response(self):
-        """Display the final complete response with enhanced formatting."""
-        if self._response_complete or not self.current_response:
-            return
-
-        # Calculate elapsed time
-        elapsed = time.time() - self.start_time if self.start_time else 0
-
-        # Finalize display
-        if self.chat_display:
-            self.chat_display.finish_streaming()
-            logger.debug("Finalized centralized display")
-        elif self.streaming_context:
-            # Fallback to streaming context finalization
-            logger.debug(
-                f"Finalizing streaming context with {len(self.current_response)} characters"
+            # Stop display and get final content
+            final_content = await self.display.stop_streaming(
+                interrupted=self._interrupted
             )
-            try:
-                self.streaming_context.__exit__(None, None, None)
-            except Exception as e:
-                logger.debug(f"Error finalizing streaming context: {e}")
-            self.streaming_context = None
-        else:
-            # No streaming display, use regular output
-            output.assistant_message(self.current_response, elapsed=elapsed)
 
-        self._response_complete = True
+            # Build response
+            elapsed = time.time() - start_time
+            response = StreamingResponse(
+                content=final_content,
+                tool_calls=tool_calls,
+                chunks_received=self.display.streaming_state.chunks_received
+                if self.display.streaming_state
+                else 0,
+                elapsed_time=elapsed,
+                interrupted=self._interrupted,
+                reasoning_content=self.display.streaming_state.reasoning_content
+                if self.display.streaming_state
+                else None,
+            )
 
-    async def _handle_chuk_llm_streaming(
+            logger.info(
+                f"Streaming complete: {len(final_content)} chars, "
+                f"{len(tool_calls)} tools, {elapsed:.2f}s"
+            )
+
+            return response.to_dict()
+
+        except Exception as e:
+            logger.error(f"Streaming error: {e}", exc_info=True)
+            await self.display.stop_streaming(interrupted=True)
+            raise
+
+    async def _stream_with_timeout(
         self,
         client,
         messages: list[dict[str, Any]],
-        tools: list[dict[str, Any | None]] | None = None,
+        tools: list[dict[str, Any]] | None,
         **kwargs,
-    ) -> dict[str, Any]:
-        """Handle chuk-llm's streaming with proper tool call accumulation and timeout protection."""
-        tool_calls: list[dict[str, Any]] = []
+    ) -> None:
+        """Stream with per-chunk timeout protection.
 
-        # Log conversation state for debugging
-        logger.debug(f"Starting streaming with {len(messages)} messages in history")
-        logger.debug(f"Tools available: {len(tools) if tools else 0}")
-        if messages:
-            last_msg = messages[-1]
-            logger.debug(f"Last message role: {last_msg.get('role')}, has content: {bool(last_msg.get('content'))}")
+        Uses 45s per-chunk timeout (for DeepSeek Reasoner)
+        and 300s global timeout.
+        """
+        CHUNK_TIMEOUT = 45.0  # seconds
+        GLOBAL_TIMEOUT = 300.0  # seconds
 
-        # Start live display
-        self._start_live_display()
+        async def stream_chunks():
+            """Inner streaming function."""
+            stream = client.create_completion(
+                messages=messages,
+                tools=tools,
+                stream=True,
+                **kwargs,
+            )
 
-        try:
-            # Use chuk-llm's streaming approach with timeout protection
-            # CRITICAL FIX: Add per-chunk timeout to detect when stream stalls
-            async def stream_with_chunk_timeout():
-                logger.debug("Creating streaming completion...")
-                logger.debug(f"Message count: {len(messages)}, Tools: {len(tools) if tools else 0}")
+            stream_iter = stream.__aiter__()
 
-                # Log last few messages for debugging (without full content to avoid spam)
-                if messages:
-                    for i, msg in enumerate(messages[-3:], start=max(0, len(messages) - 3)):
-                        role = msg.get('role') if isinstance(msg, dict) else getattr(msg, 'role', 'unknown')
-                        has_tools = bool(msg.get('tool_calls') if isinstance(msg, dict) else getattr(msg, 'tool_calls', None))
-                        has_content = bool(msg.get('content') if isinstance(msg, dict) else getattr(msg, 'content', None))
-                        logger.debug(f"  Message {i}: role={role}, has_content={has_content}, has_tool_calls={has_tools}")
+            while True:
+                try:
+                    # Wait for next chunk with timeout
+                    chunk = await asyncio.wait_for(
+                        stream_iter.__anext__(),
+                        timeout=CHUNK_TIMEOUT,
+                    )
 
-                chunk_timeout = 45.0  # 45 seconds between chunks (DeepSeek reasoner can be slow)
-
-                stream = client.create_completion(
-                    messages=messages, tools=tools, stream=True, **kwargs
-                )
-
-                stream_iter = stream.__aiter__()
-                chunks_received = 0
-                last_chunk_time = time.time()
-
-                while True:
-                    try:
-                        # Wait for next chunk with timeout
-                        chunk = await asyncio.wait_for(
-                            stream_iter.__anext__(),
-                            timeout=chunk_timeout
-                        )
-                        chunks_received += 1
-                        last_chunk_time = time.time()
-
-                        if self._interrupted:
-                            logger.debug("Breaking from stream due to interruption")
-                            # CRITICAL: Close the stream iterator to prevent hanging
-                            try:
-                                await stream_iter.aclose()
-                            except Exception as e:
-                                logger.debug(f"Error closing stream iterator on interrupt: {e}")
-                            break
-
-                        await self._process_chunk(chunk, tool_calls)
-
-                    except StopAsyncIteration:
-                        # Stream ended normally
-                        logger.debug(f"Stream completed normally after {chunks_received} chunks")
-                        break
-                    except asyncio.TimeoutError:
-                        # No chunk received within timeout
-                        time_waiting = time.time() - last_chunk_time
-                        warning_msg = (
-                            f"⚠️  Stream stalled after {chunks_received} chunks. "
-                            f"No data received for {time_waiting:.1f}s. "
-                            f"Finalizing with what we have..."
-                        )
-                        logger.warning(warning_msg)
-
-                        # Show warning to user via display
-                        if self.chat_display:
-                            from chuk_term.ui import output
-                            output.warning(warning_msg)
-
-                        # CRITICAL: Close the stream iterator to prevent hanging
+                    # Check for interrupt
+                    if self._interrupted:
+                        logger.debug("Stream interrupted by user")
                         try:
                             await stream_iter.aclose()
                         except Exception as e:
-                            logger.debug(f"Error closing stream iterator: {e}")
-
-                        # Break and finalize what we have so far
+                            logger.debug(f"Error closing stream: {e}")
                         break
 
-            try:
-                logger.debug("Starting stream with chunk timeout protection...")
-                await asyncio.wait_for(stream_with_chunk_timeout(), timeout=300.0)
-                logger.debug("Streaming completed successfully")
-            except asyncio.TimeoutError:
-                logger.error("Streaming timed out after 300 seconds")
-                raise RuntimeError("Streaming response timed out - the API may be experiencing issues")
+                    # Process chunk
+                    await self._process_chunk(chunk)
 
-            # IMPORTANT: After streaming is complete, finalize any remaining tool calls
-            await self._finalize_streaming_tool_calls(tool_calls)
+                    # Small yield for smooth UI
+                    await asyncio.sleep(0.0005)
 
-        except asyncio.CancelledError:
-            logger.debug("Streaming cancelled")
-            self._interrupted = True
-            raise
-        except Exception as e:
-            logger.warning(f"Streaming error in chuk-llm streaming: {e}")
-            raise
-        finally:
-            # Ensure streaming is properly finalized for both display systems
-            if not self._response_complete:
-                self._show_final_response()
-
-        # Build final response
-        elapsed = time.time() - self.start_time
-        result = {
-            "response": self.current_response,
-            "tool_calls": tool_calls,
-            "chunks_received": self.chunk_count,
-            "elapsed_time": elapsed,
-            "streaming": True,
-            "interrupted": self._interrupted,
-        }
-
-        # Add reasoning_content if it was captured during streaming
-        if hasattr(self, '_reasoning_content') and self._reasoning_content:
-            result["reasoning_content"] = self._reasoning_content
-
-        logger.debug(f"Streaming completed: {len(tool_calls)} tool calls extracted")
-        for i, tc in enumerate(tool_calls):
-            logger.debug(
-                f"Tool call {i}: {tc['function']['name']} with args: {tc['function']['arguments']}"
-            )
-
-        return result
-
-    async def _handle_stream_completion(
-        self,
-        client,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any | None]] | None = None,
-        **kwargs,
-    ) -> dict[str, Any]:
-        """Handle alternative stream_completion method."""
-        tool_calls: list[dict[str, Any]] = []
-
-        # Start live display
-        self._start_live_display()
-
-        try:
-            async for chunk in client.stream_completion(
-                messages=messages, tools=tools, **kwargs
-            ):
-                if self._interrupted:
-                    logger.debug("Breaking from stream due to interruption")
+                except StopAsyncIteration:
+                    logger.debug("Stream completed normally")
+                    break
+                except asyncio.TimeoutError:
+                    logger.warning(f"Chunk timeout after {CHUNK_TIMEOUT}s")
                     break
 
-                await self._process_chunk(chunk, tool_calls)
-
-        except asyncio.CancelledError:
-            logger.debug("Streaming cancelled")
+        # Run with global timeout
+        try:
+            await asyncio.wait_for(stream_chunks(), timeout=GLOBAL_TIMEOUT)
+        except asyncio.TimeoutError:
+            logger.error(f"Global streaming timeout after {GLOBAL_TIMEOUT}s")
             self._interrupted = True
-            raise
-        except Exception as e:
-            logger.warning(f"Streaming error in stream_completion: {e}")
-            raise
 
-        # Build final response
-        elapsed = time.time() - self.start_time
-        return {
-            "response": self.current_response,
-            "tool_calls": tool_calls,
-            "chunks_received": self.chunk_count,
-            "elapsed_time": elapsed,
-            "streaming": True,
-            "interrupted": self._interrupted,
-        }
+    async def _process_chunk(self, raw_chunk: dict[str, Any]) -> None:
+        """Process a single streaming chunk.
 
-    async def _handle_regular_completion(
+        Args:
+            raw_chunk: Raw chunk from LLM provider
+        """
+        # Use display to process chunk (normalizes format)
+        await self.display.add_chunk(raw_chunk)
+
+        # Extract tool calls if present
+        if "tool_calls" in raw_chunk and raw_chunk["tool_calls"]:
+            self.tool_accumulator.process_chunk_tool_calls(raw_chunk["tool_calls"])
+
+    async def _handle_non_streaming(
         self,
         client,
         messages: list[dict[str, Any]],
-        tools: list[dict[str, Any | None]] | None = None,
+        tools: list[dict[str, Any]] | None,
         **kwargs,
     ) -> dict[str, Any]:
-        """Fallback to regular non-streaming completion."""
-        logger.debug("Using non-streaming completion")
+        """Fallback for non-streaming clients."""
+        from chuk_term.ui import output
 
-        # Show a simple loading indicator
+        start_time = time.time()
+
         with output.loading("Generating response..."):
-            result = await client.create_completion(
-                messages=messages, tools=tools, **kwargs
-            )
+            # Try to call client
+            if hasattr(client, "complete"):
+                result = await client.complete(messages=messages, tools=tools, **kwargs)
+            else:
+                raise RuntimeError("Client has no streaming or completion method")
+
+        elapsed = time.time() - start_time
 
         return {
             "response": result.get("response", ""),
             "tool_calls": result.get("tool_calls", []),
             "chunks_received": 1,
-            "elapsed_time": time.time() - self.start_time,
+            "elapsed_time": elapsed,
             "streaming": False,
             "interrupted": False,
         }
 
-    def _start_live_display(self):
-        """Start the live display for streaming updates."""
-        self.start_time = time.time()
-
-        # Use centralized display if available, otherwise fallback
-        if self.chat_display:
-            self.chat_display.start_streaming()
-            logger.debug("Started streaming with centralized display")
-        elif not self.streaming_context:
-            # Fallback to original StreamingContext
-            logger.debug(f"Console type: {type(self.console)}")
-            if hasattr(self.console, "width"):
-                logger.debug(f"Console width: {self.console.width}")
-            if hasattr(self.console, "size"):
-                logger.debug(f"Console size: {self.console.size}")
-
-            # Create StreamingContext with the new compact display
-            self.streaming_context = StreamingContext(
-                console=self.console,
-                title="🤖 Assistant",
-                mode="response",
-                refresh_per_second=8,  # Moderate refresh rate for stability
-                transient=True,  # Will clear when done
-            )
-            # Enter the context manager
-            self.streaming_context.__enter__()
-
-        self.live_display = True
-
-    async def _process_chunk(
-        self, chunk: dict[str, Any], tool_calls: list[dict[str, Any]]
-    ):
-        """Process a single streaming chunk with enhanced error handling and tool call support."""
-        self.chunk_count += 1
-
-        try:
-            # Log chunk for debugging
-            if self.chunk_count % 100 == 0:
-                logger.info(f"Processing chunk {self.chunk_count}")
-            logger.debug(f"Processing chunk {self.chunk_count}: {chunk}")
-
-            # Extract content from chunk
-            content = self._extract_chunk_content(chunk)
-            if content:
-                logger.debug(
-                    f"Extracted streaming content: {repr(content[:50])}{'...' if len(content) > 50 else ''}"
-                )
-                self.current_response += content
-                logger.debug(f"Total response length now: {len(self.current_response)}")
-
-            # Handle tool calls in chunks
-            tool_call_data = self._extract_tool_calls_from_chunk(chunk)
-            if tool_call_data:
-                logger.debug(f"Extracted tool call data: {tool_call_data}")
-                self._process_tool_call_chunk(tool_call_data, tool_calls)
-
-            # Handle reasoning_content in chunks (for DeepSeek reasoner and similar models)
-            if "reasoning_content" in chunk and chunk["reasoning_content"]:
-                reasoning = chunk["reasoning_content"]
-                if isinstance(reasoning, str):
-                    # Check if it's accumulated or delta
-                    if reasoning.startswith(self._reasoning_content):
-                        # Accumulated - just update
-                        self._reasoning_content = reasoning
-                    else:
-                        # Delta - append
-                        self._reasoning_content += reasoning
-
-                    # Log every 1000 chars to show progress
-                    if len(self._reasoning_content) % 1000 < 100:
-                        logger.info(f"Reasoning progress: {len(self._reasoning_content)} chars")
-                    else:
-                        logger.debug(f"Captured reasoning_content: {len(self._reasoning_content)} chars")
-
-                    # Update display to show reasoning progress
-                    if self.chat_display and hasattr(self.chat_display, 'update_reasoning'):
-                        self.chat_display.update_reasoning(self._reasoning_content)
-                    elif self.streaming_context and hasattr(self.streaming_context, 'update_reasoning'):
-                        self.streaming_context.update_reasoning(self._reasoning_content)
-
-            # Update display with streaming content and chunk count
-            if not self._interrupted and self.chat_display:
-                # Update chunk count on every chunk (even empty ones)
-                if hasattr(self.chat_display, 'update_chunk_count'):
-                    self.chat_display.update_chunk_count(self.chunk_count)
-
-                # Update content if present
-                if content:
-                    self.chat_display.update_streaming(content)
-                    logger.debug(
-                        f"Updated centralized display with: {repr(content[:50])}"
-                    )
-                elif self.streaming_context:
-                    logger.debug(
-                        f"Updating streaming context with content: {repr(content[:50])}"
-                    )
-                    self.streaming_context.update(content)
-                    logger.debug(
-                        f"StreamingContext content length: {len(self.streaming_context.content)}"
-                    )
-
-            # Minimal delay for smooth streaming
-            await asyncio.sleep(0.0005)  # 0.5ms for very smooth streaming
-
-        except Exception as e:
-            logger.warning(f"Error processing chunk: {e}")
-            # Continue processing other chunks
-
-    def _extract_chunk_content(self, chunk: dict[str, Any]) -> str:
-        """Extract text content from a chuk-llm streaming chunk."""
-        try:
-            # chuk-llm streaming format - chunk has "response" field with content
-            if isinstance(chunk, dict):
-                # Primary format for chuk-llm
-                if "response" in chunk:
-                    response_field = (
-                        str(chunk["response"]) if chunk["response"] is not None else ""
-                    )
-
-                    # CRITICAL: Detect if response is accumulated or delta
-                    # If the response field starts with what we had before, it's accumulated
-                    if (
-                        response_field.startswith(self._previous_response_field)
-                        and self._previous_response_field
-                    ):
-                        # It's accumulated! Extract only the new part
-                        delta = response_field[len(self._previous_response_field) :]
-                        self._previous_response_field = response_field
-                        logger.debug(
-                            f"Detected accumulated response, extracted delta: {repr(delta[:50])}"
-                        )
-                        return delta
-                    else:
-                        # Might be a delta or first chunk
-                        self._previous_response_field = response_field
-                        return response_field
-
-                # Alternative formats (for compatibility)
-                elif "content" in chunk:
-                    return str(chunk["content"])
-                elif "text" in chunk:
-                    return str(chunk["text"])
-                elif "delta" in chunk and isinstance(chunk["delta"], dict):
-                    delta_content = chunk["delta"].get("content")
-                    return str(delta_content) if delta_content is not None else ""
-                elif "choices" in chunk and chunk["choices"]:
-                    choice = chunk["choices"][0]
-                    if "delta" in choice and "content" in choice["delta"]:
-                        delta_content = choice["delta"]["content"]
-                        return str(delta_content) if delta_content is not None else ""
-            elif isinstance(chunk, str):  # type: ignore[unreachable]
-                return chunk
-
-        except Exception as e:
-            logger.debug(f"Error extracting content from chunk: {e}")
-
-        return ""
-
-    def _extract_tool_calls_from_chunk(
-        self, chunk: dict[str, Any]
-    ) -> dict[str, Any] | None:
-        """Extract tool call data from a streaming chunk."""
-        try:
-            if isinstance(chunk, dict):
-                # Direct tool_calls field
-                if "tool_calls" in chunk:
-                    logger.debug(
-                        f"Found direct tool_calls in chunk: {chunk['tool_calls']}"
-                    )
-                    result: dict[str, Any | None] = chunk["tool_calls"]
-                    return result
-
-                # OpenAI-style delta format
-                if "choices" in chunk and chunk["choices"]:
-                    choice = chunk["choices"][0]
-                    if "delta" in choice:
-                        delta = choice["delta"]
-                        if "tool_calls" in delta:
-                            logger.debug(
-                                f"Found tool_calls in delta: {delta['tool_calls']}"
-                            )
-                            delta_result: dict[str, Any | None] = delta["tool_calls"]
-                            return delta_result
-                        # Sometimes tool_calls come in function_call format
-                        if "function_call" in delta:
-                            logger.debug(
-                                f"Found function_call in delta: {delta['function_call']}"
-                            )
-                            return {"function_call": delta["function_call"]}
-
-                # Alternative formats
-                if "function_call" in chunk:
-                    logger.debug(
-                        f"Found direct function_call: {chunk['function_call']}"
-                    )
-                    return {"function_call": chunk["function_call"]}
-
-        except Exception as e:
-            logger.debug(f"Error extracting tool calls from chunk: {e}")
-
-        return None
-
-    def _process_tool_call_chunk(
-        self, tool_call_data: dict[str, Any], tool_calls: list[dict[str, Any]]
-    ):
-        """Process tool call chunk data and accumulate complete tool calls."""
-        try:
-            if isinstance(tool_call_data, list):  # type: ignore[unreachable]
-                # Array of tool calls
-                for tc_item in tool_call_data:  # type: ignore[unreachable]
-                    self._accumulate_tool_call(tc_item, tool_calls)
-            elif isinstance(tool_call_data, dict):
-                # Single tool call or function call
-                if "function_call" in tool_call_data:
-                    # Legacy function_call format - convert to tool_calls format
-                    fc = tool_call_data["function_call"]
-                    converted = {
-                        "id": f"call_{len(self._accumulated_tool_calls)}",
-                        "type": "function",
-                        "function": fc,
-                    }
-                    self._accumulate_tool_call(converted, tool_calls)
-                else:
-                    # Direct tool call
-                    self._accumulate_tool_call(tool_call_data, tool_calls)
-
-        except Exception as e:
-            logger.warning(f"Error processing tool call chunk: {e}")
-
-    def _accumulate_tool_call(
-        self, tool_call_item: dict[str, Any], tool_calls: list[dict[str, Any]]
-    ):
-        """
-        Accumulate streaming tool call data into complete tool calls.
-
-        FINAL FIX: Proper accumulation that waits for complete parameters.
-        """
-        try:
-            tc_id = tool_call_item.get("id")
-            tc_index = tool_call_item.get("index", 0)
-
-            logger.debug(
-                f"Accumulating tool call: id={tc_id}, index={tc_index}, item={tool_call_item}"
-            )
-
-            # Find existing tool call or create new one
-            existing_tc = None
-            for tc in self._accumulated_tool_calls:
-                if tc.get("id") == tc_id or (
-                    tc_id is None and tc.get("index") == tc_index
-                ):
-                    existing_tc = tc
-                    break
-
-            if existing_tc is None:
-                # Create new tool call
-                existing_tc = {
-                    "id": tc_id or f"call_{len(self._accumulated_tool_calls)}",
-                    "type": "function",
-                    "function": {"name": "", "arguments": ""},
-                    "index": tc_index,
-                    "_streaming_state": {
-                        "chunks_received": 0,
-                        "name_complete": False,
-                        "args_started": False,
-                        "args_complete": False,
-                    },
-                }
-                self._accumulated_tool_calls.append(existing_tc)
-                logger.debug(f"Created new tool call: {existing_tc}")
-
-            # Update streaming state
-            existing_tc["_streaming_state"]["chunks_received"] += 1
-
-            if "type" in tool_call_item:
-                existing_tc["type"] = tool_call_item["type"]
-
-            if "function" in tool_call_item:
-                func_data = tool_call_item["function"]
-                existing_func = existing_tc["function"]
-
-                # Accumulate function name
-                if "name" in func_data and func_data["name"] is not None:
-                    new_name = str(func_data["name"])
-                    if new_name and not existing_func["name"]:
-                        existing_func["name"] += new_name
-                        existing_tc["_streaming_state"]["name_complete"] = True
-                        logger.debug(f"Accumulated name: '{existing_func['name']}'")
-
-                # CRITICAL: Accumulate arguments properly
-                if "arguments" in func_data:
-                    new_args = func_data["arguments"]
-                    current_args = existing_func["arguments"]
-
-                    logger.debug(
-                        f"Accumulating arguments: current='{current_args}', new='{new_args}'"
-                    )
-
-                    if new_args is not None:
-                        existing_tc["_streaming_state"]["args_started"] = True
-
-                        if isinstance(new_args, dict):
-                            # Complete arguments object received
-                            existing_func["arguments"] = json.dumps(new_args)
-                            existing_tc["_streaming_state"]["args_complete"] = True
-                            logger.debug(
-                                f"Complete arguments dict received for {existing_func['name']}"
-                            )
-                        elif isinstance(new_args, str):
-                            if new_args.strip():
-                                # Non-empty string - accumulate
-                                if not current_args:
-                                    existing_func["arguments"] = new_args
-                                else:
-                                    merged = self._merge_argument_strings(
-                                        current_args, new_args
-                                    )
-                                    existing_func["arguments"] = merged
-
-                                # Check if we now have complete JSON
-                                if self._is_complete_json(existing_func["arguments"]):
-                                    existing_tc["_streaming_state"]["args_complete"] = (
-                                        True
-                                    )
-                                    logger.debug(
-                                        f"Arguments appear complete for {existing_func['name']}"
-                                    )
-                            # Empty string might indicate completion
-                            elif existing_tc["_streaming_state"]["args_started"]:
-                                existing_tc["_streaming_state"]["args_complete"] = True
-                                logger.debug(
-                                    f"Empty args received - marking complete for {existing_func['name']}"
-                                )
-                        else:
-                            # Other type - convert to string
-                            existing_func["arguments"] += str(new_args)
-
-                    logger.debug(
-                        f"Final accumulated arguments: '{existing_func['arguments']}'"
-                    )
-
-            # Check if this tool call is ready to be finalized
-            # Don't finalize during streaming - wait for end
-
-        except Exception as e:
-            logger.warning(f"Error accumulating tool call: {e}")
-            import traceback
-
-            traceback.print_exc()
-
-    def _is_complete_json(self, json_str: str) -> bool:
-        """Check if a string contains complete, valid JSON."""
-        try:
-            if not json_str or not json_str.strip():
-                return False
-            parsed = json.loads(json_str)
-            return isinstance(parsed, dict)  # We expect objects for tool arguments
-        except json.JSONDecodeError:
-            return False
-
-    def _merge_argument_strings(self, current: str, new: str) -> str:
-        """Intelligently merge argument strings from streaming chunks."""
-        try:
-            # If both are empty, return empty
-            if not current.strip() and not new.strip():
-                return ""
-
-            # If one is empty, return the other
-            if not current.strip():
-                return new
-            if not new.strip():
-                return current
-
-            # Try to parse both as JSON first
-            try:
-                current_json = json.loads(current)
-                new_json = json.loads(new)
-
-                # Both are valid JSON - merge them
-                if isinstance(current_json, dict) and isinstance(new_json, dict):
-                    current_json.update(new_json)
-                    return json.dumps(current_json)
-                else:
-                    # One is not a dict - just use the newer one
-                    return new
-
-            except json.JSONDecodeError:
-                # At least one is not valid JSON - try concatenation
-                combined = current + new
-
-                # Test if concatenation creates valid JSON
-                try:
-                    json.loads(combined)
-                    return combined
-                except json.JSONDecodeError:
-                    # Concatenation didn't work - try with fixes
-                    return self._fix_concatenated_json(combined)
-
-        except Exception as e:
-            logger.warning(f"Error merging argument strings: {e}")
-            # Fallback - just concatenate
-            return current + new
-
-    def _fix_concatenated_json(self, json_str: str) -> str:
-        """Attempt to fix concatenated JSON strings from streaming."""
-        try:
-            # Common fixes
-            fixed = json_str
-
-            # Fix missing opening brace
-            if not fixed.strip().startswith("{") and ":" in fixed:
-                fixed = "{" + fixed
-
-            # Fix missing closing brace
-            if not fixed.strip().endswith("}") and ":" in fixed:
-                fixed = fixed + "}"
-
-            # Fix concatenated objects: }{"key": "value"} -> },{"key": "value"}
-            fixed = fixed.replace("}{", "},{")
-
-            # Try to parse the fixed version
-            json.loads(fixed)
-            return fixed
-
-        except json.JSONDecodeError:
-            # Still invalid - return as-is and let validation handle it
-            logger.debug(f"Could not fix concatenated JSON: {json_str}")
-            return json_str
-
-    async def _finalize_streaming_tool_calls(self, tool_calls: list[dict[str, Any]]):
-        """
-        Finalize accumulated tool calls after streaming is complete.
-
-        This is where we decide which tool calls are complete and ready to execute.
-        """
-        logger.info("=== FINALIZING STREAMING TOOL CALLS ===")
-        logger.info(f"Accumulated tool calls to process: {len(self._accumulated_tool_calls)}")
-        logger.debug("Finalizing streaming tool calls after completion")
-
-        for tc in self._accumulated_tool_calls:
-            func = tc.get("function", {})
-            name = func.get("name", "")
-            args = func.get("arguments", "")
-            state = tc.get("_streaming_state", {})
-
-            logger.debug(f"Finalizing tool call: {name}")
-            logger.debug(f"  State: {state}")
-            logger.debug(f"  Args: '{args}'")
-
-            # Skip if already added
-            if any(existing_tc.get("id") == tc.get("id") for existing_tc in tool_calls):
-                continue
-
-            # Must have a name
-            if not name:
-                logger.warning(f"⚠️  SKIPPING tool call without name - state: {state}")
-                continue
-
-            # Generic parameter validation - no hard-coded tool names
-            if not args or args.strip() == "":
-                # No arguments provided
-                func["arguments"] = "{}"
-                logger.debug(f"Finalizing tool with empty args: {name}")
-
-            elif args.strip() == "{}":
-                # Empty JSON object - this could be valid for some tools
-                logger.debug(f"Finalizing tool with empty object: {name}")
-
-            else:
-                # Has some arguments - validate they're proper JSON
-                try:
-                    parsed = json.loads(args)
-                    if isinstance(parsed, dict):
-                        logger.debug(f"Finalizing tool with valid args: {name}")
-                    else:
-                        logger.warning(
-                            f"Tool {name} has non-object arguments: {type(parsed)}"
-                        )
-                        # Still allow it - some tools might accept non-object args
-                except json.JSONDecodeError:
-                    logger.warning(f"Tool {name} has invalid JSON arguments: {args}")
-                    # Try to fix it or skip
-                    fixed_args = self._fix_concatenated_json(args)
-                    try:
-                        json.loads(fixed_args)
-                        func["arguments"] = fixed_args
-                        logger.debug(f"Fixed JSON for tool: {name}")
-                    except json.JSONDecodeError:
-                        logger.warning(f"⚠️  SKIPPING tool call {name} - Cannot fix invalid JSON arguments: {args}")
-                        continue
-
-            # Clean up and add to final list
-            final_tc = self._clean_tool_call_for_final_list(tc)
-            tool_calls.append(final_tc)
-            logger.info(f"✅ Finalized tool call: {final_tc['function']['name']}")
-
-    def _clean_tool_call_for_final_list(
-        self, tool_call: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Clean up tool call for final list by removing internal tracking fields."""
-        cleaned = dict(tool_call)
-
-        # Remove streaming state
-        if "_streaming_state" in cleaned:
-            del cleaned["_streaming_state"]
-
-        # Ensure proper structure
-        if "function" in cleaned and "arguments" in cleaned["function"]:
-            args = cleaned["function"]["arguments"]
-            if isinstance(args, str):
-                # Ensure it's valid JSON
-                try:
-                    parsed = json.loads(args)
-                    cleaned["function"]["arguments"] = json.dumps(parsed)
-                except json.JSONDecodeError:
-                    # Invalid JSON - use empty object
-                    cleaned["function"]["arguments"] = "{}"
-            elif isinstance(args, dict):
-                cleaned["function"]["arguments"] = json.dumps(args)
-            else:
-                cleaned["function"]["arguments"] = "{}"
-
-        return cleaned
-
-    def _create_display_content(self):
-        """Create display status (not used currently without Live display)."""
-        # This method is kept for compatibility but not actively used
-        # without rich.Live support in chuk-term
-        return None
+    def interrupt_streaming(self) -> None:
+        """Interrupt current streaming operation."""
+        self._interrupted = True
+        logger.debug("Streaming interrupted by user")

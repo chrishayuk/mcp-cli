@@ -20,7 +20,7 @@ from typing import Any
 # mcp cli
 from chuk_term.ui import output
 from mcp_cli.tools.models import ToolCallResult
-from mcp_cli.ui.formatting import display_tool_call_result
+from mcp_cli.display import display_tool_call_result
 from mcp_cli.context import get_context
 
 # logger

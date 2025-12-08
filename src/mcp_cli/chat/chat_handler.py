@@ -289,7 +289,9 @@ async def _run_enhanced_chat_loop(
 
         except (KeyboardInterrupt, asyncio.CancelledError):
             # Handle Ctrl+C gracefully (KeyboardInterrupt or asyncio.CancelledError in async code)
-            logger.info(f"Interrupt in chat loop - streaming={ui.is_streaming_response}, tools_running={ui.tools_running}")
+            logger.info(
+                f"Interrupt in chat loop - streaming={ui.is_streaming_response}, tools_running={ui.tools_running}"
+            )
             if ui.is_streaming_response:
                 output.warning("\nStreaming interrupted - type 'exit' to quit.")
                 ui.interrupt_streaming()
@@ -321,7 +323,7 @@ async def _safe_cleanup(ui: ChatUIManager) -> None:
         # Stop any streaming responses
         if ui.is_streaming_response:
             ui.interrupt_streaming()
-            ui.stop_streaming_response()
+            ui.stop_streaming_response_sync()
 
         # Stop any tool execution
         if ui.tools_running:

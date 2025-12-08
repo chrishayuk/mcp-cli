@@ -126,27 +126,27 @@ async def _execute_tool_direct(
         result_data = tool_call_result.result
 
         # Handle dict wrapper with ToolResult inside
-        if isinstance(result_data, dict) and 'content' in result_data:
-            content = result_data['content']
-            if hasattr(content, 'content'):
+        if isinstance(result_data, dict) and "content" in result_data:
+            content = result_data["content"]
+            if hasattr(content, "content"):
                 # Extract text from MCP ToolResult content blocks
                 text_parts = []
                 for item in content.content:
-                    if isinstance(item, dict) and item.get('type') == 'text':
-                        text_parts.append(item.get('text', ''))
-                    elif hasattr(item, 'text'):
+                    if isinstance(item, dict) and item.get("type") == "text":
+                        text_parts.append(item.get("text", ""))
+                    elif hasattr(item, "text"):
                         text_parts.append(item.text)
-                result_data = '\n'.join(text_parts) if text_parts else str(content)
+                result_data = "\n".join(text_parts) if text_parts else str(content)
         # Handle ToolResult objects directly
-        elif hasattr(result_data, 'content'):
+        elif hasattr(result_data, "content"):
             # Extract text from MCP ToolResult content blocks
             text_parts = []
             for item in result_data.content:
-                if isinstance(item, dict) and item.get('type') == 'text':
-                    text_parts.append(item.get('text', ''))
-                elif hasattr(item, 'text'):
+                if isinstance(item, dict) and item.get("type") == "text":
+                    text_parts.append(item.get("text", ""))
+                elif hasattr(item, "text"):
                     text_parts.append(item.text)
-            result_data = '\n'.join(text_parts) if text_parts else str(result_data)
+            result_data = "\n".join(text_parts) if text_parts else str(result_data)
 
         # Format output
         if raw:
@@ -355,26 +355,26 @@ async def _handle_tool_calls(
             )
 
             # Handle dict wrapper with ToolResult inside
-            if isinstance(result_data, dict) and 'content' in result_data:
-                content = result_data['content']
-                if hasattr(content, 'content'):
+            if isinstance(result_data, dict) and "content" in result_data:
+                content = result_data["content"]
+                if hasattr(content, "content"):
                     text_parts = []
                     for item in content.content:
-                        if isinstance(item, dict) and item.get('type') == 'text':
-                            text_parts.append(item.get('text', ''))
-                        elif hasattr(item, 'text'):
+                        if isinstance(item, dict) and item.get("type") == "text":
+                            text_parts.append(item.get("text", ""))
+                        elif hasattr(item, "text"):
                             text_parts.append(item.text)
-                    result_data = '\n'.join(text_parts) if text_parts else str(content)
+                    result_data = "\n".join(text_parts) if text_parts else str(content)
             # Handle ToolResult objects directly
-            elif hasattr(result_data, 'content'):
+            elif hasattr(result_data, "content"):
                 # Extract text from MCP ToolResult content blocks
                 text_parts = []
                 for item in result_data.content:
-                    if isinstance(item, dict) and item.get('type') == 'text':
-                        text_parts.append(item.get('text', ''))
-                    elif hasattr(item, 'text'):
+                    if isinstance(item, dict) and item.get("type") == "text":
+                        text_parts.append(item.get("text", ""))
+                    elif hasattr(item, "text"):
                         text_parts.append(item.text)
-                result_data = '\n'.join(text_parts) if text_parts else str(result_data)
+                result_data = "\n".join(text_parts) if text_parts else str(result_data)
 
             result_str = (
                 json.dumps(result_data)
@@ -462,26 +462,30 @@ async def _handle_tool_calls(
                 )
 
                 # Handle dict wrapper with ToolResult inside
-                if isinstance(result_data, dict) and 'content' in result_data:
-                    content = result_data['content']
-                    if hasattr(content, 'content'):
+                if isinstance(result_data, dict) and "content" in result_data:
+                    content = result_data["content"]
+                    if hasattr(content, "content"):
                         text_parts = []
                         for item in content.content:
-                            if isinstance(item, dict) and item.get('type') == 'text':
-                                text_parts.append(item.get('text', ''))
-                            elif hasattr(item, 'text'):
+                            if isinstance(item, dict) and item.get("type") == "text":
+                                text_parts.append(item.get("text", ""))
+                            elif hasattr(item, "text"):
                                 text_parts.append(item.text)
-                        result_data = '\n'.join(text_parts) if text_parts else str(content)
+                        result_data = (
+                            "\n".join(text_parts) if text_parts else str(content)
+                        )
                 # Handle ToolResult objects directly
-                elif hasattr(result_data, 'content'):
+                elif hasattr(result_data, "content"):
                     # Extract text from MCP ToolResult content blocks
                     text_parts = []
                     for item in result_data.content:
-                        if isinstance(item, dict) and item.get('type') == 'text':
-                            text_parts.append(item.get('text', ''))
-                        elif hasattr(item, 'text'):
+                        if isinstance(item, dict) and item.get("type") == "text":
+                            text_parts.append(item.get("text", ""))
+                        elif hasattr(item, "text"):
                             text_parts.append(item.text)
-                    result_data = '\n'.join(text_parts) if text_parts else str(result_data)
+                    result_data = (
+                        "\n".join(text_parts) if text_parts else str(result_data)
+                    )
 
                 result_str = (
                     json.dumps(result_data)

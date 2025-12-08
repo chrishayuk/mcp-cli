@@ -450,15 +450,15 @@ wheels = [
 
 [[package]]
 name = "chuk-term"
-version = "0.1.6"
+version = "0.1.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
     { name = "rich" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/20/f8/b8ede61e779783353444b32bab8e3b504036b8eeca5f1d51b99925530b06/chuk_term-0.1.6.tar.gz", hash = "sha256:0cd1e324f5490e39aa0477ccf3b3ef468240605965466b2a0ef621b66383373d", size = 162639, upload-time = "2025-12-07T15:08:43.245Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/22/fc/d132aa500d11447284a8ba5481921550e90bef16e4ca86ebe1f3e1baefcb/chuk_term-0.1.8.tar.gz", hash = "sha256:c81715e116b1f58cb8a476444148bff68a73df8c945fd4c69f2277c05017b978", size = 182992, upload-time = "2025-12-07T23:36:02.983Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/20/99/5fbbf24500b8c801ed5878ce407524f4740fa93f5f40c6b30921fa3f35f2/chuk_term-0.1.6-py3-none-any.whl", hash = "sha256:aa7257b35d60fd39741b81fa0d697fb6ccbb3f787d59eecee7ec5153330ab340", size = 41629, upload-time = "2025-12-07T15:08:42.096Z" },
+    { url = "https://files.pythonhosted.org/packages/65/08/e375c6e56f160701311fdf41c291b54a3fd4ad8f794fce316c79169339a4/chuk_term-0.1.8-py3-none-any.whl", hash = "sha256:8b14f5c56d8ea099a1bcc827cd316ee83d9407c936782f7351bd31c0e1594adb", size = 42129, upload-time = "2025-12-07T23:36:01.476Z" },
 ]
 
 [[package]]
@@ -1416,7 +1416,7 @@ requires-dist = [
     { name = "asyncio", marker = "extra == 'dev'", specifier = ">=3.4.3" },
     { name = "chuk-llm", specifier = ">=0.16" },
     { name = "chuk-mcp-client-oauth", specifier = ">=0.3.5" },
-    { name = "chuk-term", specifier = ">=0.1.5" },
+    { name = "chuk-term", specifier = ">=0.1.8" },
     { name = "chuk-tool-processor", specifier = ">=0.11.2" },
     { name = "cryptography", specifier = ">=44.0.0" },
     { name = "fast-json", specifier = ">=0.3.2" },

@@ -1692,6 +1692,7 @@ def ping_command(
     async def _ping_wrapper(**params):
         # Get the tool manager from the global context, which is initialized by run_command_sync
         from mcp_cli.context import get_context
+
         tm = get_context().tool_manager
 
         return await ping_action_async(

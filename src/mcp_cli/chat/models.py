@@ -17,6 +17,28 @@ class MessageRole(str, Enum):
     TOOL = "tool"
 
 
+class MessageField(str, Enum):
+    """Message field names for API serialization."""
+
+    ROLE = "role"
+    CONTENT = "content"
+    NAME = "name"
+    TOOL_CALLS = "tool_calls"
+    TOOL_CALL_ID = "tool_call_id"
+    REASONING_CONTENT = "reasoning_content"
+
+
+class ToolCallField(str, Enum):
+    """Tool call field names for API serialization."""
+
+    ID = "id"
+    TYPE = "type"
+    FUNCTION = "function"
+    INDEX = "index"
+    NAME = "name"
+    ARGUMENTS = "arguments"
+
+
 class FunctionCall(BaseModel):
     """Function call within a tool call (OpenAI format)."""
 
@@ -45,17 +67,18 @@ class ToolCallData(BaseModel):
     id: str = Field(description="Tool call ID")
     type: str = Field(default="function", description="Type of tool call")
     function: FunctionCall = Field(description="Function call data")
+    index: int = Field(default=0, description="Tool call index in batch")
 
     model_config = {"frozen": False}
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for API."""
         return {
-            "id": self.id,
-            "type": self.type,
-            "function": {
-                "name": self.function.name,
-                "arguments": self.function.arguments,
+            ToolCallField.ID: self.id,
+            ToolCallField.TYPE: self.type,
+            ToolCallField.FUNCTION: {
+                ToolCallField.NAME: self.function.name,
+                ToolCallField.ARGUMENTS: self.function.arguments,
             },
         }
 
@@ -63,13 +86,30 @@ class ToolCallData(BaseModel):
     def from_dict(cls, data: dict[str, Any]) -> "ToolCallData":
         """Create from dict."""
         return cls(
-            id=data["id"],
-            type=data.get("type", "function"),
+            id=data.get(ToolCallField.ID, ""),
+            type=data.get(ToolCallField.TYPE, "function"),
+            index=data.get(ToolCallField.INDEX, 0),
             function=FunctionCall(
-                name=data["function"]["name"],
-                arguments=data["function"]["arguments"],
+                name=data.get(ToolCallField.FUNCTION, {}).get(ToolCallField.NAME, ""),
+                arguments=data.get(ToolCallField.FUNCTION, {}).get(
+                    ToolCallField.ARGUMENTS, ""
+                ),
             ),
         )
+
+    def merge_chunk(self, chunk: "ToolCallData") -> None:
+        """Merge data from a streaming chunk into this tool call.
+
+        Args:
+            chunk: New chunk data to merge
+        """
+        # Update function name if provided
+        if chunk.function.name:
+            self.function.name = chunk.function.name
+
+        # Accumulate arguments (concatenate JSON strings)
+        if chunk.function.arguments:
+            self.function.arguments += chunk.function.arguments
 
 
 class Message(BaseModel):
@@ -87,7 +127,8 @@ class Message(BaseModel):
         default=None, description="Tool call ID (for tool response messages)"
     )
     reasoning_content: str | None = Field(
-        default=None, description="Reasoning content (for models like DeepSeek reasoner)"
+        default=None,
+        description="Reasoning content (for models like DeepSeek reasoner)",
     )
 
     model_config = {"frozen": False}
@@ -99,9 +140,14 @@ class Message(BaseModel):
         # CRITICAL FIX: OpenAI (especially newer models like gpt-5-mini) requires
         # the 'content' field to be present in assistant messages with tool_calls,
         # even if it's null. Without this, some models may hang or reject the request.
-        if self.role == MessageRole.ASSISTANT and "tool_calls" in result:
-            if "content" not in result:
-                result["content"] = None
+        if self.role == MessageRole.ASSISTANT and MessageField.TOOL_CALLS in result:
+            if MessageField.CONTENT not in result:
+                result[MessageField.CONTENT] = None
+
+        # CRITICAL FIX: DeepSeek Reasoner - DO NOT add reasoning_content if not provided
+        # The model will include it when generating tool calls if needed.
+        # Only preserve it if it was actually sent by the model.
+        # See: https://api-docs.deepseek.com/guides/thinking_mode#tool-calls
 
         return result  # type: ignore[no-any-return]
 

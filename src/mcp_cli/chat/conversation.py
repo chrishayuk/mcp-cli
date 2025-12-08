@@ -76,9 +76,19 @@ class ConversationProcessor:
 
                     # Log last few messages for debugging (truncated)
                     for i, msg in enumerate(self.context.conversation_history[-3:]):
-                        role = msg.role if hasattr(msg, 'role') else msg.get('role', 'unknown')
-                        content_preview = str(msg.content)[:100] if hasattr(msg, 'content') else str(msg.get('content', ''))[:100]
-                        log.debug(f"  Message {history_size - 3 + i}: role={role}, content_preview={content_preview}")
+                        role = (
+                            msg.role
+                            if hasattr(msg, "role")
+                            else msg.get("role", "unknown")
+                        )
+                        content_preview = (
+                            str(msg.content)[:100]
+                            if hasattr(msg, "content")
+                            else str(msg.get("content", ""))[:100]
+                        )
+                        log.debug(
+                            f"  Message {history_size - 3 + i}: role={role}, content_preview={content_preview}"
+                        )
 
                     # Check if client supports streaming
                     client = self.context.client
@@ -124,19 +134,29 @@ class ConversationProcessor:
 
                     response_content = completion.get("response", "No response")
                     tool_calls = completion.get("tool_calls", [])
-                    reasoning_content = completion.get("reasoning_content")  # Extract reasoning content
+                    reasoning_content = completion.get(
+                        "reasoning_content"
+                    )  # Extract reasoning content
 
                     # DEBUG: Log what we got from the model
-                    log.info(f"=== COMPLETION RESULT ===")
-                    log.info(f"Response length: {len(response_content) if response_content else 0}")
-                    log.info(f"Tool calls count: {len(tool_calls) if tool_calls else 0}")
-                    log.info(f"Reasoning length: {len(reasoning_content) if reasoning_content else 0}")
+                    log.info("=== COMPLETION RESULT ===")
+                    log.info(
+                        f"Response length: {len(response_content) if response_content else 0}"
+                    )
+                    log.info(
+                        f"Tool calls count: {len(tool_calls) if tool_calls else 0}"
+                    )
+                    log.info(
+                        f"Reasoning length: {len(reasoning_content) if reasoning_content else 0}"
+                    )
                     if response_content and response_content != "No response":
                         log.info(f"Response preview: {response_content[:200]}")
                     if tool_calls:
                         for i, tc in enumerate(tool_calls):
                             if isinstance(tc, dict) and "function" in tc:
-                                log.info(f"Tool call {i}: {tc['function'].get('name', 'unknown')}")
+                                log.info(
+                                    f"Tool call {i}: {tc['function'].get('name', 'unknown')}"
+                                )
 
                     # If model requested tool calls, execute them
                     if tool_calls and len(tool_calls) > 0:
@@ -155,7 +175,7 @@ class ConversationProcessor:
                             )
                             # Stop streaming UI before breaking
                             if self.ui_manager.is_streaming_response:
-                                self.ui_manager.stop_streaming_response()
+                                await self.ui_manager.stop_streaming_response()
                             if hasattr(self.ui_manager, "streaming_handler"):
                                 self.ui_manager.streaming_handler = None
                             break
@@ -194,7 +214,7 @@ class ConversationProcessor:
                             )
                             # CRITICAL: Stop streaming UI before breaking
                             if self.ui_manager.is_streaming_response:
-                                self.ui_manager.stop_streaming_response()
+                                await self.ui_manager.stop_streaming_response()
                             if hasattr(self.ui_manager, "streaming_handler"):
                                 self.ui_manager.streaming_handler = None
                             break
@@ -211,7 +231,9 @@ class ConversationProcessor:
 
                         # Process tool calls - this will handle streaming display
                         await self.tool_processor.process_tool_calls(
-                            tool_calls, name_mapping, reasoning_content=reasoning_content
+                            tool_calls,
+                            name_mapping,
+                            reasoning_content=reasoning_content,
                         )
                         continue
 
@@ -223,20 +245,23 @@ class ConversationProcessor:
 
                     if not completion.get("streaming", False):
                         # Non-streaming response, display normally
-                        self.ui_manager.print_assistant_response(
+                        await self.ui_manager.print_assistant_message(
                             response_content, elapsed
                         )
                     else:
-                        # Streaming response - final display already handled by finish_streaming()
-                        # Just mark streaming as stopped and clean up
-                        self.ui_manager.stop_streaming_response()
+                        # Streaming response - final display already handled by streaming_handler
+                        # Just clean up
+                        # NOTE: Don't call stop_streaming_response() here - it was already called
+                        # by streaming_handler.stream_response()
                         # Clear streaming handler reference
                         if hasattr(self.ui_manager, "streaming_handler"):
                             self.ui_manager.streaming_handler = None
 
                     # Add to conversation history
                     # Include reasoning_content if present (for DeepSeek reasoner and similar models)
-                    message = Message(role=MessageRole.ASSISTANT, content=response_content)
+                    message = Message(
+                        role=MessageRole.ASSISTANT, content=response_content
+                    )
                     if reasoning_content:
                         message.reasoning_content = reasoning_content
                     self.context.conversation_history.append(message)
@@ -257,7 +282,7 @@ class ConversationProcessor:
                     )
                     # Stop streaming UI before breaking
                     if self.ui_manager.is_streaming_response:
-                        self.ui_manager.stop_streaming_response()
+                        await self.ui_manager.stop_streaming_response()
                     if hasattr(self.ui_manager, "streaming_handler"):
                         self.ui_manager.streaming_handler = None
                     break
@@ -273,12 +298,10 @@ class ConversationProcessor:
         from mcp_cli.chat.streaming_handler import StreamingResponseHandler
 
         # Signal UI that streaming is starting
-        self.ui_manager.start_streaming_response()
+        await self.ui_manager.start_streaming_response()
 
         # Set the streaming handler reference in UI manager for interruption support
-        streaming_handler = StreamingResponseHandler(
-            console=self.ui_manager.console, chat_display=self.ui_manager.display
-        )
+        streaming_handler = StreamingResponseHandler(display=self.ui_manager.display)
         self.ui_manager.streaming_handler = streaming_handler
 
         try:

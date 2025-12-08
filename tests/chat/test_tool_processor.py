@@ -18,8 +18,8 @@ class DummyUIManager:
     def print_tool_call(self, tool_name, raw_arguments):
         self.printed_calls.append((tool_name, raw_arguments))
 
-    def finish_tool_execution(self, result=None, success=True):
-        # Add method that tool processor expects
+    async def finish_tool_execution(self, result=None, success=True):
+        # Add async method that tool processor expects
         pass
 
     def do_confirm_tool_execution(self, tool_name, arguments):

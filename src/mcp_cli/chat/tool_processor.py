@@ -16,7 +16,7 @@ from typing import Any
 from chuk_term.ui import output
 
 from mcp_cli.chat.models import Message, MessageRole
-from mcp_cli.ui.formatting import display_tool_call_result
+from mcp_cli.display import display_tool_call_result
 from mcp_cli.utils.preferences import get_preference_manager
 
 log = logging.getLogger(__name__)
@@ -47,7 +47,10 @@ class ToolProcessor:
         setattr(self.context, "tool_processor", self)
 
     async def process_tool_calls(
-        self, tool_calls: list[Any], name_mapping: dict[str, str] | None = None, reasoning_content: str | None = None
+        self,
+        tool_calls: list[Any],
+        name_mapping: dict[str, str] | None = None,
+        reasoning_content: str | None = None,
     ) -> None:
         """
         Execute tool_calls concurrently using the working tool_manager path.
@@ -207,7 +210,10 @@ class ToolProcessor:
 
                 # Track transport failures for recovery
                 if not tool_result.success and tool_result.error:
-                    if "Transport not initialized" in tool_result.error or "transport" in tool_result.error.lower():
+                    if (
+                        "Transport not initialized" in tool_result.error
+                        or "transport" in tool_result.error.lower()
+                    ):
                         self._transport_failures += 1
                         self._consecutive_transport_failures += 1
 
@@ -236,9 +242,7 @@ class ToolProcessor:
 
                 # Add only the tool result to conversation history
                 # (The assistant message with tool calls was already added)
-                self._add_tool_result_to_history(
-                    llm_tool_name, call_id, content
-                )
+                self._add_tool_result_to_history(llm_tool_name, call_id, content)
 
                 # Add to tool history (for /toolhistory command)
                 if hasattr(self.context, "tool_history"):
@@ -254,7 +258,7 @@ class ToolProcessor:
                     )
 
                 # Finish tool execution in unified display
-                self.ui_manager.finish_tool_execution(
+                await self.ui_manager.finish_tool_execution(
                     result=content, success=tool_result.success
                 )
 
@@ -274,9 +278,7 @@ class ToolProcessor:
                 # Add error to conversation history as a tool result
                 # (The assistant message with tool calls was already added)
                 error_content = f"Error: Could not execute tool. {exc}"
-                self._add_tool_result_to_history(
-                    llm_tool_name, call_id, error_content
-                )
+                self._add_tool_result_to_history(llm_tool_name, call_id, error_content)
 
     def _parse_arguments(self, raw_arguments: Any) -> dict[str, Any]:
         """Parse raw arguments into a dictionary."""
@@ -301,17 +303,17 @@ class ToolProcessor:
         # Handle MCP SDK ToolResult objects (nested in result dict)
         if isinstance(result, dict):
             # Check for MCP response structure: {'isError': bool, 'content': ToolResult}
-            if 'content' in result and hasattr(result['content'], 'content'):
+            if "content" in result and hasattr(result["content"], "content"):
                 # Extract content array from MCP ToolResult
-                tool_result_content = result['content'].content
+                tool_result_content = result["content"].content
                 if isinstance(tool_result_content, list):
                     # Extract text from content blocks
                     text_parts = []
                     for block in tool_result_content:
-                        if isinstance(block, dict) and block.get('type') == 'text':
-                            text_parts.append(block.get('text', ''))
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            text_parts.append(block.get("text", ""))
                     if text_parts:
-                        return '\n'.join(text_parts)
+                        return "\n".join(text_parts)
 
             # Try normal JSON serialization
             try:
@@ -335,7 +337,7 @@ class ToolProcessor:
         """
         try:
             # Convert tool calls to dict format for history
-            formatted_tool_calls = []
+            formatted_tool_calls: list[dict[str, Any]] = []
             for call in tool_calls:
                 if hasattr(call, "function"):
                     fn = call.function
@@ -357,28 +359,29 @@ class ToolProcessor:
                 else:
                     arg_json = str(raw_arguments)
 
-                formatted_tool_calls.append({
-                    "id": call_id,
-                    "type": "function",
-                    "function": {
-                        "name": llm_tool_name,
-                        "arguments": arg_json,
-                    },
-                })
+                formatted_tool_calls.append(
+                    {
+                        "id": call_id,
+                        "type": "function",
+                        "function": {
+                            "name": llm_tool_name,
+                            "arguments": arg_json,
+                        },
+                    }
+                )
 
             # Create ONE assistant message with all tool calls
             assistant_msg = Message(
                 role=MessageRole.ASSISTANT,
                 content=None,
                 tool_calls=formatted_tool_calls,
+                reasoning_content=reasoning_content,  # Include reasoning_content directly
             )
 
-            # Add reasoning_content if provided (for DeepSeek reasoner)
-            if reasoning_content:
-                assistant_msg.reasoning_content = reasoning_content
-
             self.context.conversation_history.append(assistant_msg)
-            log.debug(f"Added assistant message with {len(formatted_tool_calls)} tool calls to history")
+            log.debug(
+                f"Added assistant message with {len(formatted_tool_calls)} tool calls to history"
+            )
 
         except Exception as e:
             log.error(f"Error adding assistant message to history: {e}")

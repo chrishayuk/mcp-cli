@@ -1,15 +1,15 @@
-"""
-Clean, simplified Chat UI Manager using chuk-term properly.
+"""Clean, async-native Chat UI Manager using unified display system.
 
-This module provides the UI management for chat mode, handling:
-- User input with prompt_toolkit
-- Tool execution confirmations
-- Message display using chuk-term's themed output
-- Signal handling for interrupts
+This module provides UI management for chat mode with:
+- StreamingDisplayManager for all display operations
+- Async-native throughout
+- No fallback display paths
+- Clean integration with chuk-term
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import signal
@@ -26,13 +26,8 @@ from chuk_term.ui import output
 from chuk_term.ui import prompts
 from chuk_term.ui.theme import get_theme
 
-from mcp_cli.ui.color_converter import create_transparent_completion_style
-from mcp_cli.chat.models import ToolExecutionState
-
+from mcp_cli.display import StreamingDisplayManager, create_transparent_completion_style
 from mcp_cli.chat.command_completer import ChatCommandCompleter
-
-# Use unified command system through adapter
-from mcp_cli.adapters.chat import ChatCommandAdapter
 from mcp_cli.commands import register_all_commands
 from mcp_cli.utils.preferences import get_preference_manager
 
@@ -40,14 +35,16 @@ logger = logging.getLogger(__name__)
 
 
 class ChatUIManager:
-    """Manages the chat UI with clean chuk-term integration."""
+    """Manages chat UI with unified async display system."""
 
     def __init__(self, context) -> None:
-        """Initialize the UI manager with context."""
+        """Initialize UI manager.
+
+        Args:
+            context: Chat context containing client, history, etc.
+        """
         self.context = context
-        self.verbose_mode = False  # Default to compact mode for cleaner output
-        self.tools_running = False
-        self.interrupt_requested = False
+        self.verbose_mode = False
 
         # Tool tracking
         self.tool_calls: list[dict[str, Any]] = []
@@ -56,19 +53,13 @@ class ChatUIManager:
         self.current_tool_start_time: float | None = None
 
         # Streaming state
-        self.is_streaming_response = False
         self.streaming_handler: Any | None = None
-        self._pending_tool: ToolExecutionState | None = None
+        self.tools_running = False  # Compatibility
 
-        # Centralized display manager
-        from mcp_cli.ui.chat_display_manager import ChatDisplayManager
+        # Unified display manager (async-native, chuk-term only)
+        self.display = StreamingDisplayManager()
 
-        self.display = ChatDisplayManager()
-
-        # Add console attribute for compatibility with streaming handler
-        self.console = None  # Not using Rich console, using chuk-term instead
-
-        # Signal handling - signal.signal returns various types
+        # Signal handling
         self._prev_sigint_handler: (
             Callable[[int, FrameType | None, Any], int] | signal.Handlers | None
         ) = None
@@ -80,338 +71,268 @@ class ChatUIManager:
         self.last_input: str | None = None
 
     def _init_prompt_session(self) -> None:
-        """Initialize the prompt_toolkit session."""
-        # Get history file from preferences
+        """Initialize prompt_toolkit session with history."""
         pref_manager = get_preference_manager()
         history_path = pref_manager.get_history_file()
 
-        # Create prompt session with history and auto-suggestions
-        # Use theme colors for autocomplete with terminal background
         theme = get_theme()
 
         # Determine background color based on theme
-        # Light themes use white/light background, dark themes use black
         if theme.name in ["light"]:
             bg_color = "white"
         elif theme.name in ["minimal", "terminal"]:
-            bg_color = ""  # No background
+            bg_color = ""
         else:
-            bg_color = "black"  # Default for dark themes
+            bg_color = "black"
 
-        # Create style for autocomplete menu matching terminal background
-        style = Style.from_dict(
-            create_transparent_completion_style(theme.colors, bg_color)
-        )
+        # Create completion style
+        completion_style = create_transparent_completion_style(theme.colors, bg_color)
 
+        # Create style from completion dict
+        merged_style = Style.from_dict(completion_style)
+
+        # Initialize command registry
+        register_all_commands()
+
+        # Create completer (uses context dict)
+        completer = ChatCommandCompleter(self.context.to_dict())
+
+        # Create session with all features
         self.session: PromptSession = PromptSession(
             history=FileHistory(str(history_path)),
             auto_suggest=AutoSuggestFromHistory(),
-            completer=ChatCommandCompleter(self.context.to_dict()),
+            enable_history_search=True,
+            completer=completer,
             complete_while_typing=True,
-            style=style,
-            message="> ",
+            style=merged_style,
         )
 
-    # ─── User Input ───────────────────────────────────────────────────────
+        logger.debug("Prompt session initialized with history and commands")
 
-    async def get_user_input(self) -> str:
-        """Get user input using prompt_toolkit."""
+    # ==================== USER INPUT ====================
+
+    async def get_user_input(self, prompt: str = "You") -> str:
+        """Get user input with async prompt.
+
+        Args:
+            prompt: Prompt text to display
+
+        Returns:
+            User input string
+        """
         try:
-            msg = await self.session.prompt_async()
-            self.last_input = msg.strip()
-            return self.last_input or ""
-        except (KeyboardInterrupt, EOFError):
-            raise
-        except Exception as exc:
-            logger.error(f"Error getting user input: {exc}")
-            raise
+            # Run prompt in executor since it's blocking
+            loop = asyncio.get_event_loop()
+            user_input = await loop.run_in_executor(
+                None, self.session.prompt, f"\n💬 {prompt}: "
+            )
 
-    # ─── Message Display ─────────────────────────────────────────────────
+            self.last_input = user_input
+            return str(user_input).strip()
+
+        except (KeyboardInterrupt, EOFError):
+            return "/exit"
+
+    # ==================== MESSAGE DISPLAY ====================
 
     def print_user_message(self, message: str) -> None:
-        """Display user message using centralized display."""
+        """Display user message.
+
+        Args:
+            message: User message to display
+        """
         self.display.show_user_message(message or "[No Message]")
         self.tool_calls.clear()
 
-    def print_assistant_response(self, content: str, elapsed: float) -> None:
-        """Display assistant response using centralized display."""
-        # Stop streaming if active
-        if self.is_streaming_response:
-            self.stop_streaming_response()
-
-        # Show any pending tool execution now (after streaming completes)
-        if self._pending_tool:
-            # Don't start tool execution here, wait for tool processor to finish
-            pass
-
-        # Clean up any tool tracking
-        self._cleanup_tool_display()
-
-        # If we have pending tools, store the response for later
-        if self._pending_tool:
-            self._final_response = (content or "[No Response]", elapsed)
-            logger.debug("Storing final assistant response until after tool execution")
-        else:
-            # No pending tools, show response immediately
-            self.display.show_assistant_message(content or "[No Response]", elapsed)
-
-    # ─── Tool Display ────────────────────────────────────────────────────
-
-    def print_tool_call(self, tool_name: str, raw_args: Any) -> None:
-        """Display a tool call using chuk-term or integrate with streaming."""
-        try:
-            # Start timing if first tool
-            if not self.tool_start_time:
-                self.tool_start_time = time.time()
-                self.tools_running = True
-
-            # Process arguments
-            try:
-                if isinstance(raw_args, str):
-                    processed_args = json.loads(raw_args) if raw_args.strip() else {}
-                else:
-                    processed_args = raw_args or {}
-            except json.JSONDecodeError:
-                processed_args = {"raw": str(raw_args)}
-
-            # Track the tool call
-            self.tool_calls.append({"name": tool_name, "args": processed_args})
-
-            # Always defer tool display until after streaming completes
-            logger.debug(f"Storing tool call for later display: {tool_name}")
-            # Store tool info for display after streaming
-            self._pending_tool = ToolExecutionState(
-                name=tool_name, arguments=processed_args, start_time=0.0
-            )
-            return
-
-        except Exception as exc:
-            logger.error(f"Error displaying tool call: {exc}")
-            output.warning(f"Error displaying tool call: {exc}")
-
-    def _integrate_tool_call_into_streaming(
-        self, tool_name: str, processed_args: dict
-    ) -> None:
-        """Show tool call - during streaming, just display a simple message."""
-        try:
-            # During streaming, don't interfere with the active display
-            # Just show a simple tool message
-            if self.is_streaming_response:
-                logger.debug(f"Tool call during streaming: {tool_name}")
-                # Let the unified display handle it naturally
-                if hasattr(self, "display") and hasattr(
-                    self.display, "start_tool_execution"
-                ):
-                    self.display.start_tool_execution(tool_name, processed_args)
-            else:
-                # Not streaming, show a proper tool panel
-                output.tool_call(tool_name, processed_args)
-
-        except Exception as exc:
-            logger.warning(f"Error showing tool call: {exc}")
-            logger.info(f"Tool call: {tool_name} with args: {processed_args}")
-
-    def finish_tool_execution(
-        self, result: str | None = None, success: bool = True
-    ) -> None:
-        """Finish tool execution in centralized display."""
-        # Show pending tool if we have one (after streaming completes)
-        if self._pending_tool:
-            self.display.start_tool_execution(
-                self._pending_tool.name, self._pending_tool.arguments
-            )
-            # Brief pause to let animation show
-            import time
-
-            time.sleep(0.5)
-            self._pending_tool = None
-
-        self.display.finish_tool_execution(result or "", success)
-        logger.debug(f"Finished tool execution: success={success}")
-
-        # Now show the final assistant response if we have it stored
-        if hasattr(self, "_final_response"):
-            content, elapsed = self._final_response
-            self.display.show_assistant_message(content, elapsed)
-            delattr(self, "_final_response")
-
-    def _cleanup_tool_display(self) -> None:
-        """Clean up tool tracking and display."""
-        if self.tool_start_time:
-            try:
-                time.time() - self.tool_start_time
-                # Unified display handles its own output, no need for separate info message
-                pass
-            except Exception:
-                pass
-
-        # Reset tool tracking
-        self.tools_running = False
-        self.interrupt_requested = False
-        self.tool_calls.clear()
-        self.tool_times.clear()
-        self.tool_start_time = None
-        self.current_tool_start_time = None
-
-    # ─── Tool Confirmation ───────────────────────────────────────────────
-
-    def do_confirm_tool_execution(
-        self, tool_name: str | None = None, arguments: Any = None
-    ) -> bool:
-        """
-        Prompt user to confirm tool execution with risk information.
+    async def print_assistant_message(self, content: str, elapsed: float = 0) -> None:
+        """Display assistant message.
 
         Args:
-            tool_name: Name of the tool to execute
-            arguments: Tool arguments (for display)
-
-        Returns:
-            True if user confirms, False otherwise
+            content: Assistant message content
+            elapsed: Elapsed time for response
         """
-        try:
-            prefs = get_preference_manager()
+        # If we were streaming, it's already displayed
+        if self.display.is_streaming:
+            await self.display.stop_streaming()
+        else:
+            # Not streaming, show message directly
+            output.print(f"\n🤖 Assistant ({elapsed:.1f}s):")
+            output.print(content or "[No Response]")
 
-            if tool_name:
-                # Get risk level for the tool
-                risk_level = prefs.get_tool_risk_level(tool_name)
-                risk_indicator = {"safe": "✓", "moderate": "⚠", "high": "⚠️"}.get(
-                    risk_level, "?"
-                )
+    # ==================== TOOL DISPLAY ====================
 
-                # Build confirmation message
-                message = f"{risk_indicator} Execute {tool_name} ({risk_level} risk)?"
-                output.print(message)
-                output.hint("y=yes, n=no, a=always allow, s=skip always")
+    async def start_tool_execution(
+        self, tool_name: str, arguments: dict[str, Any]
+    ) -> None:
+        """Start tool execution display.
 
-                # Get response
-                response = prompts.ask("", default="y").strip().lower()
+        Args:
+            tool_name: Name of tool being executed
+            arguments: Tool arguments
+        """
+        # Format arguments for display
+        processed_args = {}
+        for k, v in arguments.items():
+            if isinstance(v, (dict, list)):
+                processed_args[k] = json.dumps(v)
             else:
-                # Simple confirmation
-                response = prompts.confirm("Execute the tool?", default=True)
-                response = "y" if response else "n"
+                processed_args[k] = str(v)
 
-            # Handle response
-            if response in ["y", ""]:
-                return True
-            elif response == "a" and tool_name:
-                # Always allow this tool
-                prefs.set_tool_confirmation(tool_name, "never")
-                output.success(f"{tool_name} will no longer require confirmation")
-                return True
-            elif response == "s" and tool_name:
-                # Always confirm this tool
-                prefs.set_tool_confirmation(tool_name, "always")
-                output.warning(f"{tool_name} will always require confirmation")
-                return False
-            else:
-                # User declined
-                output.info("Tool execution cancelled")
-                return False
+        await self.display.start_tool_execution(tool_name, processed_args)
 
-        except KeyboardInterrupt:
-            logger.info("Tool execution cancelled by user via Ctrl-C")
-            output.info("Tool execution cancelled")
-            return False
-        except Exception as e:
-            logger.error(f"Error during tool confirmation: {e}")
-            return False
+    async def finish_tool_execution(
+        self, result: str | None = None, success: bool = True
+    ) -> None:
+        """Finish tool execution display.
 
-    # ─── Streaming Support ───────────────────────────────────────────────
+        Args:
+            result: Tool execution result
+            success: Whether execution succeeded
+        """
+        await self.display.stop_tool_execution(result or "", success)
 
-    def start_streaming_response(self) -> None:
-        """Mark that a streaming response has started."""
-        self.is_streaming_response = True
-        logger.debug("Started streaming response")
+    # ==================== STREAMING SUPPORT ====================
 
-    def stop_streaming_response(self) -> None:
-        """Mark that streaming has stopped and clean up display."""
-        self.is_streaming_response = False
-        # CRITICAL: Stop the background refresh task in the display manager
-        if hasattr(self, 'display') and self.display and self.display.is_streaming:
-            self.display.finish_streaming()
-        logger.debug("Stopped streaming response")
+    @property
+    def is_streaming_response(self) -> bool:
+        """Whether currently streaming a response."""
+        return self.display.is_streaming
+
+    async def start_streaming_response(self) -> None:
+        """Start streaming response (handled by display manager)."""
+        # Display manager handles this via streaming_handler
+        pass
+
+    async def stop_streaming_response(self) -> None:
+        """Stop streaming response."""
+        if self.display.is_streaming:
+            await self.display.stop_streaming(interrupted=True)
+
+    def stop_streaming_response_sync(self) -> None:
+        """Stop streaming response (sync version for cleanup)."""
+        # Best-effort cleanup, don't await
+        pass
 
     def interrupt_streaming(self) -> None:
-        """Interrupt streaming if active."""
-        if self.is_streaming_response and self.streaming_handler:
-            try:
-                self.streaming_handler.interrupt_streaming()
-                logger.debug("Interrupted streaming")
-            except Exception as e:
-                logger.warning(f"Could not interrupt streaming: {e}")
+        """Interrupt current streaming operation."""
+        if self.streaming_handler and hasattr(
+            self.streaming_handler, "interrupt_streaming"
+        ):
+            self.streaming_handler.interrupt_streaming()
 
-        # CRITICAL: Always stop streaming UI when interrupted
-        if self.is_streaming_response:
-            self.stop_streaming_response()
-        if hasattr(self, "streaming_handler"):
-            self.streaming_handler = None
+    # ==================== SIGNAL HANDLING ====================
 
-    # ─── Signal Handling ─────────────────────────────────────────────────
+    def setup_signal_handlers(self) -> None:
+        """Setup signal handlers for graceful interruption."""
+        self._prev_sigint_handler = signal.signal(  # type: ignore[assignment]
+            signal.SIGINT, self._handle_sigint
+        )
 
-    def setup_interrupt_handler(self) -> None:
-        """Set up Ctrl-C handler for tool interruption."""
-        try:
+    def restore_signal_handlers(self) -> None:
+        """Restore original signal handlers."""
+        if self._prev_sigint_handler is not None:
+            signal.signal(signal.SIGINT, self._prev_sigint_handler)  # type: ignore[arg-type]
 
-            def _handler(signum: int, frame: FrameType | None) -> None:
-                current_time = time.time()
+    def _handle_sigint(self, signum: int, frame: FrameType | None) -> None:
+        """Handle SIGINT (Ctrl+C) gracefully."""
+        current_time = time.time()
 
-                # Reset counter if too much time passed
-                if current_time - self._last_interrupt_time > 2.0:
-                    self._interrupt_count = 0
+        # Track interrupt count for double-tap exit
+        if current_time - self._last_interrupt_time > 2.0:
+            self._interrupt_count = 0
 
-                self._last_interrupt_time = current_time
-                self._interrupt_count += 1
+        self._interrupt_count += 1
+        self._last_interrupt_time = current_time
 
-                # Handle streaming interruption
-                if self.is_streaming_response:
-                    output.warning("Interrupting streaming response...")
-                    self.interrupt_streaming()
-                    return
+        if self._interrupt_count >= 2:
+            # Double tap - force exit
+            output.warning("\n\nForce exit requested")
+            raise KeyboardInterrupt
 
-                # Handle tool interruption
-                if self.tools_running and not self.interrupt_requested:
-                    self.interrupt_requested = True
-                    output.warning("Interrupt requested - cancelling tool execution...")
-                    self._interrupt_now()
-                elif self.tools_running and self._interrupt_count >= 2:
-                    output.error("Force terminating operation...")
-                    self.stop_tool_calls()
+        # Single tap - try graceful interrupt
+        if self.display.is_streaming:
+            self.interrupt_streaming()
+            output.warning(
+                "\n\n⚠️  Interrupting streaming... (Ctrl+C again to force exit)"
+            )
+        else:
+            output.warning("\n\n⚠️  Interrupted (Ctrl+C again to exit)")
 
-            # Save and set handler
-            self._prev_sigint_handler = signal.signal(signal.SIGINT, _handler)  # type: ignore[assignment]
+    # ==================== TOOL CONFIRMATIONS ====================
 
-        except Exception as exc:
-            logger.warning(f"Could not set up interrupt handler: {exc}")
+    async def confirm_tool_execution(
+        self, tool_name: str, arguments: dict[str, Any]
+    ) -> bool:
+        """Prompt user to confirm tool execution.
 
-    def _restore_sigint_handler(self) -> None:
-        """Restore the previous signal handler."""
-        if self._prev_sigint_handler:
-            try:
-                signal.signal(signal.SIGINT, self._prev_sigint_handler)  # type: ignore[arg-type]
-                self._prev_sigint_handler = None
-            except Exception as exc:
-                logger.warning(f"Could not restore signal handler: {exc}")
+        Args:
+            tool_name: Name of tool to execute
+            arguments: Tool arguments
+
+        Returns:
+            True if confirmed, False otherwise
+        """
+        # Format arguments for display
+        args_display = json.dumps(arguments, indent=2)
+
+        # Show tool info
+        output.info(f"\n🔧 Tool: {tool_name}")
+        output.print(f"Arguments:\n{args_display}\n")
+
+        # Get confirmation
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, prompts.confirm, "Execute this tool?")
+
+        return bool(result)
+
+    # ==================== STATUS & INFO ====================
+
+    def show_status(self) -> None:
+        """Show current chat status."""
+        status = self.context.get_status()
+
+        output.info("📊 Chat Status:")
+        output.print(f"  Provider: {status.provider}")
+        output.print(f"  Model: {status.model}")
+        output.print(f"  Messages: {status.message_count}")
+        output.print(f"  Tools: {status.tool_count}")
+        output.print(f"  Servers: {status.server_count}")
+        output.print(f"  Tool Executions: {status.tool_execution_count}")
+
+    def show_help(self) -> None:
+        """Show help message."""
+        output.info("💬 Chat Commands:")
+        output.print("  /help       - Show this help")
+        output.print("  /status     - Show status")
+        output.print("  /clear      - Clear conversation")
+        output.print("  /history    - Show conversation history")
+        output.print("  /exit       - Exit chat")
+        output.print("\n💡 Tip: Ctrl+C to interrupt streaming")
+
+    def cleanup(self) -> None:
+        """Cleanup UI manager resources."""
+        self.restore_signal_handlers()
+        logger.debug("UI manager cleaned up")
+
+    # ==================== COMPATIBILITY METHODS ====================
 
     def _interrupt_now(self) -> None:
-        """Interrupt running tools immediately."""
-        if hasattr(self.context, "tool_processor"):
-            self.context.tool_processor.cancel_running_tasks()
+        """Immediate interrupt (compatibility method)."""
+        self.interrupt_streaming()
 
     def stop_tool_calls(self) -> None:
-        """Stop all tool calls and clean up."""
+        """Stop tool calls (compatibility method)."""
         self.tools_running = False
-        self.tool_calls.clear()
-        self.tool_times.clear()
-        self.tool_start_time = None
-        self.current_tool_start_time = None
 
-    # Compatibility alias
-    finish_tool_calls = stop_tool_calls
+    async def handle_command(self, user_input: str) -> bool:
+        """Handle slash command.
 
-    # ─── Command Handling ────────────────────────────────────────────────
+        Args:
+            user_input: User input string
 
-    async def handle_command(self, cmd: str) -> bool:
-        """Process a slash command."""
+        Returns:
+            True if handled as command, False otherwise
+        """
         try:
             # Ensure commands are registered
             register_all_commands()
@@ -426,7 +347,9 @@ class ChatUIManager:
             }
 
             # Use the unified command adapter
-            handled = await ChatCommandAdapter.handle_command(cmd, context)
+            from mcp_cli.adapters.chat import ChatCommandAdapter
+
+            handled = await ChatCommandAdapter.handle_command(user_input, context)
 
             # Check if context requested exit
             if self.context.exit_requested:
@@ -435,16 +358,6 @@ class ChatUIManager:
             return handled
 
         except Exception as exc:
-            logger.error(f"Error handling command '{cmd}': {exc}")
-            output.error(f"Error executing command: {exc}")
-            return True
-
-    # ─── Cleanup ─────────────────────────────────────────────────────────
-
-    def cleanup(self) -> None:
-        """Clean up resources."""
-        try:
-            self._cleanup_tool_display()
-            self._restore_sigint_handler()
-        except Exception as exc:
-            logger.warning(f"Error during cleanup: {exc}")
+            logger.exception("Error handling command")
+            output.error(f"Error handling command: {exc}")
+            return False

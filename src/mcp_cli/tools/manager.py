@@ -54,6 +54,7 @@ class ToolManager:
         self.server_names = server_names or {}
         # Read from environment variable if not provided, default to 120.0
         import os
+
         env_timeout = os.environ.get("MCP_TOOL_TIMEOUT")
         if tool_timeout is not None:
             self.tool_timeout = tool_timeout
@@ -286,7 +287,9 @@ class ToolManager:
     def _create_oauth_refresh_callback(self):
         """Create OAuth token refresh callback for StreamManager."""
 
-        async def refresh_oauth_token(server_url: str | None = None) -> dict[str, str] | None:
+        async def refresh_oauth_token(
+            server_url: str | None = None,
+        ) -> dict[str, str] | None:
             """
             Refresh OAuth token for a server and return updated headers.
 
@@ -325,7 +328,11 @@ class ToolManager:
 
             try:
                 # Get token manager
-                token_mgr = TokenManager(backend=TokenStoreBackend.AUTO, namespace=NAMESPACE, service_name="mcp-cli")
+                token_mgr = TokenManager(
+                    backend=TokenStoreBackend.AUTO,
+                    namespace=NAMESPACE,
+                    service_name="mcp-cli",
+                )
 
                 # Get existing token data
                 token_data = token_mgr.get_token(server_name)
@@ -338,7 +345,9 @@ class ToolManager:
                 refresh_token = token_data.get("refresh_token")
 
                 if not refresh_token:
-                    logger.warning(f"No refresh_token available for server: {server_name}, re-authentication required")
+                    logger.warning(
+                        f"No refresh_token available for server: {server_name}, re-authentication required"
+                    )
                     return None
 
                 # Attempt to refresh the token using the OAuth library
@@ -357,20 +366,18 @@ class ToolManager:
 
                 # Store the new tokens
                 token_mgr.store_token(
-                    name=server_name,
-                    token_data=new_tokens,
-                    token_type="oauth"
+                    name=server_name, token_data=new_tokens, token_type="oauth"
                 )
 
                 logger.info(f"OAuth token refreshed successfully for {server_name}")
 
                 # Return updated Authorization header
-                return {
-                    "Authorization": f"Bearer {new_tokens['access_token']}"
-                }
+                return {"Authorization": f"Bearer {new_tokens['access_token']}"}
 
             except Exception as e:
-                logger.error(f"OAuth token refresh failed for {server_name}: {e}", exc_info=True)
+                logger.error(
+                    f"OAuth token refresh failed for {server_name}: {e}", exc_info=True
+                )
                 return None
 
         return refresh_oauth_token
@@ -513,12 +520,16 @@ class ToolManager:
         if self.meta_tool_provider.is_meta_tool(tool_name):
             logger.info(f"Executing meta-tool: {tool_name}")
             try:
-                result = await self.meta_tool_provider.execute_meta_tool(tool_name, arguments)
+                result = await self.meta_tool_provider.execute_meta_tool(
+                    tool_name, arguments
+                )
                 return ToolCallResult(tool_name=tool_name, success=True, result=result)
             except Exception as e:
                 error_msg = str(e)
                 logger.error(f"Meta-tool execution failed: {error_msg}")
-                return ToolCallResult(tool_name=tool_name, success=False, error=error_msg)
+                return ToolCallResult(
+                    tool_name=tool_name, success=False, error=error_msg
+                )
 
         # Regular MCP tool execution
         if not self.stream_manager:
@@ -540,8 +551,13 @@ class ToolManager:
             logger.error(f"Tool execution failed: {error_msg}")
 
             # Check if this is a transport error that might be recoverable
-            if "Transport not initialized" in error_msg or "transport" in error_msg.lower():
-                logger.warning(f"Transport error detected for tool {tool_name}, attempting recovery...")
+            if (
+                "Transport not initialized" in error_msg
+                or "transport" in error_msg.lower()
+            ):
+                logger.warning(
+                    f"Transport error detected for tool {tool_name}, attempting recovery..."
+                )
 
                 # Attempt to recover by reconnecting to the affected server
                 recovery_result = await self._attempt_transport_recovery(
@@ -573,7 +589,9 @@ class ToolManager:
                 # Dynamic mode: Return ONLY meta-tools to stay within provider limits
                 # The LLM can discover available tools using list_tools() and get schemas using get_tool_schema()
                 meta_tools = self.meta_tool_provider.get_meta_tools()
-                logger.info(f"Dynamic tools mode: Returning {len(meta_tools)} meta-tools only")
+                logger.info(
+                    f"Dynamic tools mode: Returning {len(meta_tools)} meta-tools only"
+                )
                 return meta_tools
 
             # Static mode: load all tools upfront
@@ -581,7 +599,7 @@ class ToolManager:
             all_tools = await self.get_all_tools()
 
             # Convert ToolInfo to LLM format for filter
-            raw_tools = [
+            raw_tools: list[dict[str, Any]] = [
                 {
                     "type": "function",
                     "function": {
@@ -600,24 +618,34 @@ class ToolManager:
 
             if include_tools:
                 include_set = {name.strip() for name in include_tools.split(",")}
-                raw_tools = [
-                    tool for tool in raw_tools
+                filtered_tools: list[dict[str, Any]] = [
+                    tool
+                    for tool in raw_tools
                     if tool["function"]["name"] in include_set
                 ]
-                logger.info(f"Filtered to {len(raw_tools)} tools using include list: {include_set}")
+                raw_tools = filtered_tools
+                logger.info(
+                    f"Filtered to {len(raw_tools)} tools using include list: {include_set}"
+                )
 
             if exclude_tools:
                 exclude_set = {name.strip() for name in exclude_tools.split(",")}
-                raw_tools = [
-                    tool for tool in raw_tools
+                filtered_tools_exclude: list[dict[str, Any]] = [
+                    tool
+                    for tool in raw_tools
                     if tool["function"]["name"] not in exclude_set
                 ]
-                logger.info(f"Filtered to {len(raw_tools)} tools using exclude list: {exclude_set}")
+                raw_tools = filtered_tools_exclude
+                logger.info(
+                    f"Filtered to {len(raw_tools)} tools using exclude list: {exclude_set}"
+                )
 
             # Filter and validate for provider
             valid_tools, _ = self.tool_filter.filter_tools(raw_tools, provider=provider)
 
-            logger.info(f"Returning {len(valid_tools)} tools for LLM after all filtering")
+            logger.info(
+                f"Returning {len(valid_tools)} tools for LLM after all filtering"
+            )
             if len(valid_tools) <= 10:
                 for tool in valid_tools:
                     logger.info(f"  - {tool['function']['name']}")
@@ -742,12 +770,18 @@ class ToolManager:
                 logger.warning(f"Could not identify server for tool {tool_name}")
                 return None
 
-            logger.info(f"Attempting to reconnect to server '{server_name}' for tool '{tool_name}'")
+            logger.info(
+                f"Attempting to reconnect to server '{server_name}' for tool '{tool_name}'"
+            )
 
             # Try to reconnect the specific server through StreamManager
-            if hasattr(self.stream_manager, 'reconnect_server'):
+            if self.stream_manager is None:
+                logger.warning("StreamManager is None, cannot attempt recovery")
+                return None
+
+            if hasattr(self.stream_manager, "reconnect_server"):
                 await self.stream_manager.reconnect_server(server_name)
-            elif hasattr(self.stream_manager, 'restart_server'):
+            elif hasattr(self.stream_manager, "restart_server"):
                 await self.stream_manager.restart_server(server_name)
             else:
                 # If no specific reconnect method, log warning
@@ -758,6 +792,7 @@ class ToolManager:
 
             # Wait a moment for reconnection
             import asyncio
+
             await asyncio.sleep(0.5)
 
             # Retry the tool call once

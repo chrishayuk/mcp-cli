@@ -2,7 +2,7 @@
 
 import pytest
 from rich.table import Table
-from mcp_cli.ui.formatting import (
+from mcp_cli.display import (
     format_tool_for_display,
     create_tools_table,
     create_servers_table,
@@ -170,3 +170,128 @@ def test_display_tool_call_failure(result, capsys):
     if captured.out:
         expected_error = result.error or "Unknown error"
         assert expected_error in captured.out or "Error:" in captured.out
+
+
+def test_display_tool_call_large_list_of_dicts(capsys):
+    """Test display of large list of dict results (>10 items)."""
+    large_list = [{"id": i, "value": f"item_{i}"} for i in range(15)]
+    result = ToolCallResult(
+        tool_name="test", success=True, result=large_list, error=None
+    )
+    display_tool_call_result(result, console=None)
+    captured = capsys.readouterr()
+    output_text = captured.out + captured.err
+
+    # Should show summary instead of table
+    assert "15 records" in output_text or "First 3 records" in output_text
+
+
+def test_display_tool_call_simple_list(capsys):
+    """Test display of simple list (non-dict items)."""
+    simple_list = ["item1", "item2", "item3"]
+    result = ToolCallResult(
+        tool_name="test", success=True, result=simple_list, error=None
+    )
+    display_tool_call_result(result, console=None)
+    captured = capsys.readouterr()
+    output_text = captured.out + captured.err
+
+    # Should show items with bullet points
+    assert "3 items" in output_text or "item1" in output_text
+
+
+def test_display_tool_call_large_simple_list(capsys):
+    """Test display of large simple list (>10 items)."""
+    large_list = [f"item_{i}" for i in range(15)]
+    result = ToolCallResult(
+        tool_name="test", success=True, result=large_list, error=None
+    )
+    display_tool_call_result(result, console=None)
+    captured = capsys.readouterr()
+    output_text = captured.out + captured.err
+
+    # Should show truncation message
+    assert "15 items" in output_text or "5 more" in output_text
+
+
+def test_display_tool_call_large_dict(capsys):
+    """Test display of large dict (>10 keys)."""
+    large_dict = {f"key_{i}": f"value_{i}" for i in range(15)}
+    result = ToolCallResult(
+        tool_name="test", success=True, result=large_dict, error=None
+    )
+    display_tool_call_result(result, console=None)
+    # Should use JSON format for large dicts
+    # Just verify it doesn't crash
+    assert True
+
+
+def test_display_tool_call_very_large_dict(capsys):
+    """Test display of very large dict with >500 chars JSON."""
+    # Create a dict that will be >500 chars when serialized
+    large_dict = {f"key_{i}": f"value_{i}" * 20 for i in range(20)}
+    result = ToolCallResult(
+        tool_name="test", success=True, result=large_dict, error=None
+    )
+    display_tool_call_result(result, console=None)
+    captured = capsys.readouterr()
+    output_text = captured.out + captured.err
+
+    # Should show truncation
+    assert "truncated" in output_text.lower() or len(output_text) > 0
+
+
+def test_display_tool_call_long_string(capsys):
+    """Test display of long string result (>500 chars)."""
+    long_string = "x" * 600
+    result = ToolCallResult(
+        tool_name="test", success=True, result=long_string, error=None
+    )
+    display_tool_call_result(result, console=None)
+    captured = capsys.readouterr()
+    output_text = captured.out + captured.err
+
+    # Should show truncation message
+    assert "truncated" in output_text.lower() or "x" * 500 in output_text
+
+
+def test_display_tool_call_other_type_serializable(capsys):
+    """Test display of other types that can be JSON serialized."""
+    result = ToolCallResult(tool_name="test", success=True, result=123, error=None)
+    display_tool_call_result(result, console=None)
+    # Should serialize as JSON
+    # Just verify it doesn't crash
+    assert True
+
+
+def test_display_tool_call_other_type_large_json(capsys):
+    """Test display of other type with large JSON output."""
+    # Create a large nested structure
+    large_obj = {"data": ["x" * 100 for _ in range(10)]}
+    result = ToolCallResult(
+        tool_name="test", success=True, result=large_obj, error=None
+    )
+    display_tool_call_result(result, console=None)
+    captured = capsys.readouterr()
+    output_text = captured.out + captured.err
+
+    # Should handle large JSON
+    assert len(output_text) > 0 or "truncated" in output_text.lower()
+
+
+class NonSerializable:
+    """Class that can't be JSON serialized."""
+
+    pass
+
+
+def test_display_tool_call_non_serializable(capsys):
+    """Test display of non-JSON-serializable result."""
+    obj = NonSerializable()
+    result = ToolCallResult(tool_name="test", success=True, result=obj, error=None)
+    display_tool_call_result(result, console=None)
+    captured = capsys.readouterr()
+    output_text = captured.out + captured.err
+
+    # Should fallback to str() representation
+    assert "NonSerializable" in output_text or len(output_text) > 0

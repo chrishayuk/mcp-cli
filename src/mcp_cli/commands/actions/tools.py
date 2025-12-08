@@ -21,7 +21,7 @@ import logging
 from typing import Any
 
 # MCP-CLI helpers
-from mcp_cli.ui.formatting import create_tools_table
+from mcp_cli.display import create_tools_table
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.utils.async_utils import run_blocking
 from chuk_term.ui import output, format_table
