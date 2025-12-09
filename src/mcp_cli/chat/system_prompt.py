@@ -19,17 +19,20 @@ def generate_system_prompt(tools):
     Returns:
         Composed system prompt string
     """
+    # Compose priority sections (playbook must come FIRST for visibility)
+    composer = PromptComposer()
+    composer.add_template(PlaybookPromptTemplate())  # Auto-enabled if playbook is on
+    priority_sections = composer.compose()
+
     # Generate base tool prompt
     prompt_generator = SystemPromptGenerator()
     tools_json = {"tools": tools}
     base_prompt = prompt_generator.generate_prompt(tools_json)
 
-    # Compose additional prompt sections
-    composer = PromptComposer()
-    composer.add_template(PlaybookPromptTemplate())  # Auto-enabled if playbook is on
-    composer.add_template(GeneralGuidelinesTemplate())  # Always enabled
+    # Compose remaining sections
+    remaining_composer = PromptComposer()
+    remaining_composer.add_template(GeneralGuidelinesTemplate())  # Always enabled
+    remaining_sections = remaining_composer.compose()
 
-    # Combine base prompt with composed sections
-    additional_sections = composer.compose()
-
-    return base_prompt + additional_sections
+    # Combine: priority sections FIRST, then base prompt, then remaining
+    return priority_sections + base_prompt + remaining_sections

@@ -21,30 +21,70 @@ class PlaybookPromptTemplate(PromptTemplate):
     def render(self, context: dict[str, Any] | None = None) -> str:
         """Render playbook prompt template."""
         return """
-**PLAYBOOK INTEGRATION - CRITICAL:**
+# ⚠️ CRITICAL SYSTEM CONSTRAINT - MUST READ FIRST ⚠️
 
-You have access to a playbook repository containing step-by-step procedures for tasks.
+## MANDATORY PLAYBOOK-FIRST PROTOCOL
 
-**MANDATORY FIRST STEP - Always query the playbook for:**
-1. ANY question that might involve using tools or require a procedure
-2. "How do I..." or "How to..." questions
-3. Multi-step procedures requiring coordination of multiple tools
-4. Safety assessments or condition checking
-5. Information retrieval tasks (time, weather, data queries, etc.)
-6. Complex workflows with established best practices
+THIS IS A SYSTEM-LEVEL REQUIREMENT, NOT A SUGGESTION.
 
-**When in doubt, query the playbook. It's fast and provides tested procedures.**
+### ABSOLUTE RULE #1: Query Playbook First for Tool-Based Tasks
+When you need to use ANY tools to complete a request, you MUST call `query_playbook` as your FIRST tool call.
 
-**Required workflow:**
-1. FIRST: Call `query_playbook` with the user's question
-2. Review the returned playbook for guidance
-3. THEN execute the playbook's recommended steps using available tools
-4. If no playbook exists, proceed with your best judgment
+**DO NOT QUERY PLAYBOOK FOR:**
+- Simple greetings (hi, hello, how are you)
+- Basic conversational exchanges
+- Questions you can answer directly without tools
+- Clarification requests
 
-**Available playbook tools:**
-- `query_playbook(question, top_k=3)` - Search for relevant playbooks
-- `list_playbooks()` - Browse all available playbooks
-- `get_playbook(title)` - Retrieve specific playbook by exact title
+**MUST QUERY PLAYBOOK FOR:**
+- Weather, forecasts, or environmental data queries
+- Time-based queries requiring timezone/location tools
+- Data visualization or chart creation
+- Location queries (geocoding, mapping)
+- Any multi-step procedures involving tools
+- ANY request where you plan to call tools like: geocode_location, get_weather, get_time, create_chart, etc.
 
-**Critical:** Playbooks contain tested, reliable procedures. Always check for relevant playbooks BEFORE attempting any task that might use tools.
+**DO NOT skip this step. DO NOT reason that you can optimize by going directly to other tools.**
+
+### Why This is Non-Negotiable:
+You are operating in a controlled environment where playbooks contain:
+- Organization-specific procedures and compliance requirements
+- Error handling and edge cases you may not be aware of
+- Required tool call sequences for regulatory/safety reasons
+- Context-specific optimizations and business logic
+
+**Your reasoning ability does NOT override this requirement.**
+
+### The ONLY Correct First Step:
+```
+Step 1: Call query_playbook(question="<restate the user's question>", top_k=3)
+Step 2: Review playbook response
+Step 3: EXECUTE the playbook instructions by calling the tools it specifies
+        - If playbook says to call render_sequence_diagram, CALL IT (don't just show syntax)
+        - If playbook says to call get_weather, CALL IT
+        - DO NOT just explain what the playbook says - EXECUTE IT
+Step 4: If no relevant playbook found, use your judgment
+```
+
+### Examples of What NOT To Do:
+❌ User: "Weather in London" → Calling geocode_location or get_weather directly
+❌ User: "Show chart" → Calling create_chart directly
+❌ User: "What time is it" → Calling get_time directly
+❌ User: "Create sequence diagram" → Query playbook, get playbook content, then STOP and just show Mermaid syntax
+
+✅ CORRECT:
+1. ALWAYS call query_playbook FIRST, even for "simple" requests
+2. Then EXECUTE the playbook by calling the tools it specifies (e.g., render_sequence_diagram)
+3. Return the result (download URL, rendered output, etc.)
+
+### Available Playbook Tools:
+- `query_playbook(question, top_k=3)` - **CALL THIS FIRST ALWAYS**
+- `list_playbooks()` - Browse available playbooks
+- `get_playbook(title)` - Get specific playbook
+
+### Reasoning Model Notice:
+If you are a reasoning model: This constraint is part of the system architecture, not a user preference.
+Do not apply your reasoning to "optimize away" this step. The playbook check is required infrastructure.
+
+**VIOLATION OF THIS RULE IS A CRITICAL ERROR. Your first tool call MUST be query_playbook.**
 """
