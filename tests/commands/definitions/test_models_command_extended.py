@@ -1,9 +1,9 @@
 """Extended tests for the models command definition to improve coverage."""
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
-from mcp_cli.commands.definitions.models import (
+from mcp_cli.commands.providers.models import (
     ModelCommand,
     ModelListCommand,
     ModelSetCommand,
@@ -35,10 +35,13 @@ class TestModelCommand:
     @pytest.mark.asyncio
     async def test_model_command_default_execution(self, command):
         """Test executing model command without subcommand."""
-        with patch("mcp_cli.commands.actions.models.model_action_async") as mock_action:
-            mock_action.return_value = None
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_ctx = mock_get_ctx.return_value
+            mock_ctx.llm_manager.get_current_model.return_value = "gpt-4"
+            mock_ctx.llm_manager.get_current_provider.return_value = "openai"
 
-            result = await command.execute()
+            with patch("chuk_term.ui.output"):
+                result = await command.execute()
 
             assert result.success is True
 
@@ -60,35 +63,36 @@ class TestModelListCommand:
     @pytest.mark.asyncio
     async def test_list_command_execute(self, command):
         """Test executing list command."""
-        with patch("mcp_cli.commands.actions.models.model_action_async") as mock_action:
-            mock_action.return_value = None
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_ctx = mock_get_ctx.return_value
+            mock_ctx.llm_manager.list_models.return_value = ["gpt-4", "gpt-3.5-turbo"]
+            mock_ctx.llm_manager.get_current_model.return_value = "gpt-4"
 
-            result = await command.execute()
+            with patch("chuk_term.ui.output"):
+                result = await command.execute()
 
             assert result.success is True
-            mock_action.assert_called_once()
-            call_args = mock_action.call_args[0][0]
-            assert call_args.args == ["list"]
+            mock_ctx.llm_manager.list_models.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_list_command_with_refresh(self, command):
         """Test list command with refresh parameter."""
-        with patch("mcp_cli.commands.actions.models.model_action_async") as mock_action:
-            mock_action.return_value = None
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_ctx = mock_get_ctx.return_value
+            mock_ctx.llm_manager.list_models.return_value = ["gpt-4", "gpt-3.5-turbo"]
+            mock_ctx.llm_manager.get_current_model.return_value = "gpt-4"
 
-            result = await command.execute(refresh=True)
+            with patch("chuk_term.ui.output"):
+                result = await command.execute(refresh=True)
 
             assert result.success is True
-            # The implementation doesn't pass refresh parameter
-            mock_action.assert_called_once()
-            call_args = mock_action.call_args[0][0]
-            assert call_args.args == ["list"]
+            mock_ctx.llm_manager.list_models.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_list_command_error(self, command):
         """Test list command error handling."""
-        with patch("mcp_cli.commands.actions.models.model_action_async") as mock_action:
-            mock_action.side_effect = Exception("Failed to list models")
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_get_ctx.side_effect = Exception("Failed to list models")
 
             result = await command.execute()
 
@@ -114,16 +118,15 @@ class TestModelSetCommand:
     @pytest.mark.asyncio
     async def test_set_command_execute(self, command):
         """Test executing set command."""
-        with patch("mcp_cli.commands.actions.models.model_action_async") as mock_action:
-            mock_action.return_value = None
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_ctx = mock_get_ctx.return_value
+            mock_ctx.llm_manager.set_model.return_value = None
 
-            result = await command.execute(model_name="gpt-4")
+            with patch("chuk_term.ui.output"):
+                result = await command.execute(model_name="gpt-4")
 
             assert result.success is True
-            # The implementation passes model name directly
-            mock_action.assert_called_once()
-            call_args = mock_action.call_args[0][0]
-            assert call_args.args == ["gpt-4"]
+            mock_ctx.llm_manager.set_model.assert_called_once_with("gpt-4")
 
     @pytest.mark.asyncio
     async def test_set_command_no_model_name(self, command):
@@ -136,22 +139,21 @@ class TestModelSetCommand:
     @pytest.mark.asyncio
     async def test_set_command_from_args(self, command):
         """Test set command with model name from args."""
-        with patch("mcp_cli.commands.actions.models.model_action_async") as mock_action:
-            mock_action.return_value = None
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_ctx = mock_get_ctx.return_value
+            mock_ctx.llm_manager.set_model.return_value = None
 
-            result = await command.execute(args=["gpt-3.5-turbo"])
+            with patch("chuk_term.ui.output"):
+                result = await command.execute(args=["gpt-3.5-turbo"])
 
             assert result.success is True
-            # The implementation passes model name directly
-            mock_action.assert_called_once()
-            call_args = mock_action.call_args[0][0]
-            assert call_args.args == ["gpt-3.5-turbo"]
+            mock_ctx.llm_manager.set_model.assert_called_once_with("gpt-3.5-turbo")
 
     @pytest.mark.asyncio
     async def test_set_command_error(self, command):
         """Test set command error handling."""
-        with patch("mcp_cli.commands.actions.models.model_action_async") as mock_action:
-            mock_action.side_effect = Exception("Model not found")
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_get_ctx.side_effect = Exception("Model not found")
 
             result = await command.execute(model_name="invalid-model")
 
@@ -178,22 +180,22 @@ class TestModelShowCommand:
     @pytest.mark.asyncio
     async def test_show_command_execute(self, command):
         """Test executing show command."""
-        with patch("mcp_cli.commands.actions.models.model_action_async") as mock_action:
-            mock_action.return_value = None
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_ctx = mock_get_ctx.return_value
+            mock_ctx.llm_manager.get_current_model.return_value = "gpt-4"
+            mock_ctx.llm_manager.get_current_provider.return_value = "openai"
 
-            result = await command.execute()
+            with patch("chuk_term.ui.output"):
+                result = await command.execute()
 
             assert result.success is True
-            # The implementation passes empty list
-            mock_action.assert_called_once()
-            call_args = mock_action.call_args[0][0]
-            assert call_args.args == []
+            mock_ctx.llm_manager.get_current_model.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_show_command_error(self, command):
         """Test show command error handling."""
-        with patch("mcp_cli.commands.actions.models.model_action_async") as mock_action:
-            mock_action.side_effect = Exception("Failed to show model")
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_get_ctx.side_effect = Exception("Failed to show model")
 
             result = await command.execute()
 
@@ -212,18 +214,26 @@ class TestModelCommandIntegration:
     @pytest.mark.asyncio
     async def test_execute_with_model_name_directly(self, command):
         """Test executing model command with model name directly."""
-        with patch("mcp_cli.commands.actions.models.model_action_async") as mock_action:
-            mock_action.return_value = None
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_ctx = mock_get_ctx.return_value
+            mock_ctx.llm_manager.set_model.return_value = None
 
-            # When model name is provided directly
-            result = await command.execute(args=["gpt-4o"])
+            with patch("chuk_term.ui.output"):
+                # When model name is provided directly
+                result = await command.execute(args=["gpt-4o"])
 
             assert result.success is True
 
     @pytest.mark.asyncio
     async def test_execute_list_subcommand(self, command):
         """Test executing model list subcommand."""
-        result = await command.execute(subcommand="list")
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_ctx = mock_get_ctx.return_value
+            mock_ctx.llm_manager.list_models.return_value = ["gpt-4"]
+            mock_ctx.llm_manager.get_current_model.return_value = "gpt-4"
+
+            with patch("chuk_term.ui.output"):
+                result = await command.execute(subcommand="list")
 
         # Should delegate to list subcommand
         assert isinstance(result, CommandResult)
@@ -232,8 +242,9 @@ class TestModelCommandIntegration:
     async def test_execute_invalid_subcommand(self, command):
         """Test executing with invalid subcommand that gets treated as model name."""
         # The 'invalid' will be treated as model name to switch to
-        with patch("mcp_cli.commands.actions.models.model_action_async") as mock_action:
-            mock_action.side_effect = Exception("Model not found: invalid")
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_ctx = mock_get_ctx.return_value
+            mock_ctx.llm_manager.set_model.side_effect = Exception("Model not found: invalid")
 
             result = await command.execute(args=["invalid"])
 

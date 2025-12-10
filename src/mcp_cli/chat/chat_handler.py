@@ -38,6 +38,7 @@ async def handle_chat_mode(
     confirm_mode: str | None = None,
     max_turns: int = 30,
     model_manager=None,  # FIXED: Accept model_manager from caller
+    runtime_config=None,  # RuntimeConfig | None
 ) -> bool:
     """
     Launch the interactive chat loop with streaming support.
@@ -51,6 +52,7 @@ async def handle_chat_mode(
         confirm_mode: Tool confirmation mode override (optional)
         max_turns: Maximum conversation turns before forcing exit (default: 30)
         model_manager: Pre-configured ModelManager (optional, creates new if None)
+        runtime_config: Runtime configuration with timeout overrides (optional)
 
     Returns:
         True if session ended normally, False on failure
@@ -132,7 +134,7 @@ async def handle_chat_mode(
 
         # UI and conversation processor
         ui = ChatUIManager(ctx)
-        convo = ConversationProcessor(ctx, ui)
+        convo = ConversationProcessor(ctx, ui, runtime_config)
 
         # Main chat loop with streaming support
         await _run_enhanced_chat_loop(ui, ctx, convo, max_turns)
@@ -208,7 +210,7 @@ async def handle_chat_mode_for_testing(
 
         # UI and conversation processor
         ui = ChatUIManager(ctx)
-        convo = ConversationProcessor(ctx, ui)
+        convo = ConversationProcessor(ctx, ui, runtime_config)
 
         # Main chat loop with streaming support
         await _run_enhanced_chat_loop(ui, ctx, convo, max_turns)

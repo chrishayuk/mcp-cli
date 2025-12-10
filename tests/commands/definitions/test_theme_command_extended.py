@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from mcp_cli.commands.definitions.theme import ThemeCommand
+from mcp_cli.commands.theme.theme import ThemeCommand
 from mcp_cli.commands.base import CommandMode
 
 
@@ -41,7 +41,7 @@ async def test_theme_set_valid_theme(theme_command, mock_pref_manager):
         "mcp_cli.utils.preferences.get_preference_manager",
         return_value=mock_pref_manager,
     ):
-        with patch("mcp_cli.commands.definitions.theme.set_theme") as mock_set_theme:
+        with patch("mcp_cli.commands.theme.theme.set_theme") as mock_set_theme:
             result = await theme_command.execute(theme_name="dark")
 
             assert result.success is True
@@ -71,7 +71,7 @@ async def test_theme_from_args_list(theme_command, mock_pref_manager):
         "mcp_cli.utils.preferences.get_preference_manager",
         return_value=mock_pref_manager,
     ):
-        with patch("mcp_cli.commands.definitions.theme.set_theme") as mock_set_theme:
+        with patch("mcp_cli.commands.theme.theme.set_theme") as mock_set_theme:
             result = await theme_command.execute(args=["monokai"])
 
             assert result.success is True
@@ -86,7 +86,7 @@ async def test_theme_from_args_string(theme_command, mock_pref_manager):
         "mcp_cli.utils.preferences.get_preference_manager",
         return_value=mock_pref_manager,
     ):
-        with patch("mcp_cli.commands.definitions.theme.set_theme") as mock_set_theme:
+        with patch("mcp_cli.commands.theme.theme.set_theme") as mock_set_theme:
             result = await theme_command.execute(args="dracula")
 
             assert result.success is True
@@ -96,39 +96,30 @@ async def test_theme_from_args_string(theme_command, mock_pref_manager):
 
 @pytest.mark.asyncio
 async def test_theme_interactive_selection(theme_command, mock_pref_manager):
-    """Test interactive theme selection."""
+    """Test showing current theme when no theme is provided."""
     with patch(
         "mcp_cli.utils.preferences.get_preference_manager",
         return_value=mock_pref_manager,
     ):
-        with patch(
-            "mcp_cli.commands.actions.theme._interactive_theme_selection"
-        ) as mock_interactive:
-            mock_interactive.return_value = None
-
-            result = await theme_command.execute()
-
-            assert result.success is True
-            mock_interactive.assert_called_once_with(mock_pref_manager)
-
-
-@pytest.mark.asyncio
-async def test_theme_interactive_selection_error(theme_command, mock_pref_manager):
-    """Test fallback when interactive selection fails."""
-    with patch(
-        "mcp_cli.utils.preferences.get_preference_manager",
-        return_value=mock_pref_manager,
-    ):
-        with patch(
-            "mcp_cli.commands.actions.theme._interactive_theme_selection"
-        ) as mock_interactive:
-            mock_interactive.side_effect = Exception("Interactive failed")
-
+        with patch("chuk_term.ui.output"):
             result = await theme_command.execute()
 
             assert result.success is True
             assert "Current theme: default" in result.output
-            assert "Available themes:" in result.output
+
+
+@pytest.mark.asyncio
+async def test_theme_interactive_selection_error(theme_command, mock_pref_manager):
+    """Test showing theme info when no theme is provided."""
+    with patch(
+        "mcp_cli.utils.preferences.get_preference_manager",
+        return_value=mock_pref_manager,
+    ):
+        with patch("chuk_term.ui.output"):
+            result = await theme_command.execute()
+
+            assert result.success is True
+            assert "Current theme: default" in result.output
 
 
 @pytest.mark.asyncio
@@ -149,7 +140,7 @@ async def test_theme_all_valid_themes(theme_command, mock_pref_manager):
         "mcp_cli.utils.preferences.get_preference_manager",
         return_value=mock_pref_manager,
     ):
-        with patch("mcp_cli.commands.definitions.theme.set_theme") as mock_set_theme:
+        with patch("mcp_cli.commands.theme.theme.set_theme") as mock_set_theme:
             for theme in valid_themes:
                 result = await theme_command.execute(theme_name=theme)
 
@@ -160,20 +151,16 @@ async def test_theme_all_valid_themes(theme_command, mock_pref_manager):
 
 @pytest.mark.asyncio
 async def test_theme_empty_args_list(theme_command, mock_pref_manager):
-    """Test with empty args list."""
+    """Test with empty args list shows current theme."""
     with patch(
         "mcp_cli.utils.preferences.get_preference_manager",
         return_value=mock_pref_manager,
     ):
-        with patch(
-            "mcp_cli.commands.actions.theme._interactive_theme_selection"
-        ) as mock_interactive:
-            mock_interactive.return_value = None
-
+        with patch("chuk_term.ui.output"):
             result = await theme_command.execute(args=[])
 
             assert result.success is True
-            mock_interactive.assert_called_once()
+            assert "Current theme: default" in result.output
 
 
 @pytest.mark.asyncio

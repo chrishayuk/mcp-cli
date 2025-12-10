@@ -17,37 +17,39 @@ class ChatCommandCompleter(Completer):
         # Ensure commands are registered
         register_all_commands()
 
-        txt = document.text.lstrip()
-        if not txt.startswith("/"):
+        # Get text before cursor
+        text = document.text_before_cursor.lstrip()
+
+        # Only complete if we're typing a command (starts with /)
+        if not text or not text.startswith("/"):
             return
 
         # Get unified commands
         registry = UnifiedCommandRegistry()
         commands = registry.list_commands(mode=CommandMode.CHAT)
 
-        # Generate completions
-        for cmd in commands:
-            # Check if this command matches the partial text
-            if f"/{cmd.name}".startswith(txt):
-                # Calculate the replacement text (only the part not yet typed)
-                replacement = f"/{cmd.name}"[len(txt) :]
+        # Calculate start position - how far back to replace
+        start_pos = -len(text)
 
+        # Show all matching commands
+        for cmd in commands:
+            cmd_text = f"/{cmd.name}"
+            # Check if this command matches what's been typed
+            if cmd_text.startswith(text):
                 yield Completion(
-                    replacement,
-                    start_position=0,
-                    display=f"/{cmd.name}",
-                    display_meta=cmd.description[:40]
-                    if len(cmd.description) > 40
-                    else cmd.description,
+                    cmd_text,
+                    start_position=start_pos,
+                    display=cmd_text,
+                    display_meta=cmd.description,
                 )
 
             # Also check aliases
             for alias in cmd.aliases:
-                if f"/{alias}".startswith(txt) and alias != cmd.name:
-                    replacement = f"/{alias}"[len(txt) :]
+                alias_text = f"/{alias}"
+                if alias_text.startswith(text) and alias != cmd.name:
                     yield Completion(
-                        replacement,
-                        start_position=0,
-                        display=f"/{alias}",
+                        alias_text,
+                        start_position=start_pos,
+                        display=alias_text,
                         display_meta=f"→ /{cmd.name}",
                     )

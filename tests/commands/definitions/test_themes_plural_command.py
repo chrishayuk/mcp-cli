@@ -1,8 +1,8 @@
 """Tests for the themes plural command."""
 
 import pytest
-from unittest.mock import patch, AsyncMock
-from mcp_cli.commands.definitions.themes_plural import ThemesPluralCommand
+from unittest.mock import patch, AsyncMock, Mock
+from mcp_cli.commands.theme.themes_plural import ThemesPluralCommand
 
 
 class TestThemesPluralCommand:
@@ -23,42 +23,41 @@ class TestThemesPluralCommand:
     @pytest.mark.asyncio
     async def test_execute_success(self, command):
         """Test successful execution."""
-        with patch(
-            "mcp_cli.commands.actions.theme.theme_action_async", new_callable=AsyncMock
-        ) as mock_action:
-            result = await command.execute()
+        with patch("mcp_cli.utils.preferences.get_preference_manager") as mock_pref:
+            mock_pref_mgr = Mock()
+            mock_pref_mgr.get_theme.return_value = "dark"
+            mock_pref.return_value = mock_pref_mgr
+            with patch("chuk_term.ui.output"):
+                with patch("chuk_term.ui.format_table"):
+                    result = await command.execute()
 
-            # Should call theme action with empty params
-            mock_action.assert_called_once()
-            call_args = mock_action.call_args[0][0]
-            assert hasattr(call_args.__class__, "model_fields")  # It's a Pydantic model
-            assert result.success is True
+                    assert result.success is True
 
     @pytest.mark.asyncio
     async def test_execute_with_kwargs(self, command):
         """Test execution with kwargs (should be ignored)."""
-        with patch(
-            "mcp_cli.commands.actions.theme.theme_action_async", new_callable=AsyncMock
-        ) as mock_action:
-            result = await command.execute(some_arg="value")
+        with patch("mcp_cli.utils.preferences.get_preference_manager") as mock_pref:
+            mock_pref_mgr = Mock()
+            mock_pref_mgr.get_theme.return_value = "dark"
+            mock_pref.return_value = mock_pref_mgr
+            with patch("chuk_term.ui.output"):
+                with patch("chuk_term.ui.format_table"):
+                    result = await command.execute(some_arg="value")
 
-            # Should still call theme action successfully
-            mock_action.assert_called_once()
-            assert result.success is True
+                    # Should still call successfully
+                    assert result.success is True
 
     @pytest.mark.asyncio
     async def test_execute_error_handling(self, command):
         """Test error handling during execution."""
-        with patch(
-            "mcp_cli.commands.actions.theme.theme_action_async", new_callable=AsyncMock
-        ) as mock_action:
-            mock_action.side_effect = Exception("Theme list failed")
+        with patch("mcp_cli.utils.preferences.get_preference_manager") as mock_pref:
+            mock_pref.side_effect = Exception("Theme list failed")
+            with patch("chuk_term.ui.output"):
+                result = await command.execute()
 
-            result = await command.execute()
-
-            assert result.success is False
-            assert "Failed to list themes" in result.error
-            assert "Theme list failed" in result.error
+                assert result.success is False
+                assert "Failed to list themes" in result.error
+                assert "Theme list failed" in result.error
 
     def test_help_text_content(self, command):
         """Test that help text contains expected information."""

@@ -166,3 +166,67 @@ class CLICommandAdapter:
         CLICommandAdapter.register_with_typer(app)
 
         return app
+
+
+async def cli_execute(command_name: str, **kwargs: Any) -> Any:
+    """
+    Convenience function to execute a unified command from CLI.
+
+    This is a simplified interface for main.py to use when migrating from
+    legacy action functions to unified commands.
+
+    Args:
+        command_name: Name of the command to execute
+        **kwargs: Command parameters
+
+    Returns:
+        Command result data (or True on success, False on failure)
+
+    Example:
+        await cli_execute("tools", raw=True, details=False)
+    """
+    from mcp_cli.commands.registry import UnifiedCommandRegistry
+
+    # Get registry instance
+    cmd_registry = UnifiedCommandRegistry()
+
+    # Look up command in registry
+    command = cmd_registry.get(command_name, mode=CommandMode.CLI)
+
+    if not command:
+        output.error(f"Unknown command: {command_name}")
+        return False
+
+    try:
+        # Add context if needed
+        if command.requires_context:
+            context = get_context()
+            if context:
+                kwargs.setdefault("tool_manager", context.tool_manager)
+                kwargs.setdefault("model_manager", context.model_manager)
+
+        # Execute command
+        result = await command.execute(**kwargs)
+
+        # Handle result
+        if result.success:
+            if result.output:
+                # Output is already formatted by the command (str or Rich object)
+                output.print(result.output)
+
+            # Return data for programmatic use
+            return result.data if result.data else True
+
+        # Handle failure case
+        else:
+            if result.error:
+                output.error(result.error)
+            else:
+                output.error(f"Command failed: {command_name}")
+
+            return False
+
+    except Exception as e:
+        logger.exception(f"Error executing command: {command_name}")
+        output.error(f"Command error: {str(e)}")
+        return False

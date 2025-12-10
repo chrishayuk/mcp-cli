@@ -3,6 +3,9 @@ Centralized configuration manager for MCP CLI.
 
 This module provides a centralized way to manage configuration
 instead of loading JSON files all over the place.
+
+LEGACY: This module contains legacy MCPConfig that will be phased out.
+Use mcp_cli.config.models.MCPConfig for new code.
 """
 
 from __future__ import annotations
@@ -18,7 +21,19 @@ from pydantic import BaseModel, Field
 from mcp_cli.auth import OAuthConfig
 from mcp_cli.tools.models import ServerInfo, TransportType
 
+# Import clean models from new config system
+from mcp_cli.config.models import (
+    MCPConfig as CleanMCPConfig,
+    TimeoutConfig as CleanTimeoutConfig,
+    ToolConfig as CleanToolConfig,
+)
+
 logger = logging.getLogger(__name__)
+
+# LEGACY: Use clean models for new code
+# These are kept for backward compatibility with old code
+TimeoutConfig = CleanTimeoutConfig  # type: ignore[misc]
+ToolConfig = CleanToolConfig  # type: ignore[misc]
 
 
 class ServerConfig(BaseModel):
@@ -90,15 +105,28 @@ class ServerConfig(BaseModel):
         )
 
 
-class MCPConfig(BaseModel):
-    """Complete MCP configuration."""
+class LegacyMCPConfig(BaseModel):
+    """LEGACY: Complete MCP configuration with ServerConfig models.
+
+    This class is kept for backward compatibility with code that uses
+    ServerConfig models. New code should use CleanMCPConfig from models.py
+    which stores servers as plain dicts.
+    """
 
     servers: dict[str, ServerConfig] = Field(default_factory=dict)
     default_provider: str = "openai"
     default_model: str = "gpt-4"
     theme: str = "default"
     verbose: bool = True
-    confirm_tools: bool = True
+    confirm_tools: bool = True  # DEPRECATED: Use tools.confirm_tools instead
+
+    # Centralized configurations (use clean models)
+    timeouts: TimeoutConfig = Field(
+        default_factory=TimeoutConfig, description="All timeout configurations"
+    )
+    tools: ToolConfig = Field(
+        default_factory=ToolConfig, description="Tool filtering and behavior"
+    )
 
     # Token storage configuration
     token_store_backend: str = (
@@ -114,7 +142,7 @@ class MCPConfig(BaseModel):
     model_config = {"frozen": False, "arbitrary_types_allowed": True}
 
     @classmethod
-    def load_from_file(cls, config_path: Path) -> MCPConfig:
+    def load_from_file(cls, config_path: Path) -> "LegacyMCPConfig":
         """Load configuration from JSON file."""
         config = cls()
 
@@ -149,6 +177,53 @@ class MCPConfig(BaseModel):
                 "vaultPathPrefix", "mcp-cli/oauth"
             )
             config.vault_namespace = token_storage.get("vaultNamespace")
+
+            # NEW: Load timeout configuration
+            if "timeouts" in data:
+                timeout_data = data["timeouts"]
+                config.timeouts = TimeoutConfig(
+                    streaming_chunk_timeout=timeout_data.get(
+                        "streamingChunkTimeout",
+                        config.timeouts.streaming_chunk_timeout,
+                    ),
+                    streaming_global_timeout=timeout_data.get(
+                        "streamingGlobalTimeout",
+                        config.timeouts.streaming_global_timeout,
+                    ),
+                    streaming_first_chunk_timeout=timeout_data.get(
+                        "streamingFirstChunkTimeout",
+                        config.timeouts.streaming_first_chunk_timeout,
+                    ),
+                    tool_execution_timeout=timeout_data.get(
+                        "toolExecutionTimeout", config.timeouts.tool_execution_timeout
+                    ),
+                    server_init_timeout=timeout_data.get(
+                        "serverInitTimeout", config.timeouts.server_init_timeout
+                    ),
+                    http_request_timeout=timeout_data.get(
+                        "httpRequestTimeout", config.timeouts.http_request_timeout
+                    ),
+                    http_connect_timeout=timeout_data.get(
+                        "httpConnectTimeout", config.timeouts.http_connect_timeout
+                    ),
+                )
+
+            # NEW: Load tool configuration
+            if "tools" in data:
+                tool_data = data["tools"]
+                config.tools = ToolConfig(
+                    include_tools=tool_data.get("includeTools"),
+                    exclude_tools=tool_data.get("excludeTools"),
+                    dynamic_tools_enabled=tool_data.get(
+                        "dynamicToolsEnabled", config.tools.dynamic_tools_enabled
+                    ),
+                    confirm_tools=tool_data.get(
+                        "confirmTools", config.tools.confirm_tools
+                    ),
+                    max_concurrency=tool_data.get(
+                        "maxConcurrency", config.tools.max_concurrency
+                    ),
+                )
 
         except Exception as e:
             # Log error but return empty config
@@ -190,6 +265,26 @@ class MCPConfig(BaseModel):
         if token_storage:
             data["tokenStorage"] = token_storage
 
+        # NEW: Add timeout configuration
+        data["timeouts"] = {
+            "streamingChunkTimeout": self.timeouts.streaming_chunk_timeout,
+            "streamingGlobalTimeout": self.timeouts.streaming_global_timeout,
+            "streamingFirstChunkTimeout": self.timeouts.streaming_first_chunk_timeout,
+            "toolExecutionTimeout": self.timeouts.tool_execution_timeout,
+            "serverInitTimeout": self.timeouts.server_init_timeout,
+            "httpRequestTimeout": self.timeouts.http_request_timeout,
+            "httpConnectTimeout": self.timeouts.http_connect_timeout,
+        }
+
+        # NEW: Add tool configuration
+        data["tools"] = {
+            "includeTools": self.tools.include_tools,
+            "excludeTools": self.tools.exclude_tools,
+            "dynamicToolsEnabled": self.tools.dynamic_tools_enabled,
+            "confirmTools": self.tools.confirm_tools,
+            "maxConcurrency": self.tools.max_concurrency,
+        }
+
         with open(config_path, "w") as f:
             json.dump(data, f, indent=2)
 
@@ -215,6 +310,11 @@ class MCPConfig(BaseModel):
     def list_enabled_servers(self) -> list[ServerConfig]:
         """Get list of enabled server configurations."""
         return [s for s in self.servers.values() if not s.disabled]
+
+
+# Export alias for backward compatibility
+# ConfigManager still uses LegacyMCPConfig internally
+MCPConfig = LegacyMCPConfig
 
 
 class ConfigManager:
@@ -365,11 +465,20 @@ def detect_server_types(
             stdio_servers.append(server)
             continue
 
-        if server_config.url:
+        # Handle both dict (new clean config) and ServerConfig (legacy)
+        if isinstance(server_config, dict):
+            url = server_config.get("url")
+            command = server_config.get("command")
+        else:
+            # ServerConfig model
+            url = server_config.url
+            command = server_config.command
+
+        if url:
             # HTTP server
-            http_servers.append({"name": server, "url": server_config.url})
-            logger.debug(f"Detected HTTP server: {server} -> {server_config.url}")
-        elif server_config.command:
+            http_servers.append({"name": server, "url": url})
+            logger.debug(f"Detected HTTP server: {server} -> {url}")
+        elif command:
             # STDIO server
             stdio_servers.append(server)
             logger.debug(f"Detected STDIO server: {server}")
@@ -408,10 +517,20 @@ def validate_server_config(
 
         server_config = cfg.servers[server]
 
-        # Check for valid configuration
-        has_url = server_config.url is not None
-        has_command = server_config.command is not None
+        # Handle both dict (new clean config) and ServerConfig (legacy)
+        if isinstance(server_config, dict):
+            has_url = server_config.get("url") is not None
+            has_command = server_config.get("command") is not None
+            url = server_config.get("url")
+            command = server_config.get("command")
+        else:
+            # ServerConfig model
+            has_url = server_config.url is not None
+            has_command = server_config.command is not None
+            url = server_config.url
+            command = server_config.command
 
+        # Check for valid configuration
         if not has_url and not has_command:
             errors.append(f"Server '{server}' missing both 'url' and 'command' fields")
         elif has_url and has_command:
@@ -420,15 +539,182 @@ def validate_server_config(
             )
         elif has_url:
             # Validate URL format
-            url = server_config.url
             if url and not url.startswith(("http://", "https://")):
                 errors.append(
                     f"Server '{server}' URL must start with http:// or https://"
                 )
         elif has_command:
             # Validate command format
-            command = server_config.command
             if not isinstance(command, str) or not command.strip():
                 errors.append(f"Server '{server}' command must be a non-empty string")
 
     return len(errors) == 0, errors
+
+
+# ============================================================================
+# Runtime Configuration Resolver
+# ============================================================================
+
+
+class RuntimeConfig:
+    """
+    Runtime configuration resolver with priority handling.
+
+    Priority order (highest to lowest):
+    1. CLI arguments (passed at initialization)
+    2. Environment variables
+    3. Config file (MCPConfig)
+    4. Defaults (in TimeoutConfig/ToolConfig)
+
+    This class provides a unified interface for accessing configuration
+    values, automatically resolving from the appropriate source.
+    """
+
+    def __init__(
+        self,
+        mcp_config: MCPConfig | None = None,
+        cli_overrides: dict[str, Any] | None = None,
+    ):
+        """
+        Initialize runtime config resolver.
+
+        Args:
+            mcp_config: The loaded MCPConfig (from file)
+            cli_overrides: Dictionary of CLI argument overrides
+        """
+        self.mcp_config = mcp_config or MCPConfig()
+        self.cli_overrides = cli_overrides or {}
+
+    def get_timeout(self, timeout_name: str) -> float:
+        """
+        Get timeout value with priority resolution.
+
+        Args:
+            timeout_name: Name of timeout (e.g., "streaming_chunk", "tool_execution")
+
+        Returns:
+            Resolved timeout value in seconds
+
+        Example:
+            >>> config = RuntimeConfig(mcp_config)
+            >>> config.get_timeout("streaming_chunk")  # Returns 45.0 by default
+        """
+        # 1. Check CLI overrides first
+        cli_key = f"{timeout_name}_timeout"
+        if cli_key in self.cli_overrides:
+            return float(self.cli_overrides[cli_key])
+
+        # 2. Check environment variables
+        env_key = f"MCP_{timeout_name.upper()}_TIMEOUT"
+        env_value = os.getenv(env_key)
+        if env_value:
+            try:
+                return float(env_value)
+            except ValueError:
+                logger.warning(
+                    f"Invalid timeout value in {env_key}={env_value}, using config/default"
+                )
+
+        # Special case: MCP_TOOL_TIMEOUT applies to multiple timeouts
+        if timeout_name in ["streaming_chunk", "streaming_global", "tool_execution"]:
+            tool_timeout_env = os.getenv("MCP_TOOL_TIMEOUT")
+            if tool_timeout_env:
+                try:
+                    return float(tool_timeout_env)
+                except ValueError:
+                    pass
+
+        # 3. Get from config file
+        timeout_attr = f"{timeout_name}_timeout"
+        if hasattr(self.mcp_config.timeouts, timeout_attr):
+            return getattr(self.mcp_config.timeouts, timeout_attr)
+
+        # 4. Fallback to default (should never reach here if TimeoutConfig has defaults)
+        logger.warning(
+            f"No timeout configuration found for '{timeout_name}', using 120.0"
+        )
+        return 120.0
+
+    def get_tool_config_value(self, key: str) -> Any:
+        """
+        Get tool configuration value with priority resolution.
+
+        Args:
+            key: Configuration key (e.g., "include_tools", "confirm_tools")
+
+        Returns:
+            Resolved configuration value
+        """
+        # 1. Check CLI overrides
+        if key in self.cli_overrides:
+            return self.cli_overrides[key]
+
+        # 2. Check environment variables
+        env_key = f"MCP_CLI_{key.upper()}"
+        env_value = os.getenv(env_key)
+
+        if env_value is not None:
+            # Handle different types
+            if key in ["include_tools", "exclude_tools"]:
+                # Comma-separated list
+                return [t.strip() for t in env_value.split(",") if t.strip()]
+            elif key == "dynamic_tools_enabled":
+                return env_value.lower() in ["1", "true", "yes"]
+            elif key == "confirm_tools":
+                return env_value.lower() not in ["0", "false", "no"]
+            elif key == "max_concurrency":
+                try:
+                    return int(env_value)
+                except ValueError:
+                    pass
+
+        # 3. Get from config file
+        if hasattr(self.mcp_config.tools, key):
+            return getattr(self.mcp_config.tools, key)
+
+        # 4. Return None if not found
+        return None
+
+    def get_all_timeouts(self) -> dict[str, float]:
+        """Get all timeout values as a dictionary."""
+        return {
+            "streaming_chunk": self.get_timeout("streaming_chunk"),
+            "streaming_global": self.get_timeout("streaming_global"),
+            "streaming_first_chunk": self.get_timeout("streaming_first_chunk"),
+            "tool_execution": self.get_timeout("tool_execution"),
+            "server_init": self.get_timeout("server_init"),
+            "http_request": self.get_timeout("http_request"),
+            "http_connect": self.get_timeout("http_connect"),
+        }
+
+    def update_from_cli(self, **kwargs) -> None:
+        """
+        Update CLI overrides from keyword arguments.
+
+        Args:
+            **kwargs: CLI argument values to override
+        """
+        self.cli_overrides.update(kwargs)
+
+
+def get_runtime_config(
+    mcp_config: MCPConfig | None = None, cli_overrides: dict[str, Any] | None = None
+) -> RuntimeConfig:
+    """
+    Convenience function to create a RuntimeConfig instance.
+
+    Args:
+        mcp_config: The loaded MCPConfig (defaults to getting from ConfigManager)
+        cli_overrides: Dictionary of CLI argument overrides
+
+    Returns:
+        RuntimeConfig instance
+    """
+    if mcp_config is None:
+        try:
+            mcp_config = get_config()
+        except RuntimeError:
+            # Config not initialized, use defaults
+            mcp_config = MCPConfig()
+
+    return RuntimeConfig(mcp_config, cli_overrides)

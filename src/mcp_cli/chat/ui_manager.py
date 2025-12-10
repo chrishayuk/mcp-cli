@@ -97,14 +97,19 @@ class ChatUIManager:
         # Create completer (uses context dict)
         completer = ChatCommandCompleter(self.context.to_dict())
 
+        # Don't use custom key bindings - they interfere with completion state
+        # Just rely on prompt_toolkit's built-in completion behavior
+
         # Create session with all features
         self.session: PromptSession = PromptSession(
             history=FileHistory(str(history_path)),
             auto_suggest=AutoSuggestFromHistory(),
             enable_history_search=True,
             completer=completer,
-            complete_while_typing=True,
+            complete_while_typing=True,  # Auto-trigger completions as you type
+            complete_in_thread=False,  # Complete in main thread for responsiveness
             style=merged_style,
+            complete_style="MULTI_COLUMN",  # Show completions in multi-column menu
         )
 
         logger.debug("Prompt session initialized with history and commands")

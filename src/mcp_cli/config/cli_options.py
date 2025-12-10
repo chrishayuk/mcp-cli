@@ -117,12 +117,27 @@ def inject_logging_env_vars(cfg: MCPConfig, quiet: bool = False) -> None:
     }
 
     for server_name, server_config in cfg.servers.items():
+        # Handle both dict (new clean config) and ServerConfig (legacy)
+        if isinstance(server_config, dict):
+            command = server_config.get("command")
+            env = server_config.get("env", {})
+        else:
+            # ServerConfig model
+            command = server_config.command
+            env = server_config.env
+
         # Only inject env vars for STDIO servers (those with 'command')
-        if server_config.command:
+        if command:
             # Inject logging env vars if not already set
             for env_key, env_value in logging_env_vars.items():
-                if env_key not in server_config.env:
-                    server_config.env[env_key] = env_value
+                if env_key not in env:
+                    env[env_key] = env_value
+
+            # Update the config with modified env
+            if isinstance(server_config, dict):
+                server_config["env"] = env
+            else:
+                server_config.env = env
 
 
 def process_options(

@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import Mock, patch
-from mcp_cli.commands.definitions.ping import PingCommand
+from mcp_cli.commands.servers.ping import PingCommand
 
 
 class TestPingCommand:
@@ -32,31 +32,35 @@ class TestPingCommand:
     @pytest.mark.asyncio
     async def test_execute_all_servers(self, command):
         """Test pinging all servers."""
+        from mcp_cli.tools.models import ServerInfo
+        from unittest.mock import AsyncMock
+
         mock_tm = Mock()
+        mock_server = ServerInfo(
+            id=1, name="test-server", status="running",
+            connected=True, tool_count=5, namespace="test"
+        )
+        mock_tm.get_server_info = AsyncMock(return_value=[mock_server])
 
-        with patch("mcp_cli.commands.actions.ping.ping_action_async") as mock_ping:
-            mock_ping.return_value = True  # Success
-
+        with patch("chuk_term.ui.output"):
             result = await command.execute(tool_manager=mock_tm)
-
-            # Verify ping was called without targets (ping all)
-            mock_ping.assert_called_once_with(mock_tm, targets=[])
-
             assert result.success is True
 
     @pytest.mark.asyncio
     async def test_execute_specific_server(self, command):
         """Test pinging a specific server."""
+        from mcp_cli.tools.models import ServerInfo
+        from unittest.mock import AsyncMock
+
         mock_tm = Mock()
+        mock_server = ServerInfo(
+            id=1, name="test-server", status="running",
+            connected=True, tool_count=5, namespace="test"
+        )
+        mock_tm.get_server_info = AsyncMock(return_value=[mock_server])
 
-        with patch("mcp_cli.commands.actions.ping.ping_action_async") as mock_ping:
-            mock_ping.return_value = True
-
-            result = await command.execute(tool_manager=mock_tm, server_index=1)
-
-            # Verify ping was called with server target
-            mock_ping.assert_called_once_with(mock_tm, targets=["1"])
-
+        with patch("chuk_term.ui.output"):
+            result = await command.execute(tool_manager=mock_tm, server_index=0)
             assert result.success is True
 
     @pytest.mark.asyncio
@@ -69,33 +73,38 @@ class TestPingCommand:
 
     @pytest.mark.asyncio
     async def test_execute_failed_ping(self, command):
-        """Test when ping returns False."""
+        """Test when server is disconnected."""
+        from mcp_cli.tools.models import ServerInfo
+        from unittest.mock import AsyncMock
+
         mock_tm = Mock()
+        mock_server = ServerInfo(
+            id=1, name="test-server", status="stopped",
+            connected=False, tool_count=0, namespace="test"
+        )
+        mock_tm.get_server_info = AsyncMock(return_value=[mock_server])
 
-        with patch("mcp_cli.commands.actions.ping.ping_action_async") as mock_ping:
-            mock_ping.return_value = False  # No servers pinged
-
+        with patch("chuk_term.ui.output"):
             result = await command.execute(tool_manager=mock_tm)
-
             assert result.success is False
 
     @pytest.mark.asyncio
     async def test_execute_error_handling(self, command):
         """Test error handling during ping."""
+        from unittest.mock import AsyncMock
+
         mock_tm = Mock()
+        mock_tm.get_server_info = AsyncMock(side_effect=Exception("Network error"))
 
-        with patch("mcp_cli.commands.actions.ping.ping_action_async") as mock_ping:
-            mock_ping.side_effect = Exception("Network error")
-
+        with patch("chuk_term.ui.output"):
             result = await command.execute(tool_manager=mock_tm)
-
             assert result.success is False
             assert "Network error" in result.error
 
     @pytest.mark.asyncio
     async def test_execute_with_context_exception(self, command):
         """Test getting tool manager from context when it throws exception."""
-        with patch("mcp_cli.commands.definitions.ping.get_context") as mock_ctx:
+        with patch("mcp_cli.context.get_context") as mock_ctx:
             # Make context throw exception
             mock_ctx.side_effect = Exception("Context error")
 
@@ -108,31 +117,39 @@ class TestPingCommand:
     @pytest.mark.asyncio
     async def test_execute_with_args_list(self, command):
         """Test executing with args as list."""
+        from mcp_cli.tools.models import ServerInfo
+        from unittest.mock import AsyncMock
+
         mock_tm = Mock()
+        mock_server1 = ServerInfo(
+            id=1, name="server1", status="running",
+            connected=True, tool_count=5, namespace="test"
+        )
+        mock_server2 = ServerInfo(
+            id=2, name="server2", status="running",
+            connected=True, tool_count=3, namespace="test"
+        )
+        mock_tm.get_server_info = AsyncMock(return_value=[mock_server1, mock_server2])
 
-        with patch("mcp_cli.commands.actions.ping.ping_action_async") as mock_ping:
-            mock_ping.return_value = True
-
+        with patch("chuk_term.ui.output"):
             # Pass args as a list
-            result = await command.execute(
-                tool_manager=mock_tm, args=["server1", "server2"]
-            )
-
-            # Should pass targets from args list
-            mock_ping.assert_called_once_with(mock_tm, targets=["server1", "server2"])
+            result = await command.execute(tool_manager=mock_tm, args=["server1", "server2"])
             assert result.success is True
 
     @pytest.mark.asyncio
     async def test_execute_with_args_string(self, command):
         """Test executing with args as string."""
+        from mcp_cli.tools.models import ServerInfo
+        from unittest.mock import AsyncMock
+
         mock_tm = Mock()
+        mock_server = ServerInfo(
+            id=1, name="server1", status="running",
+            connected=True, tool_count=5, namespace="test"
+        )
+        mock_tm.get_server_info = AsyncMock(return_value=[mock_server])
 
-        with patch("mcp_cli.commands.actions.ping.ping_action_async") as mock_ping:
-            mock_ping.return_value = True
-
+        with patch("chuk_term.ui.output"):
             # Pass args as a string
             result = await command.execute(tool_manager=mock_tm, args="server1")
-
-            # Should convert string to list
-            mock_ping.assert_called_once_with(mock_tm, targets=["server1"])
             assert result.success is True

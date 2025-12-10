@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import patch
-from mcp_cli.commands.definitions.prompts import PromptsCommand
+from mcp_cli.commands.resources.prompts import PromptsCommand
 
 
 class TestPromptsCommand:
@@ -28,113 +28,80 @@ class TestPromptsCommand:
     @pytest.mark.asyncio
     async def test_execute_list_all(self, command):
         """Test listing all prompts."""
-        with patch(
-            "mcp_cli.commands.actions.prompts.prompts_action_async"
-        ) as mock_action:
-            mock_action.return_value = {
-                "prompts": [
-                    {
-                        "name": "summarize",
-                        "server": "text-processor",
-                        "description": "Summarize text",
-                        "arguments": ["text", "max_length"],
-                    },
-                    {
-                        "name": "translate",
-                        "server": "translator",
-                        "description": "Translate text",
-                        "arguments": ["text", "target_language"],
-                    },
-                ]
-            }
+        from unittest.mock import AsyncMock, MagicMock
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_ctx = mock_get_ctx.return_value
+            # Create mock prompt objects
+            mock_prompt1 = MagicMock()
+            mock_prompt1.name = "summarize"
+            mock_prompt1.description = "Summarize text"
+            mock_prompt2 = MagicMock()
+            mock_prompt2.name = "translate"
+            mock_prompt2.description = "Translate text"
+            mock_prompts = [mock_prompt1, mock_prompt2]
+            mock_ctx.tool_manager.list_prompts = AsyncMock(return_value=mock_prompts)
+            with patch("chuk_term.ui.output"):
+                with patch("chuk_term.ui.format_table"):
+                    result = await command.execute()
 
-            result = await command.execute()
-
-            mock_action.assert_called_once_with()
-
-            assert result.success is True
+                    assert result.success is True
 
     @pytest.mark.asyncio
     async def test_execute_by_server(self, command):
         """Test listing prompts for a specific server."""
-        with patch(
-            "mcp_cli.commands.actions.prompts.prompts_action_async"
-        ) as mock_action:
-            mock_action.return_value = {
-                "prompts": [
-                    {
-                        "name": "summarize",
-                        "server": "text-processor",
-                        "description": "Summarize text",
-                    }
-                ]
-            }
+        from unittest.mock import AsyncMock, MagicMock
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_ctx = mock_get_ctx.return_value
+            mock_prompt = MagicMock()
+            mock_prompt.name = "summarize"
+            mock_prompt.description = "Summarize text"
+            mock_prompts = [mock_prompt]
+            mock_ctx.tool_manager.list_prompts = AsyncMock(return_value=mock_prompts)
+            with patch("chuk_term.ui.output"):
+                with patch("chuk_term.ui.format_table"):
+                    result = await command.execute(server=0)  # server parameter is an index
 
-            result = await command.execute(server=0)  # server parameter is an index
-
-            mock_action.assert_called_once_with()
-
-            assert result.success is True
+                    assert result.success is True
 
     @pytest.mark.asyncio
     async def test_execute_detailed(self, command):
         """Test listing prompts with detailed information."""
-        with patch(
-            "mcp_cli.commands.actions.prompts.prompts_action_async"
-        ) as mock_action:
-            mock_action.return_value = {
-                "prompts": [
-                    {
-                        "name": "summarize",
-                        "server": "text-processor",
-                        "description": "Summarize text",
-                        "arguments": [
-                            {
-                                "name": "text",
-                                "type": "string",
-                                "required": True,
-                                "description": "Text to summarize",
-                            },
-                            {
-                                "name": "max_length",
-                                "type": "integer",
-                                "required": False,
-                                "default": 100,
-                                "description": "Maximum summary length",
-                            },
-                        ],
-                    }
-                ]
-            }
+        from unittest.mock import AsyncMock, MagicMock
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_ctx = mock_get_ctx.return_value
+            mock_prompt = MagicMock()
+            mock_prompt.name = "summarize"
+            mock_prompt.description = "Summarize text"
+            mock_prompts = [mock_prompt]
+            mock_ctx.tool_manager.list_prompts = AsyncMock(return_value=mock_prompts)
+            with patch("chuk_term.ui.output"):
+                with patch("chuk_term.ui.format_table"):
+                    result = await command.execute(raw=True)
 
-            result = await command.execute(raw=True)
-
-            mock_action.assert_called_once_with()
-
-            assert result.success is True
+                    assert result.success is True
 
     @pytest.mark.asyncio
     async def test_execute_no_prompts(self, command):
         """Test when no prompts are available."""
-        with patch(
-            "mcp_cli.commands.actions.prompts.prompts_action_async"
-        ) as mock_action:
-            mock_action.return_value = {"prompts": []}
+        from unittest.mock import AsyncMock
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_ctx = mock_get_ctx.return_value
+            mock_ctx.tool_manager.list_prompts = AsyncMock(return_value=[])
+            with patch("chuk_term.ui.output"):
+                result = await command.execute()
 
-            result = await command.execute()
-
-            assert result.success is True
-            # Should indicate no prompts available
+                assert result.success is True
+                # Should indicate no prompts available
 
     @pytest.mark.asyncio
     async def test_execute_error_handling(self, command):
         """Test error handling during execution."""
-        with patch(
-            "mcp_cli.commands.actions.prompts.prompts_action_async"
-        ) as mock_action:
-            mock_action.side_effect = Exception("Server error")
+        from unittest.mock import AsyncMock
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_ctx = mock_get_ctx.return_value
+            mock_ctx.tool_manager.list_prompts = AsyncMock(side_effect=Exception("Server error"))
+            with patch("chuk_term.ui.output"):
+                result = await command.execute()
 
-            result = await command.execute()
-
-            assert result.success is False
-            assert "Server error" in result.error or result.output
+                assert result.success is False
+                assert "Server error" in result.error

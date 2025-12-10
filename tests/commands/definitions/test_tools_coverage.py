@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 
-from mcp_cli.commands.definitions.tools import ToolsCommand
+from mcp_cli.commands.tools.tools import ToolsCommand
 
 
 class TestToolsCommandCoverage:
@@ -59,7 +59,7 @@ class TestToolsCommandCoverage:
         with patch(
             "mcp_cli.commands.definitions.tools.get_context", return_value=mock_context
         ):
-            with patch("mcp_cli.commands.definitions.tools.output"):
+            with patch("mcp_cli.commands.tools.tools.output"):
                 result = await self.tools_cmd.execute(args="test_tool")
 
         assert result.success is True
@@ -101,7 +101,7 @@ class TestToolsCommandCoverage:
         with patch(
             "mcp_cli.commands.definitions.tools.get_context", return_value=mock_context
         ):
-            with patch("mcp_cli.commands.definitions.tools.output"):
+            with patch("mcp_cli.commands.tools.tools.output"):
                 result = await self.tools_cmd.execute(filter="echo_custom")
 
         assert result.success is True
@@ -126,7 +126,7 @@ class TestToolsCommandCoverage:
         with patch(
             "mcp_cli.commands.definitions.tools.get_context", return_value=mock_context
         ):
-            with patch("mcp_cli.commands.definitions.tools.output"):
+            with patch("mcp_cli.commands.tools.tools.output"):
                 result = await self.tools_cmd.execute(filter="custom_query_tool")
 
         assert result.success is True
@@ -161,7 +161,7 @@ class TestToolsCommandCoverage:
         with patch(
             "mcp_cli.commands.definitions.tools.get_context", return_value=mock_context
         ):
-            with patch("mcp_cli.commands.definitions.tools.output"):
+            with patch("mcp_cli.commands.tools.tools.output"):
                 result = await self.tools_cmd.execute(filter="test_tool")
 
         assert result.success is True
@@ -186,7 +186,7 @@ class TestToolsCommandCoverage:
         with patch(
             "mcp_cli.commands.definitions.tools.get_context", return_value=mock_context
         ):
-            with patch("mcp_cli.commands.definitions.tools.output"):
+            with patch("mcp_cli.commands.tools.tools.output"):
                 result = await self.tools_cmd.execute(filter="simple_tool")
 
         assert result.success is True
@@ -211,7 +211,7 @@ class TestToolsCommandCoverage:
         with patch(
             "mcp_cli.commands.definitions.tools.get_context", return_value=mock_context
         ):
-            with patch("mcp_cli.commands.definitions.tools.output"):
+            with patch("mcp_cli.commands.tools.tools.output"):
                 result = await self.tools_cmd.execute()
 
         assert result.success is True
@@ -236,7 +236,7 @@ class TestToolsCommandCoverage:
         with patch(
             "mcp_cli.commands.definitions.tools.get_context", return_value=mock_context
         ):
-            with patch("mcp_cli.commands.definitions.tools.output"):
+            with patch("mcp_cli.commands.tools.tools.output"):
                 result = await self.tools_cmd.execute(details=True)
 
         assert result.success is True
@@ -261,7 +261,7 @@ class TestToolsCommandCoverage:
         with patch(
             "mcp_cli.commands.definitions.tools.get_context", return_value=mock_context
         ):
-            with patch("mcp_cli.commands.definitions.tools.output"):
+            with patch("mcp_cli.commands.tools.tools.output"):
                 result = await self.tools_cmd.execute()
 
         assert result.success is True
@@ -286,7 +286,7 @@ class TestToolsCommandCoverage:
         with patch(
             "mcp_cli.commands.definitions.tools.get_context", return_value=mock_context
         ):
-            with patch("mcp_cli.commands.definitions.tools.output"):
+            with patch("mcp_cli.commands.tools.tools.output"):
                 result = await self.tools_cmd.execute()
 
         assert result.success is True
@@ -311,7 +311,7 @@ class TestToolsCommandCoverage:
         with patch(
             "mcp_cli.commands.definitions.tools.get_context", return_value=mock_context
         ):
-            with patch("mcp_cli.commands.definitions.tools.output"):
+            with patch("mcp_cli.commands.tools.tools.output"):
                 result = await self.tools_cmd.execute()
 
         assert result.success is True

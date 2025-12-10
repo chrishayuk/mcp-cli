@@ -1,7 +1,7 @@
 """Tests for the exit command."""
 
 import pytest
-from mcp_cli.commands.definitions.exit import ExitCommand
+from mcp_cli.commands.core.exit import ExitCommand
 
 
 class TestExitCommand:

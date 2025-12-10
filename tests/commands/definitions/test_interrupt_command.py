@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import MagicMock
 
-from mcp_cli.commands.definitions.interrupt import InterruptCommand
+from mcp_cli.commands.core.interrupt import InterruptCommand
 from mcp_cli.commands.base import CommandMode
 
 

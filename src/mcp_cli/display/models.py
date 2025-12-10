@@ -219,7 +219,10 @@ class StreamingState(BaseModel):
             # Add space if we're appending to existing content to avoid word concatenation
             if self.reasoning_content and not self.reasoning_content.endswith(" "):
                 # Check if the new chunk starts with punctuation or space
-                if chunk.reasoning_content and not chunk.reasoning_content[0] in " .,!?;:":
+                if (
+                    chunk.reasoning_content
+                    and chunk.reasoning_content[0] not in " .,!?;:"
+                ):
                     self.reasoning_content += " "
             self.reasoning_content += chunk.reasoning_content
 

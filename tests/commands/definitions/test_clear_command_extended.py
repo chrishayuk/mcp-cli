@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import patch, MagicMock
-from mcp_cli.commands.definitions.clear import ClearCommand
+from mcp_cli.commands.core.clear import ClearCommand
 
 
 class TestClearCommandExtended:

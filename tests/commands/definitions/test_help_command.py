@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import Mock, patch
-from mcp_cli.commands.definitions.help import HelpCommand
+from mcp_cli.commands.core.help import HelpCommand
 from mcp_cli.commands.base import CommandMode
 
 
@@ -25,7 +25,7 @@ class TestHelpCommand:
     async def test_execute_general_help(self, command):
         """Test showing general help."""
         with patch(
-            "mcp_cli.commands.definitions.help.UnifiedCommandRegistry"
+            "mcp_cli.commands.core.help.UnifiedCommandRegistry"
         ) as mock_registry_class:
             # Create a mock registry instance
             mock_registry = Mock()
@@ -47,8 +47,8 @@ class TestHelpCommand:
             mock_registry.list_commands.return_value = [mock_cmd1, mock_cmd2]
 
             # Patch the output functions to avoid actual printing
-            with patch("mcp_cli.commands.definitions.help.output"):
-                with patch("mcp_cli.commands.definitions.help.format_table"):
+            with patch("mcp_cli.commands.core.help.output"):
+                with patch("mcp_cli.commands.core.help.format_table"):
                     result = await command.execute()
 
             assert result.success is True
@@ -57,7 +57,7 @@ class TestHelpCommand:
     async def test_execute_specific_command_help(self, command):
         """Test showing help for a specific command."""
         with patch(
-            "mcp_cli.commands.definitions.help.UnifiedCommandRegistry"
+            "mcp_cli.commands.core.help.UnifiedCommandRegistry"
         ) as mock_registry_class:
             # Create a mock registry instance
             mock_registry = Mock()
@@ -74,7 +74,7 @@ class TestHelpCommand:
             mock_registry.get.return_value = mock_cmd
 
             # Patch the output to avoid actual printing
-            with patch("mcp_cli.commands.definitions.help.output"):
+            with patch("mcp_cli.commands.core.help.output"):
                 result = await command.execute(command="test")
 
             assert result.success is True
@@ -84,7 +84,7 @@ class TestHelpCommand:
     async def test_execute_unknown_command(self, command):
         """Test showing help for an unknown command."""
         with patch(
-            "mcp_cli.commands.definitions.help.UnifiedCommandRegistry"
+            "mcp_cli.commands.core.help.UnifiedCommandRegistry"
         ) as mock_registry_class:
             # Create a mock registry instance
             mock_registry = Mock()
@@ -101,7 +101,7 @@ class TestHelpCommand:
     async def test_execute_with_mode_filter(self, command):
         """Test showing help filtered by mode."""
         with patch(
-            "mcp_cli.commands.definitions.help.UnifiedCommandRegistry"
+            "mcp_cli.commands.core.help.UnifiedCommandRegistry"
         ) as mock_registry_class:
             # Create a mock registry instance
             mock_registry = Mock()
@@ -125,8 +125,8 @@ class TestHelpCommand:
             mock_registry.list_commands.return_value = [mock_cmd1, mock_cmd2]
 
             # Patch the output functions to avoid actual printing
-            with patch("mcp_cli.commands.definitions.help.output"):
-                with patch("mcp_cli.commands.definitions.help.format_table"):
+            with patch("mcp_cli.commands.core.help.output"):
+                with patch("mcp_cli.commands.core.help.format_table"):
                     # Execute with chat mode filter
                     result = await command.execute(mode=CommandMode.CHAT)
 

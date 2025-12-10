@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from mcp_cli.display import StreamingDisplayManager
 from mcp_cli.chat.models import ToolCallData
 from mcp_cli.logging_config import get_logger
+from mcp_cli.config import RuntimeConfig, TimeoutType, load_runtime_config
 
 logger = get_logger("streaming")
 
@@ -215,15 +216,19 @@ class StreamingResponseHandler:
     Uses unified display system - no fallbacks, no dual paths.
     """
 
-    def __init__(self, display: StreamingDisplayManager):
+    def __init__(
+        self, display: StreamingDisplayManager, runtime_config: RuntimeConfig | None = None
+    ):
         """Initialize handler.
 
         Args:
             display: The unified display manager (required, no fallback)
+            runtime_config: Runtime configuration (optional, will load defaults if not provided)
         """
         self.display = display
         self.tool_accumulator = ToolCallAccumulator()
         self._interrupted = False
+        self.runtime_config = runtime_config or load_runtime_config()
 
     async def stream_response(
         self,
@@ -306,11 +311,19 @@ class StreamingResponseHandler:
     ) -> None:
         """Stream with per-chunk timeout protection.
 
-        Uses 45s per-chunk timeout (for DeepSeek Reasoner)
-        and 300s global timeout.
+        Timeouts are configurable via (in priority order):
+        1. CLI arguments (--tool-timeout)
+        2. Environment variables (MCP_STREAMING_CHUNK_TIMEOUT, etc.)
+        3. Config file (server_config.json -> timeouts.streamingChunkTimeout)
+        4. Defaults (45s chunk, 300s global)
         """
-        CHUNK_TIMEOUT = 45.0  # seconds
-        GLOBAL_TIMEOUT = 300.0  # seconds
+        # Get timeouts from runtime config (type-safe with enums!)
+        chunk_timeout = self.runtime_config.get_timeout(TimeoutType.STREAMING_CHUNK)
+        global_timeout = self.runtime_config.get_timeout(TimeoutType.STREAMING_GLOBAL)
+
+        logger.debug(
+            f"Streaming timeouts: chunk={chunk_timeout}s, global={global_timeout}s"
+        )
 
         async def stream_chunks():
             """Inner streaming function."""
@@ -328,7 +341,7 @@ class StreamingResponseHandler:
                     # Wait for next chunk with timeout
                     chunk = await asyncio.wait_for(
                         stream_iter.__anext__(),
-                        timeout=CHUNK_TIMEOUT,
+                        timeout=chunk_timeout,
                     )
 
                     # Check for interrupt
@@ -350,14 +363,32 @@ class StreamingResponseHandler:
                     logger.debug("Stream completed normally")
                     break
                 except asyncio.TimeoutError:
-                    logger.warning(f"Chunk timeout after {CHUNK_TIMEOUT}s")
+                    logger.warning(f"Chunk timeout after {chunk_timeout}s")
+                    # Display user-friendly error message
+                    from chuk_term.ui import output
+
+                    output.error(
+                        f"\n⏱️  Streaming timeout after {chunk_timeout:.0f}s waiting for response.\n"
+                        f"The model may be taking longer than expected to respond.\n"
+                        f"You can increase this timeout with: --tool-timeout {chunk_timeout * 2:.0f}\n"
+                        f"Or set in config file: timeouts.streamingChunkTimeout = {chunk_timeout * 2:.0f}"
+                    )
                     break
 
         # Run with global timeout
         try:
-            await asyncio.wait_for(stream_chunks(), timeout=GLOBAL_TIMEOUT)
+            await asyncio.wait_for(stream_chunks(), timeout=global_timeout)
         except asyncio.TimeoutError:
-            logger.error(f"Global streaming timeout after {GLOBAL_TIMEOUT}s")
+            logger.error(f"Global streaming timeout after {global_timeout}s")
+            # Display user-friendly error message
+            from chuk_term.ui import output
+
+            output.error(
+                f"\n⏱️  Global streaming timeout after {global_timeout:.0f}s.\n"
+                f"The total streaming time exceeded the maximum allowed.\n"
+                f"You can increase this timeout with: --tool-timeout {global_timeout * 2:.0f}\n"
+                f"Or set MCP_STREAMING_GLOBAL_TIMEOUT={global_timeout * 2:.0f}"
+            )
             self._interrupted = True
 
     async def _process_chunk(self, raw_chunk: dict[str, Any]) -> None:

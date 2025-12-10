@@ -4,7 +4,7 @@ import pytest
 import json
 from unittest.mock import MagicMock, patch
 
-from mcp_cli.commands.definitions.tool_history import ToolHistoryCommand
+from mcp_cli.commands.tools.tool_history import ToolHistoryCommand
 from mcp_cli.commands.base import CommandMode
 
 
@@ -88,7 +88,7 @@ async def test_tool_history_empty_history(tool_history_command):
 @pytest.mark.asyncio
 async def test_tool_history_table_view(tool_history_command, mock_chat_context):
     """Test default table view of tool history."""
-    with patch("mcp_cli.commands.definitions.tool_history.output") as mock_output:
+    with patch("mcp_cli.commands.tools.tool_history.output") as mock_output:
         with patch(
             "mcp_cli.commands.definitions.tool_history.format_table"
         ) as mock_format_table:
@@ -110,7 +110,7 @@ async def test_tool_history_table_view(tool_history_command, mock_chat_context):
 @pytest.mark.asyncio
 async def test_tool_history_with_limit(tool_history_command, mock_chat_context):
     """Test tool history with limit parameter."""
-    with patch("mcp_cli.commands.definitions.tool_history.output") as mock_output:
+    with patch("mcp_cli.commands.tools.tool_history.output") as mock_output:
         with patch(
             "mcp_cli.commands.definitions.tool_history.format_table"
         ) as mock_format_table:
@@ -148,7 +148,7 @@ async def test_tool_history_json_output(tool_history_command, mock_chat_context)
 @pytest.mark.asyncio
 async def test_tool_history_row_detail(tool_history_command, mock_chat_context):
     """Test detailed view of specific row."""
-    with patch("mcp_cli.commands.definitions.tool_history.output") as mock_output:
+    with patch("mcp_cli.commands.tools.tool_history.output") as mock_output:
         result = await tool_history_command.execute(
             chat_context=mock_chat_context, row=2
         )
@@ -175,7 +175,7 @@ async def test_tool_history_invalid_row(tool_history_command, mock_chat_context)
 @pytest.mark.asyncio
 async def test_tool_history_row_from_args_list(tool_history_command, mock_chat_context):
     """Test row number from args list."""
-    with patch("mcp_cli.commands.definitions.tool_history.output") as mock_output:
+    with patch("mcp_cli.commands.tools.tool_history.output") as mock_output:
         result = await tool_history_command.execute(
             chat_context=mock_chat_context, args=["1"]
         )
@@ -189,7 +189,7 @@ async def test_tool_history_row_from_args_string(
     tool_history_command, mock_chat_context
 ):
     """Test row number from args string."""
-    with patch("mcp_cli.commands.definitions.tool_history.output") as mock_output:
+    with patch("mcp_cli.commands.tools.tool_history.output") as mock_output:
         result = await tool_history_command.execute(
             chat_context=mock_chat_context, args="3"
         )
@@ -201,7 +201,7 @@ async def test_tool_history_row_from_args_string(
 @pytest.mark.asyncio
 async def test_tool_history_invalid_args(tool_history_command, mock_chat_context):
     """Test with non-numeric args."""
-    with patch("mcp_cli.commands.definitions.tool_history.output") as mock_output:
+    with patch("mcp_cli.commands.tools.tool_history.output") as mock_output:
         with patch(
             "mcp_cli.commands.definitions.tool_history.format_table"
         ) as mock_format_table:
@@ -229,7 +229,7 @@ async def test_tool_history_truncate_long_arguments(tool_history_command):
         }
     ]
 
-    with patch("mcp_cli.commands.definitions.tool_history.output"):
+    with patch("mcp_cli.commands.tools.tool_history.output"):
         with patch(
             "mcp_cli.commands.definitions.tool_history.format_table"
         ) as mock_format_table:

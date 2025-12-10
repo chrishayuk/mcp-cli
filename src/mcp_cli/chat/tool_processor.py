@@ -4,6 +4,8 @@ mcp_cli.chat.tool_processor
 
 Clean tool processor that only uses the working tool_manager execution path.
 Removed the problematic stream_manager path that was causing "unhealthy connection" errors.
+
+Clean Pydantic models - no dictionary goop!
 """
 
 from __future__ import annotations
@@ -15,7 +17,8 @@ from typing import Any
 
 from chuk_term.ui import output
 
-from mcp_cli.chat.models import Message, MessageRole
+# Import canonical models from chuk_llm
+from mcp_cli.chat.response_models import Message, MessageRole, ToolCall
 from mcp_cli.display import display_tool_call_result
 from mcp_cli.utils.preferences import get_preference_manager
 
@@ -119,22 +122,26 @@ class ToolProcessor:
             call_id = f"call_{idx}"
 
             try:
-                # Extract tool call details
-                if hasattr(tool_call, "function"):
-                    fn = tool_call.function
-                    llm_tool_name = getattr(fn, "name", "unknown_tool")
-                    raw_arguments = getattr(fn, "arguments", {})
-                    call_id = getattr(tool_call, "id", call_id)
-                elif isinstance(tool_call, dict) and "function" in tool_call:
-                    fn = tool_call["function"]
-                    llm_tool_name = fn.get("name", "unknown_tool")
-                    raw_arguments = fn.get("arguments", {})
-                    call_id = tool_call.get("id", call_id)
+                # Extract tool call details from ToolCall Pydantic model (from chuk_llm)
+                if isinstance(tool_call, ToolCall):
+                    llm_tool_name = tool_call.function.name
+                    raw_arguments = tool_call.function.arguments  # JSON string
+                    call_id = tool_call.id
                 else:
-                    log.error(f"Unrecognized tool call format: {type(tool_call)}")
-                    raise ValueError(
-                        f"Unrecognized tool call format: {type(tool_call)}"
+                    # Fallback for dict (should not happen with new code)
+                    log.warning(
+                        f"Received dict tool call instead of ToolCall model: {type(tool_call)}"
                     )
+                    if isinstance(tool_call, dict) and "function" in tool_call:
+                        fn = tool_call["function"]
+                        llm_tool_name = fn.get("name", "unknown_tool")
+                        raw_arguments = fn.get("arguments", {})
+                        call_id = tool_call.get("id", call_id)
+                    else:
+                        log.error(f"Unrecognized tool call format: {type(tool_call)}")
+                        raise ValueError(
+                            f"Unrecognized tool call format: {type(tool_call)}"
+                        )
 
                 # Validate tool name
                 if not llm_tool_name or llm_tool_name == "unknown_tool":
@@ -336,51 +343,18 @@ class ToolProcessor:
         This must be called BEFORE executing tools to ensure correct conversation format.
         """
         try:
-            # Convert tool calls to dict format for history
-            formatted_tool_calls: list[dict[str, Any]] = []
-            for call in tool_calls:
-                if hasattr(call, "function"):
-                    fn = call.function
-                    llm_tool_name = getattr(fn, "name", "unknown_tool")
-                    raw_arguments = getattr(fn, "arguments", {})
-                    call_id = getattr(call, "id", f"call_{len(formatted_tool_calls)}")
-                elif isinstance(call, dict) and "function" in call:
-                    fn = call["function"]
-                    llm_tool_name = fn.get("name", "unknown_tool")
-                    raw_arguments = fn.get("arguments", {})
-                    call_id = call.get("id", f"call_{len(formatted_tool_calls)}")
-                else:
-                    log.warning(f"Unrecognized tool call format: {type(call)}")
-                    continue
-
-                # Format arguments for history
-                if isinstance(raw_arguments, dict):
-                    arg_json = json.dumps(raw_arguments)
-                else:
-                    arg_json = str(raw_arguments)
-
-                formatted_tool_calls.append(
-                    {
-                        "id": call_id,
-                        "type": "function",
-                        "function": {
-                            "name": llm_tool_name,
-                            "arguments": arg_json,
-                        },
-                    }
-                )
-
-            # Create ONE assistant message with all tool calls
+            # tool_calls are already ToolCall Pydantic models from chuk_llm
+            # Message model accepts list[ToolCall] directly
             assistant_msg = Message(
                 role=MessageRole.ASSISTANT,
                 content=None,
-                tool_calls=formatted_tool_calls,
+                tool_calls=tool_calls,  # Pass ToolCall models directly
                 reasoning_content=reasoning_content,  # Include reasoning_content directly
             )
 
             self.context.conversation_history.append(assistant_msg)
             log.debug(
-                f"Added assistant message with {len(formatted_tool_calls)} tool calls to history"
+                f"Added assistant message with {len(tool_calls)} tool calls to history"
             )
 
         except Exception as e:

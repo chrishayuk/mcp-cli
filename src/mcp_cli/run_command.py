@@ -43,6 +43,7 @@ async def _init_tool_manager(
     servers: list[str],
     server_names: dict[int, str | None] | None = None,
     initialization_timeout: float = 120.0,
+    runtime_config=None,  # RuntimeConfig | None
 ):
     """
     Dynamically import **ToolManager** (so monkey-patching works) and create it.
@@ -56,6 +57,7 @@ async def _init_tool_manager(
         servers,
         server_names,
         initialization_timeout=initialization_timeout,
+        runtime_config=runtime_config,
     )
 
     # ENHANCED: Let ToolManager automatically select the namespace

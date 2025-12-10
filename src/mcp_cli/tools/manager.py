@@ -23,6 +23,7 @@ from mcp_cli.constants import NAMESPACE
 from mcp_cli.tools.filter import ToolFilter
 from mcp_cli.tools.models import ServerInfo, ToolCallResult, ToolInfo, TransportType
 from mcp_cli.tools.meta_tools import MetaToolProvider
+from mcp_cli.config import RuntimeConfig, TimeoutType, load_runtime_config
 
 logger = logging.getLogger(__name__)
 
@@ -48,22 +49,35 @@ class ToolManager:
         tool_timeout: float | None = None,
         max_concurrency: int = 4,
         initialization_timeout: float = 120.0,
+        runtime_config: RuntimeConfig | None = None,
     ):
         self.config_file = config_file
         self.servers = servers
         self.server_names = server_names or {}
-        # Read from environment variable if not provided, default to 120.0
-        import os
 
-        env_timeout = os.environ.get("MCP_TOOL_TIMEOUT")
+        # Use runtime config for timeout management (type-safe!)
+        self.runtime_config = runtime_config or load_runtime_config()
+
+        # Tool timeout with priority: param > runtime_config
         if tool_timeout is not None:
             self.tool_timeout = tool_timeout
-        elif env_timeout:
-            self.tool_timeout = float(env_timeout)
         else:
-            self.tool_timeout = 120.0
+            self.tool_timeout = self.runtime_config.get_timeout(TimeoutType.TOOL_EXECUTION)
+
+        # Initialization timeout with priority: param > runtime_config
+        if initialization_timeout != 120.0:  # User provided non-default
+            self.initialization_timeout = initialization_timeout
+        else:
+            self.initialization_timeout = self.runtime_config.get_timeout(
+                TimeoutType.SERVER_INIT
+            )
+
         self.max_concurrency = max_concurrency
-        self.initialization_timeout = initialization_timeout
+
+        logger.debug(
+            f"ToolManager initialized with timeouts: "
+            f"tool={self.tool_timeout}s, init={self.initialization_timeout}s"
+        )
 
         # chuk-tool-processor components (publicly accessible)
         self.stream_manager: StreamManager | None = None

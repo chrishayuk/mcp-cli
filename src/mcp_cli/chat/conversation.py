@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 FIXED: Updated to work with the new OpenAI client universal tool compatibility system.
+Clean Pydantic models - no dictionary goop!
 """
 
 import time
@@ -10,8 +11,13 @@ import asyncio
 import logging
 from chuk_term.ui import output
 
-# mcp cli imports
-from mcp_cli.chat.models import Message, MessageRole
+# mcp cli imports - using chuk_llm canonical models
+from mcp_cli.chat.response_models import (
+    CompletionResponse,
+    Message,
+    MessageRole,
+    ToolCall,
+)
 from mcp_cli.chat.tool_processor import ToolProcessor
 
 log = logging.getLogger(__name__)
@@ -24,10 +30,12 @@ class ConversationProcessor:
     Updated to work with universal tool compatibility system.
     """
 
-    def __init__(self, context, ui_manager):
+    def __init__(self, context, ui_manager, runtime_config=None):
         self.context = context
         self.ui_manager = ui_manager
         self.tool_processor = ToolProcessor(context, ui_manager)
+        # Store runtime_config for passing to streaming handler
+        self.runtime_config = runtime_config
 
     async def process_conversation(self, max_turns: int = 30):
         """Process the conversation loop, handling tool calls and responses with streaming.
@@ -76,16 +84,8 @@ class ConversationProcessor:
 
                     # Log last few messages for debugging (truncated)
                     for i, msg in enumerate(self.context.conversation_history[-3:]):
-                        role = (
-                            msg.role
-                            if hasattr(msg, "role")
-                            else msg.get("role", "unknown")
-                        )
-                        content_preview = (
-                            str(msg.content)[:100]
-                            if hasattr(msg, "content")
-                            else str(msg.get("content", ""))[:100]
-                        )
+                        role = msg.role if isinstance(msg, Message) else MessageRole.USER
+                        content_preview = str(msg.content)[:100] if msg.content else ""
                         log.debug(
                             f"  Message {history_size - 3 + i}: role={role}, content_preview={content_preview}"
                         )
@@ -108,7 +108,7 @@ class ConversationProcessor:
                             log.debug(f"Could not inspect signature: {e}")
                             supports_streaming = False
 
-                    completion = None
+                    completion: CompletionResponse | None = None
 
                     if supports_streaming:
                         # Use streaming response handler
@@ -132,11 +132,10 @@ class ConversationProcessor:
                             tools=tools_for_completion
                         )
 
-                    response_content = completion.get("response", "No response")
-                    tool_calls = completion.get("tool_calls", [])
-                    reasoning_content = completion.get(
-                        "reasoning_content"
-                    )  # Extract reasoning content
+                    # Use Pydantic model properties instead of dict.get()
+                    response_content = completion.response or "No response"
+                    tool_calls = completion.tool_calls
+                    reasoning_content = completion.reasoning_content
 
                     # DEBUG: Log what we got from the model
                     log.info("=== COMPLETION RESULT ===")
@@ -153,10 +152,8 @@ class ConversationProcessor:
                         log.info(f"Response preview: {response_content[:200]}")
                     if tool_calls:
                         for i, tc in enumerate(tool_calls):
-                            if isinstance(tc, dict) and "function" in tc:
-                                log.info(
-                                    f"Tool call {i}: {tc['function'].get('name', 'unknown')}"
-                                )
+                            # ToolCall is a Pydantic model from chuk_llm
+                            log.info(f"Tool call {i}: {tc.function.name}")
 
                     # If model requested tool calls, execute them
                     if tool_calls and len(tool_calls) > 0:
@@ -181,20 +178,11 @@ class ConversationProcessor:
                             break
 
                         # Create signature to detect duplicate tool calls
-                        import json
-
+                        # ToolCall is a Pydantic model from chuk_llm with frozen function
                         current_signature = []
                         for tc in tool_calls:
-                            if hasattr(tc, "function"):
-                                name = getattr(tc.function, "name", "")
-                                args = getattr(tc.function, "arguments", "")
-                            elif isinstance(tc, dict) and "function" in tc:
-                                name = tc["function"].get("name", "")
-                                args = tc["function"].get("arguments", "")
-                            else:
-                                continue
-                            if isinstance(args, dict):
-                                args = json.dumps(args, sort_keys=True)
+                            name = tc.function.name
+                            args = tc.function.arguments  # JSON string from chuk_llm
                             current_signature.append(f"{name}:{args}")
 
                         current_sig_str = "|".join(sorted(current_signature))
@@ -241,9 +229,9 @@ class ConversationProcessor:
                     last_tool_signature = None
 
                     # Display assistant response (if not already displayed by streaming)
-                    elapsed = completion.get("elapsed_time", time.time() - start_time)
+                    elapsed = completion.elapsed_time
 
-                    if not completion.get("streaming", False):
+                    if not completion.streaming:
                         # Non-streaming response, display normally
                         await self.ui_manager.print_assistant_message(
                             response_content, elapsed
@@ -289,11 +277,16 @@ class ConversationProcessor:
         except asyncio.CancelledError:
             raise
 
-    async def _handle_streaming_completion(self, tools: list | None = None) -> dict:
+    async def _handle_streaming_completion(
+        self, tools: list | None = None
+    ) -> CompletionResponse:
         """Handle streaming completion with UI integration.
 
         Args:
             tools: Tool definitions to pass to the LLM, or None to disable tools
+
+        Returns:
+            CompletionResponse with streaming metadata
         """
         from mcp_cli.chat.streaming_handler import StreamingResponseHandler
 
@@ -301,37 +294,29 @@ class ConversationProcessor:
         await self.ui_manager.start_streaming_response()
 
         # Set the streaming handler reference in UI manager for interruption support
-        streaming_handler = StreamingResponseHandler(display=self.ui_manager.display)
+        streaming_handler = StreamingResponseHandler(
+            display=self.ui_manager.display, runtime_config=self.runtime_config
+        )
         self.ui_manager.streaming_handler = streaming_handler
 
         try:
-            completion = await streaming_handler.stream_response(
+            # stream_response returns dict, convert to CompletionResponse
+            completion_dict = await streaming_handler.stream_response(
                 client=self.context.client,
                 messages=[msg.to_dict() for msg in self.context.conversation_history],
                 tools=tools,
             )
 
-            # Enhanced tool call validation and logging
-            if completion.get("tool_calls"):
-                log.debug(
-                    f"Streaming completion returned {len(completion['tool_calls'])} tool calls"
-                )
-                for i, tc in enumerate(completion["tool_calls"]):
-                    log.debug(f"Streamed tool call {i}: {tc}")
+            # Convert dict to CompletionResponse Pydantic model
+            completion = CompletionResponse.from_dict(completion_dict)
 
-                    # Validate tool call structure
-                    if not self._validate_streaming_tool_call(tc):
-                        log.warning(f"Invalid tool call structure from streaming: {tc}")
-                        # Try to fix common issues
-                        fixed_tc = self._fix_tool_call_structure(tc)
-                        if fixed_tc:
-                            completion["tool_calls"][i] = fixed_tc
-                            log.debug(f"Fixed tool call {i}: {fixed_tc}")
-                        else:
-                            log.error(
-                                f"Could not fix tool call {i}, removing from list"
-                            )
-                            completion["tool_calls"].pop(i)
+            # Enhanced tool call validation and logging
+            if completion.tool_calls:
+                log.debug(
+                    f"Streaming completion returned {len(completion.tool_calls)} tool calls"
+                )
+                for i, tc in enumerate(completion.tool_calls):
+                    log.debug(f"Streamed tool call {i}: {tc}")
 
             return completion
 
@@ -340,11 +325,16 @@ class ConversationProcessor:
             # Will be cleared after finalization in main conversation loop
             pass
 
-    async def _handle_regular_completion(self, tools: list | None = None) -> dict:
+    async def _handle_regular_completion(
+        self, tools: list | None = None
+    ) -> CompletionResponse:
         """Handle regular (non-streaming) completion.
 
         Args:
             tools: Tool definitions to pass to the LLM, or None to disable tools
+
+        Returns:
+            CompletionResponse with timing metadata
         """
         start_time = time.time()
 
@@ -352,7 +342,7 @@ class ConversationProcessor:
             messages_as_dicts = [
                 msg.to_dict() for msg in self.context.conversation_history
             ]
-            completion = await self.context.client.create_completion(
+            completion_dict = await self.context.client.create_completion(
                 messages=messages_as_dicts,
                 tools=tools,
             )
@@ -367,104 +357,20 @@ class ConversationProcessor:
                 messages_as_dicts = [
                     msg.to_dict() for msg in self.context.conversation_history
                 ]
-                completion = await self.context.client.create_completion(
+                completion_dict = await self.context.client.create_completion(
                     messages=messages_as_dicts
                 )
             else:
                 raise
 
         elapsed = time.time() - start_time
-        completion["elapsed_time"] = elapsed
-        completion["streaming"] = False
 
-        result: dict = completion
-        return result
+        # Add timing and streaming metadata to the dict before converting to Pydantic
+        completion_dict["elapsed_time"] = elapsed
+        completion_dict["streaming"] = False
 
-    def _validate_streaming_tool_call(self, tool_call: dict) -> bool:
-        """Validate that a tool call from streaming has the required structure."""
-        try:
-            if not isinstance(tool_call, dict):
-                return False  # type: ignore[unreachable]
-
-            # Check for required fields
-            if "function" not in tool_call:
-                return False
-
-            function = tool_call["function"]
-            if not isinstance(function, dict):
-                return False
-
-            # Check function has name
-            if "name" not in function or not function["name"]:
-                return False
-
-            # Validate arguments if present
-            if "arguments" in function:
-                args = function["arguments"]
-                if isinstance(args, str):
-                    # Try to parse as JSON
-                    try:
-                        if args.strip():  # Don't try to parse empty strings
-                            import json
-
-                            json.loads(args)
-                    except json.JSONDecodeError:
-                        log.warning(f"Invalid JSON arguments in tool call: {args}")
-                        return False
-                elif not isinstance(args, dict):
-                    # Arguments should be string or dict
-                    return False
-
-            return True
-
-        except Exception as e:
-            log.error(f"Error validating streaming tool call: {e}")
-            return False
-
-    def _fix_tool_call_structure(self, tool_call: dict) -> dict | None:
-        """Try to fix common issues with tool call structure from streaming."""
-        try:
-            fixed = dict(tool_call)  # Make a copy
-
-            # Ensure we have required fields
-            if "id" not in fixed:
-                fixed["id"] = f"call_{hash(str(tool_call)) % 10000}"
-
-            if "type" not in fixed:
-                fixed["type"] = "function"
-
-            if "function" not in fixed:
-                return None  # Can't fix this
-
-            function = fixed["function"]
-
-            # Fix empty name
-            if not function.get("name"):
-                return None  # Can't fix missing name
-
-            # Fix arguments
-            if "arguments" not in function:
-                function["arguments"] = "{}"
-            elif function["arguments"] is None:
-                function["arguments"] = "{}"
-            elif isinstance(function["arguments"], dict):
-                # Convert dict to JSON string
-                import json
-
-                function["arguments"] = json.dumps(function["arguments"])
-            elif not isinstance(function["arguments"], str):
-                # Convert to string
-                function["arguments"] = str(function["arguments"])
-
-            # Validate the fixed version
-            if self._validate_streaming_tool_call(fixed):
-                return fixed
-            else:
-                return None
-
-        except Exception as e:
-            log.error(f"Error fixing tool call structure: {e}")
-            return None
+        # Convert to CompletionResponse Pydantic model
+        return CompletionResponse.from_dict(completion_dict)
 
     async def _load_tools(self):
         """

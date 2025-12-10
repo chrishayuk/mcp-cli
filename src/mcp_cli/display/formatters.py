@@ -78,10 +78,11 @@ def format_reasoning_preview(
     # Deduplicate repeated sentences within a sliding window (helps with repetitive reasoning)
     # Split on sentence boundaries (., !, ?)
     import re
-    # Split but keep the delimiters
-    parts = re.split(r'([.!?]\s+)', cleaned)
 
-    sentences = []
+    # Split but keep the delimiters
+    parts = re.split(r"([.!?]\s+)", cleaned)
+
+    sentences: list[str] = []
     current = ""
     for i, part in enumerate(parts):
         if i % 2 == 0:
@@ -119,26 +120,26 @@ def format_reasoning_preview(
             # For long reasoning, take from 60-70% of the way through
             # This balances "recent" with "diverse"
             start_pos = int(len(cleaned) * 0.60)
-            preview = cleaned[start_pos:start_pos + max_len + 60]
+            preview = cleaned[start_pos : start_pos + max_len + 60]
         else:
             # For shorter reasoning, take from end with buffer
             buffer_size = 60
-            preview = cleaned[-(max_len + buffer_size):]
+            preview = cleaned[-(max_len + buffer_size) :]
 
         # Find first complete sentence if possible
         sentence_starts = []
         for i, char in enumerate(preview):
-            if i > 0 and i < 60 and char.isupper() and preview[i-1] in '.!? ':
+            if i > 0 and i < 60 and char.isupper() and preview[i - 1] in ".!? ":
                 sentence_starts.append(i)
 
         # Use last sentence start if available
         if sentence_starts:
-            preview = preview[sentence_starts[-1]:]
+            preview = preview[sentence_starts[-1] :]
         else:
             # Otherwise find first complete word
             first_space = preview.find(" ")
             if first_space > 0 and first_space < 40:
-                preview = preview[first_space + 1:]
+                preview = preview[first_space + 1 :]
 
         # Truncate to max_len at sentence or word boundary
         if len(preview) > max_len:
@@ -147,7 +148,7 @@ def format_reasoning_preview(
             for punct in [". ", "! ", "? "]:
                 punct_idx = preview.rfind(punct)
                 if punct_idx > max_len * 0.5:
-                    return f"...{preview[:punct_idx + 1]}"
+                    return f"...{preview[: punct_idx + 1]}"
 
             # Fall back to word boundary
             last_space = preview.rfind(" ")
@@ -157,7 +158,7 @@ def format_reasoning_preview(
         return f"...{preview}"
     else:
         # Show first N chars
-        preview = cleaned[:max_len + 20]
+        preview = cleaned[: max_len + 20]
 
         # Truncate to max_len at word boundary
         if len(preview) > max_len:

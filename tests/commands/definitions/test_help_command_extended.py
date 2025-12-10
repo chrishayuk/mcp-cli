@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
-from mcp_cli.commands.definitions.help import HelpCommand
+from mcp_cli.commands.core.help import HelpCommand
 from mcp_cli.commands.base import CommandMode
 
 
@@ -17,7 +17,7 @@ def help_command():
 def mock_registry():
     """Create a mock registry with various commands."""
     with patch(
-        "mcp_cli.commands.definitions.help.UnifiedCommandRegistry"
+        "mcp_cli.commands.core.help.UnifiedCommandRegistry"
     ) as MockRegistry:
         mock_reg = MagicMock()
         # Create mock commands with different modes
@@ -180,7 +180,7 @@ async def test_help_format_output(help_command, mock_registry):
 async def test_help_empty_registry(help_command):
     """Test help with no commands registered."""
     with patch(
-        "mcp_cli.commands.definitions.help.UnifiedCommandRegistry"
+        "mcp_cli.commands.core.help.UnifiedCommandRegistry"
     ) as MockRegistry:
         mock_reg = MagicMock()
         mock_reg.list_commands.return_value = []
@@ -256,7 +256,7 @@ async def test_help_with_commands_with_aliases():
     help_cmd = HelpCommand()
 
     with patch(
-        "mcp_cli.commands.definitions.help.UnifiedCommandRegistry"
+        "mcp_cli.commands.core.help.UnifiedCommandRegistry"
     ) as MockRegistry:
         mock_reg = MagicMock()
 

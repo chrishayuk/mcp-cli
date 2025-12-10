@@ -86,7 +86,9 @@ class StreamingDisplayManager:
         self._last_reasoning_update = 0.0
         self._last_reasoning_chunk_count = 0
         self._last_reasoning_preview = ""  # Cached preview text
-        self._reasoning_update_interval = 2.0  # seconds (increased for less frequent updates)
+        self._reasoning_update_interval = (
+            2.0  # seconds (increased for less frequent updates)
+        )
         self._reasoning_chunk_interval = 20  # chunks (increased for less noise)
 
         # Display state
@@ -314,7 +316,7 @@ class StreamingDisplayManager:
             self._update_reasoning_preview()
 
             # Render status using renderer with cached preview
-            status = render_streaming_status(
+            _ = render_streaming_status(
                 self.streaming_state,
                 spinner,
                 reasoning_preview=self._last_reasoning_preview,
@@ -347,9 +349,10 @@ class StreamingDisplayManager:
                 num_lines = 1
 
             # Check if we're switching modes (need newline)
-            mode_switched = (
-                (current_mode == "content" and self._showing_thinking) or
-                (current_mode == "thinking" and not self._showing_thinking and self._last_status)
+            mode_switched = (current_mode == "content" and self._showing_thinking) or (
+                current_mode == "thinking"
+                and not self._showing_thinking
+                and self._last_status
             )
 
             # Only update if changed
@@ -360,6 +363,7 @@ class StreamingDisplayManager:
                     # Clear previous display if switching from multi-line thinking
                     if self._showing_thinking and self._last_line_count > 1:
                         from chuk_term.ui.terminal import clear_lines
+
                         clear_lines(self._last_line_count)
 
                     # Moving to new mode
@@ -370,7 +374,11 @@ class StreamingDisplayManager:
                     if num_lines > 1:
                         # Multi-line: clear all previous lines and rewrite
                         if self._last_line_count > 0:
-                            from chuk_term.ui.terminal import clear_lines, move_cursor_up
+                            from chuk_term.ui.terminal import (
+                                clear_lines,
+                                move_cursor_up,
+                            )
+
                             # Move to first line
                             if self._last_line_count > 1:
                                 move_cursor_up(self._last_line_count - 1)
@@ -390,7 +398,7 @@ class StreamingDisplayManager:
                 # Update state
                 self._last_status = display_status
                 self._last_line_count = num_lines
-                self._showing_thinking = (current_mode == "thinking")
+                self._showing_thinking = current_mode == "thinking"
 
     def _clear_previous_lines(self) -> None:
         """Clear previous status lines from terminal.
@@ -468,7 +476,7 @@ class StreamingDisplayManager:
 
         words = text.split()
         lines = []
-        current_line = []
+        current_line: list[str] = []
         current_len = 0
 
         for word in words:
@@ -547,7 +555,9 @@ class StreamingDisplayManager:
             )
 
             # Split into 3 lines of ~80 chars each
-            lines = self._split_preview_into_lines(preview_text, max_line_len=80, num_lines=3)
+            lines = self._split_preview_into_lines(
+                preview_text, max_line_len=80, num_lines=3
+            )
 
             # Format as 3-line preview with header
             preview_lines = [f"💭 Thinking ({len_str} chars):"]
