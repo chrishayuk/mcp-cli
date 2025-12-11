@@ -185,6 +185,50 @@ class ChatUIManager:
 
         await self.display.start_tool_execution(tool_name, processed_args)
 
+    def print_tool_call(self, tool_name: str, raw_arguments: Any) -> None:
+        """Print tool call notification before execution.
+
+        Note: This is called but the output is immediately cleared by streaming display.
+        The actual tool parameters are shown in the tool execution status line instead.
+
+        Args:
+            tool_name: Name of the tool being called
+            raw_arguments: Raw arguments (JSON string or dict)
+        """
+        # Don't print here - streaming display will show it in the status line
+        # The display manager shows tool name + arguments during execution
+        pass
+
+    def do_confirm_tool_execution(self, tool_name: str, arguments: Any) -> bool:
+        """Prompt user to confirm tool execution.
+
+        Args:
+            tool_name: Name of the tool
+            arguments: Tool arguments
+
+        Returns:
+            True if user confirms, False otherwise
+        """
+        from chuk_term.ui import output
+
+        # Parse arguments for display
+        if isinstance(arguments, str):
+            try:
+                args = json.loads(arguments) if arguments else {}
+            except json.JSONDecodeError:
+                args = {"raw": arguments}
+        else:
+            args = arguments or {}
+
+        # Show tool and arguments
+        output.warning(f"⚠️  Tool confirmation required: {tool_name}")
+        args_str = json.dumps(args, indent=2) if isinstance(args, dict) else str(args)
+        output.print(f"Parameters:\n{args_str}")
+
+        # Prompt for confirmation
+        response = input("\nExecute this tool? [Y/n]: ").strip().lower()
+        return response in ("", "y", "yes")
+
     async def finish_tool_execution(
         self, result: str | None = None, success: bool = True
     ) -> None:

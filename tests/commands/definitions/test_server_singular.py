@@ -35,13 +35,20 @@ class TestServerSingularCommand:
     async def test_execute_with_server_name(self, command):
         """Test executing server command with server name."""
         from mcp_cli.tools.models import ServerInfo
+
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
             mock_server = ServerInfo(
-                id=1, name="test-server", status="running",
-                connected=True, tool_count=5, namespace="test"
+                id=1,
+                name="test-server",
+                status="running",
+                connected=True,
+                tool_count=5,
+                namespace="test",
             )
-            mock_ctx.tool_manager.get_server_info = AsyncMock(return_value=[mock_server])
+            mock_ctx.tool_manager.get_server_info = AsyncMock(
+                return_value=[mock_server]
+            )
             with patch("chuk_term.ui.output"):
                 result = await command.execute(args=["test-server"])
                 assert result.success is True

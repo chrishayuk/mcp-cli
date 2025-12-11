@@ -23,7 +23,6 @@ from mcp_cli.tools.models import ServerInfo, TransportType
 
 # Import clean models from new config system
 from mcp_cli.config.models import (
-    MCPConfig as CleanMCPConfig,
     TimeoutConfig as CleanTimeoutConfig,
     ToolConfig as CleanToolConfig,
 )
@@ -32,8 +31,8 @@ logger = logging.getLogger(__name__)
 
 # LEGACY: Use clean models for new code
 # These are kept for backward compatibility with old code
-TimeoutConfig = CleanTimeoutConfig  # type: ignore[misc]
-ToolConfig = CleanToolConfig  # type: ignore[misc]
+TimeoutConfig = CleanTimeoutConfig
+ToolConfig = CleanToolConfig
 
 
 class ServerConfig(BaseModel):
@@ -63,36 +62,47 @@ class ServerConfig(BaseModel):
 
     @classmethod
     def from_dict(cls, name: str, data: dict[str, Any]) -> "ServerConfig":
-        """Create from dictionary format with environment variable handling."""
-        # Get env from config
-        env = data.get("env", {}).copy()
+        """Create from dictionary format with environment variable handling.
 
-        # Ensure PATH is inherited from current environment if not explicitly set
+        Uses ServerConfigInput Pydantic model for validation instead of manual .get() calls.
+        """
+        from mcp_cli.config.server_models import ServerConfigInput
+
+        # Parse using Pydantic model (validates and provides defaults)
+        input_model = ServerConfigInput.model_validate(data)
+
+        # Get env and ensure PATH is inherited
+        env = input_model.env.copy()
         if "PATH" not in env:
             env["PATH"] = os.environ.get("PATH", "")
 
         # Parse OAuth config if present
         oauth = None
-        if "oauth" in data:
-            oauth = OAuthConfig.model_validate(data["oauth"])
+        if input_model.oauth:
+            if isinstance(input_model.oauth, dict):
+                oauth = OAuthConfig.model_validate(input_model.oauth)
+            else:
+                oauth = input_model.oauth
 
         return cls(
             name=name,
-            command=data.get("command"),
-            args=data.get("args", []),
+            command=input_model.command,
+            args=input_model.args,
             env=env,
-            url=data.get("url"),
-            headers=data.get("headers"),
+            url=input_model.url,
+            headers=input_model.headers,
             oauth=oauth,
-            disabled=data.get("disabled", False),
+            disabled=input_model.disabled,
         )
 
     def to_server_info(self, server_id: int = 0) -> ServerInfo:
         """Convert to ServerInfo model."""
+        from mcp_cli.constants import ServerStatus
+
         return ServerInfo(
             id=server_id,
             name=self.name,
-            status="configured",
+            status=ServerStatus.CONFIGURED.value,
             tool_count=0,
             namespace=self.name,
             enabled=not self.disabled,
@@ -267,13 +277,13 @@ class LegacyMCPConfig(BaseModel):
 
         # NEW: Add timeout configuration
         data["timeouts"] = {
-            "streamingChunkTimeout": self.timeouts.streaming_chunk_timeout,
-            "streamingGlobalTimeout": self.timeouts.streaming_global_timeout,
-            "streamingFirstChunkTimeout": self.timeouts.streaming_first_chunk_timeout,
-            "toolExecutionTimeout": self.timeouts.tool_execution_timeout,
-            "serverInitTimeout": self.timeouts.server_init_timeout,
-            "httpRequestTimeout": self.timeouts.http_request_timeout,
-            "httpConnectTimeout": self.timeouts.http_connect_timeout,
+            "streamingChunkTimeout": self.timeouts.streaming_chunk,
+            "streamingGlobalTimeout": self.timeouts.streaming_global,
+            "streamingFirstChunkTimeout": self.timeouts.streaming_first_chunk,
+            "toolExecutionTimeout": self.timeouts.tool_execution,
+            "serverInitTimeout": self.timeouts.server_init,
+            "httpRequestTimeout": self.timeouts.http_request,
+            "httpConnectTimeout": self.timeouts.http_connect,
         }
 
         # NEW: Add tool configuration
@@ -627,7 +637,7 @@ class RuntimeConfig:
         # 3. Get from config file
         timeout_attr = f"{timeout_name}_timeout"
         if hasattr(self.mcp_config.timeouts, timeout_attr):
-            return getattr(self.mcp_config.timeouts, timeout_attr)
+            return getattr(self.mcp_config.timeouts, timeout_attr)  # type: ignore[no-any-return]
 
         # 4. Fallback to default (should never reach here if TimeoutConfig has defaults)
         logger.warning(

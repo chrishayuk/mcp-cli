@@ -217,7 +217,9 @@ class StreamingResponseHandler:
     """
 
     def __init__(
-        self, display: StreamingDisplayManager, runtime_config: RuntimeConfig | None = None
+        self,
+        display: StreamingDisplayManager,
+        runtime_config: RuntimeConfig | None = None,
     ):
         """Initialize handler.
 

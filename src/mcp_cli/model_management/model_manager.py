@@ -17,7 +17,10 @@ NO HARDCODED MODELS - All model data comes from:
 """
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from mcp_cli.protocols import LLMClient
 
 from mcp_cli.model_management.provider import RuntimeProviderConfig
 from mcp_cli.model_management.client_factory import ClientFactory
@@ -316,8 +319,10 @@ class ModelManager:
             return 0
 
         # Use chuk_llm refresh for standard providers
+        from mcp_cli.constants import PROVIDER_OLLAMA
+
         try:
-            if provider == "ollama" or provider is None:
+            if provider == PROVIDER_OLLAMA or provider is None:
                 from chuk_llm.api.providers import trigger_ollama_discovery_and_refresh
 
                 new_functions = trigger_ollama_discovery_and_refresh()
@@ -364,7 +369,9 @@ class ModelManager:
 
     # ── Client Management ─────────────────────────────────────────────────────
 
-    def get_client(self, provider: str | None = None, model: str | None = None) -> Any:
+    def get_client(
+        self, provider: str | None = None, model: str | None = None
+    ) -> "LLMClient":
         """
         Get a client for the specified or active provider/model.
 

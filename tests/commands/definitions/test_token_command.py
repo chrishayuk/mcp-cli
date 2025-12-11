@@ -1,7 +1,7 @@
 """Tests for the token command."""
 
 import pytest
-from unittest.mock import patch, AsyncMock, Mock
+from unittest.mock import patch, Mock
 from mcp_cli.commands.tokens.token import TokenCommand
 from mcp_cli.commands.base import CommandMode
 
@@ -22,7 +22,9 @@ class TestTokenCommand:
         assert "Manage OAuth and authentication tokens" in command.help_text
         assert "set" in command.help_text  # Should include set command
         assert "get" in command.help_text  # Should include get command
-        assert command.modes == (CommandMode.CLI | CommandMode.CHAT | CommandMode.INTERACTIVE)
+        assert command.modes == (
+            CommandMode.CLI | CommandMode.CHAT | CommandMode.INTERACTIVE
+        )
         assert command.requires_context  # Needs context to get server list
 
     @pytest.mark.asyncio
@@ -47,7 +49,9 @@ class TestTokenCommand:
             mock_mgr.return_value = mock_manager
             with patch("mcp_cli.commands.tokens.token.output"):
                 with patch("mcp_cli.commands.tokens.token.format_table"):
-                    result = await command.execute(args=["list"], tool_manager=Mock(servers=[]))
+                    result = await command.execute(
+                        args=["list"], tool_manager=Mock(servers=[])
+                    )
 
                     # Should call list action
                     assert result.success is True
@@ -62,7 +66,9 @@ class TestTokenCommand:
             with patch("chuk_term.ui.prompts.confirm") as mock_confirm:
                 mock_confirm.return_value = False  # User cancels
                 with patch("chuk_term.ui.output"):
-                    result = await command.execute(args=["clear"], tool_manager=Mock(servers=[]))
+                    result = await command.execute(
+                        args=["clear"], tool_manager=Mock(servers=[])
+                    )
 
                     # Should be cancelled
                     assert result.success is False
@@ -76,7 +82,9 @@ class TestTokenCommand:
             mock_manager.token_store = Mock()
             mock_mgr.return_value = mock_manager
             with patch("mcp_cli.commands.tokens.token.output"):
-                result = await command.execute(args=["clear", "--force"], tool_manager=Mock(servers=[]))
+                result = await command.execute(
+                    args=["clear", "--force"], tool_manager=Mock(servers=[])
+                )
 
                 # Should call clear with force=True
                 assert result.success is True
@@ -90,7 +98,9 @@ class TestTokenCommand:
             mock_manager.token_store = Mock()
             mock_mgr.return_value = mock_manager
             with patch("mcp_cli.commands.tokens.token.output"):
-                result = await command.execute(args=["clear", "-f"], tool_manager=Mock(servers=[]))
+                result = await command.execute(
+                    args=["clear", "-f"], tool_manager=Mock(servers=[])
+                )
 
                 # Should call clear with force=True
                 assert result.success is True
@@ -105,7 +115,9 @@ class TestTokenCommand:
             mock_manager.registry = Mock()
             mock_mgr.return_value = mock_manager
             with patch("mcp_cli.commands.tokens.token.output"):
-                result = await command.execute(args=["delete", "github"], tool_manager=Mock(servers=[]))
+                result = await command.execute(
+                    args=["delete", "github"], tool_manager=Mock(servers=[])
+                )
 
                 # Should call delete action with the token name
                 assert result.success is True
@@ -113,8 +125,10 @@ class TestTokenCommand:
     @pytest.mark.asyncio
     async def test_execute_delete_without_name(self, command):
         """Test execution with 'delete' subcommand but no token name."""
-        with patch("mcp_cli.commands.tokens.token.output") as mock_output:
-            result = await command.execute(args=["delete"], tool_manager=Mock(servers=[]))
+        with patch("mcp_cli.commands.tokens.token.output"):
+            result = await command.execute(
+                args=["delete"], tool_manager=Mock(servers=[])
+            )
 
             # Should show error
             assert result.success is False
@@ -124,7 +138,9 @@ class TestTokenCommand:
     async def test_execute_unknown_subcommand(self, command):
         """Test execution with unknown subcommand."""
         with patch("mcp_cli.commands.tokens.token.output"):
-            result = await command.execute(args=["unknown"], tool_manager=Mock(servers=[]))
+            result = await command.execute(
+                args=["unknown"], tool_manager=Mock(servers=[])
+            )
 
             # Should show error
             assert result.success is False
@@ -140,7 +156,9 @@ class TestTokenCommand:
             with patch("mcp_cli.commands.tokens.token.output"):
                 with patch("mcp_cli.commands.tokens.token.format_table"):
                     # Pass a string arg (should be converted to list)
-                    result = await command.execute(args="list", tool_manager=Mock(servers=[]))
+                    result = await command.execute(
+                        args="list", tool_manager=Mock(servers=[])
+                    )
 
                     assert result.success is True
 
@@ -153,7 +171,9 @@ class TestTokenCommand:
             mock_mgr.return_value = mock_manager
             with patch("mcp_cli.commands.tokens.token.output"):
                 with patch("mcp_cli.commands.tokens.token.format_table"):
-                    result = await command.execute(args=[], tool_manager=Mock(servers=[]))
+                    result = await command.execute(
+                        args=[], tool_manager=Mock(servers=[])
+                    )
 
                     # Should call list action (default)
                     assert result.success is True
@@ -167,7 +187,9 @@ class TestTokenCommand:
             mock_mgr.return_value = mock_manager
             with patch("mcp_cli.commands.tokens.token.output"):
                 with patch("mcp_cli.commands.tokens.token.format_table"):
-                    result = await command.execute(args=["LIST"], tool_manager=Mock(servers=[]))
+                    result = await command.execute(
+                        args=["LIST"], tool_manager=Mock(servers=[])
+                    )
 
                     # Should call list action (subcommand converted to lowercase)
                     assert result.success is True
@@ -200,7 +222,10 @@ class TestTokenCommand:
             mock_manager.registry = Mock()
             mock_mgr.return_value = mock_manager
             with patch("mcp_cli.commands.tokens.token.output"):
-                result = await command.execute(args=["set", "my-api", "secret-token"], tool_manager=Mock(servers=[]))
+                result = await command.execute(
+                    args=["set", "my-api", "secret-token"],
+                    tool_manager=Mock(servers=[]),
+                )
 
                 # Should call set action with the token name and value
                 assert result.success is True
@@ -211,9 +236,12 @@ class TestTokenCommand:
         with patch("chuk_term.ui.output"):
             with patch("getpass.getpass") as mock_getpass:
                 mock_getpass.return_value = ""  # Empty value
-                result = await command.execute(args=["set", "my-api"], tool_manager=Mock(servers=[]))
+                # Pass name via kwargs since we're testing the case where value is prompted
+                result = await command.execute(
+                    args=["set"], name="my-api", tool_manager=Mock(servers=[])
+                )
 
-                # Should show error
+                # Should show error when getpass returns empty
                 assert result.success is False
                 assert "Token value is required" in result.error
 
@@ -236,7 +264,9 @@ class TestTokenCommand:
             mock_manager.token_store._retrieve_raw.return_value = None
             mock_mgr.return_value = mock_manager
             with patch("mcp_cli.commands.tokens.token.output"):
-                result = await command.execute(args=["get", "notion"], tool_manager=Mock(servers=[]))
+                result = await command.execute(
+                    args=["get", "notion"], tool_manager=Mock(servers=[])
+                )
 
                 # Should call get action
                 assert result.success is False  # Token not found

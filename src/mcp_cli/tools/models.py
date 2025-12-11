@@ -8,6 +8,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from mcp_cli.llm.content_models import ContentBlockType
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Constants and Enums
@@ -255,10 +257,13 @@ class ToolCallResult(BaseModel):
                 # Extract content array from MCP ToolResult
                 tool_result_content = result["content"].content
                 if isinstance(tool_result_content, list):
-                    # Extract text from content blocks
+                    # Extract text from content blocks - use enum, no magic strings!
                     text_parts = []
                     for block in tool_result_content:
-                        if isinstance(block, dict) and block.get("type") == "text":
+                        if (
+                            isinstance(block, dict)
+                            and block.get("type") == ContentBlockType.TEXT.value
+                        ):
                             text_parts.append(block.get("text", ""))
                     if text_parts:
                         return "\n".join(text_parts)

@@ -20,6 +20,7 @@ from chuk_term.ui import output
 # Import canonical models from chuk_llm
 from mcp_cli.chat.response_models import Message, MessageRole, ToolCall
 from mcp_cli.display import display_tool_call_result
+from mcp_cli.llm.content_models import ContentBlockType
 from mcp_cli.utils.preferences import get_preference_manager
 
 log = logging.getLogger(__name__)
@@ -194,22 +195,19 @@ class ToolProcessor:
                 if self.tool_manager is None:
                     raise RuntimeError("No tool manager available for tool execution")
 
-                # Skip loading indicator during streaming to avoid Rich Live display conflict
-                if self.ui_manager.is_streaming_response:
-                    log.info(
-                        f"Executing tool: {execution_tool_name} with args: {arguments}"
-                    )
-                    tool_result = await self.tool_manager.execute_tool(
-                        execution_tool_name, arguments
-                    )
-                else:
-                    with output.loading("Executing tool…"):
-                        log.info(
-                            f"Executing tool: {execution_tool_name} with args: {arguments}"
-                        )
-                        tool_result = await self.tool_manager.execute_tool(
-                            execution_tool_name, arguments
-                        )
+                # Start tool execution display with arguments
+                # This starts our own refresh-based display, so we don't need
+                # the Rich loading wrapper which would conflict with our display
+                await self.ui_manager.start_tool_execution(display_name, arguments)
+
+                # Execute tool without Rich loading wrapper
+                # Our display manager handles the spinner/status display via refresh loop
+                log.info(
+                    f"Executing tool: {execution_tool_name} with args: {arguments}"
+                )
+                tool_result = await self.tool_manager.execute_tool(
+                    execution_tool_name, arguments
+                )
 
                 log.info(
                     f"Tool result: success={tool_result.success}, error='{tool_result.error}'"
@@ -314,10 +312,13 @@ class ToolProcessor:
                 # Extract content array from MCP ToolResult
                 tool_result_content = result["content"].content
                 if isinstance(tool_result_content, list):
-                    # Extract text from content blocks
+                    # Extract text from content blocks - use enum!
                     text_parts = []
                     for block in tool_result_content:
-                        if isinstance(block, dict) and block.get("type") == "text":
+                        if (
+                            isinstance(block, dict)
+                            and block.get("type") == ContentBlockType.TEXT.value
+                        ):
                             text_parts.append(block.get("text", ""))
                     if text_parts:
                         return "\n".join(text_parts)

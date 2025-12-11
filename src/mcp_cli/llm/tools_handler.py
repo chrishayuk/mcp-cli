@@ -25,14 +25,32 @@ def format_tool_response(response_content: list[dict[str, Any]] | Any) -> str:
         and isinstance(response_content[0], dict)
     ):
         # Check if this looks like text records with type field
+        from mcp_cli.llm.content_models import TextContent
+        from mcp_cli.constants import JSON_TYPE_STRING
+
+        # Try to parse as TextContent models
+        try:
+            text_blocks = [
+                TextContent.model_validate(item)
+                for item in response_content
+                if isinstance(item, dict) and item.get("type") == JSON_TYPE_STRING
+            ]
+            if text_blocks:
+                return "\n".join(block.text for block in text_blocks)
+        except Exception:
+            pass  # Fall through to dict handling
+
+        # Fallback: Check with dict access
         if all(
-            item.get("type") == "text" for item in response_content if "type" in item
+            item.get("type") == JSON_TYPE_STRING
+            for item in response_content
+            if isinstance(item, dict) and "type" in item
         ):
             # Text records - extract just the text
             return "\n".join(
                 item.get("text", "No content")
                 for item in response_content
-                if item.get("type") == "text"
+                if isinstance(item, dict) and item.get("type") == JSON_TYPE_STRING
             )
         else:
             # This could be data records (like SQL results)

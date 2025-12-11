@@ -3,24 +3,26 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel
 
 from mcp_cli.config.enums import ConfigSource, TimeoutType
 from mcp_cli.config.models import ConfigOverride, MCPConfig, TimeoutConfig, ToolConfig
-from mcp_cli.constants import EnvVar, get_env, get_env_bool, get_env_float, get_env_int, get_env_list
+from mcp_cli.constants import EnvVar, get_env, get_env_bool, get_env_float, get_env_list
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar("T")
 
-class ResolvedValue[T](BaseModel):
+
+class ResolvedValue(BaseModel, Generic[T]):
     """A configuration value with its source for debugging."""
 
     value: T
     source: ConfigSource
 
-    model_config = {"frozen": True}
+    model_config = {"frozen": True, "arbitrary_types_allowed": True}
 
 
 class RuntimeConfig:
@@ -141,10 +143,8 @@ class RuntimeConfig:
         max_concurrency = self._get_tool_int("max_concurrency")
 
         return ToolConfig(
-            include_tools=include_tools
-            or self._file_config.tools.include_tools,
-            exclude_tools=exclude_tools
-            or self._file_config.tools.exclude_tools,
+            include_tools=include_tools or self._file_config.tools.include_tools,
+            exclude_tools=exclude_tools or self._file_config.tools.exclude_tools,
             dynamic_tools_enabled=dynamic_enabled
             if dynamic_enabled is not None
             else self._file_config.tools.dynamic_tools_enabled,
@@ -162,7 +162,7 @@ class RuntimeConfig:
         """Get tool list from CLI/env (type-safe!)."""
         # Check CLI
         if key in self._cli_overrides.tools:
-            return self._cli_overrides.tools[key]
+            return self._cli_overrides.tools[key]  # type: ignore[no-any-return]
 
         # Check environment (type-safe with EnvVar!)
         if key == "include_tools":

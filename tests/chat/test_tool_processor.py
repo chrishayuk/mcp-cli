@@ -3,6 +3,7 @@ import json
 import pytest
 
 from mcp_cli.chat.tool_processor import ToolProcessor
+from mcp_cli.chat.response_models import ToolCall, FunctionCall
 from mcp_cli.tools.models import ToolCallResult
 
 # ---------------------------
@@ -25,6 +26,10 @@ class DummyUIManager:
     def do_confirm_tool_execution(self, tool_name, arguments):
         # Mock confirmation - always return True for tests
         return True
+
+    async def start_tool_execution(self, tool_name, arguments):
+        # Mock start tool execution - no-op for tests
+        pass
 
 
 class DummyStreamManager:
@@ -124,10 +129,12 @@ async def test_process_tool_calls_successful_tool():
     ui_manager = DummyUIManager()
     processor = ToolProcessor(context, ui_manager)
 
-    tool_call = {
-        "function": {"name": "echo", "arguments": '{"msg": "Hello"}'},
-        "id": "call_echo",
-    }
+    # Create a proper ToolCall Pydantic model instead of a dict
+    tool_call = ToolCall(
+        id="call_echo",
+        type="function",
+        function=FunctionCall(name="echo", arguments='{"msg": "Hello"}'),
+    )
     await processor.process_tool_calls([tool_call])
 
     # Verify that the UI manager printed the tool call.
@@ -143,7 +150,8 @@ async def test_process_tool_calls_successful_tool():
 
     # Verify the tool call record contains the correct id.
     assert call_record.tool_calls is not None
-    assert any(item.get("id") == "call_echo" for item in call_record.tool_calls)
+    # tool_calls is now a list of ToolCall Pydantic models, not dicts
+    assert any(item.id == "call_echo" for item in call_record.tool_calls)
 
     # Verify the response record.
     assert response_record.role.value == "tool"

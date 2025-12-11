@@ -32,7 +32,7 @@ class TestToolsCommandCoverage:
         mock_context.tool_manager = mock_tm
 
         with patch(
-            "mcp_cli.commands.definitions.tools.get_context", return_value=mock_context
+            "mcp_cli.commands.tools.tools.get_context", return_value=mock_context
         ):
             result = await self.tools_cmd.execute()
 
@@ -57,7 +57,7 @@ class TestToolsCommandCoverage:
         mock_context.tool_manager = mock_tm
 
         with patch(
-            "mcp_cli.commands.definitions.tools.get_context", return_value=mock_context
+            "mcp_cli.commands.tools.tools.get_context", return_value=mock_context
         ):
             with patch("mcp_cli.commands.tools.tools.output"):
                 result = await self.tools_cmd.execute(args="test_tool")
@@ -73,7 +73,7 @@ class TestToolsCommandCoverage:
         mock_context.tool_manager = mock_tm
 
         with patch(
-            "mcp_cli.commands.definitions.tools.get_context", return_value=mock_context
+            "mcp_cli.commands.tools.tools.get_context", return_value=mock_context
         ):
             result = await self.tools_cmd.execute()
 
@@ -99,7 +99,7 @@ class TestToolsCommandCoverage:
         mock_context.tool_manager = mock_tm
 
         with patch(
-            "mcp_cli.commands.definitions.tools.get_context", return_value=mock_context
+            "mcp_cli.commands.tools.tools.get_context", return_value=mock_context
         ):
             with patch("mcp_cli.commands.tools.tools.output"):
                 result = await self.tools_cmd.execute(filter="echo_custom")
@@ -124,7 +124,7 @@ class TestToolsCommandCoverage:
         mock_context.tool_manager = mock_tm
 
         with patch(
-            "mcp_cli.commands.definitions.tools.get_context", return_value=mock_context
+            "mcp_cli.commands.tools.tools.get_context", return_value=mock_context
         ):
             with patch("mcp_cli.commands.tools.tools.output"):
                 result = await self.tools_cmd.execute(filter="custom_query_tool")
@@ -159,7 +159,7 @@ class TestToolsCommandCoverage:
         mock_context.tool_manager = mock_tm
 
         with patch(
-            "mcp_cli.commands.definitions.tools.get_context", return_value=mock_context
+            "mcp_cli.commands.tools.tools.get_context", return_value=mock_context
         ):
             with patch("mcp_cli.commands.tools.tools.output"):
                 result = await self.tools_cmd.execute(filter="test_tool")
@@ -184,7 +184,7 @@ class TestToolsCommandCoverage:
         mock_context.tool_manager = mock_tm
 
         with patch(
-            "mcp_cli.commands.definitions.tools.get_context", return_value=mock_context
+            "mcp_cli.commands.tools.tools.get_context", return_value=mock_context
         ):
             with patch("mcp_cli.commands.tools.tools.output"):
                 result = await self.tools_cmd.execute(filter="simple_tool")
@@ -209,7 +209,7 @@ class TestToolsCommandCoverage:
         mock_context.tool_manager = mock_tm
 
         with patch(
-            "mcp_cli.commands.definitions.tools.get_context", return_value=mock_context
+            "mcp_cli.commands.tools.tools.get_context", return_value=mock_context
         ):
             with patch("mcp_cli.commands.tools.tools.output"):
                 result = await self.tools_cmd.execute()
@@ -234,7 +234,7 @@ class TestToolsCommandCoverage:
         mock_context.tool_manager = mock_tm
 
         with patch(
-            "mcp_cli.commands.definitions.tools.get_context", return_value=mock_context
+            "mcp_cli.commands.tools.tools.get_context", return_value=mock_context
         ):
             with patch("mcp_cli.commands.tools.tools.output"):
                 result = await self.tools_cmd.execute(details=True)
@@ -259,7 +259,7 @@ class TestToolsCommandCoverage:
         mock_context.tool_manager = mock_tm
 
         with patch(
-            "mcp_cli.commands.definitions.tools.get_context", return_value=mock_context
+            "mcp_cli.commands.tools.tools.get_context", return_value=mock_context
         ):
             with patch("mcp_cli.commands.tools.tools.output"):
                 result = await self.tools_cmd.execute()
@@ -284,7 +284,7 @@ class TestToolsCommandCoverage:
         mock_context.tool_manager = mock_tm
 
         with patch(
-            "mcp_cli.commands.definitions.tools.get_context", return_value=mock_context
+            "mcp_cli.commands.tools.tools.get_context", return_value=mock_context
         ):
             with patch("mcp_cli.commands.tools.tools.output"):
                 result = await self.tools_cmd.execute()
@@ -309,7 +309,7 @@ class TestToolsCommandCoverage:
         mock_context.tool_manager = mock_tm
 
         with patch(
-            "mcp_cli.commands.definitions.tools.get_context", return_value=mock_context
+            "mcp_cli.commands.tools.tools.get_context", return_value=mock_context
         ):
             with patch("mcp_cli.commands.tools.tools.output"):
                 result = await self.tools_cmd.execute()

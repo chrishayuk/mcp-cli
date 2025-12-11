@@ -43,6 +43,15 @@ class ToolRiskLevel(str, Enum):
     HIGH = "high"  # System-wide or destructive operations
 
 
+class ToolPatternRule(BaseModel):
+    """Pattern-based rule for tool confirmations - no dict goop!"""
+
+    pattern: str = Field(description="Glob pattern for tool names")
+    action: str = Field(description="Action: always/never or risk level")
+
+    model_config = {"frozen": True}
+
+
 class ToolConfirmationPreferences(BaseModel):
     """Tool confirmation preferences."""
 
@@ -50,7 +59,7 @@ class ToolConfirmationPreferences(BaseModel):
     per_tool: dict[str, str] = Field(
         default_factory=dict, description="Per-tool overrides (always/never/ask)"
     )
-    patterns: list[dict[str, str]] = Field(
+    patterns: list[ToolPatternRule] = Field(
         default_factory=list, description="Pattern-based rules"
     )
     risk_thresholds: dict[str, bool] = Field(
@@ -364,9 +373,8 @@ class PreferenceManager:
             pattern: Glob pattern for tool names
             action: 'always', 'never', or risk level
         """
-        self.preferences.ui.tool_confirmation.patterns.append(
-            {"pattern": pattern, "action": action}
-        )
+        rule = ToolPatternRule(pattern=pattern, action=action)
+        self.preferences.ui.tool_confirmation.patterns.append(rule)
         self.save_preferences()
 
     def remove_tool_pattern(self, pattern: str) -> bool:
@@ -381,7 +389,7 @@ class PreferenceManager:
         patterns = self.preferences.ui.tool_confirmation.patterns
         original_len = len(patterns)
         self.preferences.ui.tool_confirmation.patterns = [
-            p for p in patterns if p.get("pattern") != pattern
+            p for p in patterns if p.pattern != pattern
         ]
         if len(self.preferences.ui.tool_confirmation.patterns) < original_len:
             self.save_preferences()
@@ -645,11 +653,9 @@ class PreferenceManager:
         if not provider_data:
             return None
 
-        # Get the environment variable name
-        env_var = provider_data.get("env_var_name")
-        if not env_var:
-            # Use default pattern
-            env_var = f"{name.upper().replace('-', '_')}_API_KEY"
+        # Parse provider data into model - no dict goop!
+        provider = CustomProvider.from_dict(provider_data)
+        env_var = provider.get_env_var_name()
 
         return os.environ.get(env_var)
 
@@ -666,6 +672,7 @@ __all__ = [
     "ProviderPreferences",
     "ServerPreferences",
     "ToolConfirmationPreferences",
+    "ToolPatternRule",
     "CustomProvider",
     "Theme",
     "ConfirmationMode",

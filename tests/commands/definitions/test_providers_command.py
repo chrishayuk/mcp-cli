@@ -67,7 +67,9 @@ class TestProviderCommand:
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
             # Simulate the action failing for an invalid provider
-            mock_ctx.llm_manager.set_provider.side_effect = Exception("Provider not found: invalid")
+            mock_ctx.llm_manager.set_provider.side_effect = Exception(
+                "Provider not found: invalid"
+            )
             with patch("chuk_term.ui.output"):
                 result = await command.execute(args=["invalid"])
 
@@ -79,7 +81,9 @@ class TestProviderCommand:
         """Test error handling when listing with no args fails."""
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.llm_manager.list_providers.side_effect = Exception("Connection failed")
+            mock_ctx.llm_manager.list_providers.side_effect = Exception(
+                "Connection failed"
+            )
             with patch("chuk_term.ui.output"):
                 result = await command.execute(args=[])
 
@@ -108,7 +112,9 @@ class TestProviderCommand:
 
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.llm_manager.set_provider.side_effect = Exception("Invalid provider")
+            mock_ctx.llm_manager.set_provider.side_effect = Exception(
+                "Invalid provider"
+            )
             with patch("chuk_term.ui.output"):
                 result = await set_cmd.execute(args=["invalid"])
 
@@ -138,7 +144,9 @@ class TestProviderCommand:
 
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.llm_manager.get_current_provider.side_effect = Exception("Failed to get info")
+            mock_ctx.llm_manager.get_current_provider.side_effect = Exception(
+                "Failed to get info"
+            )
             with patch("chuk_term.ui.output"):
                 result = await show_cmd.execute()
 

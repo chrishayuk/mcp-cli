@@ -126,35 +126,34 @@ def validate_provider_exists(provider: str) -> bool:
 
 
 def get_discovery_status() -> dict[str, Any]:
-    """
-    Get discovery status for debugging.
+    """Get discovery status for debugging.
 
     Returns:
-        Dictionary with discovery status information
+        Dictionary with discovery status information (uses Pydantic models internally)
     """
-    return {
-        "env_setup_complete": _ENV_SETUP_COMPLETE,
-        "discovery_triggered": _DISCOVERY_TRIGGERED,
-        "discovery_enabled": os.getenv("CHUK_LLM_DISCOVERY_ENABLED", "false"),
-        "ollama_discovery": os.getenv("CHUK_LLM_OLLAMA_DISCOVERY", "false"),
-        "auto_discover": os.getenv("CHUK_LLM_AUTO_DISCOVER", "false"),
-        "tool_compatibility": os.getenv("CHUK_LLM_OPENAI_TOOL_COMPATIBILITY", "false"),
-        "universal_tools": os.getenv("CHUK_LLM_UNIVERSAL_TOOLS", "false"),
-    }
+    from mcp_cli.config.discovery_models import DiscoveryConfig, DiscoveryStatus
+
+    status = DiscoveryStatus(
+        env_setup_complete=_ENV_SETUP_COMPLETE,
+        discovery_triggered=_DISCOVERY_TRIGGERED,
+        config=DiscoveryConfig.from_env(),
+    )
+    return status.to_dict()
 
 
 def force_discovery_refresh() -> int:
-    """
-    Force a fresh discovery (useful for debugging).
+    """Force a fresh discovery (useful for debugging).
 
     Returns:
         Number of new functions discovered
     """
+    from mcp_cli.constants import EnvVar, set_env
+
     global _DISCOVERY_TRIGGERED
     _DISCOVERY_TRIGGERED = False
 
-    # Set force refresh environment variable
-    os.environ["CHUK_LLM_DISCOVERY_FORCE_REFRESH"] = "true"
+    # Set force refresh environment variable (using constant)
+    set_env(EnvVar.CHUK_LLM_DISCOVERY_FORCE_REFRESH, "true")
 
     # Trigger discovery again
     return trigger_discovery_after_setup()

@@ -210,18 +210,20 @@ Examples:
         server_names = tool_manager.servers if tool_manager else []
 
         # Route to appropriate sub-action
+        from mcp_cli.constants import TokenAction
+
         try:
-            if not action or action == "list":
+            if not action or action == TokenAction.LIST.value:
                 return await self._action_list(kwargs, server_names)
-            elif action == "set":
+            elif action == TokenAction.SET.value:
                 return await self._action_set(kwargs, args)
-            elif action == "get":
+            elif action == TokenAction.GET.value:
                 return await self._action_get(kwargs, args)
-            elif action == "delete":
+            elif action == TokenAction.DELETE.value:
                 return await self._action_delete(kwargs, args)
-            elif action == "clear":
+            elif action == TokenAction.CLEAR.value:
                 return await self._action_clear(kwargs, args)
-            elif action == "backends":
+            elif action == TokenAction.BACKENDS.value:
                 return await self._action_backends()
             elif action == "set-provider":
                 return await self._action_set_provider(kwargs)

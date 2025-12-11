@@ -11,7 +11,7 @@ from typing import Any
 
 
 def format_args_preview(
-    arguments: dict[str, Any], max_args: int = 2, max_len: int = 40
+    arguments: dict[str, Any], max_args: int = 4, max_len: int = 60
 ) -> str:
     """Format tool arguments for inline preview.
 
@@ -19,8 +19,8 @@ def format_args_preview(
 
     Args:
         arguments: Tool arguments dict
-        max_args: Maximum number of arguments to show
-        max_len: Maximum length for each argument value
+        max_args: Maximum number of arguments to show (default: 4)
+        max_len: Maximum length for each argument value (default: 60)
 
     Returns:
         Formatted preview string

@@ -162,7 +162,9 @@ Examples:
                 )
 
         # Handle actions
-        if action == "show":
+        from mcp_cli.constants import ConversationAction
+
+        if action == ConversationAction.SHOW.value:
             # Show conversation history in table format
             if hasattr(chat_context, "conversation_history"):
                 history = chat_context.conversation_history
@@ -191,13 +193,14 @@ Examples:
                             content = ""
 
                     # Format role with emoji
-                    if role.lower() == "system":
+                    role_lower = role.lower()
+                    if role_lower == MessageRole.SYSTEM.value:
                         role_display = "🔧 System"
-                    elif role.lower() == "user":
+                    elif role_lower == MessageRole.USER.value:
                         role_display = "👤 User"
-                    elif role.lower() == "assistant":
+                    elif role_lower == MessageRole.ASSISTANT.value:
                         role_display = "🤖 Assistant"
-                    elif role.lower() == "tool":
+                    elif role_lower == MessageRole.TOOL.value:
                         role_display = "🔨 Tool"
                     else:
                         role_display = f"❓ {role.title()}"
@@ -263,7 +266,7 @@ Examples:
                     error="Conversation history not available.",
                 )
 
-        elif action == "clear":
+        elif action == ConversationAction.CLEAR.value:
             # Clear conversation history
             if hasattr(chat_context, "clear_conversation"):
                 chat_context.clear_conversation()
@@ -277,7 +280,7 @@ Examples:
                     error="Cannot clear conversation history.",
                 )
 
-        elif action == "save":
+        elif action == ConversationAction.SAVE.value:
             # Save conversation
             filename = kwargs.get("filename")
             if not filename and "args" in kwargs:
@@ -310,7 +313,7 @@ Examples:
                     error=f"Failed to save conversation: {str(e)}",
                 )
 
-        elif action == "load":
+        elif action == ConversationAction.LOAD.value:
             # Load conversation
             filename = kwargs.get("filename")
             if not filename and "args" in kwargs:

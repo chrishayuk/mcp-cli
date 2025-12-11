@@ -248,17 +248,23 @@ Tips:
             # Build example
             example_params: dict[str, Any] = {}
             if "properties" in schema:
+                from mcp_cli.constants import (
+                    JSON_TYPE_BOOLEAN,
+                    JSON_TYPE_NUMBER,
+                    JSON_TYPE_STRING,
+                )
+
                 for prop_name, prop_info in schema["properties"].items():
                     if prop_name in schema.get("required", []):
-                        prop_type = prop_info.get("type", "string")
-                        if prop_type == "string":
+                        prop_type = prop_info.get("type", JSON_TYPE_STRING)
+                        if prop_type == JSON_TYPE_STRING:
                             if prop_name == "message":
                                 example_params[prop_name] = "your message here"
                             else:
                                 example_params[prop_name] = f"<{prop_name}>"
-                        elif prop_type == "number":
+                        elif prop_type == JSON_TYPE_NUMBER:
                             example_params[prop_name] = 123
-                        elif prop_type == "boolean":
+                        elif prop_type == JSON_TYPE_BOOLEAN:
                             example_params[prop_name] = True
 
             output.success("✅ Use this format:")

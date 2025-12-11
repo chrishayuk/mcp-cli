@@ -298,7 +298,9 @@ def main_callback(
     if tool_timeout is not None:
         # Apply tool_timeout to all related timeouts (type-safe!)
         cli_overrides.apply_tool_timeout_to_all(tool_timeout)
-        logger.debug(f"Applied --tool-timeout={tool_timeout} to all streaming/tool timeouts")
+        logger.debug(
+            f"Applied --tool-timeout={tool_timeout} to all streaming/tool timeouts"
+        )
 
     if init_timeout != 120.0:
         cli_overrides.set_timeout(TimeoutType.SERVER_INIT, init_timeout)

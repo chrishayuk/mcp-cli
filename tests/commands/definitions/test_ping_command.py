@@ -37,8 +37,12 @@ class TestPingCommand:
 
         mock_tm = Mock()
         mock_server = ServerInfo(
-            id=1, name="test-server", status="running",
-            connected=True, tool_count=5, namespace="test"
+            id=1,
+            name="test-server",
+            status="running",
+            connected=True,
+            tool_count=5,
+            namespace="test",
         )
         mock_tm.get_server_info = AsyncMock(return_value=[mock_server])
 
@@ -54,8 +58,12 @@ class TestPingCommand:
 
         mock_tm = Mock()
         mock_server = ServerInfo(
-            id=1, name="test-server", status="running",
-            connected=True, tool_count=5, namespace="test"
+            id=1,
+            name="test-server",
+            status="running",
+            connected=True,
+            tool_count=5,
+            namespace="test",
         )
         mock_tm.get_server_info = AsyncMock(return_value=[mock_server])
 
@@ -79,8 +87,12 @@ class TestPingCommand:
 
         mock_tm = Mock()
         mock_server = ServerInfo(
-            id=1, name="test-server", status="stopped",
-            connected=False, tool_count=0, namespace="test"
+            id=1,
+            name="test-server",
+            status="stopped",
+            connected=False,
+            tool_count=0,
+            namespace="test",
         )
         mock_tm.get_server_info = AsyncMock(return_value=[mock_server])
 
@@ -122,18 +134,28 @@ class TestPingCommand:
 
         mock_tm = Mock()
         mock_server1 = ServerInfo(
-            id=1, name="server1", status="running",
-            connected=True, tool_count=5, namespace="test"
+            id=1,
+            name="server1",
+            status="running",
+            connected=True,
+            tool_count=5,
+            namespace="test",
         )
         mock_server2 = ServerInfo(
-            id=2, name="server2", status="running",
-            connected=True, tool_count=3, namespace="test"
+            id=2,
+            name="server2",
+            status="running",
+            connected=True,
+            tool_count=3,
+            namespace="test",
         )
         mock_tm.get_server_info = AsyncMock(return_value=[mock_server1, mock_server2])
 
         with patch("chuk_term.ui.output"):
             # Pass args as a list
-            result = await command.execute(tool_manager=mock_tm, args=["server1", "server2"])
+            result = await command.execute(
+                tool_manager=mock_tm, args=["server1", "server2"]
+            )
             assert result.success is True
 
     @pytest.mark.asyncio
@@ -144,8 +166,12 @@ class TestPingCommand:
 
         mock_tm = Mock()
         mock_server = ServerInfo(
-            id=1, name="server1", status="running",
-            connected=True, tool_count=5, namespace="test"
+            id=1,
+            name="server1",
+            status="running",
+            connected=True,
+            tool_count=5,
+            namespace="test",
         )
         mock_tm.get_server_info = AsyncMock(return_value=[mock_server])
 

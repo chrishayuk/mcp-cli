@@ -52,6 +52,16 @@ class EnvVar(str, Enum):
     SOURCE_FILESYSTEMS = "SOURCE_FILESYSTEMS"
 
     # ================================================================
+    # ChukLLM Discovery Configuration
+    # ================================================================
+    CHUK_LLM_DISCOVERY_ENABLED = "CHUK_LLM_DISCOVERY_ENABLED"
+    CHUK_LLM_OLLAMA_DISCOVERY = "CHUK_LLM_OLLAMA_DISCOVERY"
+    CHUK_LLM_AUTO_DISCOVER = "CHUK_LLM_AUTO_DISCOVER"
+    CHUK_LLM_OPENAI_TOOL_COMPATIBILITY = "CHUK_LLM_OPENAI_TOOL_COMPATIBILITY"
+    CHUK_LLM_UNIVERSAL_TOOLS = "CHUK_LLM_UNIVERSAL_TOOLS"
+    CHUK_LLM_DISCOVERY_FORCE_REFRESH = "CHUK_LLM_DISCOVERY_FORCE_REFRESH"
+
+    # ================================================================
     # System (typically inherited, not set by MCP CLI)
     # ================================================================
     PATH = "PATH"
@@ -187,7 +197,9 @@ def get_env_bool(var: EnvVar, default: bool = False) -> bool:
     return value.lower() in ("1", "true", "yes", "on")
 
 
-def get_env_list(var: EnvVar, separator: str = ",", default: list[str] | None = None) -> list[str]:
+def get_env_list(
+    var: EnvVar, separator: str = ",", default: list[str] | None = None
+) -> list[str]:
     """Get environment variable as list of strings.
 
     Args:

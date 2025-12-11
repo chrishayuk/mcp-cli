@@ -29,6 +29,7 @@ class TestPromptsCommand:
     async def test_execute_list_all(self, command):
         """Test listing all prompts."""
         from unittest.mock import AsyncMock, MagicMock
+
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
             # Create mock prompt objects
@@ -50,6 +51,7 @@ class TestPromptsCommand:
     async def test_execute_by_server(self, command):
         """Test listing prompts for a specific server."""
         from unittest.mock import AsyncMock, MagicMock
+
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
             mock_prompt = MagicMock()
@@ -59,7 +61,9 @@ class TestPromptsCommand:
             mock_ctx.tool_manager.list_prompts = AsyncMock(return_value=mock_prompts)
             with patch("chuk_term.ui.output"):
                 with patch("chuk_term.ui.format_table"):
-                    result = await command.execute(server=0)  # server parameter is an index
+                    result = await command.execute(
+                        server=0
+                    )  # server parameter is an index
 
                     assert result.success is True
 
@@ -67,6 +71,7 @@ class TestPromptsCommand:
     async def test_execute_detailed(self, command):
         """Test listing prompts with detailed information."""
         from unittest.mock import AsyncMock, MagicMock
+
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
             mock_prompt = MagicMock()
@@ -84,6 +89,7 @@ class TestPromptsCommand:
     async def test_execute_no_prompts(self, command):
         """Test when no prompts are available."""
         from unittest.mock import AsyncMock
+
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
             mock_ctx.tool_manager.list_prompts = AsyncMock(return_value=[])
@@ -97,9 +103,12 @@ class TestPromptsCommand:
     async def test_execute_error_handling(self, command):
         """Test error handling during execution."""
         from unittest.mock import AsyncMock
+
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.tool_manager.list_prompts = AsyncMock(side_effect=Exception("Server error"))
+            mock_ctx.tool_manager.list_prompts = AsyncMock(
+                side_effect=Exception("Server error")
+            )
             with patch("chuk_term.ui.output"):
                 result = await command.execute()
 

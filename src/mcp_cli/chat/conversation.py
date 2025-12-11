@@ -16,7 +16,6 @@ from mcp_cli.chat.response_models import (
     CompletionResponse,
     Message,
     MessageRole,
-    ToolCall,
 )
 from mcp_cli.chat.tool_processor import ToolProcessor
 
@@ -50,7 +49,6 @@ class ConversationProcessor:
             while turn_count < max_turns:
                 try:
                     turn_count += 1
-                    start_time = time.time()
 
                     # Skip slash commands (already handled by UI)
                     last_msg = (
@@ -84,7 +82,9 @@ class ConversationProcessor:
 
                     # Log last few messages for debugging (truncated)
                     for i, msg in enumerate(self.context.conversation_history[-3:]):
-                        role = msg.role if isinstance(msg, Message) else MessageRole.USER
+                        role = (
+                            msg.role if isinstance(msg, Message) else MessageRole.USER
+                        )
                         content_preview = str(msg.content)[:100] if msg.content else ""
                         log.debug(
                             f"  Message {history_size - 3 + i}: role={role}, content_preview={content_preview}"

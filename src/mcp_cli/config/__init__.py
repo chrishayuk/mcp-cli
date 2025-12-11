@@ -36,7 +36,6 @@ from mcp_cli.config.discovery import (
 from mcp_cli.config.cli_options import (
     extract_server_names,
     get_config_summary,
-    inject_logging_env_vars,
     load_config,
     process_options,
 )
@@ -72,7 +71,6 @@ __all__ = [
     # CLI Options
     "load_config",
     "extract_server_names",
-    "inject_logging_env_vars",
     "process_options",
     "get_config_summary",
 ]

@@ -94,7 +94,7 @@ class TestRenderToolExecutionStatus:
         result = render_tool_execution_status(tool, "⠙", elapsed=1.5)
 
         assert "⠙" in result
-        assert "Executing test_tool" in result
+        assert "Executing tool: test_tool" in result
         assert "(1.5s)" in result
 
     def test_tool_with_arguments(self):
@@ -108,9 +108,10 @@ class TestRenderToolExecutionStatus:
         result = render_tool_execution_status(tool, "⠹", elapsed=2.0)
 
         assert "⠹" in result
-        assert "Executing query_db" in result
+        assert "Executing tool: query_db" in result
         assert "(2.0s)" in result
-        # Should show args preview
+        # Should show args preview with pipe separator
+        assert "|" in result
         assert "query=" in result or "limit=" in result
 
     def test_tool_without_arguments(self):
@@ -123,10 +124,10 @@ class TestRenderToolExecutionStatus:
 
         result = render_tool_execution_status(tool, "⠸", elapsed=0.5)
 
-        assert "Executing ping" in result
+        assert "Executing tool: ping" in result
         assert "(0.5s)" in result
-        # Should not have extra separator
-        assert result.count("·") == 0
+        # Should not have pipe separator when no args
+        assert "|" not in result
 
     def test_tool_with_many_arguments(self):
         """Test tool with many arguments (should preview first 2)."""
@@ -138,9 +139,10 @@ class TestRenderToolExecutionStatus:
 
         result = render_tool_execution_status(tool, "⠼", elapsed=1.0)
 
-        assert "Executing complex_tool" in result
-        # Should show preview with "more" indicator
-        assert "more" in result
+        assert "Executing tool: complex_tool" in result
+        # Should show first 4 args (a, b, c, d)
+        assert "a=1" in result
+        assert "b=2" in result
 
 
 class TestShowFinalStreamingResponse:

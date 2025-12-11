@@ -67,7 +67,9 @@ class TestModelCommand:
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
             # Simulate the model switch failing for an invalid model
-            mock_ctx.llm_manager.set_model.side_effect = Exception("Model not found: invalid")
+            mock_ctx.llm_manager.set_model.side_effect = Exception(
+                "Model not found: invalid"
+            )
 
             result = await command.execute(args=["invalid"])
 

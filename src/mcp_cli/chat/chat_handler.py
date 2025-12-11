@@ -174,6 +174,7 @@ async def handle_chat_mode_for_testing(
     provider: str | None = None,
     model: str | None = None,
     max_turns: int = 30,
+    runtime_config=None,  # RuntimeConfig | None
 ) -> bool:
     """
     Launch chat mode for testing with stream_manager.
@@ -185,6 +186,7 @@ async def handle_chat_mode_for_testing(
         provider: Provider for testing
         model: Model for testing
         max_turns: Maximum conversation turns before forcing exit (default: 30)
+        runtime_config: Runtime configuration with timeout overrides (optional)
 
     Returns:
         True if session ended normally, False on failure

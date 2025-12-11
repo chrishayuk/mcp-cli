@@ -20,7 +20,8 @@ from chuk_tool_processor import StreamManager, ToolProcessor
 
 from mcp_cli.auth import TokenManager, TokenStoreBackend
 from mcp_cli.constants import NAMESPACE
-from mcp_cli.tools.filter import ToolFilter
+from mcp_cli.llm.content_models import ContentBlockType
+from mcp_cli.tools.filter import DisabledReason, ToolFilter
 from mcp_cli.tools.models import ServerInfo, ToolCallResult, ToolInfo, TransportType
 from mcp_cli.tools.meta_tools import MetaToolProvider
 from mcp_cli.config import RuntimeConfig, TimeoutType, load_runtime_config
@@ -62,7 +63,9 @@ class ToolManager:
         if tool_timeout is not None:
             self.tool_timeout = tool_timeout
         else:
-            self.tool_timeout = self.runtime_config.get_timeout(TimeoutType.TOOL_EXECUTION)
+            self.tool_timeout = self.runtime_config.get_timeout(
+                TimeoutType.TOOL_EXECUTION
+            )
 
         # Initialization timeout with priority: param > runtime_config
         if initialization_timeout != 120.0:  # User provided non-default
@@ -89,10 +92,12 @@ class ToolManager:
         self._token_manager: TokenManager
         self._config_cache: dict[str, Any] | None = None
 
-        # Server detection results
-        self._http_servers: list[dict[str, Any]] = []
-        self._sse_servers: list[dict[str, Any]] = []
-        self._stdio_servers: list[dict[str, Any]] = []
+        # Server detection results (using clean Pydantic models)
+        from mcp_cli.config.server_models import HTTPServerConfig, STDIOServerConfig
+
+        self._http_servers: list[HTTPServerConfig] = []
+        self._sse_servers: list[HTTPServerConfig] = []  # SSE uses HTTP config
+        self._stdio_servers: list[STDIOServerConfig] = []
 
         # Setup OAuth
         self._token_manager = TokenManager(
@@ -151,26 +156,44 @@ class ToolManager:
         try:
             # Initialize all server types (not mutually exclusive)
             # Changed from elif to if statements to support multiple transport types
+            # Convert Pydantic models back to dicts for StreamManager (legacy interface)
             if self._http_servers:
                 logger.info(f"Initializing {len(self._http_servers)} HTTP servers")
+                http_dicts = [
+                    {"name": s.name, "url": s.url, "headers": s.headers or {}}
+                    for s in self._http_servers
+                ]
                 await self.stream_manager.initialize_with_http_streamable(
-                    servers=self._http_servers,
+                    servers=http_dicts,
                     server_names=self.server_names,
                     initialization_timeout=self.initialization_timeout,
                     oauth_refresh_callback=self._create_oauth_refresh_callback(),
                 )
             if self._sse_servers:
                 logger.info(f"Initializing {len(self._sse_servers)} SSE servers")
+                sse_dicts = [
+                    {"name": s.name, "url": s.url, "headers": s.headers or {}}
+                    for s in self._sse_servers
+                ]
                 await self.stream_manager.initialize_with_sse(
-                    servers=self._sse_servers,
+                    servers=sse_dicts,
                     server_names=self.server_names,
                     initialization_timeout=self.initialization_timeout,
                     oauth_refresh_callback=self._create_oauth_refresh_callback(),
                 )
             if self._stdio_servers:
                 logger.info(f"Initializing {len(self._stdio_servers)} STDIO servers")
+                stdio_dicts = [
+                    {
+                        "name": s.name,
+                        "command": s.command,
+                        "args": s.args,
+                        "env": s.env,
+                    }
+                    for s in self._stdio_servers
+                ]
                 await self.stream_manager.initialize_with_stdio(
-                    servers=self._stdio_servers,
+                    servers=stdio_dicts,
                     server_names=self.server_names,
                     initialization_timeout=self.initialization_timeout,
                 )
@@ -265,29 +288,35 @@ class ToolManager:
 
             server_cfg = mcp_servers[server_name]
 
-            # Detect transport type
+            # Detect transport type and create typed models
+            from mcp_cli.config.server_models import (
+                HTTPServerConfig,
+                STDIOServerConfig,
+            )
+
             if "url" in server_cfg:
                 transport = server_cfg.get("transport", "").lower()
-                server_config = {
-                    "name": server_name,
-                    "url": server_cfg["url"],
-                    "headers": server_cfg.get("headers", {}),
-                }
+                http_config = HTTPServerConfig(
+                    name=server_name,
+                    url=server_cfg["url"],
+                    headers=server_cfg.get("headers", {}),
+                    disabled=server_cfg.get("disabled", False),
+                )
 
                 if "sse" in transport:
-                    self._sse_servers.append(server_config)
+                    self._sse_servers.append(http_config)
                 else:
-                    self._http_servers.append(server_config)
+                    self._http_servers.append(http_config)
             else:
                 # STDIO server
-                self._stdio_servers.append(
-                    {
-                        "name": server_name,
-                        "command": server_cfg.get("command"),
-                        "args": server_cfg.get("args", []),
-                        "env": server_cfg.get("env", {}),
-                    }
+                stdio_config = STDIOServerConfig(
+                    name=server_name,
+                    command=server_cfg.get("command", ""),
+                    args=server_cfg.get("args", []),
+                    env=server_cfg.get("env", {}),
+                    disabled=server_cfg.get("disabled", False),
                 )
+                self._stdio_servers.append(stdio_config)
 
     # ================================================================
     # OAuth Integration
@@ -325,11 +354,12 @@ class ToolManager:
             server_name = None
 
             # Search all server lists for matching URL
+            # server_config is now HTTPServerConfig Pydantic model
             for server_list in [self._http_servers, self._sse_servers]:
                 for server_config in server_list:
-                    config_url = server_config.get("url", "").replace("/mcp", "")
-                    if config_url == base_url or server_config.get("url") == server_url:
-                        server_name = server_config.get("name")
+                    config_url = server_config.url.replace("/mcp", "")
+                    if config_url == base_url or server_config.url == server_url:
+                        server_name = server_config.name
                         break
                 if server_name:
                     break
@@ -487,9 +517,25 @@ class ToolManager:
 
         # Handle list of text records (MCP format)
         if isinstance(response, list):
-            # Check if it's a list of text records
+            # Try to parse as TextContent models for type safety
+            from mcp_cli.llm.content_models import TextContent
+
+            try:
+                text_blocks = [
+                    TextContent.model_validate(item)
+                    for item in response
+                    if isinstance(item, dict)
+                    and item.get("type") == ContentBlockType.TEXT.value
+                ]
+                if text_blocks:
+                    return "\n".join(block.text for block in text_blocks)
+            except Exception:
+                pass  # Fall through to JSON
+
+            # Check if it's a list of text records (fallback) - use enum!
             if all(
-                isinstance(item, dict) and item.get("type") == "text"
+                isinstance(item, dict)
+                and item.get("type") == ContentBlockType.TEXT.value
                 for item in response
             ):
                 return "\n".join(item.get("text", "") for item in response)
@@ -505,14 +551,22 @@ class ToolManager:
         return str(response)
 
     def _convert_to_tool_info(self, tool_dict: dict[str, Any]) -> ToolInfo:
-        """Convert chuk tool dict to mcp-cli ToolInfo."""
+        """Convert chuk tool dict to mcp-cli ToolInfo.
+
+        Uses Pydantic model for validation instead of manual .get() calls.
+        """
+        from mcp_cli.tools.tool_models import ToolDefinitionInput
+
+        # Parse using Pydantic model (validates and provides defaults)
+        tool_input = ToolDefinitionInput.model_validate(tool_dict)
+
         return ToolInfo(
-            name=tool_dict.get("name", ""),
-            namespace=tool_dict.get("namespace", "default"),
-            description=tool_dict.get("description"),
-            parameters=tool_dict.get("inputSchema", {}),
-            is_async=tool_dict.get("is_async", False),
-            tags=tool_dict.get("tags", []),
+            name=tool_input.name,
+            namespace=tool_input.namespace,
+            description=tool_input.description,
+            parameters=tool_input.inputSchema,
+            is_async=tool_input.is_async,
+            tags=tool_input.tags,
         )
 
     # ================================================================
@@ -692,7 +746,9 @@ class ToolManager:
     # Tool Filtering API (delegates to ToolFilter)
     # ================================================================
 
-    def disable_tool(self, tool_name: str, reason: str = "user") -> None:
+    def disable_tool(
+        self, tool_name: str, reason: DisabledReason = DisabledReason.USER
+    ) -> None:
         """Disable a tool."""
         self.tool_filter.disable_tool(tool_name, reason)
 
@@ -878,7 +934,8 @@ class ToolManager:
                 tool_counts[namespace] = tool_counts.get(namespace, 0) + 1
 
             for server in all_servers:
-                server_name = server.get("name", "unknown")
+                # server is now a Pydantic model (HTTPServerConfig or STDIOServerConfig)
+                server_name = server.name
 
                 # Determine transport type
                 if server in self._http_servers:
@@ -888,20 +945,32 @@ class ToolManager:
                 else:
                     transport = TransportType.STDIO
 
+                # Get STDIO-specific fields if applicable
+                from mcp_cli.config.server_models import STDIOServerConfig
+                from mcp_cli.constants import ServerStatus
+
+                command = None
+                args: list[str] = []
+                env: dict[str, str] = {}
+                if isinstance(server, STDIOServerConfig):
+                    command = server.command
+                    args = server.args
+                    env = server.env
+
                 servers.append(
                     ServerInfo(
                         id=server_id,
                         name=server_name,
-                        status="connected",
+                        status=ServerStatus.CONNECTED.value,
                         tool_count=tool_counts.get(server_name, 0),
                         namespace=server_name,
-                        enabled=True,
+                        enabled=not server.disabled,
                         connected=True,
                         transport=transport,
                         capabilities={},
-                        command=server.get("command"),
-                        args=server.get("args", []),
-                        env=server.get("env", {}),
+                        command=command,
+                        args=args,
+                        env=env,
                     )
                 )
                 server_id += 1

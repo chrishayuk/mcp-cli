@@ -18,7 +18,7 @@ class TestToolFilter:
         assert tf.disabled_by_user == set()
         assert tf.auto_fix_enabled is True
         assert tf._validation_cache == {}
-        assert tf._fix_stats == {"attempted": 0, "successful": 0, "failed": 0}
+        assert tf._fix_stats.to_dict() == {"attempted": 0, "successful": 0, "failed": 0}
 
     def test_is_tool_enabled(self):
         """Test is_tool_enabled method."""
@@ -30,8 +30,10 @@ class TestToolFilter:
 
     def test_disable_tool_user_reason(self):
         """Test disable_tool with user reason."""
+        from mcp_cli.tools.filter import DisabledReason
+
         tf = ToolFilter()
-        tf.disable_tool("tool1", reason="user")
+        tf.disable_tool("tool1", reason=DisabledReason.USER)
 
         assert "tool1" in tf.disabled_tools
         assert "tool1" in tf.disabled_by_user
@@ -39,8 +41,10 @@ class TestToolFilter:
 
     def test_disable_tool_validation_reason(self):
         """Test disable_tool with validation reason."""
+        from mcp_cli.tools.filter import DisabledReason
+
         tf = ToolFilter()
-        tf.disable_tool("tool2", reason="validation")
+        tf.disable_tool("tool2", reason=DisabledReason.VALIDATION)
 
         assert "tool2" in tf.disabled_tools
         assert "tool2" in tf.disabled_by_validation
@@ -48,9 +52,11 @@ class TestToolFilter:
 
     def test_enable_tool(self):
         """Test enable_tool method."""
+        from mcp_cli.tools.filter import DisabledReason
+
         tf = ToolFilter()
-        tf.disable_tool("tool1", reason="user")
-        tf.disable_tool("tool2", reason="validation")
+        tf.disable_tool("tool1", reason=DisabledReason.USER)
+        tf.disable_tool("tool2", reason=DisabledReason.VALIDATION)
 
         tf.enable_tool("tool1")
         assert "tool1" not in tf.disabled_tools
@@ -62,9 +68,11 @@ class TestToolFilter:
 
     def test_get_disabled_tools(self):
         """Test get_disabled_tools method."""
+        from mcp_cli.tools.filter import DisabledReason
+
         tf = ToolFilter()
-        tf.disable_tool("tool1", reason="user")
-        tf.disable_tool("tool2", reason="validation")
+        tf.disable_tool("tool1", reason=DisabledReason.USER)
+        tf.disable_tool("tool2", reason=DisabledReason.VALIDATION)
 
         disabled = tf.get_disabled_tools()
         assert disabled["tool1"] == "user"
@@ -72,10 +80,12 @@ class TestToolFilter:
 
     def test_get_disabled_tools_by_reason(self):
         """Test get_disabled_tools_by_reason method."""
+        from mcp_cli.tools.filter import DisabledReason
+
         tf = ToolFilter()
-        tf.disable_tool("tool1", reason="user")
-        tf.disable_tool("tool2", reason="user")
-        tf.disable_tool("tool3", reason="validation")
+        tf.disable_tool("tool1", reason=DisabledReason.USER)
+        tf.disable_tool("tool2", reason=DisabledReason.USER)
+        tf.disable_tool("tool3", reason=DisabledReason.VALIDATION)
 
         user_disabled = tf.get_disabled_tools_by_reason("user")
         assert "tool1" in user_disabled
@@ -91,9 +101,11 @@ class TestToolFilter:
 
     def test_clear_validation_disabled(self):
         """Test clear_validation_disabled method."""
+        from mcp_cli.tools.filter import DisabledReason
+
         tf = ToolFilter()
-        tf.disable_tool("tool1", reason="validation")
-        tf.disable_tool("tool2", reason="user")
+        tf.disable_tool("tool1", reason=DisabledReason.VALIDATION)
+        tf.disable_tool("tool2", reason=DisabledReason.USER)
 
         tf.clear_validation_disabled()
 
@@ -101,7 +113,7 @@ class TestToolFilter:
         assert "tool1" not in tf.disabled_by_validation
         assert "tool2" in tf.disabled_tools  # User disabled should remain
         assert tf._validation_cache == {}
-        assert tf._fix_stats == {"attempted": 0, "successful": 0, "failed": 0}
+        assert tf._fix_stats.to_dict() == {"attempted": 0, "successful": 0, "failed": 0}
 
     def test_filter_tools_with_valid_openai_tools(self):
         """Test filter_tools with valid OpenAI tools."""
@@ -164,7 +176,7 @@ class TestToolFilter:
 
         assert len(valid) == 1
         assert "title" not in valid[0]["function"]
-        assert tf._fix_stats["successful"] > 0
+        assert tf._fix_stats.successful > 0
 
     def test_filter_tools_auto_fix_disabled(self):
         """Test filter_tools with auto-fix disabled."""
@@ -185,12 +197,14 @@ class TestToolFilter:
         valid, invalid = tf.filter_tools(tools, provider="openai")
 
         assert len(valid) == 1
-        assert tf._fix_stats["attempted"] == 0
+        assert tf._fix_stats.attempted == 0
 
     def test_filter_tools_with_manually_disabled(self):
         """Test filter_tools with manually disabled tools."""
+        from mcp_cli.tools.filter import DisabledReason
+
         tf = ToolFilter()
-        tf.disable_tool("disabled_tool", reason="user")
+        tf.disable_tool("disabled_tool", reason=DisabledReason.USER)
 
         tools = [
             {
@@ -241,9 +255,11 @@ class TestToolFilter:
 
     def test_get_validation_summary(self):
         """Test get_validation_summary method."""
+        from mcp_cli.tools.filter import DisabledReason
+
         tf = ToolFilter()
-        tf.disable_tool("tool1", reason="user")
-        tf.disable_tool("tool2", reason="validation")
+        tf.disable_tool("tool1", reason=DisabledReason.USER)
+        tf.disable_tool("tool2", reason=DisabledReason.VALIDATION)
 
         summary = tf.get_validation_summary()
 
@@ -266,11 +282,14 @@ class TestToolFilter:
     def test_reset_statistics(self):
         """Test reset_statistics method."""
         tf = ToolFilter()
-        tf._fix_stats = {"attempted": 10, "successful": 8, "failed": 2}
+        # Manually set values on the Pydantic model
+        tf._fix_stats.attempted = 10
+        tf._fix_stats.successful = 8
+        tf._fix_stats.failed = 2
 
         tf.reset_statistics()
 
-        assert tf._fix_stats == {"attempted": 0, "successful": 0, "failed": 0}
+        assert tf._fix_stats.to_dict() == {"attempted": 0, "successful": 0, "failed": 0}
 
     def test_set_auto_fix_enabled(self):
         """Test set_auto_fix_enabled method."""

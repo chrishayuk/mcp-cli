@@ -43,7 +43,9 @@ async def test_provider_show_status_error(provider_command):
     """Test error handling when showing provider status fails."""
     with patch("mcp_cli.context.get_context") as mock_get_ctx:
         mock_ctx = mock_get_ctx.return_value
-        mock_ctx.llm_manager.get_current_provider.side_effect = Exception("Connection failed")
+        mock_ctx.llm_manager.get_current_provider.side_effect = Exception(
+            "Connection failed"
+        )
         with patch("chuk_term.ui.output"):
             result = await provider_command.execute(args=[])
 

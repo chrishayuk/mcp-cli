@@ -73,7 +73,7 @@ class TimeoutConfig(BaseModel):
 
     def get(self, timeout_type: TimeoutType) -> float:
         """Get timeout by enum (type-safe)."""
-        return getattr(self, timeout_type.value)
+        return getattr(self, timeout_type.value)  # type: ignore[no-any-return]
 
     async def get_async(self, timeout_type: TimeoutType) -> float:
         """Async getter for consistency."""
@@ -182,7 +182,7 @@ class MCPConfig(BaseModel):
         data = await loop.run_in_executor(None, config_path.read_text)
         parsed = json.loads(data)
 
-        return cls.model_validate(parsed)
+        return cls.model_validate(parsed)  # type: ignore[no-any-return]
 
     @classmethod
     def load_sync(cls, config_path: Path) -> MCPConfig:
@@ -193,30 +193,12 @@ class MCPConfig(BaseModel):
             return cls()
 
         data = json.loads(config_path.read_text())
-        return cls.model_validate(data)
+        return cls.model_validate(data)  # type: ignore[no-any-return]
 
     @classmethod
     def load_from_file(cls, config_path: Path) -> MCPConfig:
         """Alias for load_sync for backward compatibility."""
         return cls.load_sync(config_path)
-
-    async def save_async(self, config_path: Path) -> None:
-        """Async save to file."""
-        import asyncio
-        import json
-
-        data = self.model_dump(mode="json", exclude_none=True)
-        json_str = json.dumps(data, indent=2)
-
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, config_path.write_text, json_str)
-
-    def save_sync(self, config_path: Path) -> None:
-        """Synchronous save."""
-        import json
-
-        data = self.model_dump(mode="json", exclude_none=True)
-        config_path.write_text(json.dumps(data, indent=2))
 
 
 class ConfigOverride(BaseModel):

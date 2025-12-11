@@ -29,13 +29,24 @@ class TestResourcesCommand:
     async def test_execute_list_all(self, command):
         """Test listing all resources."""
         from mcp_cli.tools.models import ResourceInfo
+
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
             mock_resources = [
-                ResourceInfo(id="file:///database.db", name="database.db", type="application/x-sqlite3"),
-                ResourceInfo(id="file:///config.json", name="config.json", type="application/json"),
+                ResourceInfo(
+                    id="file:///database.db",
+                    name="database.db",
+                    type="application/x-sqlite3",
+                ),
+                ResourceInfo(
+                    id="file:///config.json",
+                    name="config.json",
+                    type="application/json",
+                ),
             ]
-            mock_ctx.tool_manager.list_resources = AsyncMock(return_value=mock_resources)
+            mock_ctx.tool_manager.list_resources = AsyncMock(
+                return_value=mock_resources
+            )
             with patch("chuk_term.ui.output"):
                 with patch("chuk_term.ui.format_table"):
                     result = await command.execute()
@@ -46,15 +57,24 @@ class TestResourcesCommand:
     async def test_execute_by_server(self, command):
         """Test listing resources for a specific server."""
         from mcp_cli.tools.models import ResourceInfo
+
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
             mock_resources = [
-                ResourceInfo(id="file:///database.db", name="database.db", type="application/x-sqlite3"),
+                ResourceInfo(
+                    id="file:///database.db",
+                    name="database.db",
+                    type="application/x-sqlite3",
+                ),
             ]
-            mock_ctx.tool_manager.list_resources = AsyncMock(return_value=mock_resources)
+            mock_ctx.tool_manager.list_resources = AsyncMock(
+                return_value=mock_resources
+            )
             with patch("chuk_term.ui.output"):
                 with patch("chuk_term.ui.format_table"):
-                    result = await command.execute(server=0)  # server parameter is an index
+                    result = await command.execute(
+                        server=0
+                    )  # server parameter is an index
 
                     assert result.success is True
 
@@ -62,12 +82,19 @@ class TestResourcesCommand:
     async def test_execute_detailed(self, command):
         """Test listing resources with detailed information."""
         from mcp_cli.tools.models import ResourceInfo
+
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
             mock_resources = [
-                ResourceInfo(id="file:///database.db", name="database.db", type="application/x-sqlite3"),
+                ResourceInfo(
+                    id="file:///database.db",
+                    name="database.db",
+                    type="application/x-sqlite3",
+                ),
             ]
-            mock_ctx.tool_manager.list_resources = AsyncMock(return_value=mock_resources)
+            mock_ctx.tool_manager.list_resources = AsyncMock(
+                return_value=mock_resources
+            )
             with patch("chuk_term.ui.output"):
                 with patch("chuk_term.ui.format_table"):
                     result = await command.execute(raw=True)
@@ -91,7 +118,9 @@ class TestResourcesCommand:
         """Test error handling during execution."""
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.tool_manager.list_resources = AsyncMock(side_effect=Exception("Server not connected"))
+            mock_ctx.tool_manager.list_resources = AsyncMock(
+                side_effect=Exception("Server not connected")
+            )
             with patch("chuk_term.ui.output"):
                 result = await command.execute()
 

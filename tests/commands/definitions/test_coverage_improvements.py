@@ -124,6 +124,7 @@ class TestServerSingularCommandCoverage:
         """Test server details with string args."""
         from mcp_cli.tools.models import ServerInfo
         from unittest.mock import AsyncMock
+
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
             mock_server = ServerInfo(
@@ -132,9 +133,11 @@ class TestServerSingularCommandCoverage:
                 status="running",
                 connected=True,
                 tool_count=5,
-                namespace="test"
+                namespace="test",
             )
-            mock_ctx.tool_manager.get_server_info = AsyncMock(return_value=[mock_server])
+            mock_ctx.tool_manager.get_server_info = AsyncMock(
+                return_value=[mock_server]
+            )
             with patch("chuk_term.ui.output"):
                 result = await command.execute(args="test-server")
                 assert result.success is True
@@ -143,9 +146,12 @@ class TestServerSingularCommandCoverage:
     async def test_server_details_error(self, command):
         """Test server details error."""
         from unittest.mock import AsyncMock
+
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.tool_manager.get_server_info = AsyncMock(side_effect=Exception("Not found"))
+            mock_ctx.tool_manager.get_server_info = AsyncMock(
+                side_effect=Exception("Not found")
+            )
             with patch("chuk_term.ui.output"):
                 result = await command.execute(args=["bad-server"])
                 assert result.success is False
@@ -155,6 +161,7 @@ class TestServerSingularCommandCoverage:
     async def test_server_no_args(self, command):
         """Test server with no args - should list servers."""
         from unittest.mock import AsyncMock
+
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
             mock_ctx.tool_manager.get_server_info = AsyncMock(return_value=[])

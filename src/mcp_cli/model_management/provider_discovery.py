@@ -55,7 +55,9 @@ class ProviderDiscovery:
             headers = {"Authorization": f"Bearer {api_key}"}
             logger.debug(f"Discovering models from {models_url}")
 
-            with httpx.Client(timeout=10.0) as client:
+            from mcp_cli.constants import DISCOVERY_TIMEOUT
+
+            with httpx.Client(timeout=DISCOVERY_TIMEOUT) as client:
                 response = client.get(models_url, headers=headers)
                 response.raise_for_status()
 

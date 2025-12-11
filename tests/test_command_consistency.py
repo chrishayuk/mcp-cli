@@ -89,7 +89,7 @@ class TestCommandConsistency:
         command = 'exec echo_text \'{"message": "hello world"}\''
 
         with patch(
-            "mcp_cli.commands.definitions.execute_tool.ExecuteToolCommand.execute"
+            "mcp_cli.commands.tools.execute_tool.ExecuteToolCommand.execute"
         ) as mock_exec:
             from mcp_cli.commands.base import CommandResult
 
@@ -124,7 +124,7 @@ class TestCommandConsistency:
     @pytest.mark.asyncio
     async def test_execute_command_json_validation(self):
         """Test that execute command validates JSON parameters correctly."""
-        from mcp_cli.commands.definitions.execute_tool import ExecuteToolCommand
+        from mcp_cli.commands.tools.execute_tool import ExecuteToolCommand
 
         cmd = ExecuteToolCommand()
 
@@ -156,7 +156,7 @@ class TestCommandConsistency:
     @pytest.mark.asyncio
     async def test_execute_command_error_handling(self):
         """Test that execute command provides helpful error messages."""
-        from mcp_cli.commands.definitions.execute_tool import ExecuteToolCommand
+        from mcp_cli.commands.tools.execute_tool import ExecuteToolCommand
 
         cmd = ExecuteToolCommand()
 
@@ -175,9 +175,7 @@ class TestCommandConsistency:
         mock_tool_manager.get_all_tools = AsyncMock(return_value=[mock_tool])
 
         # Test with plain string (common mistake)
-        with patch(
-            "mcp_cli.commands.definitions.execute_tool.output.error"
-        ) as mock_error:
+        with patch("mcp_cli.commands.tools.execute_tool.output.error") as mock_error:
             result = await cmd.execute(
                 tool_manager=mock_tool_manager,
                 tool="echo_text",

@@ -90,7 +90,7 @@ async def test_tool_history_table_view(tool_history_command, mock_chat_context):
     """Test default table view of tool history."""
     with patch("mcp_cli.commands.tools.tool_history.output") as mock_output:
         with patch(
-            "mcp_cli.commands.definitions.tool_history.format_table"
+            "mcp_cli.commands.tools.tool_history.format_table"
         ) as mock_format_table:
             mock_format_table.return_value = "formatted_table"
 
@@ -112,7 +112,7 @@ async def test_tool_history_with_limit(tool_history_command, mock_chat_context):
     """Test tool history with limit parameter."""
     with patch("mcp_cli.commands.tools.tool_history.output") as mock_output:
         with patch(
-            "mcp_cli.commands.definitions.tool_history.format_table"
+            "mcp_cli.commands.tools.tool_history.format_table"
         ) as mock_format_table:
             mock_format_table.return_value = "formatted_table"
 
@@ -203,7 +203,7 @@ async def test_tool_history_invalid_args(tool_history_command, mock_chat_context
     """Test with non-numeric args."""
     with patch("mcp_cli.commands.tools.tool_history.output") as mock_output:
         with patch(
-            "mcp_cli.commands.definitions.tool_history.format_table"
+            "mcp_cli.commands.tools.tool_history.format_table"
         ) as mock_format_table:
             mock_format_table.return_value = "formatted_table"
 
@@ -231,7 +231,7 @@ async def test_tool_history_truncate_long_arguments(tool_history_command):
 
     with patch("mcp_cli.commands.tools.tool_history.output"):
         with patch(
-            "mcp_cli.commands.definitions.tool_history.format_table"
+            "mcp_cli.commands.tools.tool_history.format_table"
         ) as mock_format_table:
             mock_format_table.return_value = "formatted_table"
 

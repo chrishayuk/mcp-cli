@@ -16,9 +16,7 @@ def help_command():
 @pytest.fixture
 def mock_registry():
     """Create a mock registry with various commands."""
-    with patch(
-        "mcp_cli.commands.core.help.UnifiedCommandRegistry"
-    ) as MockRegistry:
+    with patch("mcp_cli.commands.core.help.UnifiedCommandRegistry") as MockRegistry:
         mock_reg = MagicMock()
         # Create mock commands with different modes
         cmd1 = MagicMock()
@@ -179,9 +177,7 @@ async def test_help_format_output(help_command, mock_registry):
 @pytest.mark.asyncio
 async def test_help_empty_registry(help_command):
     """Test help with no commands registered."""
-    with patch(
-        "mcp_cli.commands.core.help.UnifiedCommandRegistry"
-    ) as MockRegistry:
+    with patch("mcp_cli.commands.core.help.UnifiedCommandRegistry") as MockRegistry:
         mock_reg = MagicMock()
         mock_reg.list_commands.return_value = []
         MockRegistry.return_value = mock_reg
@@ -255,9 +251,7 @@ async def test_help_with_commands_with_aliases():
     """Test help showing commands with aliases column."""
     help_cmd = HelpCommand()
 
-    with patch(
-        "mcp_cli.commands.core.help.UnifiedCommandRegistry"
-    ) as MockRegistry:
+    with patch("mcp_cli.commands.core.help.UnifiedCommandRegistry") as MockRegistry:
         mock_reg = MagicMock()
 
         cmd1 = MagicMock()

@@ -12,7 +12,6 @@ import asyncio
 from typing import Protocol, TYPE_CHECKING
 
 from chuk_term.ui import output
-from chuk_term.ui.terminal import clear_line
 
 from mcp_cli.display.models import (
     ContentType,
@@ -73,6 +72,9 @@ class StreamingDisplayManager:
 
         # Tool execution state
         self.tool_execution: "ToolExecutionState | None" = None
+
+        # Rich Live display for tool execution (handles terminal control properly)
+        self._tool_live = None
 
         # Background refresh task
         self._refresh_task: asyncio.Task | None = None
@@ -171,14 +173,19 @@ class StreamingDisplayManager:
         # Show final output
         final_content = self.streaming_state.accumulated_content
         elapsed = self.streaming_state.elapsed_time
+        chunks_received = self.streaming_state.chunks_received
 
         if final_content:
             self._show_final_response(final_content, elapsed, interrupted)
 
         logger.debug(
             f"Stopped streaming: {len(final_content)} chars in {elapsed:.2f}s, "
-            f"{self.streaming_state.chunks_received} chunks"
+            f"{chunks_received} chunks"
         )
+
+        # Clear streaming state to avoid any interference with subsequent tool execution
+        # This ensures the display manager is in a clean state for the next operation
+        self.streaming_state = None
 
         return final_content
 
@@ -194,14 +201,83 @@ class StreamingDisplayManager:
         import time
         from mcp_cli.chat.models import ToolExecutionState
 
-        self.tool_execution = ToolExecutionState(
-            name=name, arguments=arguments, start_time=time.time()
+        # Acquire render lock to prevent race conditions during transition
+        # This ensures the refresh loop doesn't render between clearing and setting tool state
+        async with self._render_lock:
+            # If transitioning from streaming to tool execution, clear streaming display
+            if self.streaming_state and self.streaming_state.is_active:
+                self._do_clear_display()
+
+            # Clear any stale streaming state (even if not active)
+            # This ensures we don't have leftover state from previous operations
+            if self.streaming_state:
+                self.streaming_state = None
+
+            # Reset ALL display state to ensure clean start
+            # This is critical after Rich output which may leave cursor in unexpected state
+            self._last_status = ""
+            self._last_line_count = 0
+            self._showing_thinking = False
+            self._last_reasoning_preview = ""
+
+            # Set tool execution state while still holding the lock
+            self.tool_execution = ToolExecutionState(
+                name=name, arguments=arguments, start_time=time.time()
+            )
+
+        # Create Rich Live display for tool execution
+        # This handles terminal control properly even when other output occurs
+        from rich.live import Live
+        from rich.text import Text
+
+        self._tool_live = Live(
+            Text(""),
+            refresh_per_second=10,
+            transient=True,  # Don't leave the display after stopping
         )
+        self._tool_live.start()
+
+        # Stop any existing refresh loop before starting a new one
+        # This ensures we don't have competing loops trying to render
+        if self._refresh_task and not self._refresh_task.done():
+            self._refresh_active = False
+            try:
+                await asyncio.wait_for(self._refresh_task, timeout=0.5)
+            except asyncio.TimeoutError:
+                self._refresh_task.cancel()
+                try:
+                    await self._refresh_task
+                except asyncio.CancelledError:
+                    pass
+            self._refresh_task = None
 
         self._refresh_active = True
         await self._start_refresh_loop()
 
         logger.debug(f"Started tool execution display: {name}")
+
+    def _do_clear_display(self) -> None:
+        """Internal method to clear display (no lock, called with lock held).
+
+        Clears the current status display. Should only be called when
+        render lock is already held.
+        """
+        from chuk_term.ui.terminal import clear_lines, move_cursor_up
+        import sys
+
+        if self._last_line_count > 0:
+            # Move to first line if needed
+            if self._last_line_count > 1:
+                move_cursor_up(self._last_line_count - 1)
+                sys.stdout.write("\r")
+                sys.stdout.flush()
+
+            # Clear all lines
+            clear_lines(self._last_line_count)
+
+        # Reset display state (but keep other state intact)
+        self._last_line_count = 0
+        self._last_status = ""
 
     async def stop_tool_execution(self, result: str, success: bool = True) -> None:
         """Stop tool execution display and show result.
@@ -210,6 +286,7 @@ class StreamingDisplayManager:
             result: Tool execution result
             success: Whether execution succeeded
         """
+        import sys
         import time
 
         if not self.tool_execution:
@@ -226,11 +303,17 @@ class StreamingDisplayManager:
         # Stop refresh
         await self._stop_refresh_loop()
 
-        # Finish the live display (clear and reset state)
-        self._finish_display()
+        # Stop Rich Live display
+        if self._tool_live:
+            self._tool_live.stop()
+            self._tool_live = None
 
-        # Show final result
+        # Show final result (uses Rich output)
         self._show_tool_result(self.tool_execution)
+
+        # Ensure stdout is flushed after Rich output
+        # This helps prevent state issues with subsequent direct stdout writes
+        sys.stdout.flush()
 
         self.tool_execution = None
 
@@ -265,11 +348,13 @@ class StreamingDisplayManager:
 
     async def _stop_refresh_loop(self) -> None:
         """Stop background refresh loop."""
+        from mcp_cli.constants import REFRESH_TIMEOUT
+
         self._refresh_active = False
 
         if self._refresh_task and not self._refresh_task.done():
             try:
-                await asyncio.wait_for(self._refresh_task, timeout=1.0)
+                await asyncio.wait_for(self._refresh_task, timeout=REFRESH_TIMEOUT)
             except asyncio.TimeoutError:
                 self._refresh_task.cancel()
                 try:
@@ -284,15 +369,26 @@ class StreamingDisplayManager:
         """Background loop that refreshes the display.
 
         Runs at 10 Hz (100ms interval) for smooth animation.
+
+        Priority order:
+        1. Tool execution (highest priority - shows what's actively happening)
+        2. Streaming status (shows LLM response progress)
         """
         try:
             while self._refresh_active:
-                if self.streaming_state and self.streaming_state.is_active:
-                    await self._render_streaming_status()
-                elif self.tool_execution and not self.tool_execution.completed:
+                # Tool execution takes priority over streaming
+                # because we want to show what's actively happening
+                if self.tool_execution and not self.tool_execution.completed:
                     await self._render_tool_status()
+                elif self.streaming_state and self.streaming_state.is_active:
+                    await self._render_streaming_status()
+                # If neither condition is met, don't render anything
+                # This prevents stale state from interfering
 
                 await asyncio.sleep(0.1)  # 10 Hz refresh
+        except asyncio.CancelledError:
+            # Expected when stopping the loop
+            pass
         except Exception as e:
             logger.error(f"Error in refresh loop: {e}", exc_info=True)
 
@@ -388,10 +484,17 @@ class StreamingDisplayManager:
                             clear_lines(self._last_line_count)
                     else:
                         # Single line: simple clear and rewrite
-                        sys.stdout.write("\r")
-                        sys.stdout.write("\033[K")
+                        # \r = carriage return (go to start of line)
+                        # \033[K = clear from cursor to end of line
+                        sys.stdout.write(f"\r\033[K{display_status}")
+                        sys.stdout.flush()
+                        # Skip the separate write below
+                        self._last_status = display_status
+                        self._last_line_count = num_lines
+                        self._showing_thinking = current_mode == "thinking"
+                        return
 
-                # Write new status
+                # Write new status (for multi-line or mode-switched cases)
                 sys.stdout.write(display_status)
                 sys.stdout.flush()
 
@@ -429,16 +532,44 @@ class StreamingDisplayManager:
         clear_sequence = "".join(clear_parts)
         output.print(clear_sequence, end="")
 
-    def _finish_display(self) -> None:
-        """Finish the live display and prepare for normal output.
+    async def _clear_current_display_async(self) -> None:
+        """Clear the current status display without resetting state (async version).
 
-        This clears the current display and resets state so that
-        subsequent output appears normally without being mangled.
+        This is used when transitioning between display modes (e.g., streaming to tool).
+        Unlike _finish_display(), this doesn't print a newline afterward.
+
+        Must be called from async context to properly acquire render lock.
         """
         from chuk_term.ui.terminal import clear_lines, move_cursor_up
         import sys
 
-        # Clear any displayed content
+        async with self._render_lock:
+            if self._last_line_count > 0:
+                # Move to first line if needed
+                if self._last_line_count > 1:
+                    move_cursor_up(self._last_line_count - 1)
+                    sys.stdout.write("\r")
+                    sys.stdout.flush()
+
+                # Clear all lines
+                clear_lines(self._last_line_count)
+
+            # Reset display state (but keep other state intact)
+            self._last_line_count = 0
+            self._last_status = ""
+
+    def _clear_current_display(self) -> None:
+        """Clear the current status display without resetting state (sync version).
+
+        This is used when transitioning between display modes (e.g., streaming to tool).
+        Unlike _finish_display(), this doesn't print a newline afterward.
+
+        Note: For async contexts, prefer _clear_current_display_async() to properly
+        coordinate with the render lock.
+        """
+        from chuk_term.ui.terminal import clear_lines, move_cursor_up
+        import sys
+
         if self._last_line_count > 0:
             # Move to first line if needed
             if self._last_line_count > 1:
@@ -449,12 +580,25 @@ class StreamingDisplayManager:
             # Clear all lines
             clear_lines(self._last_line_count)
 
-        # Reset state completely
+        # Reset display state (but keep other state intact)
         self._last_line_count = 0
         self._last_status = ""
 
+    def _finish_display(self) -> None:
+        """Finish the live display and prepare for normal output.
+
+        This clears the current display and resets state so that
+        subsequent output appears normally without being mangled.
+        """
+        import sys
+
+        # Clear current display
+        self._clear_current_display()
+
         # Move to a fresh line for subsequent output
-        print()  # Add newline to move past the cleared area
+        # Use direct stdout write instead of print() for consistent behavior
+        sys.stdout.write("\n")
+        sys.stdout.flush()
 
     def _split_preview_into_lines(
         self, text: str, max_line_len: int = 80, num_lines: int = 3
@@ -571,21 +715,27 @@ class StreamingDisplayManager:
             return
 
         import time
+        from rich.text import Text
 
-        # Update spinner
-        self._spinner_index = (self._spinner_index + 1) % len(self._spinner_frames)
-        spinner = self._spinner_frames[self._spinner_index]
+        # Acquire lock to prevent simultaneous rendering with streaming
+        async with self._render_lock:
+            # Update spinner
+            self._spinner_index = (self._spinner_index + 1) % len(self._spinner_frames)
+            spinner = self._spinner_frames[self._spinner_index]
 
-        elapsed = time.time() - self.tool_execution.start_time
+            elapsed = time.time() - self.tool_execution.start_time
 
-        # Render status using renderer
-        status = render_tool_execution_status(self.tool_execution, spinner, elapsed)
+            # Render status using renderer
+            status = render_tool_execution_status(self.tool_execution, spinner, elapsed)
 
-        # Only update if changed
-        if status != self._last_status:
-            clear_line()
-            output.print(status, end="\r")
-            self._last_status = status
+            # Only update if changed
+            if status != self._last_status:
+                # Update Rich Live display if active
+                if self._tool_live:
+                    self._tool_live.update(Text(status))
+
+                self._last_status = status
+                self._last_line_count = 1  # Tool status is always single line
 
     def _show_final_response(
         self, content: str, elapsed: float, interrupted: bool
@@ -605,7 +755,14 @@ class StreamingDisplayManager:
         Args:
             tool: Tool execution state
         """
+        import sys
+
         show_tool_execution_result(tool)
+
+        # CRITICAL: After Rich output completes, ensure stdout is flushed and
+        # terminal is ready for subsequent direct writes.
+        # Rich may buffer output or leave cursor state ambiguous.
+        sys.stdout.flush()
 
     # ==================== STATE QUERIES ====================
 

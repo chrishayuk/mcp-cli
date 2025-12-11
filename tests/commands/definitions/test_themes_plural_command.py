@@ -1,7 +1,7 @@
 """Tests for the themes plural command."""
 
 import pytest
-from unittest.mock import patch, AsyncMock, Mock
+from unittest.mock import patch, Mock
 from mcp_cli.commands.theme.themes_plural import ThemesPluralCommand
 
 

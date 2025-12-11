@@ -7,6 +7,7 @@ from mcp_cli.commands.servers.servers import ServersCommand
 
 class ServerInfo:
     """Mock ServerInfo class."""
+
     def __init__(self, name, status="connected", tool_count=0):
         self.name = name
         self.status = status
@@ -43,9 +44,9 @@ class TestServersCommand:
         """Test basic execution without parameters."""
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.tool_manager.get_server_info = AsyncMock(return_value=[
-                ServerInfo("test-server", "connected", 5)
-            ])
+            mock_ctx.tool_manager.get_server_info = AsyncMock(
+                return_value=[ServerInfo("test-server", "connected", 5)]
+            )
 
             with patch("chuk_term.ui.output"):
                 result = await command.execute()
@@ -59,9 +60,9 @@ class TestServersCommand:
         """Test execution with detailed flag."""
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.tool_manager.get_server_info = AsyncMock(return_value=[
-                ServerInfo("test-server", "connected", 5)
-            ])
+            mock_ctx.tool_manager.get_server_info = AsyncMock(
+                return_value=[ServerInfo("test-server", "connected", 5)]
+            )
 
             with patch("chuk_term.ui.output"):
                 result = await command.execute(detailed=True)
@@ -87,7 +88,9 @@ class TestServersCommand:
         """Test error handling during execution."""
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.tool_manager.get_server_info = AsyncMock(side_effect=Exception("Connection failed"))
+            mock_ctx.tool_manager.get_server_info = AsyncMock(
+                side_effect=Exception("Connection failed")
+            )
 
             result = await command.execute()
 

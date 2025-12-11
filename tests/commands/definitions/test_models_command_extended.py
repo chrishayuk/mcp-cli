@@ -1,7 +1,7 @@
 """Extended tests for the models command definition to improve coverage."""
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from mcp_cli.commands.providers.models import (
     ModelCommand,
@@ -244,7 +244,9 @@ class TestModelCommandIntegration:
         # The 'invalid' will be treated as model name to switch to
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.llm_manager.set_model.side_effect = Exception("Model not found: invalid")
+            mock_ctx.llm_manager.set_model.side_effect = Exception(
+                "Model not found: invalid"
+            )
 
             result = await command.execute(args=["invalid"])
 

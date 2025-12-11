@@ -246,11 +246,11 @@ class TestGetDiscoveryStatus:
 
         assert status["env_setup_complete"] is True
         assert status["discovery_triggered"] is True
-        assert status["discovery_enabled"] == "true"
-        assert status["ollama_discovery"] == "true"
-        assert status["auto_discover"] == "true"
-        assert status["tool_compatibility"] == "true"
-        assert status["universal_tools"] == "true"
+        assert status["discovery_enabled"] is True
+        assert status["ollama_discovery"] is True
+        assert status["auto_discover"] is True
+        assert status["tool_compatibility"] is True
+        assert status["universal_tools"] is True
 
     def test_get_discovery_status_incomplete(self, monkeypatch):
         """Test getting status when discovery is not complete."""
@@ -267,8 +267,8 @@ class TestGetDiscoveryStatus:
 
         assert status["env_setup_complete"] is False
         assert status["discovery_triggered"] is False
-        assert status["discovery_enabled"] == "false"  # Default
-        assert status["ollama_discovery"] == "false"  # Default
+        assert status["discovery_enabled"] is False  # Default
+        assert status["ollama_discovery"] is False  # Default
 
 
 class TestForceDiscoveryRefresh:
