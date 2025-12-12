@@ -1416,10 +1416,10 @@ dev = [
 requires-dist = [
     { name = "asyncio", specifier = ">=3.4.3" },
     { name = "asyncio", marker = "extra == 'dev'", specifier = ">=3.4.3" },
-    { name = "chuk-llm", specifier = ">=0.16" },
+    { name = "chuk-llm", specifier = ">=0.16.3" },
     { name = "chuk-mcp-client-oauth", specifier = ">=0.3.5" },
-    { name = "chuk-term", specifier = ">=0.1.8" },
-    { name = "chuk-tool-processor", specifier = ">=0.11.2" },
+    { name = "chuk-term", specifier = ">=0.3" },
+    { name = "chuk-tool-processor", specifier = ">=0.13" },
     { name = "cryptography", specifier = ">=44.0.0" },
     { name = "fast-json", specifier = ">=0.3.2" },
     { name = "httpx", specifier = ">=0.27.0" },
