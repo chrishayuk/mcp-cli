@@ -27,6 +27,7 @@ from mcp_cli.display.renderers import (
 from mcp_cli.logging_config import get_logger
 
 if TYPE_CHECKING:
+    from chuk_term.ui import LiveStatus
     from mcp_cli.chat.models import ToolExecutionState
 
 logger = get_logger("streaming_display")
@@ -73,8 +74,9 @@ class StreamingDisplayManager:
         # Tool execution state
         self.tool_execution: "ToolExecutionState | None" = None
 
-        # Rich Live display for tool execution (handles terminal control properly)
-        self._tool_live = None
+        # Live status display for tool execution (handles terminal control properly)
+        # Uses chuk_term.ui.LiveStatus
+        self._tool_status: "LiveStatus | None" = None
 
         # Background refresh task
         self._refresh_task: asyncio.Task | None = None
@@ -225,17 +227,12 @@ class StreamingDisplayManager:
                 name=name, arguments=arguments, start_time=time.time()
             )
 
-        # Create Rich Live display for tool execution
+        # Create live status display for tool execution
         # This handles terminal control properly even when other output occurs
-        from rich.live import Live
-        from rich.text import Text
+        from chuk_term.ui import LiveStatus
 
-        self._tool_live = Live(
-            Text(""),
-            refresh_per_second=10,
-            transient=True,  # Don't leave the display after stopping
-        )
-        self._tool_live.start()
+        self._tool_status = LiveStatus(refresh_per_second=10, transient=True)
+        self._tool_status.start()
 
         # Stop any existing refresh loop before starting a new one
         # This ensures we don't have competing loops trying to render
@@ -303,10 +300,10 @@ class StreamingDisplayManager:
         # Stop refresh
         await self._stop_refresh_loop()
 
-        # Stop Rich Live display
-        if self._tool_live:
-            self._tool_live.stop()
-            self._tool_live = None
+        # Stop live status display
+        if self._tool_status:
+            self._tool_status.stop()
+            self._tool_status = None
 
         # Show final result (uses Rich output)
         self._show_tool_result(self.tool_execution)
@@ -715,7 +712,6 @@ class StreamingDisplayManager:
             return
 
         import time
-        from rich.text import Text
 
         # Acquire lock to prevent simultaneous rendering with streaming
         async with self._render_lock:
@@ -730,9 +726,9 @@ class StreamingDisplayManager:
 
             # Only update if changed
             if status != self._last_status:
-                # Update Rich Live display if active
-                if self._tool_live:
-                    self._tool_live.update(Text(status))
+                # Update live status display if active
+                if self._tool_status:
+                    self._tool_status.update(status)
 
                 self._last_status = status
                 self._last_line_count = 1  # Tool status is always single line

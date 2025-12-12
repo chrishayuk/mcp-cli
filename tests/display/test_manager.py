@@ -104,7 +104,8 @@ class TestStreamingDisplayManager:
         content = await manager.stop_streaming()
 
         assert content == "Test content"
-        assert manager.streaming_state.phase == StreamingPhase.COMPLETED
+        # streaming_state is cleared after stop_streaming to ensure clean state
+        assert manager.streaming_state is None
         assert not manager.is_streaming
 
     @pytest.mark.asyncio
@@ -116,8 +117,9 @@ class TestStreamingDisplayManager:
         content = await manager.stop_streaming(interrupted=True)
 
         assert content == "Partial"
-        assert manager.streaming_state.phase == StreamingPhase.INTERRUPTED
-        assert manager.streaming_state.interrupted
+        # streaming_state is cleared after stop_streaming to ensure clean state
+        assert manager.streaming_state is None
+        assert not manager.is_streaming
 
     @pytest.mark.asyncio
     async def test_stop_streaming_without_start(self, manager):
@@ -319,13 +321,17 @@ class TestDisplayManagerIntegration:
         # Update reasoning
         await manager.update_reasoning("Generated a function")
 
+        # Check state before stopping
+        assert manager.streaming_state.detected_type == ContentType.CODE
+        assert manager.streaming_state.chunks_received == 3
+        assert manager.streaming_state.finish_reason == "stop"
+
         # Stop streaming
         final = await manager.stop_streaming()
 
         assert final == "def hello():\n    return 'world'\n"
-        assert manager.streaming_state.detected_type == ContentType.CODE
-        assert manager.streaming_state.chunks_received == 3
-        assert manager.streaming_state.finish_reason == "stop"
+        # streaming_state is cleared after stop_streaming to ensure clean state
+        assert manager.streaming_state is None
         assert not manager.is_streaming
 
     @pytest.mark.asyncio
@@ -375,5 +381,6 @@ class TestDisplayManagerIntegration:
         content = await manager.stop_streaming(interrupted=True)
 
         assert content == "Starting long response..."
-        assert manager.streaming_state.interrupted
-        assert manager.streaming_state.phase == StreamingPhase.INTERRUPTED
+        # streaming_state is cleared after stop_streaming to ensure clean state
+        assert manager.streaming_state is None
+        assert not manager.is_streaming
