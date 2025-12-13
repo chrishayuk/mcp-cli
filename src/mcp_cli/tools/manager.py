@@ -1,37 +1,51 @@
 # mcp_cli/tools/manager.py
 """
-Slim ToolManager - orchestrates chuk-tool-processor with mcp-cli features.
+ToolManager - orchestrates chuk-tool-processor with mcp-cli features.
 
-Slimmed from 2000+ lines to ~600 lines by:
-1. Delegating to StreamManager for all tool operations
-2. Keeping only value-add: config parsing, OAuth, filtering, LLM adaptation
-3. Removing unused methods and pure pass-through wrappers
+Responsibilities:
+1. Parse MCP config files and detect server types (HTTP/SSE/STDIO)
+2. Integrate with mcp-cli's OAuth TokenManager
+3. Filter and validate tools for LLM compatibility
+4. Convert between chuk and mcp-cli data models
 
-For direct StreamManager access: tool_manager.stream_manager.method()
+For direct tool operations, use the exposed stream_manager property.
 """
 
 from __future__ import annotations
 
-import json
 import logging
-from typing import Any, cast
+import os
+from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import Any
 
 from chuk_tool_processor import StreamManager, ToolProcessor
+from chuk_tool_processor import ToolCall as CTPToolCall
+from chuk_tool_processor import ToolResult as CTPToolResult
 
-from mcp_cli.auth import TokenManager, TokenStoreBackend
-from mcp_cli.constants import NAMESPACE
-from mcp_cli.llm.content_models import ContentBlockType
-from mcp_cli.tools.filter import DisabledReason, ToolFilter
-from mcp_cli.tools.models import ServerInfo, ToolCallResult, ToolInfo, TransportType
-from mcp_cli.tools.meta_tools import MetaToolProvider
 from mcp_cli.config import RuntimeConfig, TimeoutType, load_runtime_config
+from mcp_cli.constants import ServerStatus
+from mcp_cli.llm.content_models import ContentBlockType
+from mcp_cli.tools.config_loader import ConfigLoader
+from mcp_cli.tools.dynamic_tools import DynamicToolProvider
+from mcp_cli.tools.execution import (
+    execute_tools_parallel as _execute_tools_parallel,
+    stream_execute_tools as _stream_execute_tools,
+)
+from mcp_cli.tools.filter import DisabledReason, ToolFilter
+from mcp_cli.tools.models import (
+    ServerInfo,
+    ToolCallResult,
+    ToolDefinitionInput,
+    ToolInfo,
+    TransportType,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class ToolManager:
     """
-    Slim facade over chuk-tool-processor with mcp-cli specific features.
+    Facade over chuk-tool-processor with mcp-cli specific features.
 
     Responsibilities:
     1. Parse MCP config files and detect server types (HTTP/SSE/STDIO)
@@ -87,49 +101,31 @@ class ToolManager:
         self.processor: ToolProcessor | None = None
         self._registry = None
 
+        # Config loader handles parsing and OAuth
+        self._config_loader = ConfigLoader(config_file, servers)
+
         # mcp-cli features
         self.tool_filter = ToolFilter()
-        self._token_manager: TokenManager
-        self._config_cache: dict[str, Any] | None = None
 
-        # Server detection results (using clean Pydantic models)
-        from mcp_cli.config.server_models import HTTPServerConfig, STDIOServerConfig
-
-        self._http_servers: list[HTTPServerConfig] = []
-        self._sse_servers: list[HTTPServerConfig] = []  # SSE uses HTTP config
-        self._stdio_servers: list[STDIOServerConfig] = []
-
-        # Setup OAuth
-        self._token_manager = TokenManager(
-            backend=TokenStoreBackend.AUTO,
-            namespace=NAMESPACE,
-            service_name="mcp-cli",
-        )
-
-        # Setup meta-tool provider for dynamic tool discovery
-        self.meta_tool_provider = MetaToolProvider(self)
+        # Setup dynamic tool provider for on-demand tool discovery
+        self.dynamic_tool_provider = DynamicToolProvider(self)
 
     # ================================================================
     # Initialization
     # ================================================================
 
     async def initialize(self, namespace: str = "stdio") -> bool:
-        """
-        Initialize by parsing config, setting up OAuth, and creating StreamManager.
-        """
+        """Initialize by parsing config, setting up OAuth, and creating StreamManager."""
         try:
             from chuk_term.ui import output
 
             # Load config and detect server types
-            config = self._load_config()
+            config = self._config_loader.load()
             if not config:
                 output.warning("No config found, initializing with empty toolset")
                 return await self._setup_empty_toolset()
 
-            self._detect_server_types(config)
-
-            # Process OAuth
-            await self._process_oauth_for_servers(config)
+            self._config_loader.detect_server_types(config)
 
             # Initialize StreamManager based on detected types
             success = await self._initialize_stream_manager(namespace)
@@ -153,36 +149,42 @@ class ToolManager:
         """Initialize StreamManager with detected transport type."""
         self.stream_manager = StreamManager()
 
+        http_servers = self._config_loader.http_servers
+        sse_servers = self._config_loader.sse_servers
+        stdio_servers = self._config_loader.stdio_servers
+
         try:
             # Initialize all server types (not mutually exclusive)
-            # Changed from elif to if statements to support multiple transport types
-            # Convert Pydantic models back to dicts for StreamManager (legacy interface)
-            if self._http_servers:
-                logger.info(f"Initializing {len(self._http_servers)} HTTP servers")
+            if http_servers:
+                logger.info(f"Initializing {len(http_servers)} HTTP servers")
                 http_dicts = [
                     {"name": s.name, "url": s.url, "headers": s.headers or {}}
-                    for s in self._http_servers
+                    for s in http_servers
                 ]
                 await self.stream_manager.initialize_with_http_streamable(
                     servers=http_dicts,
                     server_names=self.server_names,
                     initialization_timeout=self.initialization_timeout,
-                    oauth_refresh_callback=self._create_oauth_refresh_callback(),
+                    oauth_refresh_callback=self._config_loader.create_oauth_refresh_callback(
+                        http_servers, sse_servers
+                    ),
                 )
-            if self._sse_servers:
-                logger.info(f"Initializing {len(self._sse_servers)} SSE servers")
+            if sse_servers:
+                logger.info(f"Initializing {len(sse_servers)} SSE servers")
                 sse_dicts = [
                     {"name": s.name, "url": s.url, "headers": s.headers or {}}
-                    for s in self._sse_servers
+                    for s in sse_servers
                 ]
                 await self.stream_manager.initialize_with_sse(
                     servers=sse_dicts,
                     server_names=self.server_names,
                     initialization_timeout=self.initialization_timeout,
-                    oauth_refresh_callback=self._create_oauth_refresh_callback(),
+                    oauth_refresh_callback=self._config_loader.create_oauth_refresh_callback(
+                        http_servers, sse_servers
+                    ),
                 )
-            if self._stdio_servers:
-                logger.info(f"Initializing {len(self._stdio_servers)} STDIO servers")
+            if stdio_servers:
+                logger.info(f"Initializing {len(stdio_servers)} STDIO servers")
                 stdio_dicts = [
                     {
                         "name": s.name,
@@ -190,7 +192,7 @@ class ToolManager:
                         "args": s.args,
                         "env": s.env,
                     }
-                    for s in self._stdio_servers
+                    for s in stdio_servers
                 ]
                 await self.stream_manager.initialize_with_stdio(
                     servers=stdio_dicts,
@@ -198,7 +200,7 @@ class ToolManager:
                     initialization_timeout=self.initialization_timeout,
                 )
 
-            if not (self._http_servers or self._sse_servers or self._stdio_servers):
+            if not (http_servers or sse_servers or stdio_servers):
                 logger.info("No servers detected")
                 return True
 
@@ -225,208 +227,6 @@ class ToolManager:
                 logger.warning(f"Error closing stream_manager: {e}")
 
     # ================================================================
-    # Config Parsing
-    # ================================================================
-
-    def _load_config(self) -> dict[str, Any]:
-        """Load and parse MCP config file with token resolution."""
-        if self._config_cache:
-            return self._config_cache
-
-        try:
-            with open(self.config_file) as f:
-                config = cast(dict[str, Any], json.load(f))
-
-            # Resolve {{token:provider}} placeholders
-            self._resolve_token_placeholders(config)
-
-            self._config_cache = config
-            return config
-
-        except FileNotFoundError:
-            logger.warning(f"Config file not found: {self.config_file}")
-            return {}
-        except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON in config: {e}")
-            return {}
-        except Exception as e:
-            logger.error(f"Error loading config: {e}")
-            return {}
-
-    def _resolve_token_placeholders(self, config: dict[str, Any]) -> None:
-        """Replace {{token:provider}} with actual OAuth tokens."""
-
-        # Recursive function to process nested dicts
-        def process_value(value: Any) -> Any:
-            if isinstance(value, str) and value.startswith("{{token:"):
-                # Extract provider name
-                provider = value[8:-2]  # Remove {{token: and }}
-                try:
-                    token = self._token_manager.get_token(provider)
-                    if token:
-                        return f"Bearer {token.access_token}"
-                except Exception as e:
-                    logger.warning(f"Failed to get token for {provider}: {e}")
-            elif isinstance(value, dict):
-                return {k: process_value(v) for k, v in value.items()}
-            elif isinstance(value, list):
-                return [process_value(item) for item in value]
-            return value
-
-        # Process entire config
-        if "mcpServers" in config:
-            config["mcpServers"] = process_value(config["mcpServers"])
-
-    def _detect_server_types(self, config: dict[str, Any]) -> None:
-        """Detect HTTP/SSE/STDIO servers from config."""
-        mcp_servers = config.get("mcpServers", {})
-
-        for server_name in self.servers:
-            if server_name not in mcp_servers:
-                logger.warning(f"Server '{server_name}' not found in config")
-                continue
-
-            server_cfg = mcp_servers[server_name]
-
-            # Detect transport type and create typed models
-            from mcp_cli.config.server_models import (
-                HTTPServerConfig,
-                STDIOServerConfig,
-            )
-
-            if "url" in server_cfg:
-                transport = server_cfg.get("transport", "").lower()
-                http_config = HTTPServerConfig(
-                    name=server_name,
-                    url=server_cfg["url"],
-                    headers=server_cfg.get("headers", {}),
-                    disabled=server_cfg.get("disabled", False),
-                )
-
-                if "sse" in transport:
-                    self._sse_servers.append(http_config)
-                else:
-                    self._http_servers.append(http_config)
-            else:
-                # STDIO server
-                stdio_config = STDIOServerConfig(
-                    name=server_name,
-                    command=server_cfg.get("command", ""),
-                    args=server_cfg.get("args", []),
-                    env=server_cfg.get("env", {}),
-                    disabled=server_cfg.get("disabled", False),
-                )
-                self._stdio_servers.append(stdio_config)
-
-    # ================================================================
-    # OAuth Integration
-    # ================================================================
-
-    async def _process_oauth_for_servers(self, config: dict[str, Any]) -> None:
-        """Pre-fetch OAuth tokens for servers that need them."""
-        # This is a simplified version - full OAuth logic can be added if needed
-        pass
-
-    def _create_oauth_refresh_callback(self):
-        """Create OAuth token refresh callback for StreamManager."""
-
-        async def refresh_oauth_token(
-            server_url: str | None = None,
-        ) -> dict[str, str] | None:
-            """
-            Refresh OAuth token for a server and return updated headers.
-
-            Args:
-                server_url: URL of the server that needs token refresh
-
-            Returns:
-                Dictionary with updated Authorization header, or None if refresh failed
-            """
-            logger.info(f"OAuth token refresh triggered for URL: {server_url}")
-
-            if not server_url:
-                logger.warning("Cannot refresh OAuth token: server URL not provided")
-                return None
-
-            # Map URL back to server name
-            # Remove /mcp suffix if present for matching
-            base_url = server_url.replace("/mcp", "")
-            server_name = None
-
-            # Search all server lists for matching URL
-            # server_config is now HTTPServerConfig Pydantic model
-            for server_list in [self._http_servers, self._sse_servers]:
-                for server_config in server_list:
-                    config_url = server_config.url.replace("/mcp", "")
-                    if config_url == base_url or server_config.url == server_url:
-                        server_name = server_config.name
-                        break
-                if server_name:
-                    break
-
-            if not server_name:
-                logger.error(f"Cannot map URL {server_url} to a known server")
-                return None
-
-            logger.debug(f"Mapped URL {server_url} to server: {server_name}")
-
-            try:
-                # Get token manager
-                token_mgr = TokenManager(
-                    backend=TokenStoreBackend.AUTO,
-                    namespace=NAMESPACE,
-                    service_name="mcp-cli",
-                )
-
-                # Get existing token data
-                token_data = token_mgr.get_token(server_name)
-
-                if not token_data:
-                    logger.warning(f"No token found for server: {server_name}")
-                    return None
-
-                # Check if we have a refresh token
-                refresh_token = token_data.get("refresh_token")
-
-                if not refresh_token:
-                    logger.warning(
-                        f"No refresh_token available for server: {server_name}, re-authentication required"
-                    )
-                    return None
-
-                # Attempt to refresh the token using the OAuth library
-                from mcp_cli.auth import OAuthHandler
-
-                # Create OAuth handler for this server (use base URL without /mcp)
-                oauth_handler = OAuthHandler(base_url)
-
-                # Refresh the token
-                logger.debug(f"Attempting to refresh OAuth token for {server_name}...")
-                new_tokens = await oauth_handler.refresh_access_token(refresh_token)
-
-                if not new_tokens or "access_token" not in new_tokens:
-                    logger.error(f"Token refresh failed for {server_name}")
-                    return None
-
-                # Store the new tokens
-                token_mgr.store_token(
-                    name=server_name, token_data=new_tokens, token_type="oauth"
-                )
-
-                logger.info(f"OAuth token refreshed successfully for {server_name}")
-
-                # Return updated Authorization header
-                return {"Authorization": f"Bearer {new_tokens['access_token']}"}
-
-            except Exception as e:
-                logger.error(
-                    f"OAuth token refresh failed for {server_name}: {e}", exc_info=True
-                )
-                return None
-
-        return refresh_oauth_token
-
-    # ================================================================
     # Tool Access (with ToolInfo conversion)
     # ================================================================
 
@@ -446,7 +246,6 @@ class ToolManager:
                         logger.debug(f"Failed to get metadata for {name}: {e}")
                         metadata = None
 
-                    # Create ToolInfo even if metadata is missing
                     tools.append(
                         ToolInfo(
                             name=name,
@@ -466,11 +265,26 @@ class ToolManager:
             return []
 
         try:
-            # Get tools from StreamManager
             tools_dict = self.stream_manager.get_all_tools()
-
-            # Convert to ToolInfo
-            return [self._convert_to_tool_info(t) for t in tools_dict]
+            # Get tool→server mapping for correct namespace
+            tool_to_server = getattr(self.stream_manager, "tool_to_server_map", {})
+            tools = []
+            for t in tools_dict:
+                tool_info = self._convert_to_tool_info(t)
+                # Override namespace with server name from tool_to_server_map
+                server_name = tool_to_server.get(tool_info.name)
+                if server_name:
+                    tool_info = ToolInfo(
+                        name=tool_info.name,
+                        namespace=server_name,
+                        description=tool_info.description,
+                        parameters=tool_info.parameters,
+                        is_async=tool_info.is_async,
+                        tags=tool_info.tags,
+                        supports_streaming=tool_info.supports_streaming,
+                    )
+                tools.append(tool_info)
+            return tools
         except Exception as e:
             logger.error(f"Error getting tools: {e}")
             return []
@@ -494,12 +308,10 @@ class ToolManager:
         all_tools = await self.get_all_tools()
 
         if namespace:
-            # Filter by namespace first
             for tool in all_tools:
                 if tool.name == tool_name and tool.namespace == namespace:
                     return tool
         else:
-            # Return first match
             for tool in all_tools:
                 if tool.name == tool_name:
                     return tool
@@ -508,16 +320,11 @@ class ToolManager:
 
     @staticmethod
     def format_tool_response(response: Any) -> str:
-        """
-        Format a tool response for display.
-
-        Handles MCP text records, JSON data, dicts, and scalars.
-        """
+        """Format a tool response for display."""
         import json
 
         # Handle list of text records (MCP format)
         if isinstance(response, list):
-            # Try to parse as TextContent models for type safety
             from mcp_cli.llm.content_models import TextContent
 
             try:
@@ -530,9 +337,8 @@ class ToolManager:
                 if text_blocks:
                     return "\n".join(block.text for block in text_blocks)
             except Exception:
-                pass  # Fall through to JSON
+                pass
 
-            # Check if it's a list of text records (fallback) - use enum!
             if all(
                 isinstance(item, dict)
                 and item.get("type") == ContentBlockType.TEXT.value
@@ -540,24 +346,15 @@ class ToolManager:
             ):
                 return "\n".join(item.get("text", "") for item in response)
 
-            # Otherwise serialize as JSON
             return json.dumps(response, indent=2)
 
-        # Handle dict
         if isinstance(response, dict):
             return json.dumps(response, indent=2)
 
-        # Handle scalar values
         return str(response)
 
     def _convert_to_tool_info(self, tool_dict: dict[str, Any]) -> ToolInfo:
-        """Convert chuk tool dict to mcp-cli ToolInfo.
-
-        Uses Pydantic model for validation instead of manual .get() calls.
-        """
-        from mcp_cli.tools.tool_models import ToolDefinitionInput
-
-        # Parse using Pydantic model (validates and provides defaults)
+        """Convert chuk tool dict to mcp-cli ToolInfo."""
         tool_input = ToolDefinitionInput.model_validate(tool_dict)
 
         return ToolInfo(
@@ -570,7 +367,7 @@ class ToolManager:
         )
 
     # ================================================================
-    # Tool Execution (wraps StreamManager)
+    # Tool Execution
     # ================================================================
 
     async def execute_tool(
@@ -580,21 +377,18 @@ class ToolManager:
         namespace: str | None = None,
         timeout: float | None = None,
     ) -> ToolCallResult:
-        """Execute tool and return ToolCallResult with automatic recovery on transport errors.
-
-        Handles both regular MCP tools and meta-tools for dynamic discovery.
-        """
-        # Check if this is a meta-tool
-        if self.meta_tool_provider.is_meta_tool(tool_name):
-            logger.info(f"Executing meta-tool: {tool_name}")
+        """Execute tool and return ToolCallResult with automatic recovery on transport errors."""
+        # Check if this is a dynamic tool
+        if self.dynamic_tool_provider.is_dynamic_tool(tool_name):
+            logger.info(f"Executing dynamic tool: {tool_name}")
             try:
-                result = await self.meta_tool_provider.execute_meta_tool(
+                result = await self.dynamic_tool_provider.execute_dynamic_tool(
                     tool_name, arguments
                 )
                 return ToolCallResult(tool_name=tool_name, success=True, result=result)
             except Exception as e:
                 error_msg = str(e)
-                logger.error(f"Meta-tool execution failed: {error_msg}")
+                logger.error(f"Dynamic tool execution failed: {error_msg}")
                 return ToolCallResult(
                     tool_name=tool_name, success=False, error=error_msg
                 )
@@ -626,8 +420,6 @@ class ToolManager:
                 logger.warning(
                     f"Transport error detected for tool {tool_name}, attempting recovery..."
                 )
-
-                # Attempt to recover by reconnecting to the affected server
                 recovery_result = await self._attempt_transport_recovery(
                     tool_name, arguments, namespace, timeout
                 )
@@ -636,37 +428,122 @@ class ToolManager:
 
             return ToolCallResult(tool_name=tool_name, success=False, error=error_msg)
 
+    async def stream_execute_tool(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        namespace: str | None = None,
+        timeout: float | None = None,
+    ):
+        """Stream tool execution results (for tools that support streaming)."""
+        result = await self.execute_tool(tool_name, arguments, namespace, timeout)
+        yield result
+
+    async def execute_tools_parallel(
+        self,
+        calls: list[CTPToolCall],
+        timeout: float | None = None,
+        on_tool_start: Callable[[CTPToolCall], Awaitable[None]] | None = None,
+        on_tool_result: Callable[[CTPToolResult], Awaitable[None]] | None = None,
+        max_concurrency: int = 4,
+    ) -> list[CTPToolResult]:
+        """Execute multiple tool calls in parallel with optional callbacks."""
+        return await _execute_tools_parallel(
+            self, calls, timeout, on_tool_start, on_tool_result, max_concurrency
+        )
+
+    async def stream_execute_tools(
+        self,
+        calls: list[CTPToolCall],
+        timeout: float | None = None,
+        on_tool_start: Callable[[CTPToolCall], Awaitable[None]] | None = None,
+        max_concurrency: int = 4,
+    ) -> AsyncIterator[CTPToolResult]:
+        """Execute multiple tool calls in parallel, yielding results as they complete."""
+        async for result in _stream_execute_tools(
+            self, calls, timeout, on_tool_start, max_concurrency
+        ):
+            yield result
+
+    async def _attempt_transport_recovery(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        namespace: str | None = None,
+        timeout: float | None = None,
+    ) -> ToolCallResult | None:
+        """Attempt to recover from transport errors by reconnecting to the server."""
+        import asyncio
+
+        try:
+            server_name = namespace
+            if not server_name:
+                tools = await self.get_all_tools()
+                for tool in tools:
+                    if tool.name == tool_name:
+                        server_name = tool.server_name
+                        break
+
+            if not server_name:
+                logger.warning(f"Could not identify server for tool {tool_name}")
+                return None
+
+            logger.info(
+                f"Attempting to reconnect to server '{server_name}' for tool '{tool_name}'"
+            )
+
+            if self.stream_manager is None:
+                logger.warning("StreamManager is None, cannot attempt recovery")
+                return None
+
+            if hasattr(self.stream_manager, "reconnect_server"):
+                await self.stream_manager.reconnect_server(server_name)
+            elif hasattr(self.stream_manager, "restart_server"):
+                await self.stream_manager.restart_server(server_name)
+            else:
+                logger.warning(
+                    f"StreamManager doesn't support reconnection - "
+                    f"server {server_name} may remain in bad state"
+                )
+                return None
+
+            await asyncio.sleep(0.5)
+
+            logger.info(f"Retrying tool {tool_name} after transport recovery")
+            result = await self.stream_manager.call_tool(
+                tool_name=tool_name,
+                arguments=arguments,
+                server_name=namespace,
+                timeout=timeout or self.tool_timeout,
+            )
+
+            logger.info(f"Tool {tool_name} succeeded after recovery")
+            return ToolCallResult(tool_name=tool_name, success=True, result=result)
+
+        except Exception as recovery_error:
+            logger.error(f"Transport recovery failed: {recovery_error}")
+            return None
+
     # ================================================================
     # LLM Integration (filtering + adaptation)
     # ================================================================
 
     async def get_tools_for_llm(self, provider: str = "openai") -> list[dict[str, Any]]:
-        """Get tools filtered and validated for LLM.
-
-        Supports two modes:
-        1. Static mode (default): Returns all tools upfront
-        2. Dynamic mode (MCP_CLI_DYNAMIC_TOOLS=1): Returns only meta-tools for on-demand discovery
-        """
+        """Get tools filtered and validated for LLM."""
         try:
-            import os
-
             # Check if dynamic tools mode is enabled
             dynamic_mode = os.environ.get("MCP_CLI_DYNAMIC_TOOLS") == "1"
 
             if dynamic_mode:
-                # Dynamic mode: Return ONLY meta-tools to stay within provider limits
-                # The LLM can discover available tools using list_tools() and get schemas using get_tool_schema()
-                meta_tools = self.meta_tool_provider.get_meta_tools()
+                dynamic_tools = self.dynamic_tool_provider.get_dynamic_tools()
                 logger.info(
-                    f"Dynamic tools mode: Returning {len(meta_tools)} meta-tools only"
+                    f"Dynamic tools mode: Returning {len(dynamic_tools)} dynamic tools only"
                 )
-                return meta_tools
+                return dynamic_tools
 
             # Static mode: load all tools upfront
-            # Get all tools first (handles both stream_manager and registry paths)
             all_tools = await self.get_all_tools()
 
-            # Convert ToolInfo to LLM format for filter
             raw_tools: list[dict[str, Any]] = [
                 {
                     "type": "function",
@@ -686,24 +563,22 @@ class ToolManager:
 
             if include_tools:
                 include_set = {name.strip() for name in include_tools.split(",")}
-                filtered_tools: list[dict[str, Any]] = [
+                raw_tools = [
                     tool
                     for tool in raw_tools
                     if tool["function"]["name"] in include_set
                 ]
-                raw_tools = filtered_tools
                 logger.info(
                     f"Filtered to {len(raw_tools)} tools using include list: {include_set}"
                 )
 
             if exclude_tools:
                 exclude_set = {name.strip() for name in exclude_tools.split(",")}
-                filtered_tools_exclude: list[dict[str, Any]] = [
+                raw_tools = [
                     tool
                     for tool in raw_tools
                     if tool["function"]["name"] not in exclude_set
                 ]
-                raw_tools = filtered_tools_exclude
                 logger.info(
                     f"Filtered to {len(raw_tools)} tools using exclude list: {exclude_set}"
                 )
@@ -732,7 +607,6 @@ class ToolManager:
         """Get tools adapted for LLM with name mapping."""
         tools = await self.get_tools_for_llm(provider)
 
-        # Create identity mapping if not provided
         if name_mapping is None:
             mapping = {
                 tool["function"]["name"]: tool["function"]["name"] for tool in tools
@@ -790,7 +664,6 @@ class ToolManager:
             if not tool:
                 return False, f"Tool '{tool_name}' not found"
 
-            # Convert to dict for validation
             tool_dict = {
                 "name": tool.name,
                 "description": tool.description,
@@ -808,78 +681,6 @@ class ToolManager:
 
         except Exception as e:
             return False, str(e)
-
-    async def _attempt_transport_recovery(
-        self,
-        tool_name: str,
-        arguments: dict[str, Any],
-        namespace: str | None = None,
-        timeout: float | None = None,
-    ) -> ToolCallResult | None:
-        """
-        Attempt to recover from transport errors by reconnecting to the server.
-
-        This handles cases where the MCP server transport gets into a bad state
-        after timeouts or concurrent requests.
-
-        Returns:
-            ToolCallResult if recovery succeeded and tool was executed, None otherwise
-        """
-        try:
-            # First, try to identify which server this tool belongs to
-            server_name = namespace
-            if not server_name:
-                # Try to find the server by looking at available tools
-                tools = await self.get_all_tools()
-                for tool in tools:
-                    if tool.name == tool_name:
-                        server_name = tool.server_name
-                        break
-
-            if not server_name:
-                logger.warning(f"Could not identify server for tool {tool_name}")
-                return None
-
-            logger.info(
-                f"Attempting to reconnect to server '{server_name}' for tool '{tool_name}'"
-            )
-
-            # Try to reconnect the specific server through StreamManager
-            if self.stream_manager is None:
-                logger.warning("StreamManager is None, cannot attempt recovery")
-                return None
-
-            if hasattr(self.stream_manager, "reconnect_server"):
-                await self.stream_manager.reconnect_server(server_name)
-            elif hasattr(self.stream_manager, "restart_server"):
-                await self.stream_manager.restart_server(server_name)
-            else:
-                # If no specific reconnect method, log warning
-                logger.warning(
-                    f"StreamManager doesn't support reconnection - server {server_name} may remain in bad state"
-                )
-                return None
-
-            # Wait a moment for reconnection
-            import asyncio
-
-            await asyncio.sleep(0.5)
-
-            # Retry the tool call once
-            logger.info(f"Retrying tool {tool_name} after transport recovery")
-            result = await self.stream_manager.call_tool(
-                tool_name=tool_name,
-                arguments=arguments,
-                server_name=namespace,
-                timeout=timeout or self.tool_timeout,
-            )
-
-            logger.info(f"Tool {tool_name} succeeded after recovery")
-            return ToolCallResult(tool_name=tool_name, success=True, result=result)
-
-        except Exception as recovery_error:
-            logger.error(f"Transport recovery failed: {recovery_error}")
-            return None
 
     async def revalidate_tools(self, provider: str = "openai") -> dict[str, Any]:
         """Revalidate all tools and return summary."""
@@ -911,8 +712,11 @@ class ToolManager:
 
     def get_tool_validation_details(self, tool_name: str) -> dict[str, Any] | None:
         """Get validation details for a specific tool."""
-        # For now, return basic info - can be expanded if validation cache is needed
         return {"name": tool_name, "status": "unknown"}
+
+    # ================================================================
+    # Server Info
+    # ================================================================
 
     async def get_server_info(self) -> list[ServerInfo]:
         """Get information about connected servers."""
@@ -920,42 +724,49 @@ class ToolManager:
             return []
 
         try:
-            # Construct ServerInfo from detected servers
             servers = []
             server_id = 0
 
-            all_servers = self._http_servers + self._sse_servers + self._stdio_servers
+            http_servers = self._config_loader.http_servers
+            sse_servers = self._config_loader.sse_servers
+            stdio_servers = self._config_loader.stdio_servers
+            all_servers = http_servers + sse_servers + stdio_servers
 
-            # Get tool counts per server if available
-            tools = await self.get_all_tools()
+            # Get tool counts per server from StreamManager's tool_to_server_map
+            # This is the authoritative source for tool→server mapping
             tool_counts: dict[str, int] = {}
-            for tool in tools:
-                namespace = tool.namespace or "default"
-                tool_counts[namespace] = tool_counts.get(namespace, 0) + 1
+            if hasattr(self.stream_manager, "tool_to_server_map"):
+                for server_name in self.stream_manager.tool_to_server_map.values():
+                    tool_counts[server_name] = tool_counts.get(server_name, 0) + 1
 
             for server in all_servers:
-                # server is now a Pydantic model (HTTPServerConfig or STDIOServerConfig)
                 server_name = server.name
 
-                # Determine transport type
-                if server in self._http_servers:
-                    transport = TransportType.HTTP
-                elif server in self._sse_servers:
-                    transport = TransportType.SSE
-                else:
-                    transport = TransportType.STDIO
+                # Determine transport type and get transport-specific fields
+                from mcp_cli.config.server_models import (
+                    HTTPServerConfig,
+                    STDIOServerConfig,
+                )
 
-                # Get STDIO-specific fields if applicable
-                from mcp_cli.config.server_models import STDIOServerConfig
-                from mcp_cli.constants import ServerStatus
-
-                command = None
+                command: str | None = None
+                url: str | None = None
                 args: list[str] = []
                 env: dict[str, str] = {}
-                if isinstance(server, STDIOServerConfig):
-                    command = server.command
-                    args = server.args
-                    env = server.env
+
+                if server in http_servers:
+                    transport = TransportType.HTTP
+                    if isinstance(server, HTTPServerConfig):
+                        url = server.url
+                elif server in sse_servers:
+                    transport = TransportType.SSE
+                    if isinstance(server, HTTPServerConfig):
+                        url = server.url
+                else:
+                    transport = TransportType.STDIO
+                    if isinstance(server, STDIOServerConfig):
+                        command = server.command
+                        args = list(server.args)
+                        env = dict(server.env)
 
                 servers.append(
                     ServerInfo(
@@ -969,6 +780,7 @@ class ToolManager:
                         transport=transport,
                         capabilities={},
                         command=command,
+                        url=url,
                         args=args,
                         env=env,
                     )
@@ -995,19 +807,6 @@ class ToolManager:
             logger.error(f"Error getting server for tool: {e}")
             return None
 
-    async def stream_execute_tool(
-        self,
-        tool_name: str,
-        arguments: dict[str, Any],
-        namespace: str | None = None,
-        timeout: float | None = None,
-    ):
-        """Stream tool execution results (for tools that support streaming)."""
-        # For now, fall back to regular execution and yield once
-        # Can be enhanced when StreamManager supports streaming
-        result = await self.execute_tool(tool_name, arguments, namespace, timeout)
-        yield result
-
     def get_streams(self):
         """Get active streams from StreamManager."""
         if not self.stream_manager:
@@ -1017,7 +816,6 @@ class ToolManager:
             if hasattr(self.stream_manager, "get_streams"):
                 return self.stream_manager.get_streams()
             return []
-
         except Exception as e:
             logger.error(f"Error getting streams: {e}")
             return []
@@ -1031,7 +829,6 @@ class ToolManager:
             if hasattr(self.stream_manager, "list_resources"):
                 return self.stream_manager.list_resources()
             return []
-
         except Exception as e:
             logger.error(f"Error listing resources: {e}")
             return []
@@ -1045,7 +842,6 @@ class ToolManager:
             if hasattr(self.stream_manager, "list_prompts"):
                 return self.stream_manager.list_prompts()
             return []
-
         except Exception as e:
             logger.error(f"Error listing prompts: {e}")
             return []

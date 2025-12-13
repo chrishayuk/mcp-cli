@@ -20,7 +20,7 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from mcp_cli.protocols import LLMClient
+    from chuk_llm.llm.core.base import BaseLLMClient
 
 from mcp_cli.model_management.provider import RuntimeProviderConfig
 from mcp_cli.model_management.client_factory import ClientFactory
@@ -371,7 +371,7 @@ class ModelManager:
 
     def get_client(
         self, provider: str | None = None, model: str | None = None
-    ) -> "LLMClient":
+    ) -> "BaseLLMClient":
         """
         Get a client for the specified or active provider/model.
 

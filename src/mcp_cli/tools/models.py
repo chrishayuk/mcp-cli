@@ -138,7 +138,8 @@ class ServerInfo(BaseModel):
     capabilities: dict[str, Any] = Field(default_factory=dict)
     description: str | None = None  # From server metadata
     version: str | None = None  # Server version
-    command: str | None = None  # Server command if known
+    command: str | None = None  # Server command if known (for stdio)
+    url: str | None = None  # Server URL (for http/sse)
     args: list[str] = Field(default_factory=list)  # Command arguments
     env: dict[str, str] = Field(default_factory=dict)  # Environment variables
 
@@ -548,3 +549,33 @@ class LLMToolDefinition(BaseModel):
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary format for LLM API calls."""
         return self.model_dump(mode="json")  # type: ignore[no-any-return]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Tool Definition Input Models (for parsing raw tool dicts)
+# ──────────────────────────────────────────────────────────────────────────────
+class ToolInputSchema(BaseModel):
+    """Input schema for tool parameters (JSON Schema format)."""
+
+    type: str = "object"
+    properties: dict[str, Any] = Field(default_factory=dict)
+    required: list[str] = Field(default_factory=list)
+    additionalProperties: bool = False
+
+    model_config = {"frozen": True, "extra": "allow"}
+
+
+class ToolDefinitionInput(BaseModel):
+    """Input model for parsing tool definitions from dicts.
+
+    Used to convert raw tool dicts from chuk_tool_processor into ToolInfo models.
+    """
+
+    name: str
+    namespace: str = "default"
+    description: str | None = None
+    inputSchema: dict[str, Any] = Field(default_factory=dict)
+    is_async: bool = False
+    tags: list[str] = Field(default_factory=list)
+
+    model_config = {"frozen": False, "extra": "ignore"}

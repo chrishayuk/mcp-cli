@@ -6,6 +6,7 @@ Uses the existing enhanced provider commands from mcp_cli.commands.provider
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 
 from mcp_cli.commands.base import (
     UnifiedCommand,
@@ -13,6 +14,9 @@ from mcp_cli.commands.base import (
     CommandParameter,
     CommandResult,
 )
+
+if TYPE_CHECKING:
+    from mcp_cli.commands.models.provider import ProviderStatus
 
 
 class ProviderCommand(CommandGroup):
@@ -90,47 +94,20 @@ Note: API keys are NEVER stored in config. Use environment variables:
     async def execute(self, subcommand: str | None = None, **kwargs) -> CommandResult:
         """Execute the provider command - handle direct provider switching."""
         from mcp_cli.context import get_context
-        from chuk_term.ui import output, format_table
+        from chuk_term.ui import output
 
-        # Check if we have args (could be provider name or subcommand)
         args = kwargs.get("args", [])
 
+        # No arguments - delegate to list subcommand to show providers with status
         if not args:
-            # No arguments - list all providers
-            try:
-                context = get_context()
-                if not context or not context.llm_manager:
-                    return CommandResult(
-                        success=False, error="No LLM manager available."
-                    )
+            list_cmd = self.subcommands.get("list")
+            if list_cmd:
+                return await list_cmd.execute(**kwargs)
+            return CommandResult(success=False, error="List subcommand not available")
 
-                providers = context.llm_manager.list_providers()
-                current_provider = context.llm_manager.get_current_provider()
-
-                # Build table data
-                table_data = []
-                for provider in providers:
-                    is_current = "✓" if provider == current_provider else ""
-                    table_data.append({"Current": is_current, "Provider": provider})
-
-                # Display table
-                table = format_table(
-                    table_data,
-                    title=f"{len(providers)} Available Providers",
-                    columns=["Current", "Provider"],
-                )
-                output.print_table(table)
-
-                return CommandResult(success=True)
-            except Exception as e:
-                return CommandResult(
-                    success=False, error=f"Failed to list providers: {str(e)}"
-                )
-
-        # Check if the first arg is a known subcommand
         first_arg = args[0] if isinstance(args, list) else str(args)
 
-        # Known subcommands that should be handled by subcommand classes
+        # Known subcommands - let parent class handle routing
         if first_arg.lower() in [
             "list",
             "ls",
@@ -141,18 +118,16 @@ Note: API keys are NEVER stored in config. Use environment variables:
             "current",
             "status",
         ]:
-            # Let the parent class handle the subcommand routing
             return await super().execute(**kwargs)
 
         # Otherwise, treat it as a provider name to switch to
         try:
             context = get_context()
-            if not context or not context.llm_manager:
+            if not context or not context.model_manager:
                 return CommandResult(success=False, error="No LLM manager available.")
 
-            provider_name = first_arg
-            context.llm_manager.set_provider(provider_name)
-            output.success(f"Switched to provider: {provider_name}")
+            context.model_manager.switch_provider(first_arg)
+            output.success(f"Switched to provider: {first_arg}")
 
             return CommandResult(success=True)
         except Exception as e:
@@ -192,26 +167,60 @@ class ProviderListCommand(UnifiedCommand):
         """Execute the provider list command."""
         from mcp_cli.context import get_context
         from chuk_term.ui import output, format_table
+        from mcp_cli.commands.models.provider import ProviderData
 
         try:
             context = get_context()
-            if not context or not context.llm_manager:
+            if not context or not context.model_manager:
                 return CommandResult(success=False, error="No LLM manager available.")
 
-            providers = context.llm_manager.list_providers()
-            current_provider = context.llm_manager.get_current_provider()
+            current_provider = context.model_manager.get_active_provider()
 
-            # Build table data
+            # Get rich provider info from chuk_llm
+            providers: list[ProviderData] = []
+            try:
+                from chuk_llm.llm.client import list_available_providers
+
+                providers_dict = list_available_providers()
+                for name, info in providers_dict.items():
+                    if isinstance(info, dict) and "error" not in info:
+                        providers.append(
+                            ProviderData(
+                                name=name,
+                                has_api_key=info.get("has_api_key", False),
+                                models=info.get("models", []),
+                                available_models=info.get("available_models", []),
+                                default_model=info.get("default_model"),
+                            )
+                        )
+            except Exception:
+                pass
+
+            # Build table data with status info
             table_data = []
             for provider in providers:
-                is_current = "✓" if provider == current_provider else ""
-                table_data.append({"Current": is_current, "Provider": provider})
+                is_current = "✓" if provider.name == current_provider else ""
+                status = self._get_provider_status(provider)
+
+                # Get default model for display
+                default_model = provider.default_model or "-"
+                if default_model and len(default_model) > 25:
+                    default_model = default_model[:22] + "..."
+
+                table_data.append(
+                    {
+                        "": is_current,
+                        "Provider": provider.name,
+                        "Default Model": default_model,
+                        "Status": f"{status.icon} {status.text}",
+                    }
+                )
 
             # Display table
             table = format_table(
                 table_data,
-                title=f"{len(providers)} Available Providers",
-                columns=["Current", "Provider"],
+                title=f"{len(table_data)} Available Providers",
+                columns=["", "Provider", "Default Model", "Status"],
             )
             output.print_table(table)
 
@@ -222,6 +231,59 @@ class ProviderListCommand(UnifiedCommand):
                 success=False,
                 error=f"Failed to list providers: {str(e)}",
             )
+
+    def _get_provider_status(self, provider) -> "ProviderStatus":
+        """Get the status for a provider."""
+        from mcp_cli.commands.models.provider import ProviderStatus
+        from mcp_cli.constants import PROVIDER_OLLAMA
+
+        # Special handling for Ollama (no API key needed)
+        if provider.name.lower() == PROVIDER_OLLAMA:
+            try:
+                import subprocess
+
+                result = subprocess.run(
+                    ["ollama", "list"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
+                )
+                if result.returncode == 0:
+                    lines = result.stdout.strip().split("\n")
+                    model_count = len([line for line in lines[1:] if line.strip()])
+                    return ProviderStatus(
+                        icon="✅",
+                        text=f"Running ({model_count} models)",
+                        reason="Ollama server is responding",
+                    )
+                return ProviderStatus(
+                    icon="❌", text="Not running", reason="Ollama server not responding"
+                )
+            except Exception:
+                return ProviderStatus(
+                    icon="❌", text="Not available", reason="Ollama not installed"
+                )
+
+        # Standard providers
+        if provider.has_api_key:
+            model_count = provider.model_count
+            if model_count > 0:
+                return ProviderStatus(
+                    icon="✅",
+                    text=f"Configured ({model_count} models)",
+                    reason="API key set and models available",
+                )
+            return ProviderStatus(
+                icon="⚠️",
+                text="API key set",
+                reason="No models discovered yet",
+            )
+
+        return ProviderStatus(
+            icon="❌",
+            text="No API key",
+            reason=f"Set {provider.name.upper()}_API_KEY environment variable",
+        )
 
 
 class ProviderSetCommand(UnifiedCommand):
@@ -272,10 +334,10 @@ class ProviderSetCommand(UnifiedCommand):
 
         try:
             context = get_context()
-            if not context or not context.llm_manager:
+            if not context or not context.model_manager:
                 return CommandResult(success=False, error="No LLM manager available.")
 
-            context.llm_manager.set_provider(provider_name)
+            context.model_manager.switch_provider(provider_name)
             output.success(f"Switched to provider: {provider_name}")
 
             return CommandResult(success=True, data={"provider": provider_name})
@@ -309,11 +371,11 @@ class ProviderShowCommand(UnifiedCommand):
 
         try:
             context = get_context()
-            if not context or not context.llm_manager:
+            if not context or not context.model_manager:
                 return CommandResult(success=False, error="No LLM manager available.")
 
-            current_provider = context.llm_manager.get_current_provider()
-            current_model = context.llm_manager.get_current_model()
+            current_provider = context.model_manager.get_active_provider()
+            current_model = context.model_manager.get_active_model()
 
             output.panel(
                 f"Provider: {current_provider}\nModel: {current_model}",

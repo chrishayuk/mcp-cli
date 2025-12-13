@@ -20,6 +20,8 @@ from typing import Any, Callable
 from prompt_toolkit import PromptSession
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.history import FileHistory
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.keys import Keys
 from prompt_toolkit.styles import Style
 
 from chuk_term.ui import output
@@ -97,19 +99,47 @@ class ChatUIManager:
         # Create completer (uses context dict)
         completer = ChatCommandCompleter(self.context.to_dict())
 
-        # Don't use custom key bindings - they interfere with completion state
-        # Just rely on prompt_toolkit's built-in completion behavior
+        # Create key bindings for Tab completion behavior
+        bindings = KeyBindings()
+
+        @bindings.add(Keys.Tab)
+        def handle_tab(event):
+            """Handle Tab key: accept suggestion, complete command, or cycle completions."""
+            buff = event.app.current_buffer
+
+            # Priority 1: If completion menu is showing, cycle through completions
+            if buff.complete_state:
+                buff.complete_next()
+                # If only one completion, apply it immediately
+                if buff.complete_state and len(buff.complete_state.completions) == 1:
+                    buff.complete_state = None
+            # Priority 2: If there's an auto-suggestion (gray text from history), accept it
+            elif buff.suggestion:
+                buff.insert_text(buff.suggestion.text)
+            # Priority 3: Start slash command completion if typing a command
+            elif buff.text.startswith("/"):
+                buff.start_completion(select_first=True)
+            # Priority 4: For non-command text, try to find history match
+            else:
+                # Try to trigger auto-suggest and accept if found
+                suggestion = buff.auto_suggest.get_suggestion(buff, buff.document)
+                if suggestion:
+                    buff.insert_text(suggestion.text)
 
         # Create session with all features
+        # Note: enable_history_search conflicts with complete_while_typing
+        # (up arrows browse completions vs history), so we disable history search
+        # to allow slash command completion to work as you type
         self.session: PromptSession = PromptSession(
             history=FileHistory(str(history_path)),
             auto_suggest=AutoSuggestFromHistory(),
-            enable_history_search=True,
+            enable_history_search=False,  # Disabled: conflicts with complete_while_typing
             completer=completer,
             complete_while_typing=True,  # Auto-trigger completions as you type
             complete_in_thread=False,  # Complete in main thread for responsiveness
             style=merged_style,
             complete_style="MULTI_COLUMN",  # Show completions in multi-column menu
+            key_bindings=bindings,  # Custom Tab behavior
         )
 
         logger.debug("Prompt session initialized with history and commands")

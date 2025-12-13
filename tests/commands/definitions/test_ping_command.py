@@ -179,3 +179,105 @@ class TestPingCommand:
             # Pass args as a string
             result = await command.execute(tool_manager=mock_tm, args="server1")
             assert result.success is True
+
+    @pytest.mark.asyncio
+    async def test_execute_no_servers(self, command):
+        """Test when no servers are available."""
+        from unittest.mock import AsyncMock
+
+        mock_tm = Mock()
+        mock_tm.get_server_info = AsyncMock(return_value=[])
+
+        with patch("chuk_term.ui.output"):
+            result = await command.execute(tool_manager=mock_tm)
+            assert result.success is False
+            assert "No servers available" in result.output
+
+    @pytest.mark.asyncio
+    async def test_execute_with_context_success(self, command):
+        """Test getting tool manager from context successfully."""
+        from mcp_cli.tools.models import ServerInfo
+        from unittest.mock import AsyncMock
+
+        mock_server = ServerInfo(
+            id=1,
+            name="test-server",
+            status="running",
+            connected=True,
+            tool_count=5,
+            namespace="test",
+        )
+
+        mock_tm = Mock()
+        mock_tm.get_server_info = AsyncMock(return_value=[mock_server])
+
+        mock_ctx = Mock()
+        mock_ctx.tool_manager = mock_tm
+
+        with patch("mcp_cli.commands.servers.ping.get_context") as mock_get_ctx:
+            mock_get_ctx.return_value = mock_ctx
+            with patch("chuk_term.ui.output"):
+                result = await command.execute()
+                assert result.success is True
+
+    @pytest.mark.asyncio
+    async def test_execute_filter_by_index(self, command):
+        """Test filtering servers by index."""
+        from mcp_cli.tools.models import ServerInfo
+        from unittest.mock import AsyncMock
+
+        mock_tm = Mock()
+        mock_server1 = ServerInfo(
+            id=1,
+            name="server1",
+            status="running",
+            connected=True,
+            tool_count=5,
+            namespace="test",
+        )
+        mock_server2 = ServerInfo(
+            id=2,
+            name="server2",
+            status="running",
+            connected=True,
+            tool_count=3,
+            namespace="test",
+        )
+        mock_tm.get_server_info = AsyncMock(return_value=[mock_server1, mock_server2])
+
+        with patch("chuk_term.ui.output"):
+            # Filter by index "0" - should only match first server
+            result = await command.execute(tool_manager=mock_tm, args=["0"])
+            assert result.success is True
+
+    @pytest.mark.asyncio
+    async def test_execute_context_returns_none(self, command):
+        """Test when context returns None."""
+        with patch("mcp_cli.commands.servers.ping.get_context") as mock_get_ctx:
+            mock_get_ctx.return_value = None
+
+            result = await command.execute()
+
+            assert result.success is False
+            assert "No active tool manager" in result.error
+
+    @pytest.mark.asyncio
+    async def test_execute_server_ping_exception(self, command):
+        """Test when accessing server.connected raises an exception."""
+        from unittest.mock import AsyncMock, PropertyMock
+
+        mock_tm = Mock()
+
+        # Create a mock server that raises exception when connected is accessed
+        mock_server = Mock()
+        mock_server.name = "test-server"
+        type(mock_server).connected = PropertyMock(
+            side_effect=Exception("Connection check failed")
+        )
+
+        mock_tm.get_server_info = AsyncMock(return_value=[mock_server])
+
+        with patch("chuk_term.ui.output"):
+            result = await command.execute(tool_manager=mock_tm)
+            # Should fail because the server ping raised an exception
+            assert result.success is False

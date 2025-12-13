@@ -1,6 +1,9 @@
 # tests/mcp_cli/chat/test_tool_processor.py
 import json
 import pytest
+from datetime import datetime, UTC
+
+from chuk_tool_processor import ToolResult as CTPToolResult
 
 from mcp_cli.chat.tool_processor import ToolProcessor
 from mcp_cli.chat.response_models import ToolCall, FunctionCall
@@ -52,7 +55,7 @@ class DummyStreamManager:
 
 
 class DummyToolManager:
-    """Mock tool manager with execute_tool method that returns ToolCallResult."""
+    """Mock tool manager with execute_tool and stream_execute_tools methods."""
 
     def __init__(self, return_result=None, raise_exception=False):
         self.return_result = return_result or {
@@ -63,7 +66,7 @@ class DummyToolManager:
         self.executed_tool = None
         self.executed_args = None
 
-    async def execute_tool(self, tool_name, arguments):
+    async def execute_tool(self, tool_name, arguments, namespace=None, timeout=None):
         self.executed_tool = tool_name
         self.executed_args = arguments
         if self.raise_exception:
@@ -84,6 +87,58 @@ class DummyToolManager:
                 result=self.return_result.get("content"),
                 error=None,
             )
+
+    async def stream_execute_tools(
+        self, calls, timeout=None, on_tool_start=None, max_concurrency=4
+    ):
+        """Yield CTPToolResult for each call."""
+        import platform
+        import os
+
+        for call in calls:
+            self.executed_tool = call.tool
+            self.executed_args = call.arguments
+
+            # Invoke start callback if provided
+            if on_tool_start:
+                await on_tool_start(call)
+
+            if self.raise_exception:
+                now = datetime.now(UTC)
+                yield CTPToolResult(
+                    id=call.id,
+                    tool=call.tool,
+                    result=None,
+                    error="Simulated execute_tool exception",
+                    start_time=now,
+                    end_time=now,
+                    machine=platform.node(),
+                    pid=os.getpid(),
+                )
+            elif self.return_result.get("isError"):
+                now = datetime.now(UTC)
+                yield CTPToolResult(
+                    id=call.id,
+                    tool=call.tool,
+                    result=None,
+                    error=self.return_result.get("error", "Simulated error"),
+                    start_time=now,
+                    end_time=now,
+                    machine=platform.node(),
+                    pid=os.getpid(),
+                )
+            else:
+                now = datetime.now(UTC)
+                yield CTPToolResult(
+                    id=call.id,
+                    tool=call.tool,
+                    result=self.return_result.get("content"),
+                    error=None,
+                    start_time=now,
+                    end_time=now,
+                    machine=platform.node(),
+                    pid=os.getpid(),
+                )
 
 
 class DummyContext:
@@ -211,8 +266,8 @@ async def test_process_tool_calls_tool_call_error():
 
 
 @pytest.mark.asyncio
-async def test_process_tool_calls_no_stream_manager(capfd):
-    # Test when no stream manager is available.
+async def test_process_tool_calls_no_tool_manager():
+    # Test when no tool manager is available.
     context = DummyContext(stream_manager=None, tool_manager=None)
     ui_manager = DummyUIManager()
     processor = ToolProcessor(context, ui_manager)
@@ -223,16 +278,9 @@ async def test_process_tool_calls_no_stream_manager(capfd):
         "id": "test1",
     }
 
-    # Pass as a list to process_tool_calls
-    await processor.process_tool_calls([tool_call])
-
-    # The actual error message is "No tool manager available for tool execution"
-    error_msgs = [
-        entry.content
-        for entry in context.conversation_history
-        if entry.content is not None
-    ]
-    assert any("No tool manager available" in msg for msg in error_msgs)
+    # Pass as a list to process_tool_calls - should raise RuntimeError
+    with pytest.raises(RuntimeError, match="No tool manager available"):
+        await processor.process_tool_calls([tool_call])
 
 
 @pytest.mark.asyncio

@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 from mcp_cli.model_management.provider import RuntimeProviderConfig
 
 if TYPE_CHECKING:
-    from mcp_cli.protocols import LLMClient
+    from chuk_llm.llm.core.base import BaseLLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class ClientFactory:
         model: str | None,
         config: RuntimeProviderConfig | None = None,
         chuk_config: Any = None,
-    ) -> "LLMClient":
+    ) -> "BaseLLMClient":
         """
         Get or create a client for the specified provider and model.
 
@@ -58,11 +58,11 @@ class ClientFactory:
         """
         # Custom provider path
         if config:
-            return self._get_custom_provider_client(provider, model, config)  # type: ignore[no-any-return]
+            return self._get_custom_provider_client(provider, model, config)
 
         # Standard provider path (chuk_llm)
         if chuk_config:
-            return self._get_chuk_llm_client(provider, model, chuk_config)  # type: ignore[no-any-return]
+            return self._get_chuk_llm_client(provider, model, chuk_config)
 
         raise ValueError(f"No configuration available for provider: {provider}")
 

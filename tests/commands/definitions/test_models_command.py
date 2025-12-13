@@ -32,8 +32,8 @@ class TestModelCommand:
         # When no subcommand is provided, it should show current model status
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.llm_manager.get_current_model.return_value = "gpt-4"
-            mock_ctx.llm_manager.get_current_provider.return_value = "openai"
+            mock_ctx.model_manager.get_active_model.return_value = "gpt-4"
+            mock_ctx.model_manager.get_active_provider.return_value = "openai"
 
             with patch("chuk_term.ui.output"):
                 result = await command.execute()
@@ -50,14 +50,20 @@ class TestModelCommand:
 
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.llm_manager.list_models.return_value = ["gpt-4", "gpt-3.5-turbo"]
-            mock_ctx.llm_manager.get_current_model.return_value = "gpt-4"
+            mock_ctx.model_manager.get_active_provider.return_value = "openai"
+            mock_ctx.model_manager.get_active_model.return_value = "gpt-4"
 
-            with patch("chuk_term.ui.output"):
-                result = await list_cmd.execute()
+            # Mock model discovery through chuk_llm
+            with patch(
+                "mcp_cli.commands.providers.models.ModelListCommand._get_provider_models"
+            ) as mock_discover:
+                mock_discover.return_value = ["gpt-4", "gpt-3.5-turbo"]
+
+                with patch("chuk_term.ui.output"):
+                    result = await list_cmd.execute()
 
             assert result.success is True
-            mock_ctx.llm_manager.list_models.assert_called_once()
+            mock_ctx.model_manager.get_active_provider.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_execute_invalid_subcommand(self, command):
@@ -67,7 +73,7 @@ class TestModelCommand:
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
             # Simulate the model switch failing for an invalid model
-            mock_ctx.llm_manager.set_model.side_effect = Exception(
+            mock_ctx.model_manager.switch_model.side_effect = Exception(
                 "Model not found: invalid"
             )
 

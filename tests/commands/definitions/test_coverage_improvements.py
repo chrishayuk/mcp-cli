@@ -35,7 +35,7 @@ class TestProviderCommandCoverage:
         """Test provider direct switch with args."""
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.llm_manager.set_provider.return_value = None
+            mock_ctx.model_manager.switch_provider.return_value = None
             with patch("chuk_term.ui.output"):
                 result = await command.execute(args=["openai"])
                 assert result.success is True
@@ -45,18 +45,20 @@ class TestProviderCommandCoverage:
         """Test set provider from string arg."""
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.llm_manager.set_provider.return_value = None
+            mock_ctx.model_manager.switch_provider.return_value = None
             with patch("chuk_term.ui.output"):
                 result = await set_command.execute(args="anthropic")
                 assert result.success is True
-                mock_ctx.llm_manager.set_provider.assert_called_once_with("anthropic")
+                mock_ctx.model_manager.switch_provider.assert_called_once_with(
+                    "anthropic"
+                )
 
     @pytest.mark.asyncio
     async def test_provider_set_from_args_list(self, set_command):
         """Test set provider from list args."""
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.llm_manager.set_provider.return_value = None
+            mock_ctx.model_manager.switch_provider.return_value = None
             with patch("chuk_term.ui.output"):
                 result = await set_command.execute(args=["ollama"])
                 assert result.success is True
@@ -73,7 +75,7 @@ class TestProviderCommandCoverage:
         """Test set provider error."""
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.llm_manager.set_provider.side_effect = Exception("Failed")
+            mock_ctx.model_manager.switch_provider.side_effect = Exception("Failed")
             with patch("chuk_term.ui.output"):
                 result = await set_command.execute(provider_name="bad")
                 assert result.success is False
@@ -84,8 +86,8 @@ class TestProviderCommandCoverage:
         """Test show provider."""
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.llm_manager.get_current_provider.return_value = "openai"
-            mock_ctx.llm_manager.get_current_model.return_value = "gpt-4"
+            mock_ctx.model_manager.get_active_provider.return_value = "openai"
+            mock_ctx.model_manager.get_active_model.return_value = "gpt-4"
             with patch("chuk_term.ui.output"):
                 result = await show_command.execute()
                 assert result.success is True
@@ -95,7 +97,7 @@ class TestProviderCommandCoverage:
         """Test show provider error."""
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.llm_manager.get_current_provider.side_effect = Exception("Failed")
+            mock_ctx.model_manager.get_active_provider.side_effect = Exception("Failed")
             with patch("chuk_term.ui.output"):
                 result = await show_command.execute()
                 assert result.success is False
@@ -106,7 +108,7 @@ class TestProviderCommandCoverage:
         """Test provider command error handling."""
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.llm_manager.set_provider.side_effect = Exception("Error")
+            mock_ctx.model_manager.switch_provider.side_effect = Exception("Error")
             with patch("chuk_term.ui.output"):
                 result = await command.execute(args=["test"])
                 assert result.success is False

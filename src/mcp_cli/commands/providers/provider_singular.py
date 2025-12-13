@@ -54,13 +54,13 @@ Examples:
             # No arguments - show current status (singular behavior)
             try:
                 context = get_context()
-                if not context or not context.llm_manager:
+                if not context or not context.model_manager:
                     return CommandResult(
                         success=False, error="No LLM manager available."
                     )
 
-                current_provider = context.llm_manager.get_current_provider()
-                current_model = context.llm_manager.get_current_model()
+                current_provider = context.model_manager.get_active_provider()
+                current_model = context.model_manager.get_active_model()
 
                 output.panel(
                     f"Provider: {current_provider}\nModel: {current_model}",
@@ -86,13 +86,13 @@ Examples:
                 # Treat as provider name to switch to
                 try:
                     context = get_context()
-                    if not context or not context.llm_manager:
+                    if not context or not context.model_manager:
                         return CommandResult(
                             success=False, error="No LLM manager available."
                         )
 
                     provider_name = first_arg
-                    context.llm_manager.set_provider(provider_name)
+                    context.model_manager.switch_provider(provider_name)
                     output.success(f"Switched to provider: {provider_name}")
 
                     return CommandResult(success=True)

@@ -19,6 +19,53 @@ from mcp_cli.tools.manager import ToolManager
 from chuk_term.ui import output
 
 
+def _to_serializable(obj: Any) -> Any:
+    """Convert an object to a JSON-serializable form.
+
+    Handles MCP SDK ToolResult, Pydantic models, and other non-serializable types.
+    """
+    # Handle None
+    if obj is None:
+        return None
+
+    # Handle primitives
+    if isinstance(obj, (str, int, float, bool)):
+        return obj
+
+    # Handle lists
+    if isinstance(obj, list):
+        return [_to_serializable(item) for item in obj]
+
+    # Handle dicts
+    if isinstance(obj, dict):
+        return {k: _to_serializable(v) for k, v in obj.items()}
+
+    # Handle Pydantic models (they have model_dump or dict method)
+    if hasattr(obj, "model_dump"):
+        return _to_serializable(obj.model_dump())
+    if hasattr(obj, "dict"):
+        return _to_serializable(obj.dict())
+
+    # Handle MCP SDK ToolResult (has content attribute)
+    if hasattr(obj, "content"):
+        content = obj.content
+        # Content is typically a list of TextContent/ImageContent objects
+        if isinstance(content, list):
+            result_parts = []
+            for item in content:
+                if hasattr(item, "text"):
+                    result_parts.append(item.text)
+                elif hasattr(item, "model_dump"):
+                    result_parts.append(_to_serializable(item.model_dump()))
+                else:
+                    result_parts.append(str(item))
+            return "\n".join(result_parts) if len(result_parts) == 1 else result_parts
+        return _to_serializable(content)
+
+    # Fallback to string representation
+    return str(obj)
+
+
 class ExecuteToolCommand(UnifiedCommand):
     """Command to execute a tool with parameters."""
 
@@ -299,10 +346,12 @@ Tips:
                     if result.success and result.result is not None:
                         output.success("✅ Tool executed successfully")
                         # Extract the actual result from ToolCallResult
-                        if isinstance(result.result, dict):
-                            output.print(json.dumps(result.result, indent=2))
+                        # Use _to_serializable to handle MCP SDK types
+                        serializable_result = _to_serializable(result.result)
+                        if isinstance(serializable_result, (dict, list)):
+                            output.print(json.dumps(serializable_result, indent=2))
                         else:
-                            output.print(str(result.result))
+                            output.print(str(serializable_result))
                     elif result.error:
                         # Handle error case cleanly without scary stack traces
                         output.error("❌ Tool execution failed")
@@ -340,7 +389,8 @@ Tips:
                         output.warning("Tool returned no result")
                 elif isinstance(result, dict):  # type: ignore[unreachable]
                     output.success("✅ Tool executed successfully")
-                    output.print(json.dumps(result, indent=2))
+                    serializable_result = _to_serializable(result)
+                    output.print(json.dumps(serializable_result, indent=2))
                 else:
                     output.success("✅ Tool executed successfully")
                     output.print(str(result))

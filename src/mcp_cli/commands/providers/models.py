@@ -6,6 +6,7 @@ Uses the existing enhanced model commands from mcp_cli.commands.model
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 
 from mcp_cli.commands.base import (
     UnifiedCommand,
@@ -13,6 +14,9 @@ from mcp_cli.commands.base import (
     CommandParameter,
     CommandResult,
 )
+
+if TYPE_CHECKING:
+    from mcp_cli.commands.models.model import ModelInfo
 
 
 class ModelCommand(CommandGroup):
@@ -66,35 +70,18 @@ Examples:
         from mcp_cli.context import get_context
         from chuk_term.ui import output
 
-        # Check if we have args (could be model name or subcommand)
         args = kwargs.get("args", [])
 
+        # No arguments - delegate to list subcommand to show all models
         if not args:
-            # No arguments - show current model status
-            try:
-                context = get_context()
-                if not context or not context.llm_manager:
-                    return CommandResult(
-                        success=False, error="No LLM manager available."
-                    )
+            list_cmd = self.subcommands.get("list")
+            if list_cmd:
+                return await list_cmd.execute(**kwargs)
+            return CommandResult(success=False, error="List subcommand not available")
 
-                current_model = context.llm_manager.get_current_model()
-                current_provider = context.llm_manager.get_current_provider()
-
-                output.panel(
-                    f"Provider: {current_provider}\nModel: {current_model}",
-                    title="Current Model Status",
-                )
-                return CommandResult(success=True)
-            except Exception as e:
-                return CommandResult(
-                    success=False, error=f"Failed to show model status: {str(e)}"
-                )
-
-        # Check if the first arg is a known subcommand
         first_arg = args[0] if isinstance(args, list) else str(args)
 
-        # Known subcommands that should be handled by subcommand classes
+        # Known subcommands - let parent class handle routing
         if first_arg.lower() in [
             "list",
             "ls",
@@ -105,18 +92,17 @@ Examples:
             "current",
             "status",
         ]:
-            # Let the parent class handle the subcommand routing
             return await super().execute(**kwargs)
 
         # Otherwise, treat it as a model name to switch to
         try:
             context = get_context()
-            if not context or not context.llm_manager:
+            if not context or not context.model_manager:
                 return CommandResult(success=False, error="No LLM manager available.")
 
-            model_name = first_arg
-            context.llm_manager.set_model(model_name)
-            output.success(f"Switched to model: {model_name}")
+            current_provider = context.model_manager.get_active_provider()
+            context.model_manager.switch_model(current_provider, first_arg)
+            output.success(f"Switched to model: {first_arg}")
 
             return CommandResult(success=True)
         except Exception as e:
@@ -165,23 +151,37 @@ class ModelListCommand(UnifiedCommand):
 
         try:
             context = get_context()
-            if not context or not context.llm_manager:
+            if not context or not context.model_manager:
                 return CommandResult(success=False, error="No LLM manager available.")
 
-            models = context.llm_manager.list_models()
-            current_model = context.llm_manager.get_current_model()
+            current_provider = context.model_manager.get_active_provider()
+            current_model = context.model_manager.get_active_model()
 
-            # Build table data
+            # Discover models for the current provider
+            model_infos = self._discover_models(current_provider, current_model)
+
+            if not model_infos:
+                output.warning(
+                    f"No models discovered for {current_provider}. "
+                    "Check API key configuration."
+                )
+                return CommandResult(success=True, data={"command": "model list"})
+
+            # Build table data from Pydantic models
             table_data = []
-            for model in models:
-                is_current = "✓" if model == current_model else ""
-                table_data.append({"Current": is_current, "Model": model})
+            for model_info in model_infos:
+                table_data.append(
+                    {
+                        "": "✓" if model_info.is_current else "",
+                        "Model": model_info.name,
+                    }
+                )
 
             # Display table
             table = format_table(
                 table_data,
-                title=f"{len(models)} Available Models",
-                columns=["Current", "Model"],
+                title=f"{len(model_infos)} Models for {current_provider}",
+                columns=["", "Model"],
             )
             output.print_table(table)
 
@@ -192,6 +192,126 @@ class ModelListCommand(UnifiedCommand):
                 success=False,
                 error=f"Failed to list models: {str(e)}",
             )
+
+    def _discover_models(self, provider: str, current_model: str) -> list["ModelInfo"]:
+        """Discover available models for a provider."""
+        from mcp_cli.commands.models.model import ModelInfo
+        from mcp_cli.constants import PROVIDER_OLLAMA
+
+        # For Ollama, get actual running models from CLI
+        if provider.lower() == PROVIDER_OLLAMA:
+            model_names = self._get_ollama_models()
+        else:
+            # Get models from chuk_llm (already filters out placeholders)
+            model_names = self._get_provider_models(provider)
+
+        # Convert to Pydantic ModelInfo objects
+        return [
+            ModelInfo(
+                name=name,
+                provider=provider,
+                is_current=(name == current_model),
+            )
+            for name in model_names
+        ]
+
+    def _get_ollama_models(self) -> list[str]:
+        """Get models from Ollama CLI."""
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                ["ollama", "list"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                lines = result.stdout.strip().split("\n")
+                models = []
+                for line in lines[1:]:  # Skip header
+                    if line.strip():
+                        parts = line.split()
+                        if parts:
+                            models.append(parts[0])
+                return models
+        except Exception:
+            pass
+        return []
+
+    def _get_provider_models(self, provider: str) -> list[str]:
+        """Get models from chuk_llm for a provider.
+
+        Tries multiple strategies:
+        1. Get from chuk_llm's cached provider info
+        2. If only "*" placeholder, call the provider's /models API endpoint
+        3. Fall back to default_model if available
+        """
+        try:
+            from chuk_llm.llm.client import list_available_providers
+
+            providers_info = list_available_providers()
+            provider_info = providers_info.get(provider, {})
+
+            if isinstance(provider_info, dict):
+                models = provider_info.get(
+                    "models", provider_info.get("available_models", [])
+                )
+                model_list = list(models) if models else []
+
+                # Filter out placeholder "*" values
+                model_list = [m for m in model_list if m and m != "*"]
+
+                # If only placeholder models, try calling the API
+                if not model_list and provider_info.get("has_api_key"):
+                    api_base = provider_info.get("api_base")
+                    if api_base:
+                        model_list = self._fetch_models_from_api(provider, api_base)
+
+                # Fall back to default_model if still empty
+                if not model_list:
+                    default_model = provider_info.get("default_model")
+                    if default_model:
+                        model_list = [default_model]
+
+                return model_list
+        except Exception:
+            pass
+        return []
+
+    def _fetch_models_from_api(self, provider: str, api_base: str) -> list[str]:
+        """Fetch models from provider's /models API endpoint.
+
+        Works for OpenAI-compatible APIs (deepseek, openai, etc.)
+        """
+        import os
+
+        try:
+            import httpx
+
+            # Get API key from environment
+            api_key = os.environ.get(f"{provider.upper()}_API_KEY")
+            if not api_key:
+                return []
+
+            # Ensure api_base ends properly for /models endpoint
+            models_url = f"{api_base.rstrip('/')}/models"
+
+            resp = httpx.get(
+                models_url,
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=5.0,
+            )
+
+            if resp.status_code == 200:
+                data = resp.json()
+                if isinstance(data, dict) and "data" in data:
+                    # OpenAI-compatible format: {"data": [{"id": "model-name", ...}]}
+                    return [m.get("id") for m in data["data"] if m.get("id")]
+
+        except Exception:
+            pass
+        return []
 
 
 class ModelSetCommand(UnifiedCommand):
@@ -242,10 +362,11 @@ class ModelSetCommand(UnifiedCommand):
 
         try:
             context = get_context()
-            if not context or not context.llm_manager:
+            if not context or not context.model_manager:
                 return CommandResult(success=False, error="No LLM manager available.")
 
-            context.llm_manager.set_model(model_name)
+            current_provider = context.model_manager.get_active_provider()
+            context.model_manager.switch_model(current_provider, model_name)
             output.success(f"Switched to model: {model_name}")
 
             return CommandResult(success=True, data={"model": model_name})
@@ -279,11 +400,11 @@ class ModelShowCommand(UnifiedCommand):
 
         try:
             context = get_context()
-            if not context or not context.llm_manager:
+            if not context or not context.model_manager:
                 return CommandResult(success=False, error="No LLM manager available.")
 
-            current_model = context.llm_manager.get_current_model()
-            current_provider = context.llm_manager.get_current_provider()
+            current_model = context.model_manager.get_active_model()
+            current_provider = context.model_manager.get_active_provider()
 
             output.panel(
                 f"Provider: {current_provider}\nModel: {current_model}",

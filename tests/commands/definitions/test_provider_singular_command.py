@@ -29,13 +29,13 @@ async def test_provider_show_status_no_args(provider_command):
     """Test showing current provider status with no arguments."""
     with patch("mcp_cli.context.get_context") as mock_get_ctx:
         mock_ctx = mock_get_ctx.return_value
-        mock_ctx.llm_manager.get_current_provider.return_value = "openai"
-        mock_ctx.llm_manager.get_current_model.return_value = "gpt-4"
+        mock_ctx.model_manager.get_active_provider.return_value = "openai"
+        mock_ctx.model_manager.get_active_model.return_value = "gpt-4"
         with patch("chuk_term.ui.output"):
             result = await provider_command.execute(args=[])
 
             assert result.success is True
-            mock_ctx.llm_manager.get_current_provider.assert_called_once()
+            mock_ctx.model_manager.get_active_provider.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -43,7 +43,7 @@ async def test_provider_show_status_error(provider_command):
     """Test error handling when showing provider status fails."""
     with patch("mcp_cli.context.get_context") as mock_get_ctx:
         mock_ctx = mock_get_ctx.return_value
-        mock_ctx.llm_manager.get_current_provider.side_effect = Exception(
+        mock_ctx.model_manager.get_active_provider.side_effect = Exception(
             "Connection failed"
         )
         with patch("chuk_term.ui.output"):
@@ -58,12 +58,12 @@ async def test_provider_switch_to_provider(provider_command):
     """Test switching to a different provider."""
     with patch("mcp_cli.context.get_context") as mock_get_ctx:
         mock_ctx = mock_get_ctx.return_value
-        mock_ctx.llm_manager.set_provider.return_value = None
+        mock_ctx.model_manager.switch_provider.return_value = None
         with patch("chuk_term.ui.output"):
             result = await provider_command.execute(args=["ollama"])
 
             assert result.success is True
-            mock_ctx.llm_manager.set_provider.assert_called_once_with("ollama")
+            mock_ctx.model_manager.switch_provider.assert_called_once_with("ollama")
 
 
 @pytest.mark.asyncio
@@ -71,7 +71,9 @@ async def test_provider_switch_error(provider_command):
     """Test error handling when switching provider fails."""
     with patch("mcp_cli.context.get_context") as mock_get_ctx:
         mock_ctx = mock_get_ctx.return_value
-        mock_ctx.llm_manager.set_provider.side_effect = Exception("Invalid provider")
+        mock_ctx.model_manager.switch_provider.side_effect = Exception(
+            "Invalid provider"
+        )
         with patch("chuk_term.ui.output"):
             result = await provider_command.execute(args=["invalid"])
 
@@ -126,13 +128,13 @@ async def test_provider_with_string_args(provider_command):
     """Test handling of string arguments instead of list."""
     with patch("mcp_cli.context.get_context") as mock_get_ctx:
         mock_ctx = mock_get_ctx.return_value
-        mock_ctx.llm_manager.set_provider.return_value = None
+        mock_ctx.model_manager.switch_provider.return_value = None
         with patch("chuk_term.ui.output"):
             # Test with string argument
             result = await provider_command.execute(args="ollama")
 
             assert result.success is True
-            mock_ctx.llm_manager.set_provider.assert_called_once_with("ollama")
+            mock_ctx.model_manager.switch_provider.assert_called_once_with("ollama")
 
 
 @pytest.mark.asyncio
@@ -140,12 +142,12 @@ async def test_provider_with_multiple_args(provider_command):
     """Test handling of multiple arguments."""
     with patch("mcp_cli.context.get_context") as mock_get_ctx:
         mock_ctx = mock_get_ctx.return_value
-        mock_ctx.llm_manager.set_provider.return_value = None
+        mock_ctx.model_manager.switch_provider.return_value = None
         with patch("chuk_term.ui.output"):
             result = await provider_command.execute(args=["openai", "gpt-4"])
 
             assert result.success is True
-            mock_ctx.llm_manager.set_provider.assert_called_once_with("openai")
+            mock_ctx.model_manager.switch_provider.assert_called_once_with("openai")
 
 
 @pytest.mark.asyncio
@@ -153,11 +155,11 @@ async def test_provider_with_no_kwargs(provider_command):
     """Test handling when no kwargs provided."""
     with patch("mcp_cli.context.get_context") as mock_get_ctx:
         mock_ctx = mock_get_ctx.return_value
-        mock_ctx.llm_manager.get_current_provider.return_value = "openai"
-        mock_ctx.llm_manager.get_current_model.return_value = "gpt-4"
+        mock_ctx.model_manager.get_active_provider.return_value = "openai"
+        mock_ctx.model_manager.get_active_model.return_value = "gpt-4"
         with patch("chuk_term.ui.output"):
             # No args key in kwargs
             result = await provider_command.execute()
 
             assert result.success is True
-            mock_ctx.llm_manager.get_current_provider.assert_called_once()
+            mock_ctx.model_manager.get_active_provider.assert_called_once()

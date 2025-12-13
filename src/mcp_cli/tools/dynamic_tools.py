@@ -1,6 +1,7 @@
-"""Meta-tools for dynamic tool discovery and binding.
+# mcp_cli/tools/dynamic_tools.py
+"""Dynamic tools for on-demand tool discovery and binding.
 
-This module provides meta-tools that allow the LLM to discover and load
+This module provides dynamic tools that allow the LLM to discover and load
 tool schemas on-demand, rather than loading all tools upfront.
 """
 
@@ -8,16 +9,28 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from enum import Enum
+from typing import TYPE_CHECKING, Any
 
+if TYPE_CHECKING:
+    from mcp_cli.tools.manager import ToolManager
 
 logger = logging.getLogger(__name__)
 
 
-class MetaToolProvider:
-    """Provides meta-tools for dynamic tool discovery."""
+class DynamicToolName(str, Enum):
+    """Names of available dynamic tools - no magic strings!"""
 
-    def __init__(self, tool_manager):
+    LIST_TOOLS = "list_tools"
+    SEARCH_TOOLS = "search_tools"
+    GET_TOOL_SCHEMA = "get_tool_schema"
+    CALL_TOOL = "call_tool"
+
+
+class DynamicToolProvider:
+    """Provides dynamic tools for on-demand tool discovery."""
+
+    def __init__(self, tool_manager: ToolManager) -> None:
         """Initialize with a tool manager.
 
         Args:
@@ -26,17 +39,17 @@ class MetaToolProvider:
         self.tool_manager = tool_manager
         self._tool_cache: dict[str, dict[str, Any]] = {}
 
-    def get_meta_tools(self) -> list[dict[str, Any]]:
-        """Get the meta-tool definitions for the LLM.
+    def get_dynamic_tools(self) -> list[dict[str, Any]]:
+        """Get the dynamic tool definitions for the LLM.
 
         Returns:
-            List of meta-tool definitions in OpenAI function format
+            List of dynamic tool definitions in OpenAI function format
         """
         return [
             {
                 "type": "function",
                 "function": {
-                    "name": "list_tools",
+                    "name": DynamicToolName.LIST_TOOLS.value,
                     "description": "List all available tools. Use this to see what tools you can use. Returns tool names and brief descriptions.",
                     "parameters": {
                         "type": "object",
@@ -53,7 +66,7 @@ class MetaToolProvider:
             {
                 "type": "function",
                 "function": {
-                    "name": "search_tools",
+                    "name": DynamicToolName.SEARCH_TOOLS.value,
                     "description": "Search for available tools by name or description. Use this to discover what tools are available before using them.",
                     "parameters": {
                         "type": "object",
@@ -75,7 +88,7 @@ class MetaToolProvider:
             {
                 "type": "function",
                 "function": {
-                    "name": "get_tool_schema",
+                    "name": DynamicToolName.GET_TOOL_SCHEMA.value,
                     "description": "Get the full schema for a specific tool. Call this after search_tools to get detailed parameter information before using a tool.",
                     "parameters": {
                         "type": "object",
@@ -92,7 +105,7 @@ class MetaToolProvider:
             {
                 "type": "function",
                 "function": {
-                    "name": "call_tool",
+                    "name": DynamicToolName.CALL_TOOL.value,
                     "description": 'Execute any discovered tool with the specified arguments. First use search_tools or list_tools to find tools, then get_tool_schema to see what parameters are needed, then call_tool to execute it. Pass tool parameters as individual properties (e.g., for tool \'add\' with params \'a\' and \'b\', use: {"tool_name": "add", "a": 1, "b": 2}).',
                     "parameters": {
                         "type": "object",
@@ -335,19 +348,19 @@ class MetaToolProvider:
                 "error": str(e),
             }
 
-    async def execute_meta_tool(
+    async def execute_dynamic_tool(
         self, tool_name: str, arguments: dict[str, Any]
     ) -> dict[str, Any]:
-        """Execute a meta-tool.
+        """Execute a dynamic tool.
 
         Args:
-            tool_name: Name of the meta-tool
+            tool_name: Name of the dynamic tool
             arguments: Tool arguments
 
         Returns:
             Tool execution result
         """
-        if tool_name == "list_tools":
+        if tool_name == DynamicToolName.LIST_TOOLS.value:
             limit = arguments.get("limit", 50)
             results = await self.list_tools(limit)
             return {
@@ -356,18 +369,18 @@ class MetaToolProvider:
                 "total_available": len(await self.tool_manager.get_all_tools()),
             }
 
-        elif tool_name == "search_tools":
+        elif tool_name == DynamicToolName.SEARCH_TOOLS.value:
             query = arguments.get("query", "")
             limit = arguments.get("limit", 10)
             results = await self.search_tools(query, limit)
             return {"results": results, "count": len(results)}
 
-        elif tool_name == "get_tool_schema":
+        elif tool_name == DynamicToolName.GET_TOOL_SCHEMA.value:
             tool_name_arg = arguments.get("tool_name", "")
             schema = await self.get_tool_schema(tool_name_arg)
             return schema
 
-        elif tool_name == "call_tool":
+        elif tool_name == DynamicToolName.CALL_TOOL.value:
             tool_name_arg = arguments.get("tool_name", "")
             # Extract tool arguments from the remaining parameters
             # Remove 'tool_name' from arguments to get the actual tool parameters
@@ -376,20 +389,15 @@ class MetaToolProvider:
             return result
 
         else:
-            return {"error": f"Unknown meta-tool: {tool_name}"}
+            return {"error": f"Unknown dynamic tool: {tool_name}"}
 
-    def is_meta_tool(self, tool_name: str) -> bool:
-        """Check if a tool name is a meta-tool.
+    def is_dynamic_tool(self, tool_name: str) -> bool:
+        """Check if a tool name is a dynamic tool.
 
         Args:
             tool_name: Tool name to check
 
         Returns:
-            True if it's a meta-tool
+            True if it's a dynamic tool
         """
-        return tool_name in [
-            "list_tools",
-            "search_tools",
-            "get_tool_schema",
-            "call_tool",
-        ]
+        return tool_name in {m.value for m in DynamicToolName}

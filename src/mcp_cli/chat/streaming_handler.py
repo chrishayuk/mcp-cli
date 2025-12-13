@@ -81,7 +81,7 @@ class ToolCallAccumulator:
     Handles fragmented JSON and validates tool call structure.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._accumulated: list[ToolCallData] = []
 
     def process_chunk_tool_calls(self, chunk_tool_calls: list[dict[str, Any]]) -> None:

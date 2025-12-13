@@ -2,10 +2,12 @@
 
 import pytest
 from pydantic import ValidationError
+
 from mcp_cli.commands.models.server import (
     ServerActionParams,
-    ServerStatusInfo,
+    ServerCapabilities,
     ServerPerformanceInfo,
+    ServerStatusInfo,
 )
 
 
@@ -121,3 +123,75 @@ class TestServerPerformanceInfo:
         """Test that icon and latency are required."""
         with pytest.raises(ValidationError):
             ServerPerformanceInfo(ping_ms=25.5)
+
+
+class TestServerCapabilities:
+    """Test ServerCapabilities model."""
+
+    def test_default_capabilities(self):
+        """Test default values."""
+        caps = ServerCapabilities()
+
+        assert caps.tools is False
+        assert caps.prompts is False
+        assert caps.resources is False
+        assert caps.experimental == {}
+
+    def test_custom_capabilities(self):
+        """Test with custom values."""
+        caps = ServerCapabilities(
+            tools=True,
+            prompts=True,
+            resources=True,
+            experimental={"events": True, "streaming": True},
+        )
+
+        assert caps.tools is True
+        assert caps.prompts is True
+        assert caps.resources is True
+        assert caps.experimental["events"] is True
+
+    def test_has_events_property(self):
+        """Test has_events property."""
+        caps_no_events = ServerCapabilities()
+        assert caps_no_events.has_events is False
+
+        caps_with_events = ServerCapabilities(experimental={"events": True})
+        assert caps_with_events.has_events is True
+
+        caps_events_false = ServerCapabilities(experimental={"events": False})
+        assert caps_events_false.has_events is False
+
+    def test_has_streaming_property(self):
+        """Test has_streaming property."""
+        caps_no_streaming = ServerCapabilities()
+        assert caps_no_streaming.has_streaming is False
+
+        caps_with_streaming = ServerCapabilities(experimental={"streaming": True})
+        assert caps_with_streaming.has_streaming is True
+
+    def test_to_display_string_empty(self):
+        """Test to_display_string with no capabilities."""
+        caps = ServerCapabilities()
+        assert caps.to_display_string() == "None"
+
+    def test_to_display_string_basic(self):
+        """Test to_display_string with basic capabilities."""
+        caps = ServerCapabilities(tools=True)
+        assert caps.to_display_string() == "Tools"
+
+        caps2 = ServerCapabilities(tools=True, prompts=True)
+        assert caps2.to_display_string() == "Tools, Prompts"
+
+        caps3 = ServerCapabilities(tools=True, prompts=True, resources=True)
+        assert caps3.to_display_string() == "Tools, Prompts, Resources"
+
+    def test_to_display_string_with_experimental(self):
+        """Test to_display_string with experimental capabilities."""
+        caps = ServerCapabilities(
+            tools=True, experimental={"events": True, "streaming": True}
+        )
+        display = caps.to_display_string()
+        assert "Tools" in display
+        assert "Events*" in display
+        assert "Streaming*" in display

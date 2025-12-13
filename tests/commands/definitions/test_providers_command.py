@@ -32,8 +32,11 @@ class TestProviderCommand:
         # When no subcommand is provided, it should list providers
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.llm_manager.list_providers.return_value = ["openai", "anthropic"]
-            mock_ctx.llm_manager.get_current_provider.return_value = "openai"
+            mock_ctx.model_manager.get_available_providers.return_value = [
+                "openai",
+                "anthropic",
+            ]
+            mock_ctx.model_manager.get_active_provider.return_value = "openai"
             with patch("chuk_term.ui.output"):
                 with patch("chuk_term.ui.format_table"):
                     result = await command.execute()
@@ -50,14 +53,18 @@ class TestProviderCommand:
 
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.llm_manager.list_providers.return_value = ["ollama"]
-            mock_ctx.llm_manager.get_current_provider.return_value = "ollama"
-            with patch("chuk_term.ui.output"):
-                with patch("chuk_term.ui.format_table"):
-                    result = await list_cmd.execute()
+            mock_ctx.model_manager.get_active_provider.return_value = "ollama"
 
-                    assert result.success is True
-                    mock_ctx.llm_manager.list_providers.assert_called_once()
+            # Mock provider discovery through chuk_llm
+            with patch("chuk_llm.llm.client.list_available_providers") as mock_list:
+                mock_list.return_value = {"ollama": {"has_api_key": True, "models": []}}
+
+                with patch("chuk_term.ui.output"):
+                    with patch("chuk_term.ui.format_table"):
+                        result = await list_cmd.execute()
+
+                        assert result.success is True
+                        mock_ctx.model_manager.get_active_provider.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_execute_invalid_subcommand(self, command):
@@ -67,7 +74,7 @@ class TestProviderCommand:
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
             # Simulate the action failing for an invalid provider
-            mock_ctx.llm_manager.set_provider.side_effect = Exception(
+            mock_ctx.model_manager.switch_provider.side_effect = Exception(
                 "Provider not found: invalid"
             )
             with patch("chuk_term.ui.output"):
@@ -78,10 +85,10 @@ class TestProviderCommand:
 
     @pytest.mark.asyncio
     async def test_execute_no_args_error(self, command):
-        """Test error handling when listing with no args fails."""
+        """Test error handling when list subcommand fails."""
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.llm_manager.list_providers.side_effect = Exception(
+            mock_ctx.model_manager.get_active_provider.side_effect = Exception(
                 "Connection failed"
             )
             with patch("chuk_term.ui.output"):
@@ -98,12 +105,12 @@ class TestProviderCommand:
 
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.llm_manager.set_provider.return_value = None
+            mock_ctx.model_manager.switch_provider.return_value = None
             with patch("chuk_term.ui.output"):
                 result = await set_cmd.execute(args=["ollama"])
 
                 assert result.success is True
-                mock_ctx.llm_manager.set_provider.assert_called_once()
+                mock_ctx.model_manager.switch_provider.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_execute_set_error(self, command):
@@ -112,7 +119,7 @@ class TestProviderCommand:
 
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.llm_manager.set_provider.side_effect = Exception(
+            mock_ctx.model_manager.switch_provider.side_effect = Exception(
                 "Invalid provider"
             )
             with patch("chuk_term.ui.output"):
@@ -129,13 +136,13 @@ class TestProviderCommand:
 
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.llm_manager.get_current_provider.return_value = "openai"
-            mock_ctx.llm_manager.get_current_model.return_value = "gpt-4"
+            mock_ctx.model_manager.get_active_provider.return_value = "openai"
+            mock_ctx.model_manager.get_active_model.return_value = "gpt-4"
             with patch("chuk_term.ui.output"):
                 result = await show_cmd.execute()
 
                 assert result.success is True
-                mock_ctx.llm_manager.get_current_provider.assert_called_once()
+                mock_ctx.model_manager.get_active_provider.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_execute_show_error(self, command):
@@ -144,7 +151,7 @@ class TestProviderCommand:
 
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.llm_manager.get_current_provider.side_effect = Exception(
+            mock_ctx.model_manager.get_active_provider.side_effect = Exception(
                 "Failed to get info"
             )
             with patch("chuk_term.ui.output"):
@@ -158,10 +165,10 @@ class TestProviderCommand:
         """Test that known subcommands are routed to parent."""
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.llm_manager.list_providers.return_value = ["openai"]
-            mock_ctx.llm_manager.get_current_provider.return_value = "openai"
-            mock_ctx.llm_manager.get_current_model.return_value = "gpt-4"
-            mock_ctx.llm_manager.set_provider.return_value = None
+            mock_ctx.model_manager.get_available_providers.return_value = ["openai"]
+            mock_ctx.model_manager.get_active_provider.return_value = "openai"
+            mock_ctx.model_manager.get_active_model.return_value = "gpt-4"
+            mock_ctx.model_manager.switch_provider.return_value = None
             with patch("chuk_term.ui.output"):
                 with patch("chuk_term.ui.format_table"):
                     # Test various known subcommand aliases
@@ -184,10 +191,204 @@ class TestProviderCommand:
         """Test passing provider name directly (not a subcommand)."""
         with patch("mcp_cli.context.get_context") as mock_get_ctx:
             mock_ctx = mock_get_ctx.return_value
-            mock_ctx.llm_manager.set_provider.return_value = None
+            mock_ctx.model_manager.switch_provider.return_value = None
             with patch("chuk_term.ui.output"):
                 result = await command.execute(args=["ollama"])
 
                 assert result.success is True
                 # Should treat "ollama" as a provider name to switch to
-                mock_ctx.llm_manager.set_provider.assert_called_once_with("ollama")
+                mock_ctx.model_manager.switch_provider.assert_called_once_with("ollama")
+
+
+class TestProviderListCommandExtended:
+    """Extended tests for ProviderListCommand."""
+
+    @pytest.fixture
+    def command(self):
+        """Create a ProviderListCommand instance."""
+        from mcp_cli.commands.providers.providers import ProviderListCommand
+
+        return ProviderListCommand()
+
+    @pytest.mark.asyncio
+    async def test_list_no_context(self, command):
+        """Test list command when context is None."""
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_get_ctx.return_value = None
+
+            result = await command.execute()
+
+            assert result.success is False
+            assert "No LLM manager available" in result.error
+
+    @pytest.mark.asyncio
+    async def test_list_no_model_manager(self, command):
+        """Test list command when model_manager is None."""
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_ctx = mock_get_ctx.return_value
+            mock_ctx.model_manager = None
+
+            result = await command.execute()
+
+            assert result.success is False
+            assert "No LLM manager available" in result.error
+
+    def test_get_provider_status_ollama_running(self, command):
+        """Test _get_provider_status for running Ollama."""
+        from mcp_cli.commands.models.provider import ProviderData
+
+        provider = ProviderData(name="ollama", has_api_key=False, models=[])
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = "NAME\nllama2\ncodellama"
+
+            status = command._get_provider_status(provider)
+
+            assert status.icon == "✅"
+            assert "Running" in status.text
+            assert "2 models" in status.text
+
+    def test_get_provider_status_ollama_not_running(self, command):
+        """Test _get_provider_status for non-running Ollama."""
+        from mcp_cli.commands.models.provider import ProviderData
+
+        provider = ProviderData(name="ollama", has_api_key=False, models=[])
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 1
+
+            status = command._get_provider_status(provider)
+
+            assert status.icon == "❌"
+            assert "Not running" in status.text
+
+    def test_get_provider_status_ollama_exception(self, command):
+        """Test _get_provider_status when Ollama command fails."""
+        from mcp_cli.commands.models.provider import ProviderData
+
+        provider = ProviderData(name="ollama", has_api_key=False, models=[])
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = Exception("Command not found")
+
+            status = command._get_provider_status(provider)
+
+            assert status.icon == "❌"
+            assert "Not available" in status.text
+
+    def test_get_provider_status_with_api_key_and_models(self, command):
+        """Test _get_provider_status for provider with API key and models."""
+        from mcp_cli.commands.models.provider import ProviderData
+
+        provider = ProviderData(
+            name="openai", has_api_key=True, models=["gpt-4", "gpt-3.5-turbo"]
+        )
+
+        status = command._get_provider_status(provider)
+
+        assert status.icon == "✅"
+        assert "Configured" in status.text
+        assert "2 models" in status.text
+
+    def test_get_provider_status_with_api_key_no_models(self, command):
+        """Test _get_provider_status for provider with API key but no models."""
+        from mcp_cli.commands.models.provider import ProviderData
+
+        provider = ProviderData(name="openai", has_api_key=True, models=[])
+
+        status = command._get_provider_status(provider)
+
+        assert status.icon == "⚠️"
+        assert "API key set" in status.text
+
+    def test_get_provider_status_no_api_key(self, command):
+        """Test _get_provider_status for provider without API key."""
+        from mcp_cli.commands.models.provider import ProviderData
+
+        provider = ProviderData(name="openai", has_api_key=False, models=[])
+
+        status = command._get_provider_status(provider)
+
+        assert status.icon == "❌"
+        assert "No API key" in status.text
+
+
+class TestProviderSetCommandExtended:
+    """Extended tests for ProviderSetCommand."""
+
+    @pytest.fixture
+    def command(self):
+        """Create a ProviderSetCommand instance."""
+        from mcp_cli.commands.providers.providers import ProviderSetCommand
+
+        return ProviderSetCommand()
+
+    @pytest.mark.asyncio
+    async def test_set_no_context(self, command):
+        """Test set command when context is None."""
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_get_ctx.return_value = None
+
+            result = await command.execute(provider_name="openai")
+
+            assert result.success is False
+            assert "No LLM manager available" in result.error
+
+    @pytest.mark.asyncio
+    async def test_set_no_model_manager(self, command):
+        """Test set command when model_manager is None."""
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_ctx = mock_get_ctx.return_value
+            mock_ctx.model_manager = None
+
+            result = await command.execute(provider_name="openai")
+
+            assert result.success is False
+            assert "No LLM manager available" in result.error
+
+    @pytest.mark.asyncio
+    async def test_set_args_as_string(self, command):
+        """Test set command with args as string."""
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_ctx = mock_get_ctx.return_value
+            mock_ctx.model_manager.switch_provider.return_value = None
+
+            with patch("chuk_term.ui.output"):
+                result = await command.execute(args="openai")
+
+            assert result.success is True
+
+
+class TestProviderShowCommandExtended:
+    """Extended tests for ProviderShowCommand."""
+
+    @pytest.fixture
+    def command(self):
+        """Create a ProviderShowCommand instance."""
+        from mcp_cli.commands.providers.providers import ProviderShowCommand
+
+        return ProviderShowCommand()
+
+    @pytest.mark.asyncio
+    async def test_show_no_context(self, command):
+        """Test show command when context is None."""
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_get_ctx.return_value = None
+
+            result = await command.execute()
+
+            assert result.success is False
+            assert "No LLM manager available" in result.error
+
+    @pytest.mark.asyncio
+    async def test_show_no_model_manager(self, command):
+        """Test show command when model_manager is None."""
+        with patch("mcp_cli.context.get_context") as mock_get_ctx:
+            mock_ctx = mock_get_ctx.return_value
+            mock_ctx.model_manager = None
+
+            result = await command.execute()
+
+            assert result.success is False
+            assert "No LLM manager available" in result.error
