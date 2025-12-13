@@ -9,7 +9,13 @@ from pydantic import BaseModel
 
 from mcp_cli.config.enums import ConfigSource, TimeoutType
 from mcp_cli.config.models import ConfigOverride, MCPConfig, TimeoutConfig, ToolConfig
-from mcp_cli.constants import EnvVar, get_env, get_env_bool, get_env_float, get_env_list
+from mcp_cli.config.env_vars import (
+    EnvVar,
+    get_env,
+    get_env_bool,
+    get_env_float,
+    get_env_list,
+)
 
 logger = logging.getLogger(__name__)
 

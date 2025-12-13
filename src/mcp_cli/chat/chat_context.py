@@ -49,6 +49,10 @@ class ChatContext:
             ToolExecutionRecord
         ] = []  # Track tool execution history
 
+        # ToolProcessor back-reference (set by ToolProcessor.__init__)
+        # Satisfies ToolProcessorContext protocol
+        self.tool_processor: Any = None
+
         # Tool state (filled during initialization)
         self.tools: list[ToolInfo] = []
         self.internal_tools: list[ToolInfo] = []

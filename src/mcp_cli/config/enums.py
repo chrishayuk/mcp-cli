@@ -1,8 +1,16 @@
-"""Configuration enums - no magic strings!"""
+"""Configuration enums - no magic strings!
+
+All enums for type-safe configuration and commands.
+"""
 
 from __future__ import annotations
 
 from enum import Enum
+
+
+# ================================================================
+# Configuration Enums
+# ================================================================
 
 
 class TimeoutType(str, Enum):
@@ -40,3 +48,87 @@ class ConfigSource(str, Enum):
 # NOTE: Theme names come from chuk-term.ui.theme.Theme
 # Valid values: "default", "dark", "light", "minimal", "terminal"
 # We don't duplicate them here - use strings and let chuk-term validate
+
+
+# ================================================================
+# Server/Status Enums
+# ================================================================
+
+
+class ServerStatus(str, Enum):
+    """Server status values."""
+
+    CONFIGURED = "configured"
+    CONNECTED = "connected"
+    DISCONNECTED = "disconnected"
+    ERROR = "error"
+    HEALTHY = "healthy"
+    UNHEALTHY = "unhealthy"
+
+
+# ================================================================
+# Command Action Enums
+# ================================================================
+
+
+class ConversationAction(str, Enum):
+    """Actions for /conversation command."""
+
+    SHOW = "show"
+    CLEAR = "clear"
+    SAVE = "save"
+    LOAD = "load"
+
+
+class TokenAction(str, Enum):
+    """Actions for /token command."""
+
+    LIST = "list"
+    SET = "set"
+    GET = "get"
+    DELETE = "delete"
+    CLEAR = "clear"
+    BACKENDS = "backends"
+
+
+class ServerAction(str, Enum):
+    """Actions for /server command."""
+
+    ENABLE = "enable"
+    DISABLE = "disable"
+    STATUS = "status"
+    INFO = "info"
+
+
+class ToolAction(str, Enum):
+    """Actions for /tools command."""
+
+    LIST = "list"
+    ENABLE = "enable"
+    DISABLE = "disable"
+    CONFIRM = "confirm"
+    INFO = "info"
+
+
+class ThemeAction(str, Enum):
+    """Actions for /theme command."""
+
+    SET = "set"
+    LIST = "list"
+    SHOW = "show"
+
+
+__all__ = [
+    # Configuration enums
+    "TimeoutType",
+    "TokenBackend",
+    "ConfigSource",
+    # Server enums
+    "ServerStatus",
+    # Command action enums
+    "ConversationAction",
+    "TokenAction",
+    "ServerAction",
+    "ToolAction",
+    "ThemeAction",
+]

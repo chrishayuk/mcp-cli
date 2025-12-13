@@ -6,6 +6,7 @@ Simplified tool processor that delegates parallel execution to ToolManager.
 Handles CLI-specific concerns: UI, conversation history, user confirmation.
 
 Uses chuk-tool-processor's ToolCall/ToolResult models via ToolManager.
+Uses Protocol-based interfaces for type safety.
 """
 
 from __future__ import annotations
@@ -13,16 +14,20 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from chuk_term.ui import output
 from chuk_tool_processor import ToolCall as CTPToolCall
 from chuk_tool_processor import ToolResult as CTPToolResult
 
 from mcp_cli.chat.response_models import Message, MessageRole, ToolCall
+from mcp_cli.chat.models import ToolProcessorContext, UIManagerProtocol
 from mcp_cli.display import display_tool_call_result
 from mcp_cli.llm.content_models import ContentBlockType
 from mcp_cli.utils.preferences import get_preference_manager
+
+if TYPE_CHECKING:
+    from mcp_cli.tools.manager import ToolManager
 
 log = logging.getLogger(__name__)
 
@@ -33,15 +38,23 @@ class ToolProcessor:
 
     Delegates parallel execution to ToolManager.stream_execute_tools(),
     handling only CLI-specific concerns: UI, conversation history, confirmation.
+
+    Uses ToolProcessorContext protocol for type-safe context access.
     """
 
-    def __init__(self, context, ui_manager, *, max_concurrency: int = 4) -> None:
+    def __init__(
+        self,
+        context: ToolProcessorContext,
+        ui_manager: UIManagerProtocol,
+        *,
+        max_concurrency: int = 4,
+    ) -> None:
         self.context = context
         self.ui_manager = ui_manager
         self.max_concurrency = max_concurrency
 
-        # Tool manager for execution
-        self.tool_manager = getattr(context, "tool_manager", None)
+        # Tool manager for execution - access via protocol attribute
+        self.tool_manager: ToolManager | None = context.tool_manager
 
         # Track transport failures for recovery detection
         self._transport_failures = 0
@@ -51,8 +64,9 @@ class ToolProcessor:
         self._call_metadata: dict[str, dict[str, Any]] = {}
         self._cancelled = False
 
-        # Give the UI a back-pointer for Ctrl-C cancellation
-        setattr(self.context, "tool_processor", self)
+        # Give the context a back-pointer for Ctrl-C cancellation
+        # Note: This is the one place we set an attribute on context
+        context.tool_processor = self
 
     async def process_tool_calls(
         self,

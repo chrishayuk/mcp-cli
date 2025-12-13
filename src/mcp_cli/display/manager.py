@@ -24,7 +24,7 @@ from mcp_cli.display.renderers import (
     show_final_streaming_response,
     show_tool_execution_result,
 )
-from mcp_cli.logging_config import get_logger
+from mcp_cli.config.logging import get_logger
 
 if TYPE_CHECKING:
     from chuk_term.ui import LiveStatus

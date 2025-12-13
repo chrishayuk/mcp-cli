@@ -2,10 +2,97 @@
 Configuration management for MCP CLI.
 
 Clean, async-native, Pydantic-based configuration system.
+All constants, enums, and configuration are consolidated here.
 """
 
-# New clean config system (primary)
-from mcp_cli.config.enums import ConfigSource, TimeoutType, TokenBackend
+from importlib.metadata import PackageNotFoundError, version
+
+# Enums (all type-safe enums)
+from mcp_cli.config.enums import (
+    ConfigSource,
+    ConversationAction,
+    ServerAction,
+    ServerStatus,
+    ThemeAction,
+    TimeoutType,
+    TokenAction,
+    TokenBackend,
+    ToolAction,
+)
+
+# Environment variables
+from mcp_cli.config.env_vars import (
+    EnvVar,
+    get_env,
+    get_env_bool,
+    get_env_float,
+    get_env_int,
+    get_env_list,
+    is_set,
+    set_env,
+    unset_env,
+)
+
+# Defaults and constants
+from mcp_cli.config.defaults import (
+    # Timeouts
+    DEFAULT_HTTP_CONNECT_TIMEOUT,
+    DEFAULT_HTTP_REQUEST_TIMEOUT,
+    DEFAULT_SERVER_INIT_TIMEOUT,
+    DEFAULT_STREAMING_CHUNK_TIMEOUT,
+    DEFAULT_STREAMING_FIRST_CHUNK_TIMEOUT,
+    DEFAULT_STREAMING_GLOBAL_TIMEOUT,
+    DEFAULT_TOOL_EXECUTION_TIMEOUT,
+    DISCOVERY_TIMEOUT,
+    REFRESH_TIMEOUT,
+    SHUTDOWN_TIMEOUT,
+    # Tool config
+    DEFAULT_CONFIRM_TOOLS,
+    DEFAULT_DYNAMIC_TOOLS_ENABLED,
+    DEFAULT_MAX_TOOL_CONCURRENCY,
+    # Conversation
+    DEFAULT_MAX_TURNS,
+    DEFAULT_SYSTEM_PROMPT,
+    # Provider/Model
+    DEFAULT_MODEL,
+    DEFAULT_PROVIDER,
+    # UI
+    DEFAULT_THEME,
+    DEFAULT_VERBOSE,
+    # Token/Auth
+    DEFAULT_TOKEN_BACKEND,
+    # Paths
+    DEFAULT_CONFIG_FILENAME,
+    # Application
+    APP_NAME,
+    GENERIC_NAMESPACE,
+    NAMESPACE,
+    OAUTH_NAMESPACE,
+    PROVIDER_NAMESPACE,
+    # Platforms
+    PLATFORM_DARWIN,
+    PLATFORM_LINUX,
+    PLATFORM_WINDOWS,
+    # Providers
+    PROVIDER_ANTHROPIC,
+    PROVIDER_DEEPSEEK,
+    PROVIDER_GROQ,
+    PROVIDER_OLLAMA,
+    PROVIDER_OPENAI,
+    PROVIDER_XAI,
+    SUPPORTED_PROVIDERS,
+    # JSON Schema
+    JSON_TYPE_ARRAY,
+    JSON_TYPE_BOOLEAN,
+    JSON_TYPE_INTEGER,
+    JSON_TYPE_NULL,
+    JSON_TYPE_NUMBER,
+    JSON_TYPE_OBJECT,
+    JSON_TYPE_STRING,
+    JSON_TYPES,
+)
+
+# Config models
 from mcp_cli.config.models import (
     ConfigOverride,
     MCPConfig,
@@ -15,6 +102,12 @@ from mcp_cli.config.models import (
     VaultConfig,
 )
 from mcp_cli.config.runtime import ResolvedValue, RuntimeConfig
+
+# Get version from package metadata
+try:
+    APP_VERSION = version("mcp-cli")
+except PackageNotFoundError:
+    APP_VERSION = "0.0.0-dev"
 
 # Legacy compatibility (during transition)
 from mcp_cli.config.config_manager import (
@@ -39,9 +132,14 @@ from mcp_cli.config.cli_options import (
     load_config,
     process_options,
 )
+from mcp_cli.config.logging import (
+    get_logger,
+    setup_logging,
+    setup_silent_mcp_environment,
+)
 
 __all__ = [
-    # Clean config system (USE THESE)
+    # Config models
     "MCPConfig",
     "TimeoutConfig",
     "ToolConfig",
@@ -51,9 +149,81 @@ __all__ = [
     "ConfigOverride",
     "ResolvedValue",
     # Enums
-    "TimeoutType",
-    "TokenBackend",
     "ConfigSource",
+    "ConversationAction",
+    "ServerAction",
+    "ServerStatus",
+    "ThemeAction",
+    "TimeoutType",
+    "TokenAction",
+    "TokenBackend",
+    "ToolAction",
+    # Environment variables
+    "EnvVar",
+    "get_env",
+    "get_env_bool",
+    "get_env_float",
+    "get_env_int",
+    "get_env_list",
+    "is_set",
+    "set_env",
+    "unset_env",
+    # Timeouts
+    "DEFAULT_HTTP_CONNECT_TIMEOUT",
+    "DEFAULT_HTTP_REQUEST_TIMEOUT",
+    "DEFAULT_SERVER_INIT_TIMEOUT",
+    "DEFAULT_STREAMING_CHUNK_TIMEOUT",
+    "DEFAULT_STREAMING_FIRST_CHUNK_TIMEOUT",
+    "DEFAULT_STREAMING_GLOBAL_TIMEOUT",
+    "DEFAULT_TOOL_EXECUTION_TIMEOUT",
+    "DISCOVERY_TIMEOUT",
+    "REFRESH_TIMEOUT",
+    "SHUTDOWN_TIMEOUT",
+    # Tool config defaults
+    "DEFAULT_CONFIRM_TOOLS",
+    "DEFAULT_DYNAMIC_TOOLS_ENABLED",
+    "DEFAULT_MAX_TOOL_CONCURRENCY",
+    # Conversation defaults
+    "DEFAULT_MAX_TURNS",
+    "DEFAULT_SYSTEM_PROMPT",
+    # Provider/Model defaults
+    "DEFAULT_MODEL",
+    "DEFAULT_PROVIDER",
+    # UI defaults
+    "DEFAULT_THEME",
+    "DEFAULT_VERBOSE",
+    # Token/Auth defaults
+    "DEFAULT_TOKEN_BACKEND",
+    # Path defaults
+    "DEFAULT_CONFIG_FILENAME",
+    # Application constants
+    "APP_NAME",
+    "APP_VERSION",
+    "GENERIC_NAMESPACE",
+    "NAMESPACE",
+    "OAUTH_NAMESPACE",
+    "PROVIDER_NAMESPACE",
+    # Platform constants
+    "PLATFORM_DARWIN",
+    "PLATFORM_LINUX",
+    "PLATFORM_WINDOWS",
+    # Provider constants
+    "PROVIDER_ANTHROPIC",
+    "PROVIDER_DEEPSEEK",
+    "PROVIDER_GROQ",
+    "PROVIDER_OLLAMA",
+    "PROVIDER_OPENAI",
+    "PROVIDER_XAI",
+    "SUPPORTED_PROVIDERS",
+    # JSON Schema constants
+    "JSON_TYPE_ARRAY",
+    "JSON_TYPE_BOOLEAN",
+    "JSON_TYPE_INTEGER",
+    "JSON_TYPE_NULL",
+    "JSON_TYPE_NUMBER",
+    "JSON_TYPE_OBJECT",
+    "JSON_TYPE_STRING",
+    "JSON_TYPES",
     # Legacy (will be removed)
     "ServerConfig",
     "ConfigManager",
@@ -73,6 +243,10 @@ __all__ = [
     "extract_server_names",
     "process_options",
     "get_config_summary",
+    # Logging
+    "get_logger",
+    "setup_logging",
+    "setup_silent_mcp_environment",
 ]
 
 

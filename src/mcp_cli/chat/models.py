@@ -1,11 +1,14 @@
-"""Chat-specific Pydantic models."""
+"""Chat-specific Pydantic models and protocols."""
 
 from __future__ import annotations
 
 import json
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from mcp_cli.tools.manager import ToolManager
 
 
 class MessageRole(str, Enum):
@@ -246,3 +249,76 @@ class ChatStatus(BaseModel):
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict."""
         return self.model_dump(mode="json")  # type: ignore[no-any-return]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Protocols - formalize interfaces for type safety
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@runtime_checkable
+class ToolProcessorContext(Protocol):
+    """Protocol for context objects used by ToolProcessor.
+
+    Formalizes the interface instead of using dynamic getattr/setattr.
+    This ensures type safety and makes dependencies explicit.
+    """
+
+    # Required attributes
+    tool_manager: "ToolManager"
+    conversation_history: list[Message]
+
+    # Optional processor back-reference (set by ToolProcessor)
+    tool_processor: Any  # Will be set to ToolProcessor instance
+
+    def get_display_name_for_tool(self, tool_name: str) -> str:
+        """Get display name for a tool (may be namespaced)."""
+        ...
+
+
+@runtime_checkable
+class UIManagerProtocol(Protocol):
+    """Protocol for UI managers used by ToolProcessor.
+
+    Defines the minimal interface required by ToolProcessor.
+    The actual ChatUIManager has many more methods, but these are
+    the core ones used during tool execution.
+
+    Note: Uses Any return types where the implementation varies.
+    """
+
+    # Core attributes
+    interrupt_requested: bool
+    verbose_mode: bool
+    console: Any  # Rich Console instance
+
+    def print_tool_call(self, tool_name: str, arguments: dict[str, Any]) -> None:
+        """Print tool call info to console."""
+        ...
+
+    def do_confirm_tool_execution(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+    ) -> bool:
+        """Ask user to confirm tool execution.
+
+        Returns True if user confirms, False otherwise.
+        """
+        ...
+
+    async def start_tool_execution(
+        self, tool_name: str, arguments: dict[str, Any]
+    ) -> None:
+        """Signal start of tool execution for UI updates."""
+        ...
+
+    async def finish_tool_execution(
+        self, result: str | None = None, success: bool = True
+    ) -> None:
+        """Signal end of tool execution for UI updates."""
+        ...
+
+    def finish_tool_calls(self) -> None:
+        """Clean up after all tool calls complete."""
+        ...

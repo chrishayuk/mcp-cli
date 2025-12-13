@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 
 from mcp_cli.display import StreamingDisplayManager
 from mcp_cli.chat.models import ToolCallData
-from mcp_cli.logging_config import get_logger
+from mcp_cli.config.logging import get_logger
 from mcp_cli.config import RuntimeConfig, TimeoutType, load_runtime_config
 
 logger = get_logger("streaming")

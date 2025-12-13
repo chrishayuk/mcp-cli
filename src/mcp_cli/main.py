@@ -14,7 +14,7 @@ import sys
 import typer
 
 # Module imports
-from mcp_cli.logging_config import (
+from mcp_cli.config.logging import (
     setup_logging,
     get_logger,
     setup_silent_mcp_environment,

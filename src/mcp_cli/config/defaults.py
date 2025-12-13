@@ -35,6 +35,16 @@ DEFAULT_HTTP_REQUEST_TIMEOUT = 30.0
 DEFAULT_HTTP_CONNECT_TIMEOUT = 10.0
 """Default timeout for HTTP connections."""
 
+# Discovery/UI timeouts (moved from constants/timeouts.py)
+DISCOVERY_TIMEOUT = 10.0
+"""Provider discovery HTTP timeout."""
+
+REFRESH_TIMEOUT = 1.0
+"""Display refresh timeout."""
+
+SHUTDOWN_TIMEOUT = 0.5
+"""Graceful shutdown timeout."""
+
 
 # ================================================================
 # Tool Configuration Defaults
@@ -97,3 +107,83 @@ DEFAULT_TOKEN_BACKEND = "auto"
 
 DEFAULT_CONFIG_FILENAME = "server_config.json"
 """Default configuration filename."""
+
+
+# ================================================================
+# Application Constants
+# ================================================================
+
+NAMESPACE = "mcp-cli"
+"""Application namespace."""
+
+OAUTH_NAMESPACE = NAMESPACE
+"""OAuth namespace (same as app namespace)."""
+
+PROVIDER_NAMESPACE = "provider"
+"""Provider namespace for token storage."""
+
+GENERIC_NAMESPACE = "generic"
+"""Generic namespace."""
+
+APP_NAME = "mcp-cli"
+"""Application name."""
+
+
+# ================================================================
+# Platform Constants
+# ================================================================
+
+PLATFORM_WINDOWS = "win32"
+"""Windows platform identifier (from sys.platform)."""
+
+PLATFORM_DARWIN = "darwin"
+"""macOS platform identifier (from sys.platform)."""
+
+PLATFORM_LINUX = "linux"
+"""Linux platform identifier (from sys.platform)."""
+
+
+# ================================================================
+# Provider Constants
+# ================================================================
+
+PROVIDER_OLLAMA = "ollama"
+PROVIDER_OPENAI = "openai"
+PROVIDER_ANTHROPIC = "anthropic"
+PROVIDER_GROQ = "groq"
+PROVIDER_DEEPSEEK = "deepseek"
+PROVIDER_XAI = "xai"
+
+SUPPORTED_PROVIDERS = [
+    PROVIDER_OLLAMA,
+    PROVIDER_OPENAI,
+    PROVIDER_ANTHROPIC,
+    PROVIDER_GROQ,
+    PROVIDER_DEEPSEEK,
+    PROVIDER_XAI,
+]
+"""List of supported LLM providers."""
+
+
+# ================================================================
+# JSON Schema Type Constants
+# ================================================================
+
+JSON_TYPE_STRING = "string"
+JSON_TYPE_NUMBER = "number"
+JSON_TYPE_INTEGER = "integer"
+JSON_TYPE_BOOLEAN = "boolean"
+JSON_TYPE_ARRAY = "array"
+JSON_TYPE_OBJECT = "object"
+JSON_TYPE_NULL = "null"
+
+JSON_TYPES = [
+    JSON_TYPE_STRING,
+    JSON_TYPE_NUMBER,
+    JSON_TYPE_INTEGER,
+    JSON_TYPE_BOOLEAN,
+    JSON_TYPE_ARRAY,
+    JSON_TYPE_OBJECT,
+    JSON_TYPE_NULL,
+]
+"""All valid JSON Schema types."""

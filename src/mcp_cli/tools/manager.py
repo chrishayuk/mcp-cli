@@ -13,6 +13,7 @@ For direct tool operations, use the exposed stream_manager property.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -146,45 +147,68 @@ class ToolManager:
             return False
 
     async def _initialize_stream_manager(self, namespace: str) -> bool:
-        """Initialize StreamManager with detected transport type."""
+        """Initialize StreamManager with detected transport type.
+
+        ENHANCED: Initializes different transport types in parallel for faster startup.
+        """
         self.stream_manager = StreamManager()
 
         http_servers = self._config_loader.http_servers
         sse_servers = self._config_loader.sse_servers
         stdio_servers = self._config_loader.stdio_servers
 
+        if not (http_servers or sse_servers or stdio_servers):
+            logger.info("No servers detected")
+            return True
+
         try:
-            # Initialize all server types (not mutually exclusive)
+            # Build initialization tasks for parallel execution
+            init_tasks: list[asyncio.Task[None]] = []
+            task_names: list[str] = []
+
+            # Create OAuth callback once (shared by HTTP and SSE)
+            oauth_callback = self._config_loader.create_oauth_refresh_callback(
+                http_servers, sse_servers
+            )
+
             if http_servers:
-                logger.info(f"Initializing {len(http_servers)} HTTP servers")
+                logger.info(f"Preparing {len(http_servers)} HTTP servers for init")
                 http_dicts = [
                     {"name": s.name, "url": s.url, "headers": s.headers or {}}
                     for s in http_servers
                 ]
-                await self.stream_manager.initialize_with_http_streamable(
-                    servers=http_dicts,
-                    server_names=self.server_names,
-                    initialization_timeout=self.initialization_timeout,
-                    oauth_refresh_callback=self._config_loader.create_oauth_refresh_callback(
-                        http_servers, sse_servers
+                task = asyncio.create_task(
+                    self.stream_manager.initialize_with_http_streamable(
+                        servers=http_dicts,
+                        server_names=self.server_names,
+                        initialization_timeout=self.initialization_timeout,
+                        oauth_refresh_callback=oauth_callback,
                     ),
+                    name="init_http",
                 )
+                init_tasks.append(task)
+                task_names.append("HTTP")
+
             if sse_servers:
-                logger.info(f"Initializing {len(sse_servers)} SSE servers")
+                logger.info(f"Preparing {len(sse_servers)} SSE servers for init")
                 sse_dicts = [
                     {"name": s.name, "url": s.url, "headers": s.headers or {}}
                     for s in sse_servers
                 ]
-                await self.stream_manager.initialize_with_sse(
-                    servers=sse_dicts,
-                    server_names=self.server_names,
-                    initialization_timeout=self.initialization_timeout,
-                    oauth_refresh_callback=self._config_loader.create_oauth_refresh_callback(
-                        http_servers, sse_servers
+                task = asyncio.create_task(
+                    self.stream_manager.initialize_with_sse(
+                        servers=sse_dicts,
+                        server_names=self.server_names,
+                        initialization_timeout=self.initialization_timeout,
+                        oauth_refresh_callback=oauth_callback,
                     ),
+                    name="init_sse",
                 )
+                init_tasks.append(task)
+                task_names.append("SSE")
+
             if stdio_servers:
-                logger.info(f"Initializing {len(stdio_servers)} STDIO servers")
+                logger.info(f"Preparing {len(stdio_servers)} STDIO servers for init")
                 stdio_dicts = [
                     {
                         "name": s.name,
@@ -194,15 +218,38 @@ class ToolManager:
                     }
                     for s in stdio_servers
                 ]
-                await self.stream_manager.initialize_with_stdio(
-                    servers=stdio_dicts,
-                    server_names=self.server_names,
-                    initialization_timeout=self.initialization_timeout,
+                task = asyncio.create_task(
+                    self.stream_manager.initialize_with_stdio(
+                        servers=stdio_dicts,
+                        server_names=self.server_names,
+                        initialization_timeout=self.initialization_timeout,
+                    ),
+                    name="init_stdio",
                 )
+                init_tasks.append(task)
+                task_names.append("STDIO")
 
-            if not (http_servers or sse_servers or stdio_servers):
-                logger.info("No servers detected")
-                return True
+            # Run all transport initializations in parallel
+            if init_tasks:
+                logger.info(
+                    f"Starting parallel initialization of {len(init_tasks)} transport types: {', '.join(task_names)}"
+                )
+                results = await asyncio.gather(*init_tasks, return_exceptions=True)
+
+                # Check for errors
+                errors = []
+                for name, result in zip(task_names, results):
+                    if isinstance(result, Exception):
+                        errors.append(f"{name}: {result}")
+                        logger.error(f"{name} initialization failed: {result}")
+
+                if errors:
+                    # Log errors but don't fail if at least one transport succeeded
+                    logger.warning(
+                        f"Some transports failed to initialize: {'; '.join(errors)}"
+                    )
+
+                logger.info("Parallel server initialization complete")
 
             return True
 

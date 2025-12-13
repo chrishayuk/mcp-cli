@@ -97,7 +97,7 @@ class ServerConfig(BaseModel):
 
     def to_server_info(self, server_id: int = 0) -> ServerInfo:
         """Convert to ServerInfo model."""
-        from mcp_cli.constants import ServerStatus
+        from mcp_cli.config.enums import ServerStatus
 
         return ServerInfo(
             id=server_id,

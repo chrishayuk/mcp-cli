@@ -7,6 +7,8 @@ Target: 90%+ coverage
 import os
 from unittest.mock import patch, MagicMock
 
+import pytest
+
 from mcp_cli.config.discovery import (
     setup_chuk_llm_environment,
     trigger_discovery_after_setup,
@@ -14,7 +16,21 @@ from mcp_cli.config.discovery import (
     validate_provider_exists,
     get_discovery_status,
     force_discovery_refresh,
+    get_discovery_manager,
 )
+
+
+@pytest.fixture(autouse=True)
+def reset_discovery_manager():
+    """Reset the DiscoveryManager singleton state before each test."""
+    manager = get_discovery_manager()
+    # Reset internal state
+    manager._env_setup_complete = False
+    manager._discovery_triggered = False
+    yield
+    # Reset again after test
+    manager._env_setup_complete = False
+    manager._discovery_triggered = False
 
 
 class TestSetupChukLlmEnvironment:
@@ -36,11 +52,6 @@ class TestSetupChukLlmEnvironment:
         for var in env_vars_to_clear:
             monkeypatch.delenv(var, raising=False)
 
-        # Reset the module state
-        import mcp_cli.config.discovery as discovery_module
-
-        discovery_module._ENV_SETUP_COMPLETE = False
-
         setup_chuk_llm_environment()
 
         assert os.environ["CHUK_LLM_DISCOVERY_ENABLED"] == "true"
@@ -56,9 +67,9 @@ class TestSetupChukLlmEnvironment:
         """Test that setup doesn't overwrite when already complete."""
         monkeypatch.setenv("CHUK_LLM_DISCOVERY_ENABLED", "false")  # User value
 
-        import mcp_cli.config.discovery as discovery_module
-
-        discovery_module._ENV_SETUP_COMPLETE = True
+        # Mark as already complete
+        manager = get_discovery_manager()
+        manager._env_setup_complete = True
 
         setup_chuk_llm_environment()
 
@@ -69,10 +80,6 @@ class TestSetupChukLlmEnvironment:
         """Test that setup preserves user-set environment variables."""
         monkeypatch.setenv("CHUK_LLM_DISCOVERY_TIMEOUT", "30")  # User override
 
-        import mcp_cli.config.discovery as discovery_module
-
-        discovery_module._ENV_SETUP_COMPLETE = False
-
         setup_chuk_llm_environment()
 
         # Should preserve user's override
@@ -82,13 +89,8 @@ class TestSetupChukLlmEnvironment:
 class TestTriggerDiscoveryAfterSetup:
     """Test trigger_discovery_after_setup function."""
 
-    def test_trigger_discovery_success(self, monkeypatch):
+    def test_trigger_discovery_success(self):
         """Test successful discovery trigger."""
-        # Reset discovery state
-        import mcp_cli.config.discovery as discovery_module
-
-        discovery_module._DISCOVERY_TRIGGERED = False
-
         # Mock the discovery function
         mock_discovery = MagicMock(return_value=["func1", "func2", "func3"])
 
@@ -103,9 +105,9 @@ class TestTriggerDiscoveryAfterSetup:
 
     def test_trigger_discovery_already_triggered(self):
         """Test that discovery doesn't run twice."""
-        import mcp_cli.config.discovery as discovery_module
-
-        discovery_module._DISCOVERY_TRIGGERED = True
+        # Mark as already triggered
+        manager = get_discovery_manager()
+        manager._discovery_triggered = True
 
         count = trigger_discovery_after_setup()
 
@@ -113,10 +115,6 @@ class TestTriggerDiscoveryAfterSetup:
 
     def test_trigger_discovery_no_new_functions(self):
         """Test discovery with no new functions."""
-        import mcp_cli.config.discovery as discovery_module
-
-        discovery_module._DISCOVERY_TRIGGERED = False
-
         mock_discovery = MagicMock(return_value=[])
 
         with patch(
@@ -129,10 +127,6 @@ class TestTriggerDiscoveryAfterSetup:
 
     def test_trigger_discovery_exception(self):
         """Test discovery with exception."""
-        import mcp_cli.config.discovery as discovery_module
-
-        discovery_module._DISCOVERY_TRIGGERED = False
-
         mock_discovery = MagicMock(side_effect=Exception("Discovery failed"))
 
         with patch(
@@ -231,10 +225,10 @@ class TestGetDiscoveryStatus:
 
     def test_get_discovery_status_complete(self, monkeypatch):
         """Test getting status when discovery is complete."""
-        import mcp_cli.config.discovery as discovery_module
-
-        discovery_module._ENV_SETUP_COMPLETE = True
-        discovery_module._DISCOVERY_TRIGGERED = True
+        # Set manager state
+        manager = get_discovery_manager()
+        manager._env_setup_complete = True
+        manager._discovery_triggered = True
 
         monkeypatch.setenv("CHUK_LLM_DISCOVERY_ENABLED", "true")
         monkeypatch.setenv("CHUK_LLM_OLLAMA_DISCOVERY", "true")
@@ -254,11 +248,6 @@ class TestGetDiscoveryStatus:
 
     def test_get_discovery_status_incomplete(self, monkeypatch):
         """Test getting status when discovery is not complete."""
-        import mcp_cli.config.discovery as discovery_module
-
-        discovery_module._ENV_SETUP_COMPLETE = False
-        discovery_module._DISCOVERY_TRIGGERED = False
-
         # Clear env vars
         for key in ["CHUK_LLM_DISCOVERY_ENABLED", "CHUK_LLM_OLLAMA_DISCOVERY"]:
             monkeypatch.delenv(key, raising=False)
@@ -276,9 +265,9 @@ class TestForceDiscoveryRefresh:
 
     def test_force_refresh_success(self):
         """Test forcing discovery refresh."""
-        import mcp_cli.config.discovery as discovery_module
-
-        discovery_module._DISCOVERY_TRIGGERED = True  # Already triggered
+        # Mark as already triggered
+        manager = get_discovery_manager()
+        manager._discovery_triggered = True
 
         mock_discovery = MagicMock(return_value=["func1", "func2"])
 
@@ -293,9 +282,9 @@ class TestForceDiscoveryRefresh:
 
     def test_force_refresh_resets_flag(self):
         """Test that force refresh resets the triggered flag."""
-        import mcp_cli.config.discovery as discovery_module
-
-        discovery_module._DISCOVERY_TRIGGERED = True
+        # Mark as already triggered
+        manager = get_discovery_manager()
+        manager._discovery_triggered = True
 
         mock_discovery = MagicMock(return_value=["func1"])
 

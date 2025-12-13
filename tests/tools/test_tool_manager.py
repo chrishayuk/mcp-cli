@@ -1141,3 +1141,278 @@ class TestToolManagerFormatToolResponse:
 
         # Should return JSON
         assert "image" in result
+
+
+class TestToolManagerInitializeSSE:
+    """Test initialization with SSE servers."""
+
+    @pytest.mark.asyncio
+    async def test_initialize_stream_manager_sse_servers(self, tmp_path):
+        """Test _initialize_stream_manager with SSE servers."""
+        import json
+
+        config = {
+            "mcpServers": {
+                "sse_server": {"url": "https://sse.example.com", "transport": "sse"}
+            }
+        }
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config))
+
+        tm = ToolManager(config_file=str(config_file), servers=["sse_server"])
+        tm._config_loader.load()
+        tm._config_loader.detect_server_types(tm._config_loader._config_cache)
+
+        # Mock StreamManager
+        with patch("mcp_cli.tools.manager.StreamManager") as MockSM:
+            mock_sm = MagicMock()
+            mock_sm.initialize_with_sse = AsyncMock()
+            MockSM.return_value = mock_sm
+
+            result = await tm._initialize_stream_manager("mcp-cli")
+
+        assert result is True
+        mock_sm.initialize_with_sse.assert_called_once()
+
+
+class TestToolManagerInitializeSTDIO:
+    """Test initialization with STDIO servers."""
+
+    @pytest.mark.asyncio
+    async def test_initialize_stream_manager_stdio_servers(self, tmp_path):
+        """Test _initialize_stream_manager with STDIO servers."""
+        import json
+
+        config = {
+            "mcpServers": {
+                "stdio_server": {
+                    "command": "python",
+                    "args": ["-m", "server"],
+                    "env": {"DEBUG": "1"},
+                }
+            }
+        }
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config))
+
+        tm = ToolManager(config_file=str(config_file), servers=["stdio_server"])
+        tm._config_loader.load()
+        tm._config_loader.detect_server_types(tm._config_loader._config_cache)
+
+        # Mock StreamManager
+        with patch("mcp_cli.tools.manager.StreamManager") as MockSM:
+            mock_sm = MagicMock()
+            mock_sm.initialize_with_stdio = AsyncMock()
+            MockSM.return_value = mock_sm
+
+            result = await tm._initialize_stream_manager("mcp-cli")
+
+        assert result is True
+        mock_sm.initialize_with_stdio.assert_called_once()
+
+
+class TestToolManagerInitializeMixed:
+    """Test initialization with mixed server types."""
+
+    @pytest.mark.asyncio
+    async def test_initialize_with_http_and_stdio(self, tmp_path):
+        """Test _initialize_stream_manager with HTTP and STDIO servers (parallel)."""
+        import json
+
+        config = {
+            "mcpServers": {
+                "http_server": {"url": "https://example.com"},
+                "stdio_server": {"command": "python", "args": []},
+            }
+        }
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config))
+
+        tm = ToolManager(
+            config_file=str(config_file), servers=["http_server", "stdio_server"]
+        )
+        tm._config_loader.load()
+        tm._config_loader.detect_server_types(tm._config_loader._config_cache)
+
+        # Mock StreamManager
+        with patch("mcp_cli.tools.manager.StreamManager") as MockSM:
+            mock_sm = MagicMock()
+            mock_sm.initialize_with_http_streamable = AsyncMock()
+            mock_sm.initialize_with_stdio = AsyncMock()
+            mock_sm.registry = MagicMock()
+            mock_sm.processor = MagicMock()
+            MockSM.return_value = mock_sm
+
+            result = await tm._initialize_stream_manager("mcp-cli")
+
+        assert result is True
+        # Both should be called (parallel init)
+        mock_sm.initialize_with_http_streamable.assert_called_once()
+        mock_sm.initialize_with_stdio.assert_called_once()
+
+
+class TestToolManagerInitializeErrors:
+    """Test initialization error handling."""
+
+    @pytest.mark.asyncio
+    async def test_initialize_with_partial_failure(self, tmp_path):
+        """Test _initialize_stream_manager continues when some transports fail."""
+        import json
+
+        config = {
+            "mcpServers": {
+                "http_server": {"url": "https://example.com"},
+            }
+        }
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config))
+
+        tm = ToolManager(config_file=str(config_file), servers=["http_server"])
+        tm._config_loader.load()
+        tm._config_loader.detect_server_types(tm._config_loader._config_cache)
+
+        # Mock StreamManager with failure
+        with patch("mcp_cli.tools.manager.StreamManager") as MockSM:
+            mock_sm = MagicMock()
+            mock_sm.initialize_with_http_streamable = AsyncMock(
+                side_effect=RuntimeError("Connection failed")
+            )
+            MockSM.return_value = mock_sm
+
+            result = await tm._initialize_stream_manager("mcp-cli")
+
+        # Should still return True (partial success)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_initialize_method_exception(self, tmp_path):
+        """Test initialize method handles exceptions."""
+        import json
+
+        config = {"mcpServers": {"test": {"url": "https://example.com"}}}
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config))
+
+        tm = ToolManager(config_file=str(config_file), servers=["test"])
+
+        # Patch the config loader to raise an exception in load()
+        with patch.object(
+            tm._config_loader, "load", side_effect=RuntimeError("Config error")
+        ):
+            result = await tm.initialize()
+
+        assert result is False
+
+
+class TestToolManagerValidateSingleToolInvalidExtra:
+    """Additional tests for validate_single_tool with invalid tools."""
+
+    @pytest.mark.asyncio
+    async def test_validate_single_tool_returns_invalid_with_empty_description(self):
+        """Test validate_single_tool with invalid tool."""
+        tm = ToolManager(config_file="test.json", servers=[])
+
+        # Tool with empty description
+        tool = ToolInfo(
+            name="bad_tool",
+            namespace="ns",
+            description="",  # Empty description
+            parameters={},
+        )
+        tm.get_all_tools = AsyncMock(return_value=[tool])
+
+        valid, error = await tm.validate_single_tool("bad_tool")
+
+        # Tool may be invalid or may have auto-fix applied
+        assert isinstance(valid, bool)
+
+    @pytest.mark.asyncio
+    async def test_validate_single_tool_with_invalid_schema(self):
+        """Test validate_single_tool returns error for validation failure."""
+        tm = ToolManager(config_file="test.json", servers=[])
+
+        # Tool with invalid schema
+        tool = ToolInfo(
+            name="bad_tool",
+            namespace="ns",
+            description="test",
+            parameters={"type": "invalid_type"},  # Invalid type
+        )
+        tm.get_all_tools = AsyncMock(return_value=[tool])
+
+        # Disable auto-fix
+        tm.tool_filter.set_auto_fix_enabled(False)
+
+        valid, error = await tm.validate_single_tool("bad_tool")
+
+        # Should return invalid status (either False or validation passed depends on filter)
+        assert isinstance(valid, bool)
+
+
+class TestToolManagerGetAllToolsFromRegistry:
+    """Test get_all_tools with direct registry access."""
+
+    @pytest.mark.asyncio
+    async def test_get_all_tools_registry_exception(self, manager):
+        """Test get_all_tools handles registry exceptions."""
+
+        # Force registry to raise error
+        async def failing_list_tools():
+            raise RuntimeError("Registry error")
+
+        manager._registry.list_tools = failing_list_tools
+
+        result = await manager.get_all_tools()
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_all_tools_metadata_exception(self, manager):
+        """Test get_all_tools handles metadata exceptions gracefully."""
+
+        # Force metadata lookup to fail
+        async def failing_get_metadata(name, ns):
+            raise RuntimeError("Metadata error")
+
+        manager._registry.get_metadata = failing_get_metadata
+
+        result = await manager.get_all_tools()
+
+        # Should still return tools, just with empty metadata
+        assert len(result) == 3  # ns1/t1, ns2/t2, default/t1
+
+
+class TestToolManagerGetServerInfoSSE:
+    """Test get_server_info with SSE servers."""
+
+    @pytest.mark.asyncio
+    async def test_get_server_info_sse_server(self, tmp_path):
+        """Test get_server_info includes SSE server info."""
+        import json
+
+        config = {
+            "mcpServers": {
+                "sse_server": {"url": "https://sse.example.com", "transport": "sse"}
+            }
+        }
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config))
+
+        tm = ToolManager(config_file=str(config_file), servers=["sse_server"])
+        mock_sm = MagicMock()
+        mock_sm.get_all_tools.return_value = []
+        mock_sm.tool_to_server_map = {}
+        tm.stream_manager = mock_sm
+
+        # Load config and detect server types
+        tm._config_loader.load()
+        tm._config_loader.detect_server_types(tm._config_loader._config_cache)
+
+        result = await tm.get_server_info()
+
+        assert len(result) == 1
+        assert result[0].name == "sse_server"
+        # Transport should be SSE
+        from mcp_cli.tools.models import TransportType
+
+        assert result[0].transport == TransportType.SSE

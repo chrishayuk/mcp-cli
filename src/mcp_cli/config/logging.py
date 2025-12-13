@@ -1,4 +1,4 @@
-# mcp_cli/logging_config.py
+# mcp_cli/config/logging.py
 """
 Centralized logging configuration for MCP CLI.
 """

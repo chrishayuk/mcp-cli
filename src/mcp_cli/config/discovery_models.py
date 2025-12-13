@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from mcp_cli.constants import EnvVar, get_env_bool
+from mcp_cli.config.env_vars import EnvVar, get_env_bool
 
 
 class DiscoveryConfig(BaseModel):

@@ -532,3 +532,84 @@ async def test_create_oauth_refresh_callback_sse_server():
         result = await callback(server_url="https://sse.example.com")
 
     assert result is None  # No token found, but server was mapped
+
+
+# ----------------------------------------------------------------------------
+# Async loading tests (load_async method)
+# ----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_load_async_success(temp_config_file):
+    """Test successful async config loading."""
+    loader = ConfigLoader(temp_config_file, ["http_server"])
+
+    config = await loader.load_async()
+
+    assert "mcpServers" in config
+    assert "http_server" in config["mcpServers"]
+
+
+@pytest.mark.asyncio
+async def test_load_async_caches_result(temp_config_file):
+    """Test async load caches result."""
+    loader = ConfigLoader(temp_config_file, ["http_server"])
+
+    config1 = await loader.load_async()
+    config2 = await loader.load_async()
+
+    assert config1 is config2
+
+
+@pytest.mark.asyncio
+async def test_load_async_file_not_found():
+    """Test async loading nonexistent config file."""
+    loader = ConfigLoader("/nonexistent/config.json", [])
+
+    config = await loader.load_async()
+
+    assert config == {}
+
+
+@pytest.mark.asyncio
+async def test_load_async_invalid_json(tmp_path):
+    """Test async loading invalid JSON file."""
+    config_path = tmp_path / "invalid.json"
+    config_path.write_text("not valid json {")
+
+    loader = ConfigLoader(str(config_path), [])
+    config = await loader.load_async()
+
+    assert config == {}
+
+
+@pytest.mark.asyncio
+async def test_load_async_general_exception(tmp_path):
+    """Test async handling general exception during config load."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text('{"mcpServers": {}}')
+
+    loader = ConfigLoader(str(config_path), [])
+
+    # Mock asyncio.to_thread to raise a generic exception
+    with patch("asyncio.to_thread", side_effect=PermissionError("access denied")):
+        config = await loader.load_async()
+
+    assert config == {}
+
+
+@pytest.mark.asyncio
+async def test_load_async_resolves_tokens(token_config_file):
+    """Test async loading resolves token placeholders."""
+    loader = ConfigLoader(token_config_file, ["oauth_server"])
+
+    mock_tokens = MagicMock()
+    mock_tokens.access_token = "async_token"
+
+    with patch.object(loader._token_manager, "load_tokens", return_value=mock_tokens):
+        config = await loader.load_async()
+
+    assert (
+        config["mcpServers"]["oauth_server"]["headers"]["Authorization"]
+        == "Bearer async_token"
+    )

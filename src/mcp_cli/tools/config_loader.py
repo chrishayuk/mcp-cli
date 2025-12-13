@@ -2,10 +2,12 @@
 """MCP configuration loading and OAuth integration.
 
 Handles parsing MCP config files, detecting server types, and OAuth token management.
+Async-native with proper type safety.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import TYPE_CHECKING, Any, cast
@@ -13,11 +15,19 @@ from typing import TYPE_CHECKING, Any, cast
 from mcp_cli.auth import OAuthHandler, TokenManager, TokenStoreBackend
 from mcp_cli.config.server_models import HTTPServerConfig, STDIOServerConfig
 from mcp_cli.constants import NAMESPACE
+from mcp_cli.tools.models import TransportType
 
 if TYPE_CHECKING:
     pass
 
 logger = logging.getLogger(__name__)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Constants - no magic strings!
+# ──────────────────────────────────────────────────────────────────────────────
+TOKEN_PLACEHOLDER_PREFIX = "{{token:"
+TOKEN_PLACEHOLDER_SUFFIX = "}}"
+CONFIG_KEY_MCP_SERVERS = "mcpServers"
 
 
 class ConfigLoader:
@@ -47,7 +57,9 @@ class ConfigLoader:
         self.stdio_servers: list[STDIOServerConfig] = []
 
     def load(self) -> dict[str, Any]:
-        """Load and parse MCP config file with token resolution.
+        """Load and parse MCP config file with token resolution (sync).
+
+        For async contexts, prefer load_async() to avoid blocking the event loop.
 
         Returns:
             Parsed config dict, or empty dict on error
@@ -75,13 +87,51 @@ class ConfigLoader:
             logger.error(f"Error loading config: {e}")
             return {}
 
+    async def load_async(self) -> dict[str, Any]:
+        """Load and parse MCP config file with token resolution (async).
+
+        Uses asyncio.to_thread() to avoid blocking the event loop during file I/O.
+
+        Returns:
+            Parsed config dict, or empty dict on error
+        """
+        if self._config_cache:
+            return self._config_cache
+
+        try:
+            # Use asyncio.to_thread for non-blocking file I/O
+            def _read_file() -> str:
+                with open(self.config_file) as f:
+                    return f.read()
+
+            content = await asyncio.to_thread(_read_file)
+            config = cast(dict[str, Any], json.loads(content))
+
+            # Resolve {{token:provider}} placeholders
+            self._resolve_token_placeholders(config)
+
+            self._config_cache = config
+            return config
+
+        except FileNotFoundError:
+            logger.warning(f"Config file not found: {self.config_file}")
+            return {}
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON in config: {e}")
+            return {}
+        except Exception as e:
+            logger.error(f"Error loading config: {e}")
+            return {}
+
     def _resolve_token_placeholders(self, config: dict[str, Any]) -> None:
         """Replace {{token:provider}} with actual OAuth tokens."""
+        prefix_len = len(TOKEN_PLACEHOLDER_PREFIX)
+        suffix_len = len(TOKEN_PLACEHOLDER_SUFFIX)
 
         def process_value(value: Any) -> Any:
-            if isinstance(value, str) and value.startswith("{{token:"):
-                # Extract provider name
-                provider = value[8:-2]  # Remove {{token: and }}
+            if isinstance(value, str) and value.startswith(TOKEN_PLACEHOLDER_PREFIX):
+                # Extract provider name using constants
+                provider = value[prefix_len:-suffix_len]
                 try:
                     tokens = self._token_manager.load_tokens(provider)
                     if tokens and tokens.access_token:
@@ -94,13 +144,15 @@ class ConfigLoader:
                 return [process_value(item) for item in value]
             return value
 
-        # Process entire config
-        if "mcpServers" in config:
-            config["mcpServers"] = process_value(config["mcpServers"])
+        # Process entire config using constant
+        if CONFIG_KEY_MCP_SERVERS in config:
+            config[CONFIG_KEY_MCP_SERVERS] = process_value(
+                config[CONFIG_KEY_MCP_SERVERS]
+            )
 
     def detect_server_types(self, config: dict[str, Any]) -> None:
         """Detect HTTP/SSE/STDIO servers from config and populate server lists."""
-        mcp_servers = config.get("mcpServers", {})
+        mcp_servers = config.get(CONFIG_KEY_MCP_SERVERS, {})
 
         # Clear existing lists
         self.http_servers.clear()
@@ -115,7 +167,7 @@ class ConfigLoader:
             server_cfg = mcp_servers[server_name]
 
             if "url" in server_cfg:
-                transport = server_cfg.get("transport", "").lower()
+                transport_str = server_cfg.get("transport", "").lower()
                 http_config = HTTPServerConfig(
                     name=server_name,
                     url=server_cfg["url"],
@@ -123,7 +175,8 @@ class ConfigLoader:
                     disabled=server_cfg.get("disabled", False),
                 )
 
-                if "sse" in transport:
+                # Use TransportType enum for comparison - no magic strings!
+                if TransportType.SSE.value in transport_str:
                     self.sse_servers.append(http_config)
                 else:
                     self.http_servers.append(http_config)
