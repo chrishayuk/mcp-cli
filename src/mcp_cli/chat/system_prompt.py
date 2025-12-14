@@ -1,16 +1,18 @@
 # mcp_cli/chat/system_prompt.py
 
-# llm imports
-from mcp_cli.llm.system_prompt_generator import SystemPromptGenerator
 
+def generate_system_prompt(tools=None):
+    """Generate a concise system prompt for the assistant.
 
-def generate_system_prompt(tools):
-    """Generate a concise system prompt for the assistant."""
-    prompt_generator = SystemPromptGenerator()
-    tools_json = {"tools": tools}
+    Note: Tool definitions are passed via the API's tools parameter,
+    so we don't duplicate them in the system prompt.
+    """
+    # Count tools for the prompt (tools may be ToolInfo objects or dicts)
+    tool_count = len(tools) if tools else 0
 
-    system_prompt = prompt_generator.generate_prompt(tools_json)
-    system_prompt += """
+    system_prompt = f"""You are an intelligent assistant with access to {tool_count} tools to help solve user queries effectively.
+
+Use the available tools when appropriate to accomplish tasks. Tools are provided via the API and you can call them as needed.
 
 **GENERAL GUIDELINES:**
 

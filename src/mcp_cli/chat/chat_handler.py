@@ -43,6 +43,11 @@ async def handle_chat_mode(
     """
     Launch the interactive chat loop with streaming support.
 
+    Runtime uses adaptive policy: strict core with smooth wrapper.
+    - Always enforces grounding rules (no ungrounded numeric calls)
+    - Automatically attempts to repair blocked calls (rebind, symbolic fallback)
+    - Only surfaces errors when all repair options exhausted
+
     Args:
         tool_manager: Initialized ToolManager instance
         provider: Provider to use (optional, uses ModelManager active if None)

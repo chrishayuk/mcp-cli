@@ -20,7 +20,7 @@ from typing import Any, Dict, List
 
 # mcp cli imports
 from chuk_llm.llm.client import get_client
-from mcp_cli.llm.system_prompt_generator import SystemPromptGenerator
+from mcp_cli.chat.system_prompt import generate_system_prompt
 
 
 async def run_ollama_diagnostic(model: str, prompt: str) -> None:
@@ -30,7 +30,7 @@ async def run_ollama_diagnostic(model: str, prompt: str) -> None:
     except Exception as exc:
         sys.exit(f"[ERROR] Could not create Ollama client: {exc}")
 
-    system_prompt = SystemPromptGenerator().generate_prompt({})
+    system_prompt = generate_system_prompt()
     messages: List[Dict[str, Any]] = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": prompt},

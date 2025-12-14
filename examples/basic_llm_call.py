@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 
 # imports
 from chuk_llm.llm.client import get_client
-from mcp_cli.llm.system_prompt_generator import SystemPromptGenerator
+from mcp_cli.chat.system_prompt import generate_system_prompt
 
 # load environment variables
 load_dotenv()
@@ -35,8 +35,8 @@ async def run_llm_diagnostic(provider: str, model: str, prompt: str) -> None:
     # get the client
     client = get_client(provider=provider, model=model)
 
-    # get the system prompt
-    system_prompt = SystemPromptGenerator().generate_prompt({})
+    # get the system prompt (tools are passed via API, not embedded in prompt)
+    system_prompt = generate_system_prompt()
     messages: List[Dict[str, Any]] = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": prompt},
