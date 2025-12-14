@@ -198,12 +198,16 @@ async def cli_execute(command_name: str, **kwargs: Any) -> Any:
         return False
 
     try:
-        # Add context if needed
+        # Add context if available (don't fail if not initialized)
         if command.requires_context:
-            context = get_context()
-            if context:
-                kwargs.setdefault("tool_manager", context.tool_manager)
-                kwargs.setdefault("model_manager", context.model_manager)
+            try:
+                context = get_context()
+                if context:
+                    kwargs.setdefault("tool_manager", context.tool_manager)
+                    kwargs.setdefault("model_manager", context.model_manager)
+            except RuntimeError:
+                # Context not initialized - command will run without it
+                pass
 
         # Execute command
         result = await command.execute(**kwargs)

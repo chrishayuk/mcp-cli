@@ -47,9 +47,17 @@
     "time": {
       "url": "https://time.chukai.io/mcp"
     },
+    "fetch": {
+        "command": "uvx",
+        "args": ["mcp-server-fetch"]
+      },
     "solver": {
       "command": "uv",
       "args": ["--directory", "/Users/christopherhay/chris-source/chuk-ai/mcp-servers/chuk-mcp-solver", "run", "chuk-mcp-solver", "stdio"]
+    },
+    "powerpoint": {
+      "command": "uv",
+      "args": ["--directory", "/Users/christopherhay/chris-source/chuk-ai/mcp-servers/chuk-mcp-pptx", "run", "chuk-mcp-pptx", "stdio"]
     }
   }
 }

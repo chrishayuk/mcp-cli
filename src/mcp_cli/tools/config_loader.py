@@ -12,9 +12,8 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any, cast
 
-from mcp_cli.auth import OAuthHandler, TokenManager, TokenStoreBackend
+from mcp_cli.auth import OAuthHandler, TokenStoreBackend, TokenStoreFactory, StoredToken
 from mcp_cli.config.server_models import HTTPServerConfig, STDIOServerConfig
-from mcp_cli.constants import NAMESPACE
 from mcp_cli.tools.models import TransportType
 
 if TYPE_CHECKING:
@@ -25,8 +24,12 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────────────────────────
 # Constants - no magic strings!
 # ──────────────────────────────────────────────────────────────────────────────
+# Legacy format: {{token:provider}}
 TOKEN_PLACEHOLDER_PREFIX = "{{token:"
 TOKEN_PLACEHOLDER_SUFFIX = "}}"
+# New format: ${TOKEN:namespace:name}
+TOKEN_ENV_PREFIX = "${TOKEN:"
+TOKEN_ENV_SUFFIX = "}"
 CONFIG_KEY_MCP_SERVERS = "mcpServers"
 
 
@@ -44,10 +47,9 @@ class ConfigLoader:
         self.servers = servers
         self._config_cache: dict[str, Any] | None = None
 
-        # Token manager for OAuth
-        self._token_manager = TokenManager(
+        # Token store for retrieving stored tokens
+        self._token_store = TokenStoreFactory.create(
             backend=TokenStoreBackend.AUTO,
-            namespace=NAMESPACE,
             service_name="mcp-cli",
         )
 
@@ -124,20 +126,65 @@ class ConfigLoader:
             return {}
 
     def _resolve_token_placeholders(self, config: dict[str, Any]) -> None:
-        """Replace {{token:provider}} with actual OAuth tokens."""
-        prefix_len = len(TOKEN_PLACEHOLDER_PREFIX)
-        suffix_len = len(TOKEN_PLACEHOLDER_SUFFIX)
+        """Replace token placeholders with actual tokens.
+
+        Supports two formats:
+        - Legacy: {{token:provider}} - for OAuth tokens
+        - New: ${TOKEN:namespace:name} - for bearer/api-key tokens
+        """
 
         def process_value(value: Any) -> Any:
-            if isinstance(value, str) and value.startswith(TOKEN_PLACEHOLDER_PREFIX):
-                # Extract provider name using constants
-                provider = value[prefix_len:-suffix_len]
-                try:
-                    tokens = self._token_manager.load_tokens(provider)
-                    if tokens and tokens.access_token:
-                        return f"Bearer {tokens.access_token}"
-                except Exception as e:
-                    logger.warning(f"Failed to get token for {provider}: {e}")
+            if isinstance(value, str):
+                # Handle legacy format: {{token:provider}}
+                if value.startswith(TOKEN_PLACEHOLDER_PREFIX):
+                    provider = value[len(TOKEN_PLACEHOLDER_PREFIX):-len(TOKEN_PLACEHOLDER_SUFFIX)]
+                    try:
+                        # Try to load OAuth tokens
+                        raw_data = self._token_store._retrieve_raw(f"oauth:{provider}")
+                        if raw_data:
+                            stored = StoredToken.model_validate(json.loads(raw_data))
+                            # OAuth tokens store access_token in data dict
+                            access_token = stored.data.get("access_token") if stored.data else None
+                            if access_token:
+                                return f"Bearer {access_token}"
+                    except Exception as e:
+                        logger.warning(f"Failed to get token for {provider}: {e}")
+
+                # Handle new format: ${TOKEN:namespace:name}
+                elif value.startswith(TOKEN_ENV_PREFIX):
+                    # Extract namespace:name
+                    inner = value[len(TOKEN_ENV_PREFIX):-len(TOKEN_ENV_SUFFIX)]
+                    parts = inner.split(":")
+                    if len(parts) >= 2:
+                        namespace = parts[0]
+                        name = parts[1]
+                        try:
+                            # Get token from token store using namespace:name format
+                            raw_data = self._token_store._retrieve_raw(f"{namespace}:{name}")
+                            if raw_data:
+                                stored = StoredToken.model_validate(json.loads(raw_data))
+                                # Token is in data dict - check for 'token' or 'access_token'
+                                token_value = None
+                                if stored.data:
+                                    token_value = stored.data.get("token") or stored.data.get("access_token")
+                                if token_value:
+                                    logger.debug(
+                                        f"Resolved token {namespace}:{name} for env var"
+                                    )
+                                    return token_value
+                                else:
+                                    logger.warning(
+                                        f"Token {namespace}:{name} has no token value in data"
+                                    )
+                            else:
+                                logger.warning(
+                                    f"Token not found: {namespace}:{name}"
+                                )
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to get token {namespace}:{name}: {e}"
+                            )
+
             elif isinstance(value, dict):
                 return {k: process_value(v) for k, v in value.items()}
             elif isinstance(value, list):
@@ -244,22 +291,23 @@ class ConfigLoader:
             logger.debug(f"Mapped URL {server_url} to server: {server_name}")
 
             try:
-                # Get token manager
-                token_mgr = TokenManager(
+                # Get token store
+                token_store = TokenStoreFactory.create(
                     backend=TokenStoreBackend.AUTO,
-                    namespace=NAMESPACE,
                     service_name="mcp-cli",
                 )
 
-                # Get existing token data
-                token_data = token_mgr.get_token(server_name)
+                # Get existing token data from oauth namespace
+                raw_data = token_store._retrieve_raw(f"oauth:{server_name}")
 
-                if not token_data:
+                if not raw_data:
                     logger.warning(f"No token found for server: {server_name}")
                     return None
 
-                # Check if we have a refresh token
-                refresh_token = token_data.get("refresh_token")
+                stored = StoredToken.model_validate(json.loads(raw_data))
+
+                # Check if we have a refresh token (stored in data dict)
+                refresh_token = stored.data.get("refresh_token") if stored.data else None
 
                 if not refresh_token:
                     logger.warning(
@@ -279,8 +327,16 @@ class ConfigLoader:
                     return None
 
                 # Store the new tokens
-                token_mgr.store_token(
-                    name=server_name, token_data=new_tokens, token_type="oauth"
+                new_stored = StoredToken(
+                    token_type="oauth",
+                    name=server_name,
+                    data={
+                        "access_token": new_tokens["access_token"],
+                        "refresh_token": new_tokens.get("refresh_token", refresh_token),
+                    },
+                )
+                token_store._store_raw(
+                    f"oauth:{server_name}", json.dumps(new_stored.model_dump())
                 )
 
                 logger.info(f"OAuth token refreshed successfully for {server_name}")

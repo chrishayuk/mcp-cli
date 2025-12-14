@@ -10,10 +10,11 @@ This module provides the main ModelManager class that orchestrates:
 - Runtime provider management (OpenAI-compatible APIs)
 - Client creation and caching
 
-NO HARDCODED MODELS - All model data comes from:
-1. chuk_llm configuration (for standard providers)
-2. Runtime provider configs (for custom providers)
-3. API discovery (for OpenAI-compatible providers)
+NO HARDCODED MODELS OR PROVIDERS - All defaults come from:
+1. mcp_cli.config.defaults (for default provider/model)
+2. chuk_llm configuration (for standard providers)
+3. Runtime provider configs (for custom providers)
+4. API discovery (for OpenAI-compatible providers)
 """
 
 import logging
@@ -22,6 +23,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from chuk_llm.llm.core.base import BaseLLMClient
 
+from mcp_cli.config.defaults import DEFAULT_PROVIDER
 from mcp_cli.model_management.provider import RuntimeProviderConfig
 from mcp_cli.model_management.client_factory import ClientFactory
 from mcp_cli.model_management.provider_discovery import ProviderDiscovery
@@ -47,52 +49,33 @@ class ModelManager:
         self._active_model: str | None = None
         self._custom_providers: dict[str, RuntimeProviderConfig] = {}
         self._client_factory = ClientFactory()
-        self._discovery_triggered = False
 
         self._initialize_chuk_llm()
         self._load_custom_providers()
+        # Note: Discovery is NOT triggered automatically - call refresh_models() if needed
 
     # ── Initialization ────────────────────────────────────────────────────────
 
     def _initialize_chuk_llm(self) -> None:
-        """Initialize chuk_llm configuration and trigger discovery."""
+        """Initialize chuk_llm configuration."""
         try:
             from chuk_llm.configuration import get_config
 
             self._chuk_config = get_config()
             logger.debug("Loaded chuk_llm configuration")
 
-            # Set defaults from chuk_llm
+            # Use configured default provider (from defaults.py)
             if self._chuk_config:
-                self._active_provider = "ollama"  # type: ignore[unreachable]  # Safe default
+                self._active_provider = DEFAULT_PROVIDER  # type: ignore[unreachable]
                 # Defer model resolution to avoid circular dependencies during __init__
                 self._active_model = None
 
-            # Trigger discovery
-            self._trigger_discovery()
-
         except Exception as e:
             logger.error(f"Failed to initialize chuk_llm: {e}")
-            # Minimal fallback
+            # Minimal fallback - use configured default
             self._chuk_config = None
-            self._active_provider = "ollama"
+            self._active_provider = DEFAULT_PROVIDER
             self._active_model = None  # Will be determined on first use
-
-    def _trigger_discovery(self) -> None:
-        """Trigger model discovery for providers."""
-        if self._discovery_triggered:
-            return
-
-        try:
-            from chuk_llm.api.providers import trigger_ollama_discovery_and_refresh
-
-            new_functions = trigger_ollama_discovery_and_refresh()
-            logger.info(
-                f"ModelManager discovery: {len(new_functions)} new Ollama functions"
-            )
-            self._discovery_triggered = True
-        except Exception as e:
-            logger.warning(f"ModelManager discovery failed (continuing anyway): {e}")
 
     def _load_custom_providers(self) -> None:
         """Load custom providers from preferences."""
@@ -125,27 +108,23 @@ class ModelManager:
         Get list of all available providers.
 
         Returns:
-            List of provider names
+            List of provider names (sorted alphabetically)
         """
-        providers = []
+        providers: set[str] = set()
 
         # Get chuk_llm providers
         if self._chuk_config:
             try:  # type: ignore[unreachable]
                 all_providers = self._chuk_config.get_all_providers()
-                # Ollama first, then others alphabetically
-                if "ollama" in all_providers:
-                    providers.append("ollama")
-                providers.extend([p for p in sorted(all_providers) if p != "ollama"])
+                providers.update(all_providers)
             except Exception as e:
                 logger.error(f"Failed to get chuk_llm providers: {e}")
 
         # Add custom providers
-        for custom_name in self._custom_providers.keys():
-            if custom_name not in providers:
-                providers.append(custom_name)
+        providers.update(self._custom_providers.keys())
 
-        return providers if providers else ["ollama"]  # Safe fallback
+        # Return sorted list, with configured default as fallback if empty
+        return sorted(providers) if providers else [DEFAULT_PROVIDER]
 
     def add_runtime_provider(
         self,
@@ -304,14 +283,16 @@ class ModelManager:
         Manually refresh models for a provider.
 
         Args:
-            provider: Provider name (refreshes all if None)
+            provider: Provider name (refreshes active provider if None)
 
         Returns:
             Number of new models discovered
         """
+        target_provider = provider or self._active_provider
+
         # Check if it's a runtime/custom provider first
-        if provider and provider in self._custom_providers:
-            config = self._custom_providers[provider]
+        if target_provider and target_provider in self._custom_providers:
+            config = self._custom_providers[target_provider]
             count = ProviderDiscovery.refresh_provider_models(config)
             if count is not None:
                 self._client_factory.clear_cache()  # Clear cache after refresh
@@ -319,30 +300,25 @@ class ModelManager:
             return 0
 
         # Use chuk_llm refresh for standard providers
-        from mcp_cli.constants import PROVIDER_OLLAMA
+        if not target_provider:
+            logger.warning("No provider specified for refresh")
+            return 0
 
         try:
-            if provider == PROVIDER_OLLAMA or provider is None:
-                from chuk_llm.api.providers import trigger_ollama_discovery_and_refresh
+            from chuk_llm.api.providers import refresh_provider_functions
 
-                new_functions = trigger_ollama_discovery_and_refresh()
-                logger.info(f"Refreshed Ollama: {len(new_functions)} functions")
-                return len(new_functions)
-            else:
-                from chuk_llm.api.providers import refresh_provider_functions
-
-                new_functions = refresh_provider_functions(provider)
-                logger.info(f"Refreshed {provider}: {len(new_functions)} functions")
-                return len(new_functions)
+            new_functions = refresh_provider_functions(target_provider)
+            logger.info(f"Refreshed {target_provider}: {len(new_functions)} functions")
+            return len(new_functions)
         except Exception as e:
-            logger.error(f"Failed to refresh models for {provider}: {e}")
+            logger.error(f"Failed to refresh models for {target_provider}: {e}")
             return 0
 
     # ── Active Provider/Model Management ──────────────────────────────────────
 
     def get_active_provider(self) -> str:
         """Get the currently active provider."""
-        return self._active_provider or "ollama"
+        return self._active_provider or DEFAULT_PROVIDER
 
     def get_active_model(self) -> str:
         """Get the currently active model."""

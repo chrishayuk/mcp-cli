@@ -136,4 +136,4 @@ class CmdActionParams(CommandBaseModel):
     single_turn: bool = Field(
         default=False, description="Disable multi-turn conversation"
     )
-    max_turns: int = Field(default=30, description="Maximum conversation turns")
+    max_turns: int = Field(default=100, description="Maximum conversation turns")

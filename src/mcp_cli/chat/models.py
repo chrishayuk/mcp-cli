@@ -137,7 +137,12 @@ class Message(BaseModel):
     model_config = {"frozen": False}
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dict for LLM API calls."""
+        """Convert to dict for LLM API calls.
+
+        Handles provider-specific requirements:
+        - OpenAI: Requires 'content' field in assistant messages with tool_calls
+        - DeepSeek Reasoner: Requires 'reasoning_content' field when model provided it
+        """
         result = self.model_dump(exclude_none=True, mode="json")
 
         # CRITICAL FIX: OpenAI (especially newer models like gpt-5-mini) requires
@@ -147,10 +152,11 @@ class Message(BaseModel):
             if MessageField.CONTENT not in result:
                 result[MessageField.CONTENT] = None
 
-        # CRITICAL FIX: DeepSeek Reasoner - DO NOT add reasoning_content if not provided
-        # The model will include it when generating tool calls if needed.
-        # Only preserve it if it was actually sent by the model.
-        # See: https://api-docs.deepseek.com/guides/thinking_mode#tool-calls
+        # NOTE: reasoning_content is automatically included if set (not None)
+        # because we're not explicitly excluding it. The exclude_none=True will
+        # only exclude it if it's None. This is correct behavior per DeepSeek docs:
+        # https://api-docs.deepseek.com/guides/thinking_mode#tool-calls
+        # "the user needs to send the reasoning content back to the API"
 
         return result  # type: ignore[no-any-return]
 

@@ -71,32 +71,33 @@ class DiscoveryManager:
         self._env_setup_complete = True
         logger.debug("ChukLLM environment variables set")
 
-    def trigger_discovery(self) -> int:
+    def trigger_discovery(self, provider: str | None = None) -> int:
         """Trigger discovery after environment setup.
 
         Call this after setup_environment() and before using models.
 
+        Args:
+            provider: Specific provider to discover (None for all configured providers)
+
         Returns:
             Number of new functions discovered
         """
-        if self._discovery_triggered:
+        if self._discovery_triggered and provider is None:
             return 0
 
         try:
-            # Import discovery functions
-            from chuk_llm.api.providers import trigger_ollama_discovery_and_refresh
+            from chuk_llm.api.providers import refresh_provider_functions
 
-            logger.debug("Triggering Ollama discovery from cli_options...")
+            logger.debug(f"Triggering discovery for provider: {provider or 'all'}...")
 
-            # Trigger Ollama discovery to get all available models
-            new_functions = trigger_ollama_discovery_and_refresh()
+            # Trigger discovery for specified provider (or all if None)
+            new_functions = refresh_provider_functions(provider)
 
-            self._discovery_triggered = True
+            if provider is None:
+                self._discovery_triggered = True
 
             if new_functions:
-                logger.debug(
-                    f"CLI discovery: {len(new_functions)} new Ollama functions"
-                )
+                logger.debug(f"CLI discovery: {len(new_functions)} new functions")
             else:
                 logger.debug("CLI discovery: no new functions (may already be cached)")
 
@@ -169,15 +170,18 @@ def trigger_discovery_after_setup() -> int:
     return _discovery_manager.trigger_discovery()
 
 
-def get_available_models_quick(provider: str = "ollama") -> list[str]:
+def get_available_models_quick(provider: str | None = None) -> list[str]:
     """Quick function to get available models after discovery.
 
     Args:
-        provider: Provider name (default: "ollama")
+        provider: Provider name (uses DEFAULT_PROVIDER if None)
 
     Returns:
         List of available model names
     """
+    from mcp_cli.config.defaults import DEFAULT_PROVIDER
+
+    provider = provider or DEFAULT_PROVIDER
     try:
         from chuk_llm.llm.client import list_available_providers
 

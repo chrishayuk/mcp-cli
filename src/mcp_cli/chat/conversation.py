@@ -36,11 +36,11 @@ class ConversationProcessor:
         # Store runtime_config for passing to streaming handler
         self.runtime_config = runtime_config
 
-    async def process_conversation(self, max_turns: int = 30):
+    async def process_conversation(self, max_turns: int = 100):
         """Process the conversation loop, handling tool calls and responses with streaming.
 
         Args:
-            max_turns: Maximum number of conversation turns before forcing exit (default: 30)
+            max_turns: Maximum number of conversation turns before forcing exit (default: 100)
         """
         turn_count = 0
         last_tool_signature = None  # Track last tool call to detect duplicates

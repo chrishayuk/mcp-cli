@@ -272,24 +272,32 @@ class StreamingResponseHandler:
             # Finalize tool calls
             tool_calls = self.tool_accumulator.finalize()
 
-            # Stop display and get final content
+            # Capture state values BEFORE stop_streaming clears them
+            chunks_received = (
+                self.display.streaming_state.chunks_received
+                if self.display.streaming_state
+                else 0
+            )
+            reasoning_content = (
+                self.display.streaming_state.reasoning_content
+                if self.display.streaming_state
+                else None
+            )
+
+            # Stop display and get final content (this clears streaming_state!)
             final_content = await self.display.stop_streaming(
                 interrupted=self._interrupted
             )
 
-            # Build response
+            # Build response using captured values
             elapsed = time.time() - start_time
             response = StreamingResponse(
                 content=final_content,
                 tool_calls=tool_calls,
-                chunks_received=self.display.streaming_state.chunks_received
-                if self.display.streaming_state
-                else 0,
+                chunks_received=chunks_received,
                 elapsed_time=elapsed,
                 interrupted=self._interrupted,
-                reasoning_content=self.display.streaming_state.reasoning_content
-                if self.display.streaming_state
-                else None,
+                reasoning_content=reasoning_content,
             )
 
             logger.info(

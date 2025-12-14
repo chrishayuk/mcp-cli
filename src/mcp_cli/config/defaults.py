@@ -64,7 +64,7 @@ DEFAULT_DYNAMIC_TOOLS_ENABLED = False
 # Conversation Defaults
 # ================================================================
 
-DEFAULT_MAX_TURNS = 30
+DEFAULT_MAX_TURNS = 100
 """Default maximum conversation turns before exit."""
 
 DEFAULT_SYSTEM_PROMPT = "You are a helpful AI assistant with access to tools."
@@ -187,3 +187,13 @@ JSON_TYPES = [
     JSON_TYPE_NULL,
 ]
 """All valid JSON Schema types."""
+
+
+# ================================================================
+# Middleware Configuration
+# ================================================================
+# Middleware (retry, circuit breaker, rate limiting) is provided by
+# chuk-tool-processor. See chuk_tool_processor.mcp.MiddlewareConfig
+# for configuration options.
+DEFAULT_MIDDLEWARE_ENABLED = True
+"""Enable CTP middleware by default."""

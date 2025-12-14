@@ -10,7 +10,7 @@ from chuk_tool_processor import ToolInfo as RegistryToolInfo
 
 from mcp_cli.tools.filter import DisabledReason
 from mcp_cli.tools.manager import ToolManager, get_tool_manager, set_tool_manager
-from mcp_cli.tools.models import ToolCallResult, ToolInfo
+from mcp_cli.tools.models import ToolInfo
 
 
 class DummyMeta:
@@ -310,7 +310,10 @@ class TestToolManagerToolExecution:
 
     @pytest.mark.asyncio
     async def test_execute_tool_transport_error(self):
-        """Test execute_tool with transport error."""
+        """Test execute_tool with transport error.
+
+        Note: Transport recovery is now handled by CTP middleware (retry, circuit breaker).
+        """
         tm = ToolManager(config_file="test.json", servers=[])
         mock_sm = MagicMock()
         mock_sm.call_tool = AsyncMock(
@@ -318,13 +321,10 @@ class TestToolManagerToolExecution:
         )
         tm.stream_manager = mock_sm
 
-        with patch.object(
-            tm, "_attempt_transport_recovery", return_value=None
-        ) as mock_recovery:
-            result = await tm.execute_tool("my_tool", {})
+        result = await tm.execute_tool("my_tool", {})
 
         assert result.success is False
-        mock_recovery.assert_called_once()
+        assert "Transport not initialized" in result.error
 
     @pytest.mark.asyncio
     async def test_stream_execute_tool(self):
@@ -342,100 +342,75 @@ class TestToolManagerToolExecution:
         assert results[0].success is True
 
 
-class TestToolManagerTransportRecovery:
-    """Test transport recovery."""
+class TestToolManagerMiddleware:
+    """Test middleware functionality.
 
-    @pytest.mark.asyncio
-    async def test_attempt_transport_recovery_no_namespace(self):
-        """Test recovery without namespace by looking up tool."""
-        tm = ToolManager(config_file="test.json", servers=[])
-        mock_sm = MagicMock()
-        mock_sm.call_tool = AsyncMock(return_value={"output": "test"})
-        mock_sm.reconnect_server = AsyncMock()
-        tm.stream_manager = mock_sm
+    Note: Transport recovery is now handled by CTP middleware.
+    These tests verify middleware status and configuration.
+    """
 
-        # Mock get_all_tools to return a tool with server_name
-        tool = MagicMock()
-        tool.name = "my_tool"
-        tool.server_name = "server1"
-        tm.get_all_tools = AsyncMock(return_value=[tool])
-
-        result = await tm._attempt_transport_recovery("my_tool", {})
-
-        assert result is not None
-        assert result.success is True
-
-    @pytest.mark.asyncio
-    async def test_attempt_transport_recovery_tool_not_found(self):
-        """Test recovery when tool not found."""
-        tm = ToolManager(config_file="test.json", servers=[])
-        mock_sm = MagicMock()
-        tm.stream_manager = mock_sm
-        tm.get_all_tools = AsyncMock(return_value=[])
-
-        result = await tm._attempt_transport_recovery("unknown_tool", {})
-
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_attempt_transport_recovery_no_stream_manager(self):
-        """Test recovery without stream manager."""
+    def test_middleware_enabled_default(self):
+        """Test middleware_enabled property without stream manager."""
         tm = ToolManager(config_file="test.json", servers=[])
         tm.stream_manager = None
 
-        tool = MagicMock()
-        tool.name = "my_tool"
-        tool.server_name = "server1"
-        tm.get_all_tools = AsyncMock(return_value=[tool])
+        assert tm.middleware_enabled is False
 
-        result = await tm._attempt_transport_recovery("my_tool", {})
-
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_attempt_transport_recovery_restart_fallback(self):
-        """Test recovery using restart_server fallback."""
-        tm = ToolManager(config_file="test.json", servers=[])
-        mock_sm = MagicMock(spec=[])
-        mock_sm.restart_server = AsyncMock()
-        mock_sm.call_tool = AsyncMock(return_value={"output": "test"})
-        tm.stream_manager = mock_sm
-
-        result = await tm._attempt_transport_recovery(
-            "my_tool", {}, namespace="server1"
-        )
-
-        assert result is not None
-        mock_sm.restart_server.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_attempt_transport_recovery_no_reconnect_method(self):
-        """Test recovery when no reconnect method available."""
-        tm = ToolManager(config_file="test.json", servers=[])
-        mock_sm = MagicMock(spec=[])  # No reconnect or restart methods
-        tm.stream_manager = mock_sm
-
-        result = await tm._attempt_transport_recovery(
-            "my_tool", {}, namespace="server1"
-        )
-
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_attempt_transport_recovery_exception(self):
-        """Test recovery handles exceptions."""
+    def test_middleware_enabled_with_stream_manager(self):
+        """Test middleware_enabled property with stream manager."""
         tm = ToolManager(config_file="test.json", servers=[])
         mock_sm = MagicMock()
-        mock_sm.reconnect_server = AsyncMock(
-            side_effect=RuntimeError("reconnect failed")
-        )
+        mock_sm.middleware_enabled = True
         tm.stream_manager = mock_sm
 
-        result = await tm._attempt_transport_recovery(
-            "my_tool", {}, namespace="server1"
-        )
+        assert tm.middleware_enabled is True
 
-        assert result is None
+    def test_get_middleware_status_no_stream_manager(self):
+        """Test get_middleware_status without stream manager."""
+        tm = ToolManager(config_file="test.json", servers=[])
+        tm.stream_manager = None
+
+        assert tm.get_middleware_status() is None
+
+    def test_get_middleware_status_with_stream_manager(self):
+        """Test get_middleware_status with stream manager."""
+        tm = ToolManager(config_file="test.json", servers=[])
+
+        # Create a mock status object with model_dump
+        mock_status = MagicMock()
+        mock_status.model_dump.return_value = {
+            "retry": {"enabled": True, "max_retries": 3},
+            "circuit_breaker": {"enabled": True, "failure_threshold": 5},
+            "rate_limiting": None,
+        }
+
+        mock_sm = MagicMock()
+        mock_sm.get_middleware_status.return_value = mock_status
+        tm.stream_manager = mock_sm
+
+        status = tm.get_middleware_status()
+
+        assert status is not None
+        assert status["retry"]["enabled"] is True
+        assert status["circuit_breaker"]["enabled"] is True
+
+    def test_get_middleware_status_returns_none(self):
+        """Test get_middleware_status when stream manager returns None."""
+        tm = ToolManager(config_file="test.json", servers=[])
+        mock_sm = MagicMock()
+        mock_sm.get_middleware_status.return_value = None
+        tm.stream_manager = mock_sm
+
+        assert tm.get_middleware_status() is None
+
+    def test_get_middleware_status_exception(self):
+        """Test get_middleware_status handles exceptions."""
+        tm = ToolManager(config_file="test.json", servers=[])
+        mock_sm = MagicMock()
+        mock_sm.get_middleware_status.side_effect = RuntimeError("error")
+        tm.stream_manager = mock_sm
+
+        assert tm.get_middleware_status() is None
 
 
 class TestToolManagerLLMTools:
@@ -1033,30 +1008,6 @@ class TestToolManagerValidateSingleToolInvalid:
 
         # The result depends on filter behavior, but we're testing coverage
         assert isinstance(valid, bool)
-
-
-class TestToolManagerExecuteToolRecovery:
-    """Test execute_tool with recovery success."""
-
-    @pytest.mark.asyncio
-    async def test_execute_tool_recovery_success(self):
-        """Test execute_tool succeeds after recovery."""
-        tm = ToolManager(config_file="test.json", servers=[])
-        mock_sm = MagicMock()
-        mock_sm.call_tool = AsyncMock(
-            side_effect=RuntimeError("Transport not initialized")
-        )
-        tm.stream_manager = mock_sm
-
-        recovery_result = ToolCallResult(
-            tool_name="my_tool", success=True, result={"ok": True}
-        )
-        with patch.object(
-            tm, "_attempt_transport_recovery", return_value=recovery_result
-        ):
-            result = await tm.execute_tool("my_tool", {})
-
-        assert result.success is True
 
 
 class TestToolManagerParallelExecution:

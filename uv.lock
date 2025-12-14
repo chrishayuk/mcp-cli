@@ -379,7 +379,7 @@ wheels = [
 
 [[package]]
 name = "chuk-llm"
-version = "0.16.3"
+version = "0.17"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -400,9 +400,9 @@ dependencies = [
     { name = "transformers" },
     { name = "ujson" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d8/44/06f06368e8957107567ab38b84aeb0a5f64b58afe61a5ba1bc2e0c319b6d/chuk_llm-0.16.3.tar.gz", hash = "sha256:1902f770b61d93eeb903160222473123d3495a6c1f35a149028a11f467229dae", size = 300953, upload-time = "2025-12-08T19:11:24.989Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/01/ae/5abfa41b977ff4e7541b90a51e87350d90852e33ed0ffd785ef430b12281/chuk_llm-0.17.tar.gz", hash = "sha256:e67ec2563e78879c6124177afdfa6c7b12c18437f76f317daea7dc7467496f46", size = 301133, upload-time = "2025-12-14T01:27:49.072Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/26/2e/92c8eccd5c0b319c790a136797a7508ed67c4799a184dae67d7270a6d65e/chuk_llm-0.16.3-py3-none-any.whl", hash = "sha256:f422019057214c715ae9669aa28d1c7bddb6d795659619151ac36cfa4842db22", size = 324156, upload-time = "2025-12-08T19:11:23.337Z" },
+    { url = "https://files.pythonhosted.org/packages/0c/af/d494d51bcd808ceba1d0300fa69ade40a1e57c2d824684e33fd035a8ae91/chuk_llm-0.17-py3-none-any.whl", hash = "sha256:bf19730b499daae9a3aa70fb877397d86f841570459049050182251c302b5398", size = 324188, upload-time = "2025-12-14T01:27:47.203Z" },
 ]
 
 [[package]]
@@ -463,7 +463,7 @@ wheels = [
 
 [[package]]
 name = "chuk-tool-processor"
-version = "0.13"
+version = "0.15"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "chuk-mcp" },
@@ -472,9 +472,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "uuid" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/15/46/f56598f2e29400c411b23a4498d9a86ae8c61e2327cf823a3bb4d3e06a2f/chuk_tool_processor-0.13.tar.gz", hash = "sha256:f35c60e1984a8f8d0541ad06ccbffc438625bcf67d33ac3c5d642c2304794336", size = 204649, upload-time = "2025-12-12T01:50:26.167Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cf/e2/eb81b663030ee92d56b20b7b75ac5b9bfbf2f1b7ece66549a4b4e2a25dd2/chuk_tool_processor-0.15.tar.gz", hash = "sha256:c99e0a2a4978fde633a2a4fd00f29346947de18d8fd97a4bb5b04106a863d706", size = 160824, upload-time = "2025-12-14T00:19:09.527Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9f/69/6af37737363c63ef5230ae4060e556e450698a16d953733a04600149127c/chuk_tool_processor-0.13-py3-none-any.whl", hash = "sha256:4c8a6e3a833eacf1a39b6f6a6f8cc716c7b5d5bf1173f8edd568b52b03d5bc8f", size = 186691, upload-time = "2025-12-12T01:50:24.802Z" },
+    { url = "https://files.pythonhosted.org/packages/bd/92/3cf2e66427dc27c345e8ac91f90b73009ae460aba64c88e15d02a408ec17/chuk_tool_processor-0.15-py3-none-any.whl", hash = "sha256:28740fe66c705e0ca895bb24b888959ab07db5e44fb7ea432b96875bab33b420", size = 189232, upload-time = "2025-12-14T00:19:07.942Z" },
 ]
 
 [[package]]
@@ -1416,10 +1416,10 @@ dev = [
 requires-dist = [
     { name = "asyncio", specifier = ">=3.4.3" },
     { name = "asyncio", marker = "extra == 'dev'", specifier = ">=3.4.3" },
-    { name = "chuk-llm", specifier = ">=0.16.3" },
+    { name = "chuk-llm", specifier = ">=0.17" },
     { name = "chuk-mcp-client-oauth", specifier = ">=0.3.5" },
     { name = "chuk-term", specifier = ">=0.3" },
-    { name = "chuk-tool-processor", specifier = ">=0.13" },
+    { name = "chuk-tool-processor", specifier = ">=0.15" },
     { name = "cryptography", specifier = ">=44.0.0" },
     { name = "fast-json", specifier = ">=0.3.2" },
     { name = "httpx", specifier = ">=0.27.0" },
@@ -2822,11 +2822,11 @@ wheels = [
 
 [[package]]
 name = "tzdata"
-version = "2025.2"
+version = "2025.3"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/95/32/1a225d6164441be760d75c2c42e2780dc0873fe382da3e98a2e1e48361e5/tzdata-2025.2.tar.gz", hash = "sha256:b60a638fcc0daffadf82fe0f57e53d06bdec2f36c4df66280ae79bce6bd6f2b9", size = 196380, upload-time = "2025-03-23T13:54:43.652Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5e/a7/c202b344c5ca7daf398f3b8a477eeb205cf3b6f32e7ec3a6bac0629ca975/tzdata-2025.3.tar.gz", hash = "sha256:de39c2ca5dc7b0344f2eba86f49d614019d29f060fc4ebc8a417896a620b56a7", size = 196772, upload-time = "2025-12-13T17:45:35.667Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5c/23/c7abc0ca0a1526a0774eca151daeb8de62ec457e77262b66b359c3c7679e/tzdata-2025.2-py2.py3-none-any.whl", hash = "sha256:1a403fada01ff9221ca8044d701868fa132215d84beb92242d9acd2147f667a8", size = 347839, upload-time = "2025-03-23T13:54:41.845Z" },
+    { url = "https://files.pythonhosted.org/packages/c7/b0/003792df09decd6849a5e39c28b513c06e84436a54440380862b5aeff25d/tzdata-2025.3-py2.py3-none-any.whl", hash = "sha256:06a47e5700f3081aab02b2e513160914ff0694bce9947d6b76ebd6bf57cfc5d1", size = 348521, upload-time = "2025-12-13T17:45:33.889Z" },
 ]
 
 [[package]]

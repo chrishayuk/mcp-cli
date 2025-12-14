@@ -7,6 +7,7 @@ Responsibilities:
 2. Integrate with mcp-cli's OAuth TokenManager
 3. Filter and validate tools for LLM compatibility
 4. Convert between chuk and mcp-cli data models
+5. Configure production middleware (retry, circuit breaker, rate limiting)
 
 For direct tool operations, use the exposed stream_manager property.
 """
@@ -22,8 +23,10 @@ from typing import Any
 from chuk_tool_processor import StreamManager, ToolProcessor
 from chuk_tool_processor import ToolCall as CTPToolCall
 from chuk_tool_processor import ToolResult as CTPToolResult
+from chuk_tool_processor.mcp import MiddlewareConfig
 
 from mcp_cli.config import RuntimeConfig, TimeoutType, load_runtime_config
+from mcp_cli.config.defaults import DEFAULT_MIDDLEWARE_ENABLED
 from mcp_cli.constants import ServerStatus
 from mcp_cli.llm.content_models import ContentBlockType
 from mcp_cli.tools.config_loader import ConfigLoader
@@ -66,6 +69,8 @@ class ToolManager:
         max_concurrency: int = 4,
         initialization_timeout: float = 120.0,
         runtime_config: RuntimeConfig | None = None,
+        middleware_config: MiddlewareConfig | None = None,
+        middleware_enabled: bool = DEFAULT_MIDDLEWARE_ENABLED,
     ):
         self.config_file = config_file
         self.servers = servers
@@ -92,9 +97,14 @@ class ToolManager:
 
         self.max_concurrency = max_concurrency
 
+        # Middleware configuration (retry, circuit breaker, rate limiting)
+        self._middleware_enabled = middleware_enabled
+        self._middleware_config = middleware_config
+
         logger.debug(
             f"ToolManager initialized with timeouts: "
-            f"tool={self.tool_timeout}s, init={self.initialization_timeout}s"
+            f"tool={self.tool_timeout}s, init={self.initialization_timeout}s, "
+            f"middleware_enabled={middleware_enabled}"
         )
 
         # chuk-tool-processor components (publicly accessible)
@@ -250,6 +260,13 @@ class ToolManager:
                     )
 
                 logger.info("Parallel server initialization complete")
+
+            # Enable middleware if configured (retry, circuit breaker, rate limiting)
+            if self._middleware_enabled and self.stream_manager:
+                self.stream_manager.enable_middleware(self._middleware_config)
+                logger.info(
+                    "CTP middleware enabled (retry, circuit breaker, rate limiting)"
+                )
 
             return True
 
@@ -424,7 +441,13 @@ class ToolManager:
         namespace: str | None = None,
         timeout: float | None = None,
     ) -> ToolCallResult:
-        """Execute tool and return ToolCallResult with automatic recovery on transport errors."""
+        """Execute tool and return ToolCallResult.
+
+        When middleware is enabled (default), CTP handles:
+        - Retry with exponential backoff for transient errors
+        - Circuit breaker pattern for failing servers
+        - Rate limiting (if configured)
+        """
         # Check if this is a dynamic tool
         if self.dynamic_tool_provider.is_dynamic_tool(tool_name):
             logger.info(f"Executing dynamic tool: {tool_name}")
@@ -440,7 +463,7 @@ class ToolManager:
                     tool_name=tool_name, success=False, error=error_msg
                 )
 
-        # Regular MCP tool execution
+        # Regular MCP tool execution (middleware handles retries if enabled)
         if not self.stream_manager:
             return ToolCallResult(
                 tool_name=tool_name, success=False, error="ToolManager not initialized"
@@ -458,21 +481,6 @@ class ToolManager:
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Tool execution failed: {error_msg}")
-
-            # Check if this is a transport error that might be recoverable
-            if (
-                "Transport not initialized" in error_msg
-                or "transport" in error_msg.lower()
-            ):
-                logger.warning(
-                    f"Transport error detected for tool {tool_name}, attempting recovery..."
-                )
-                recovery_result = await self._attempt_transport_recovery(
-                    tool_name, arguments, namespace, timeout
-                )
-                if recovery_result:
-                    return recovery_result
-
             return ToolCallResult(tool_name=tool_name, success=False, error=error_msg)
 
     async def stream_execute_tool(
@@ -512,64 +520,31 @@ class ToolManager:
         ):
             yield result
 
-    async def _attempt_transport_recovery(
-        self,
-        tool_name: str,
-        arguments: dict[str, Any],
-        namespace: str | None = None,
-        timeout: float | None = None,
-    ) -> ToolCallResult | None:
-        """Attempt to recover from transport errors by reconnecting to the server."""
-        import asyncio
+    # ================================================================
+    # Middleware Status
+    # ================================================================
+
+    def get_middleware_status(self) -> dict[str, Any] | None:
+        """Get middleware status for diagnostics.
+
+        Returns Pydantic model dict with retry, circuit breaker, and rate limiting status.
+        """
+        if not self.stream_manager:
+            return None
 
         try:
-            server_name = namespace
-            if not server_name:
-                tools = await self.get_all_tools()
-                for tool in tools:
-                    if tool.name == tool_name:
-                        server_name = tool.server_name
-                        break
-
-            if not server_name:
-                logger.warning(f"Could not identify server for tool {tool_name}")
-                return None
-
-            logger.info(
-                f"Attempting to reconnect to server '{server_name}' for tool '{tool_name}'"
-            )
-
-            if self.stream_manager is None:
-                logger.warning("StreamManager is None, cannot attempt recovery")
-                return None
-
-            if hasattr(self.stream_manager, "reconnect_server"):
-                await self.stream_manager.reconnect_server(server_name)
-            elif hasattr(self.stream_manager, "restart_server"):
-                await self.stream_manager.restart_server(server_name)
-            else:
-                logger.warning(
-                    f"StreamManager doesn't support reconnection - "
-                    f"server {server_name} may remain in bad state"
-                )
-                return None
-
-            await asyncio.sleep(0.5)
-
-            logger.info(f"Retrying tool {tool_name} after transport recovery")
-            result = await self.stream_manager.call_tool(
-                tool_name=tool_name,
-                arguments=arguments,
-                server_name=namespace,
-                timeout=timeout or self.tool_timeout,
-            )
-
-            logger.info(f"Tool {tool_name} succeeded after recovery")
-            return ToolCallResult(tool_name=tool_name, success=True, result=result)
-
-        except Exception as recovery_error:
-            logger.error(f"Transport recovery failed: {recovery_error}")
+            status = self.stream_manager.get_middleware_status()
+            return status.model_dump() if status else None
+        except Exception as e:
+            logger.error(f"Error getting middleware status: {e}")
             return None
+
+    @property
+    def middleware_enabled(self) -> bool:
+        """Check if middleware is currently enabled."""
+        if not self.stream_manager:
+            return False
+        return bool(self.stream_manager.middleware_enabled)
 
     # ================================================================
     # LLM Integration (filtering + adaptation)

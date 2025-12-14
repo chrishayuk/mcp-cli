@@ -36,7 +36,7 @@ async def handle_chat_mode(
     api_base: str | None = None,
     api_key: str | None = None,
     confirm_mode: str | None = None,
-    max_turns: int = 30,
+    max_turns: int = 100,
     model_manager=None,  # FIXED: Accept model_manager from caller
     runtime_config=None,  # RuntimeConfig | None
 ) -> bool:
@@ -50,7 +50,7 @@ async def handle_chat_mode(
         api_base: API base URL override (optional)
         api_key: API key override (optional)
         confirm_mode: Tool confirmation mode override (optional)
-        max_turns: Maximum conversation turns before forcing exit (default: 30)
+        max_turns: Maximum conversation turns before forcing exit (default: 100)
         model_manager: Pre-configured ModelManager (optional, creates new if None)
         runtime_config: Runtime configuration with timeout overrides (optional)
 
@@ -173,7 +173,7 @@ async def handle_chat_mode_for_testing(
     stream_manager,
     provider: str | None = None,
     model: str | None = None,
-    max_turns: int = 30,
+    max_turns: int = 100,
     runtime_config=None,  # RuntimeConfig | None
 ) -> bool:
     """
@@ -185,7 +185,7 @@ async def handle_chat_mode_for_testing(
         stream_manager: Test stream manager
         provider: Provider for testing
         model: Model for testing
-        max_turns: Maximum conversation turns before forcing exit (default: 30)
+        max_turns: Maximum conversation turns before forcing exit (default: 100)
         runtime_config: Runtime configuration with timeout overrides (optional)
 
     Returns:
@@ -238,7 +238,7 @@ async def _run_enhanced_chat_loop(
     ui: ChatUIManager,
     ctx: ChatContext,
     convo: ConversationProcessor,
-    max_turns: int = 30,
+    max_turns: int = 100,
 ) -> None:
     """
     Run the main chat loop with enhanced streaming support.
@@ -247,7 +247,7 @@ async def _run_enhanced_chat_loop(
         ui: UI manager with streaming coordination
         ctx: Chat context
         convo: Conversation processor with streaming support
-        max_turns: Maximum conversation turns before forcing exit (default: 30)
+        max_turns: Maximum conversation turns before forcing exit (default: 100)
     """
     while True:
         try:

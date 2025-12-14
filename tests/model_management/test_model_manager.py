@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from mcp_cli.config.defaults import DEFAULT_PROVIDER
 from mcp_cli.model_management.model_manager import ModelManager
 from mcp_cli.model_management.provider import RuntimeProviderConfig
 from mcp_cli.model_management.provider_discovery import (
@@ -28,11 +29,8 @@ class TestModelManagerInit:
         mock_init_chuk.assert_called_once()
         mock_load_custom.assert_called_once()
 
-    @patch.object(ModelManager, "_trigger_discovery")
     @patch.object(ModelManager, "_load_custom_providers")
-    def test_initialize_chuk_llm_success(
-        self, mock_load: MagicMock, mock_trigger: MagicMock
-    ) -> None:
+    def test_initialize_chuk_llm_success(self, mock_load: MagicMock) -> None:
         """Test successful chuk_llm initialization."""
         mock_config = MagicMock()
 
@@ -40,14 +38,10 @@ class TestModelManagerInit:
             manager = ModelManager()
 
         assert manager._chuk_config == mock_config
-        assert manager._active_provider == "ollama"
-        mock_trigger.assert_called()
+        assert manager._active_provider == DEFAULT_PROVIDER
 
-    @patch.object(ModelManager, "_trigger_discovery")
     @patch.object(ModelManager, "_load_custom_providers")
-    def test_initialize_chuk_llm_failure(
-        self, mock_load: MagicMock, mock_trigger: MagicMock
-    ) -> None:
+    def test_initialize_chuk_llm_failure(self, mock_load: MagicMock) -> None:
         """Test chuk_llm initialization failure falls back gracefully."""
         with patch(
             "chuk_llm.configuration.get_config",
@@ -56,42 +50,8 @@ class TestModelManagerInit:
             manager = ModelManager()
 
         assert manager._chuk_config is None
-        assert manager._active_provider == "ollama"
+        assert manager._active_provider == DEFAULT_PROVIDER
         assert manager._active_model is None
-
-    def test_trigger_discovery_only_once(self) -> None:
-        """Test that discovery is only triggered once."""
-        with patch.object(ModelManager, "_initialize_chuk_llm"):
-            with patch.object(ModelManager, "_load_custom_providers"):
-                manager = ModelManager()
-                manager._discovery_triggered = False
-
-        mock_trigger = MagicMock(return_value=["func1", "func2"])
-        with patch(
-            "chuk_llm.api.providers.trigger_ollama_discovery_and_refresh",
-            mock_trigger,
-        ):
-            manager._trigger_discovery()
-            assert manager._discovery_triggered is True
-
-            # Second call should not trigger again
-            mock_trigger.reset_mock()
-            manager._trigger_discovery()
-            mock_trigger.assert_not_called()
-
-    def test_trigger_discovery_handles_exception(self) -> None:
-        """Test that discovery failure is handled gracefully."""
-        with patch.object(ModelManager, "_initialize_chuk_llm"):
-            with patch.object(ModelManager, "_load_custom_providers"):
-                manager = ModelManager()
-                manager._discovery_triggered = False
-
-        with patch(
-            "chuk_llm.api.providers.trigger_ollama_discovery_and_refresh",
-            side_effect=Exception("Discovery failed"),
-        ):
-            # Should not raise
-            manager._trigger_discovery()
 
 
 class TestLoadCustomProviders:
@@ -156,10 +116,8 @@ class TestProviderManagement:
 
         providers = manager.get_available_providers()
 
-        # ollama should be first, then alphabetical
-        assert providers[0] == "ollama"
-        assert "anthropic" in providers
-        assert "openai" in providers
+        # Providers should be sorted alphabetically
+        assert providers == ["anthropic", "ollama", "openai"]
 
     def test_get_available_providers_without_chuk_config(
         self, manager: ModelManager
@@ -169,8 +127,8 @@ class TestProviderManagement:
 
         providers = manager.get_available_providers()
 
-        # Should return safe fallback
-        assert providers == ["ollama"]
+        # Should return safe fallback (configured default provider)
+        assert providers == [DEFAULT_PROVIDER]
 
     def test_get_available_providers_includes_custom(
         self, manager: ModelManager
@@ -198,8 +156,8 @@ class TestProviderManagement:
 
         providers = manager.get_available_providers()
 
-        # Should return safe fallback
-        assert providers == ["ollama"]
+        # Should return safe fallback (configured default provider)
+        assert providers == [DEFAULT_PROVIDER]
 
     def test_add_runtime_provider_with_models(self, manager: ModelManager) -> None:
         """Test adding a runtime provider with known models."""
@@ -504,33 +462,35 @@ class TestRefreshModels:
 
         assert count == 0
 
-    def test_refresh_models_ollama(self, manager: ModelManager) -> None:
-        """Test refreshing models for ollama provider."""
-        mock_trigger = MagicMock(return_value=["func1", "func2", "func3"])
+    def test_refresh_models_specific_provider(self, manager: ModelManager) -> None:
+        """Test refreshing models for a specific provider."""
+        mock_refresh = MagicMock(return_value=["func1", "func2", "func3"])
 
         with patch(
-            "chuk_llm.api.providers.trigger_ollama_discovery_and_refresh",
-            mock_trigger,
+            "chuk_llm.api.providers.refresh_provider_functions",
+            mock_refresh,
         ):
             count = manager.refresh_models("ollama")
 
         assert count == 3
-        mock_trigger.assert_called_once()
+        mock_refresh.assert_called_once_with("ollama")
 
-    def test_refresh_models_all_providers(self, manager: ModelManager) -> None:
-        """Test refreshing models for all providers (provider=None)."""
-        mock_trigger = MagicMock(return_value=["func1", "func2"])
+    def test_refresh_models_uses_active_provider(self, manager: ModelManager) -> None:
+        """Test refreshing models uses active provider when None."""
+        manager._active_provider = "anthropic"
+        mock_refresh = MagicMock(return_value=["func1", "func2"])
 
         with patch(
-            "chuk_llm.api.providers.trigger_ollama_discovery_and_refresh",
-            mock_trigger,
+            "chuk_llm.api.providers.refresh_provider_functions",
+            mock_refresh,
         ):
             count = manager.refresh_models(None)
 
         assert count == 2
+        mock_refresh.assert_called_once_with("anthropic")
 
-    def test_refresh_models_other_provider(self, manager: ModelManager) -> None:
-        """Test refreshing models for non-ollama provider."""
+    def test_refresh_models_openai_provider(self, manager: ModelManager) -> None:
+        """Test refreshing models for openai provider."""
         mock_refresh = MagicMock(return_value=["func1"])
 
         with patch(
@@ -545,7 +505,7 @@ class TestRefreshModels:
     def test_refresh_models_exception(self, manager: ModelManager) -> None:
         """Test refreshing models handles exceptions."""
         with patch(
-            "chuk_llm.api.providers.trigger_ollama_discovery_and_refresh",
+            "chuk_llm.api.providers.refresh_provider_functions",
             side_effect=Exception("Refresh error"),
         ):
             count = manager.refresh_models("ollama")
@@ -578,7 +538,7 @@ class TestActiveProviderModel:
         """Test getting active provider when None."""
         manager._active_provider = None
 
-        assert manager.get_active_provider() == "ollama"
+        assert manager.get_active_provider() == DEFAULT_PROVIDER
 
     def test_get_active_model(self, manager: ModelManager) -> None:
         """Test getting active model."""
