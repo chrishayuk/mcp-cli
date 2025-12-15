@@ -137,14 +137,18 @@ class ConfigLoader:
             if isinstance(value, str):
                 # Handle legacy format: {{token:provider}}
                 if value.startswith(TOKEN_PLACEHOLDER_PREFIX):
-                    provider = value[len(TOKEN_PLACEHOLDER_PREFIX):-len(TOKEN_PLACEHOLDER_SUFFIX)]
+                    provider = value[
+                        len(TOKEN_PLACEHOLDER_PREFIX) : -len(TOKEN_PLACEHOLDER_SUFFIX)
+                    ]
                     try:
                         # Try to load OAuth tokens
                         raw_data = self._token_store._retrieve_raw(f"oauth:{provider}")
                         if raw_data:
                             stored = StoredToken.model_validate(json.loads(raw_data))
                             # OAuth tokens store access_token in data dict
-                            access_token = stored.data.get("access_token") if stored.data else None
+                            access_token = (
+                                stored.data.get("access_token") if stored.data else None
+                            )
                             if access_token:
                                 return f"Bearer {access_token}"
                     except Exception as e:
@@ -153,20 +157,26 @@ class ConfigLoader:
                 # Handle new format: ${TOKEN:namespace:name}
                 elif value.startswith(TOKEN_ENV_PREFIX):
                     # Extract namespace:name
-                    inner = value[len(TOKEN_ENV_PREFIX):-len(TOKEN_ENV_SUFFIX)]
+                    inner = value[len(TOKEN_ENV_PREFIX) : -len(TOKEN_ENV_SUFFIX)]
                     parts = inner.split(":")
                     if len(parts) >= 2:
                         namespace = parts[0]
                         name = parts[1]
                         try:
                             # Get token from token store using namespace:name format
-                            raw_data = self._token_store._retrieve_raw(f"{namespace}:{name}")
+                            raw_data = self._token_store._retrieve_raw(
+                                f"{namespace}:{name}"
+                            )
                             if raw_data:
-                                stored = StoredToken.model_validate(json.loads(raw_data))
+                                stored = StoredToken.model_validate(
+                                    json.loads(raw_data)
+                                )
                                 # Token is in data dict - check for 'token' or 'access_token'
                                 token_value = None
                                 if stored.data:
-                                    token_value = stored.data.get("token") or stored.data.get("access_token")
+                                    token_value = stored.data.get(
+                                        "token"
+                                    ) or stored.data.get("access_token")
                                 if token_value:
                                     logger.debug(
                                         f"Resolved token {namespace}:{name} for env var"
@@ -177,9 +187,7 @@ class ConfigLoader:
                                         f"Token {namespace}:{name} has no token value in data"
                                     )
                             else:
-                                logger.warning(
-                                    f"Token not found: {namespace}:{name}"
-                                )
+                                logger.warning(f"Token not found: {namespace}:{name}")
                         except Exception as e:
                             logger.warning(
                                 f"Failed to get token {namespace}:{name}: {e}"
@@ -307,7 +315,9 @@ class ConfigLoader:
                 stored = StoredToken.model_validate(json.loads(raw_data))
 
                 # Check if we have a refresh token (stored in data dict)
-                refresh_token = stored.data.get("refresh_token") if stored.data else None
+                refresh_token = (
+                    stored.data.get("refresh_token") if stored.data else None
+                )
 
                 if not refresh_token:
                     logger.warning(

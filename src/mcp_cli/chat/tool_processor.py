@@ -22,7 +22,9 @@ from chuk_tool_processor import ToolResult as CTPToolResult
 
 from mcp_cli.chat.response_models import Message, MessageRole, ToolCall
 from mcp_cli.chat.models import ToolProcessorContext, UIManagerProtocol
+from mcp_cli.chat.tool_state import get_tool_state, SoftBlockReason
 from mcp_cli.display import display_tool_call_result
+from mcp_cli.tools.search import get_search_engine
 from mcp_cli.llm.content_models import ContentBlockType
 from mcp_cli.utils.preferences import get_preference_manager
 
@@ -116,16 +118,33 @@ class ToolProcessor:
             # Map to execution name
             execution_tool_name = name_mapping.get(llm_tool_name, llm_tool_name)
 
-            # Get display name
+            # Get display name - special handling for dynamic tool call_tool
             display_name = execution_tool_name
+            display_arguments = raw_arguments
+
+            # For dynamic tools, extract the actual tool name from call_tool
+            if execution_tool_name == "call_tool":
+                # Parse arguments to get the real tool name
+                parsed_args = self._parse_arguments(raw_arguments)
+                if "tool_name" in parsed_args:
+                    actual_tool = parsed_args["tool_name"]
+                    # Show as "call_tool → actual_tool_name"
+                    display_name = f"call_tool → {actual_tool}"
+                    # Filter out tool_name from displayed args to reduce noise
+                    display_arguments = {
+                        k: v for k, v in parsed_args.items() if k != "tool_name"
+                    }
+
             if hasattr(self.context, "get_display_name_for_tool"):
-                display_name = self.context.get_display_name_for_tool(
-                    execution_tool_name
-                )
+                # Only apply name mapping if not already a dynamic tool
+                if not execution_tool_name.startswith("call_tool"):
+                    display_name = self.context.get_display_name_for_tool(
+                        execution_tool_name
+                    )
 
             # Show tool call in UI
             try:
-                self.ui_manager.print_tool_call(display_name, raw_arguments)
+                self.ui_manager.print_tool_call(display_name, display_arguments)
             except Exception as ui_exc:
                 log.warning(f"UI display error (non-fatal): {ui_exc}")
 
@@ -145,21 +164,176 @@ class ToolProcessor:
             # Parse arguments
             arguments = self._parse_arguments(raw_arguments)
 
+            # DEBUG: Log exactly what the model sent for this tool call
+            log.info(f"TOOL CALL FROM MODEL: {llm_tool_name} id={call_id}")
+            log.info(f"  raw_arguments: {raw_arguments}")
+            log.info(f"  parsed_arguments: {arguments}")
+
+            # Get actual tool name for checks (for call_tool, it's the inner tool)
+            actual_tool_for_checks = execution_tool_name
+            if execution_tool_name == "call_tool" and "tool_name" in arguments:
+                actual_tool_for_checks = arguments["tool_name"]
+
+            # GENERIC VALIDATION: Reject tool calls with None arguments
+            # This catches cases where the model emits placeholders or incomplete calls
+            none_args = [
+                k for k, v in arguments.items() if v is None and k != "tool_name"
+            ]
+            if none_args:
+                error_msg = (
+                    f"INVALID_ARGS: Tool '{actual_tool_for_checks}' called with None values "
+                    f"for: {', '.join(none_args)}. Please provide actual values."
+                )
+                log.warning(error_msg)
+                output.warning(f"⚠ {error_msg}")
+                self._add_tool_result_to_history(
+                    llm_tool_name,
+                    call_id,
+                    f"**Error**: {error_msg}\n\nPlease retry with actual parameter values.",
+                )
+                continue
+
+            # Check $vN references in arguments (dataflow validation)
+            tool_state = get_tool_state()
+            ref_check = tool_state.check_references(arguments)
+            if not ref_check.valid:
+                log.warning(
+                    f"Missing references in {actual_tool_for_checks}: {ref_check.message}"
+                )
+                output.warning(f"⚠ {ref_check.message}")
+                # Add error to history instead of executing
+                self._add_tool_result_to_history(
+                    llm_tool_name,
+                    call_id,
+                    f"**Blocked**: {ref_check.message}\n\n"
+                    f"{tool_state.format_bindings_for_model()}",
+                )
+                continue
+
+            # Check for ungrounded calls (numeric args without $vN refs)
+            # Skip discovery tools - they don't need grounded numeric inputs
+            # Use SoftBlock repair system: attempt rebind → symbolic fallback → ask user
+            if not tool_state.is_discovery_tool(execution_tool_name):
+                ungrounded_check = tool_state.check_ungrounded_call(
+                    actual_tool_for_checks, arguments
+                )
+                if ungrounded_check.is_ungrounded:
+                    # Log args for observability (important for debugging)
+                    log.info(
+                        f"Ungrounded call to {actual_tool_for_checks} with args: {arguments}"
+                    )
+
+                    # Check if this tool should have auto-rebound applied
+                    # Parameterized tools (normal_cdf, sqrt, etc.) should NOT be rebound
+                    # because each call with different args has different semantics
+                    if not tool_state.should_auto_rebound(actual_tool_for_checks):
+                        # For parameterized tools, check preconditions first
+                        # This blocks premature calls before any values are computed
+                        precond_ok, precond_error = tool_state.check_tool_preconditions(
+                            actual_tool_for_checks, arguments
+                        )
+                        if not precond_ok:
+                            log.warning(
+                                f"Precondition failed for {actual_tool_for_checks}"
+                            )
+                            output.warning(
+                                f"⚠ Precondition failed for {actual_tool_for_checks}"
+                            )
+                            self._add_tool_result_to_history(
+                                llm_tool_name, call_id, f"**Blocked**: {precond_error}"
+                            )
+                            continue
+
+                        # Preconditions met - log and allow execution
+                        display_args = {
+                            k: v for k, v in arguments.items() if k != "tool_name"
+                        }
+                        log.info(
+                            f"Allowing parameterized tool {actual_tool_for_checks} with args: {display_args}"
+                        )
+                        output.info(f"→ {actual_tool_for_checks} args: {display_args}")
+                        # Fall through to execution
+                    else:
+                        # For other tools, try to repair using SoftBlock system
+                        should_proceed, repaired_args, fallback_response = (
+                            tool_state.try_soft_block_repair(
+                                actual_tool_for_checks,
+                                arguments,
+                                SoftBlockReason.UNGROUNDED_ARGS,
+                            )
+                        )
+
+                        if should_proceed and repaired_args:
+                            # Rebind succeeded - use repaired arguments
+                            log.info(
+                                f"Auto-repaired ungrounded call to {actual_tool_for_checks}: "
+                                f"{arguments} -> {repaired_args}"
+                            )
+                            output.info(
+                                f"↻ Auto-rebound arguments for {actual_tool_for_checks}"
+                            )
+                            arguments = repaired_args
+                        elif fallback_response:
+                            # Symbolic fallback - return helpful response instead of blocking
+                            # Show visible annotation for observability
+                            log.info(f"Symbolic fallback for {actual_tool_for_checks}")
+                            output.info(
+                                f"⏸ [analysis] required_input_missing for {actual_tool_for_checks}"
+                            )
+                            self._add_tool_result_to_history(
+                                llm_tool_name, call_id, fallback_response
+                            )
+                            continue
+                        else:
+                            # All repairs failed - add error to history
+                            log.warning(
+                                f"Could not repair ungrounded call to {actual_tool_for_checks}"
+                            )
+                            self._add_tool_result_to_history(
+                                llm_tool_name,
+                                call_id,
+                                f"Cannot proceed with `{actual_tool_for_checks}`: "
+                                f"arguments require computed values.\n\n"
+                                f"{tool_state.format_bindings_for_model()}",
+                            )
+                            continue
+
+            # Check per-tool call limit (anti-thrash)
+            if not tool_state.is_discovery_tool(execution_tool_name):
+                current_count = tool_state.get_tool_call_count(actual_tool_for_checks)
+                if current_count >= tool_state.per_tool_limit:
+                    log.warning(
+                        f"Tool {actual_tool_for_checks} at call limit ({current_count})"
+                    )
+                    output.warning(
+                        f"⚠ Tool {actual_tool_for_checks} called {current_count} times - limit reached"
+                    )
+                    # Add warning to history
+                    self._add_tool_result_to_history(
+                        llm_tool_name,
+                        call_id,
+                        tool_state.format_tool_limit_warning(actual_tool_for_checks),
+                    )
+                    continue
+
+            # Resolve $vN references in arguments (substitute actual values)
+            resolved_arguments = tool_state.resolve_references(arguments)
+
             # Store metadata for callbacks
             self._call_metadata[call_id] = {
                 "llm_tool_name": llm_tool_name,
                 "execution_tool_name": execution_tool_name,
                 "display_name": display_name,
-                "arguments": arguments,
+                "arguments": resolved_arguments,  # Use resolved arguments
                 "raw_arguments": raw_arguments,
             }
 
-            # Create CTP ToolCall
+            # Create CTP ToolCall with resolved arguments
             ctp_calls.append(
                 CTPToolCall(
                     id=call_id,
                     tool=execution_tool_name,
-                    arguments=arguments,
+                    arguments=resolved_arguments,
                 )
             )
 
@@ -195,25 +369,100 @@ class ToolProcessor:
         display_name = metadata.get("display_name", call.tool)
         arguments = metadata.get("arguments", call.arguments)
 
+        # For dynamic tools, enhance the display
+        if call.tool == "call_tool" and "tool_name" in arguments:
+            actual_tool = arguments["tool_name"]
+            display_name = f"{actual_tool}"  # Just show the actual tool name
+            # Show only the tool's arguments, not tool_name
+            arguments = {k: v for k, v in arguments.items() if k != "tool_name"}
+
         log.info(f"Executing tool: {call.tool} with args: {arguments}")
         await self.ui_manager.start_tool_execution(display_name, arguments)
 
     async def _on_tool_result(self, result: CTPToolResult) -> None:
-        """Callback when a tool completes."""
+        """Callback when a tool completes.
+
+        ENHANCED: Now includes value binding system for dataflow tracking.
+        - Binds numeric results to $vN identifiers
+        - Tracks per-tool call counts for anti-thrash
+        - Caches results for state tracking
+        """
         metadata = self._call_metadata.get(result.id, {})
         llm_tool_name = metadata.get("llm_tool_name", result.tool)
         execution_tool_name = metadata.get("execution_tool_name", result.tool)
         arguments = metadata.get("arguments", {})
 
+        # For dynamic tools, extract the actual tool name for better logging/caching
+        actual_tool_name = execution_tool_name
+        actual_arguments = arguments
+        if execution_tool_name == "call_tool" and "tool_name" in arguments:
+            actual_tool_name = arguments["tool_name"]
+            actual_arguments = {k: v for k, v in arguments.items() if k != "tool_name"}
+
         success = result.is_success
-        log.info(f"Tool result: success={success}, error='{result.error}'")
+        log.info(
+            f"Tool result ({actual_tool_name}): success={success}, error='{result.error}'"
+        )
+
+        tool_state = get_tool_state()
+        value_binding = None
+
+        # Cache successful results and create value bindings
+        if success and result.result is not None:
+            # Extract the actual value from MCP response structure
+            actual_result = self._extract_result_value(result.result)
+
+            # Cache result for dedup
+            tool_state.cache_result(actual_tool_name, actual_arguments, actual_result)
+            log.debug(f"Cached result for {actual_tool_name}: {actual_result}")
+
+            # Create value binding ($v1, $v2, etc.) for dataflow tracking
+            # Only bind "execution" tool results (not discovery tools)
+            if not tool_state.is_discovery_tool(execution_tool_name):
+                value_binding = tool_state.bind_value(
+                    actual_tool_name, actual_arguments, actual_result
+                )
+                log.info(
+                    f"Bound value ${value_binding.id} = {actual_result} from {actual_tool_name}"
+                )
+
+            # Record numeric results for runaway detection
+            if isinstance(actual_result, (int, float)):
+                tool_state.record_numeric_result(float(actual_result))
+
+        # Increment tool call counter for budget tracking (with tool name for split budgets)
+        tool_state.increment_tool_call(execution_tool_name)
+
+        # Record tool use for session-aware search boosting
+        # Successful tools get boosted in future search results
+        search_engine = get_search_engine()
+        search_engine.record_tool_use(actual_tool_name, success=success)
+
+        # Track per-tool call count for anti-thrash
+        if not tool_state.is_discovery_tool(execution_tool_name):
+            per_tool_status = tool_state.track_tool_call(actual_tool_name)
+            if per_tool_status.requires_justification:
+                log.warning(
+                    f"Tool {actual_tool_name} called {per_tool_status.call_count} times"
+                )
+
+        # For discovery tools, register any tools found in results
+        # Also use result shape to refine tool classification
+        if tool_state.is_discovery_tool(execution_tool_name):
+            tool_state.classify_by_result(execution_tool_name, result.result)
+            self._register_discovered_tools(
+                tool_state, execution_tool_name, result.result
+            )
 
         # Track transport failures
         self._track_transport_failures(success, result.error)
 
-        # Format content for history
+        # Format content for history - include value binding info
         if success:
             content = self._format_tool_response(result.result)
+            # Append value binding info so model sees the $vN reference
+            if value_binding:
+                content = f"{content}\n\n**RESULT: ${value_binding.id} = {value_binding.typed_value}**"
         else:
             content = f"Error: {result.error}"
 
@@ -292,6 +541,12 @@ class ToolProcessor:
             llm_tool_name = tool_call.function.name
             raw_arguments = tool_call.function.arguments
             call_id = tool_call.id
+            # DEBUG: Log raw arguments from model
+            log.debug(
+                f"RAW MODEL TOOL CALL: {llm_tool_name}, "
+                f"raw_arguments type={type(raw_arguments).__name__}, "
+                f"value={raw_arguments}"
+            )
         elif isinstance(tool_call, dict) and "function" in tool_call:
             log.warning(
                 f"Received dict tool call instead of ToolCall model: {type(tool_call)}"
@@ -326,6 +581,143 @@ class ToolProcessor:
         except Exception as e:
             log.error(f"Error parsing arguments: {e}")
             return {}
+
+    def _extract_result_value(self, result: Any) -> Any:
+        """Extract the actual value from MCP response structures.
+
+        MCP responses can be nested in various ways:
+        1. Direct value (number, string)
+        2. Dict with "content" containing MCP ToolResult with .content list
+        3. Dict with "success"/"result" wrapper
+        4. List of content blocks [{type: "text", text: "..."}]
+        5. Object with .content attribute (MCP CallToolResult)
+        6. String representation like "content=[{'type': 'text', 'text': '4.2426'}]"
+
+        This normalizes all formats to extract the core value for binding.
+        """
+        if result is None:
+            return None
+
+        # Handle string "None" (bug in some MCP responses)
+        if result == "None" or result == "null":
+            return None
+
+        # Handle MCP CallToolResult object (has .content attribute)
+        if hasattr(result, "content") and isinstance(result.content, list):
+            return self._extract_from_content_list(result.content)
+
+        # Handle dict structures
+        if isinstance(result, dict):
+            # Case: {"content": <MCP ToolResult object>}
+            if "content" in result:
+                content = result["content"]
+                # MCP ToolResult has a .content attribute that's a list
+                if hasattr(content, "content"):
+                    return self._extract_from_content_list(content.content)
+                # Or it might be a direct list
+                if isinstance(content, list):
+                    return self._extract_from_content_list(content)
+                # Or a string
+                if isinstance(content, str):
+                    return self._try_parse_number(content)
+
+            # Case: {"success": true, "result": ...}
+            if "success" in result and "result" in result:
+                inner = result["result"]
+                # Recurse if inner is not None/string "None"
+                if inner is not None and inner != "None":
+                    return self._extract_result_value(inner)
+                return None
+
+            # Case: {"isError": false, "content": ...} (MCP response wrapper)
+            if "isError" in result:
+                if result.get("isError"):
+                    return result.get("error") or result.get("content")
+                return self._extract_result_value(result.get("content"))
+
+            # Case: {"text": "value"} direct
+            if "text" in result and isinstance(result["text"], str):
+                return self._try_parse_number(result["text"])
+
+        # Handle list of content blocks directly
+        if isinstance(result, list):
+            return self._extract_from_content_list(result)
+
+        # Handle string that might be a serialized structure
+        if isinstance(result, str):
+            # Check for "content=[...]" string pattern (MCP SDK repr)
+            if result.startswith("content=["):
+                return self._parse_content_repr(result)
+            # Try to parse as number
+            return self._try_parse_number(result)
+
+        # Direct numeric values
+        if isinstance(result, (int, float)):
+            return result
+
+        return result
+
+    def _extract_from_content_list(self, content_list: list) -> Any:
+        """Extract value from a list of MCP content blocks."""
+        if not content_list:
+            return None
+
+        text_parts = []
+        for block in content_list:
+            if isinstance(block, dict):
+                block_type = block.get("type", "")
+                if block_type == ContentBlockType.TEXT.value or block_type == "text":
+                    text = block.get("text", "")
+                    if text:
+                        text_parts.append(text)
+            # Handle TextContent objects
+            elif hasattr(block, "type") and hasattr(block, "text"):
+                if block.type == "text":
+                    text_parts.append(block.text)
+
+        if not text_parts:
+            return None
+
+        # Join all text parts
+        combined = "\n".join(text_parts) if len(text_parts) > 1 else text_parts[0]
+        return self._try_parse_number(combined)
+
+    def _parse_content_repr(self, repr_str: str) -> Any:
+        """Parse a string like "content=[{'type': 'text', 'text': '4.2426'}]"."""
+        import re
+
+        # Try to extract the text value using regex
+        match = re.search(r"'text':\s*'([^']*)'", repr_str)
+        if match:
+            text = match.group(1)
+            return self._try_parse_number(text)
+
+        # Try another pattern for double quotes
+        match = re.search(r'"text":\s*"([^"]*)"', repr_str)
+        if match:
+            text = match.group(1)
+            return self._try_parse_number(text)
+
+        return repr_str
+
+    def _try_parse_number(self, text: str) -> Any:
+        """Try to parse a string as a number, return original if not possible."""
+        if not text or not isinstance(text, str):
+            return text
+
+        text = text.strip()
+
+        # Handle "None" string
+        if text in ("None", "null", ""):
+            return None
+
+        # Try float (handles integers too)
+        try:
+            return float(text)
+        except (ValueError, TypeError):
+            pass
+
+        return text
 
     def _format_tool_response(self, result: Any) -> str:
         """Format tool response for conversation history."""
@@ -444,3 +836,74 @@ class ToolProcessor:
         except Exception as e:
             log.warning(f"Error checking tool confirmation preference: {e}")
             return True
+
+    def _register_discovered_tools(
+        self,
+        tool_state: Any,
+        discovery_tool: str,
+        result: Any,
+    ) -> None:
+        """Register tools found by discovery operations.
+
+        Extracts tool names from search_tools, list_tools, or get_tool_schema results
+        and registers them as discovered for split budget enforcement.
+
+        Args:
+            tool_state: The ToolStateManager instance
+            discovery_tool: Name of the discovery tool (search_tools, list_tools, get_tool_schema)
+            result: Raw result from the discovery tool
+        """
+        if result is None:
+            return
+
+        try:
+            # Extract tool names from various result formats
+            tool_names: list[str] = []
+
+            # Handle string result (might be JSON)
+            if isinstance(result, str):
+                try:
+                    result = json.loads(result)
+                except json.JSONDecodeError:
+                    return
+
+            # Handle list of tools (from search_tools or list_tools)
+            if isinstance(result, list):
+                for item in result:
+                    if isinstance(item, dict):
+                        # Common keys for tool name
+                        for key in ("name", "tool_name", "tool"):
+                            if key in item:
+                                tool_names.append(str(item[key]))
+                                break
+                    elif isinstance(item, str):
+                        tool_names.append(item)
+
+            # Handle dict result (from get_tool_schema or single tool)
+            elif isinstance(result, dict):
+                # Direct tool schema
+                if "name" in result:
+                    tool_names.append(str(result["name"]))
+                # Nested tools list
+                elif "tools" in result and isinstance(result["tools"], list):
+                    for tool in result["tools"]:
+                        if isinstance(tool, dict) and "name" in tool:
+                            tool_names.append(str(tool["name"]))
+                        elif isinstance(tool, str):
+                            tool_names.append(tool)
+                # Content wrapper
+                elif "content" in result:
+                    # Recursively extract from content
+                    self._register_discovered_tools(
+                        tool_state, discovery_tool, result["content"]
+                    )
+                    return
+
+            # Register each discovered tool
+            for name in tool_names:
+                if name:
+                    tool_state.register_discovered_tool(name)
+                    log.debug(f"Discovered tool via {discovery_tool}: {name}")
+
+        except Exception as e:
+            log.warning(f"Error registering discovered tools: {e}")

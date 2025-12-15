@@ -102,7 +102,9 @@ def main_callback(
         "--token-backend",
         help="Token storage backend: auto, keychain, windows, secretservice, encrypted, vault",
     ),
-    max_turns: int = typer.Option(100, "--max-turns", help="Maximum conversation turns"),
+    max_turns: int = typer.Option(
+        100, "--max-turns", help="Maximum conversation turns"
+    ),
     include_tools: str | None = typer.Option(
         None,
         "--include-tools",
@@ -1442,7 +1444,9 @@ def cmd_command(
     single_turn: bool = typer.Option(
         False, "--single-turn", help="Disable multi-turn conversation"
     ),
-    max_turns: int = typer.Option(100, "--max-turns", help="Maximum conversation turns"),
+    max_turns: int = typer.Option(
+        100, "--max-turns", help="Maximum conversation turns"
+    ),
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),

@@ -4,6 +4,11 @@ from __future__ import annotations
 
 FIXED: Updated to work with the new OpenAI client universal tool compatibility system.
 Clean Pydantic models - no dictionary goop!
+
+ENHANCED: Added tool state management to prevent "model getting lost":
+- Caches tool results so duplicates return cached values
+- Injects compact state summaries back to the model
+- Continues conversation instead of aborting on duplicate calls
 """
 
 import time
@@ -18,6 +23,7 @@ from mcp_cli.chat.response_models import (
     MessageRole,
 )
 from mcp_cli.chat.tool_processor import ToolProcessor
+from mcp_cli.chat.tool_state import get_tool_state
 
 log = logging.getLogger(__name__)
 
@@ -27,14 +33,31 @@ class ConversationProcessor:
     Class to handle LLM conversation processing with streaming support.
 
     Updated to work with universal tool compatibility system.
+
+    ENHANCED: Now includes tool state management to prevent "model getting lost":
+    - Tracks tool call results in a cache
+    - Returns cached values on duplicate calls instead of aborting
+    - Injects state summaries to help model track computed values
     """
 
-    def __init__(self, context, ui_manager, runtime_config=None):
+    def __init__(
+        self,
+        context,
+        ui_manager,
+        runtime_config=None,
+    ):
         self.context = context
         self.ui_manager = ui_manager
         self.tool_processor = ToolProcessor(context, ui_manager)
         # Store runtime_config for passing to streaming handler
         self.runtime_config = runtime_config
+        # Tool state manager for caching and variable binding
+        self._tool_state = get_tool_state()
+        # Counter for consecutive duplicate detections (for escalation)
+        self._consecutive_duplicate_count = 0
+        self._max_consecutive_duplicates = 3  # Abort after this many
+        # Runtime uses adaptive policy: strict core with smooth wrapper
+        # No mode selection needed - always enforces grounding with auto-repair
 
     async def process_conversation(self, max_turns: int = 100):
         """Process the conversation loop, handling tool calls and responses with streaming.
@@ -44,7 +67,25 @@ class ConversationProcessor:
         """
         turn_count = 0
         last_tool_signature = None  # Track last tool call to detect duplicates
+        last_tool_names = (
+            None  # Track just tool names (for arg-insensitive duplicate detection)
+        )
         tools_for_completion = None  # Will be set based on context
+
+        # Reset tool state for this new prompt
+        self._tool_state.reset_for_new_prompt()
+
+        # Advance search engine turn for session boosting
+        # Tools used recently get boosted in search results
+        from mcp_cli.tools.search import get_search_engine
+
+        search_engine = get_search_engine()
+        search_engine.advance_turn()
+
+        # Register user literals from the latest user message
+        # This whitelists numbers from the user prompt so they pass ungrounded checks
+        self._register_user_literals_from_history()
+
         try:
             while turn_count < max_turns:
                 try:
@@ -153,11 +194,134 @@ class ConversationProcessor:
                     if tool_calls:
                         for i, tc in enumerate(tool_calls):
                             # ToolCall is a Pydantic model from chuk_llm
-                            log.info(f"Tool call {i}: {tc.function.name}")
+                            log.info(
+                                f"Tool call {i}: {tc.function.name} args={tc.function.arguments}"
+                            )
 
                     # If model requested tool calls, execute them
                     if tool_calls and len(tool_calls) > 0:
                         log.debug(f"Processing {len(tool_calls)} tool calls from LLM")
+
+                        # Check split budgets for each tool call type
+                        # Get name mapping for looking up actual tool names
+                        name_mapping = getattr(self.context, "tool_name_mapping", {})
+
+                        # Check if any discovery tools would exceed budget
+                        # Uses behavior-based classification (pattern matching + result shape)
+                        discovery_tools_requested = []
+                        execution_tools_requested = []
+
+                        for tc in tool_calls:
+                            tool_name = name_mapping.get(
+                                tc.function.name, tc.function.name
+                            )
+                            if self._tool_state.is_discovery_tool(tool_name):
+                                discovery_tools_requested.append(tool_name)
+                            elif self._tool_state.is_execution_tool(tool_name):
+                                execution_tools_requested.append(tool_name)
+
+                        # Check discovery budget first
+                        if discovery_tools_requested:
+                            disc_status = self._tool_state.check_runaway(
+                                discovery_tools_requested[0]
+                            )
+                            if disc_status.should_stop and "Discovery" in (
+                                disc_status.reason or ""
+                            ):
+                                log.warning(
+                                    f"Discovery budget exhausted: {disc_status.reason}"
+                                )
+                                output.warning(
+                                    "⚠ Discovery budget exhausted - no more searching"
+                                )
+
+                                stop_msg = self._tool_state.format_discovery_exhausted_message()
+                                self.context.conversation_history.append(
+                                    Message(
+                                        role=MessageRole.ASSISTANT,
+                                        content=stop_msg,
+                                    )
+                                )
+
+                                if self.ui_manager.is_streaming_response:
+                                    await self.ui_manager.stop_streaming_response()
+                                if hasattr(self.ui_manager, "streaming_handler"):
+                                    self.ui_manager.streaming_handler = None
+                                continue
+
+                        # Check execution budget
+                        if execution_tools_requested:
+                            exec_status = self._tool_state.check_runaway(
+                                execution_tools_requested[0]
+                            )
+                            if exec_status.should_stop and "Execution" in (
+                                exec_status.reason or ""
+                            ):
+                                log.warning(
+                                    f"Execution budget exhausted: {exec_status.reason}"
+                                )
+                                output.warning(
+                                    "⚠ Execution budget exhausted - no more tool calls"
+                                )
+
+                                stop_msg = self._tool_state.format_execution_exhausted_message()
+                                self.context.conversation_history.append(
+                                    Message(
+                                        role=MessageRole.ASSISTANT,
+                                        content=stop_msg,
+                                    )
+                                )
+
+                                if self.ui_manager.is_streaming_response:
+                                    await self.ui_manager.stop_streaming_response()
+                                if hasattr(self.ui_manager, "streaming_handler"):
+                                    self.ui_manager.streaming_handler = None
+                                continue
+
+                        # Check general runaway status (combined budget, saturation, etc.)
+                        runaway_status = self._tool_state.check_runaway()
+                        if runaway_status.should_stop:
+                            log.warning(f"Runaway detected: {runaway_status.reason}")
+                            output.warning(f"⚠ {runaway_status.message}")
+
+                            # Generate appropriate stop message
+                            if runaway_status.budget_exhausted:
+                                stop_msg = (
+                                    self._tool_state.format_budget_exhausted_message()
+                                )
+                            elif runaway_status.saturation_detected:
+                                last_val = (
+                                    self._tool_state._recent_numeric_results[-1]
+                                    if self._tool_state._recent_numeric_results
+                                    else 0.0
+                                )
+                                stop_msg = self._tool_state.format_saturation_message(
+                                    last_val
+                                )
+                            else:
+                                stop_msg = (
+                                    f"**Tool execution stopped**: {runaway_status.reason}\n\n"
+                                    f"{self._tool_state.format_state_for_model()}\n\n"
+                                    "Please provide your final answer using the computed values above."
+                                )
+
+                            # Inject stop message and continue without tools
+                            self.context.conversation_history.append(
+                                Message(
+                                    role=MessageRole.ASSISTANT,
+                                    content=stop_msg,
+                                )
+                            )
+
+                            # Stop streaming UI and continue to get final answer
+                            if self.ui_manager.is_streaming_response:
+                                await self.ui_manager.stop_streaming_response()
+                            if hasattr(self.ui_manager, "streaming_handler"):
+                                self.ui_manager.streaming_handler = None
+
+                            # Continue to next iteration - model will see stop message
+                            # and should provide final answer
+                            continue
 
                         # Check if we're at max turns
                         if turn_count >= max_turns:
@@ -180,34 +344,106 @@ class ConversationProcessor:
                         # Create signature to detect duplicate tool calls
                         # ToolCall is a Pydantic model from chuk_llm with frozen function
                         current_signature = []
+                        tool_names_only = []
                         for tc in tool_calls:
                             name = tc.function.name
                             args = tc.function.arguments  # JSON string from chuk_llm
                             current_signature.append(f"{name}:{args}")
+                            tool_names_only.append(name)
 
                         current_sig_str = "|".join(sorted(current_signature))
+                        current_names_str = "|".join(sorted(tool_names_only))
 
-                        # If this is a duplicate, stop looping and return control to user
-                        if (
+                        # Check if all tools are idempotent math tools with different args
+                        # These shouldn't trigger "stuck" detection when called with different args
+                        all_idempotent = all(
+                            self._tool_state.is_idempotent_math_tool(name)
+                            for name in tool_names_only
+                        )
+
+                        # If this is a duplicate, use cached results and inject state
+                        # For idempotent math tools, only count as duplicate if BOTH name AND args match
+                        is_true_duplicate: bool = bool(
                             last_tool_signature
                             and current_sig_str == last_tool_signature
-                        ):
-                            log.warning(
-                                f"Duplicate tool call detected: {current_sig_str}"
+                        )
+
+                        # For non-idempotent tools, also count same-tool-names as potential loop
+                        is_name_only_repeat = (
+                            not all_idempotent
+                            and last_tool_names
+                            and current_names_str == last_tool_names
+                        )
+
+                        if is_true_duplicate or is_name_only_repeat:
+                            self._consecutive_duplicate_count += 1
+
+                            if is_true_duplicate:
+                                log.warning(
+                                    f"Duplicate tool call detected ({self._consecutive_duplicate_count}x): {current_sig_str[:100]}"
+                                )
+                            else:
+                                log.info(
+                                    f"Same tools called again with different args ({self._consecutive_duplicate_count}x): {current_names_str}"
+                                )
+
+                            # Check if we've exceeded max duplicates (safety valve)
+                            # Be more lenient for idempotent math tools
+                            max_allowed = (
+                                self._max_consecutive_duplicates + 2
+                                if all_idempotent
+                                else self._max_consecutive_duplicates
                             )
-                            output.warning(
-                                "The model attempted to call the same tools again instead of processing the results.\n"
-                                "This may indicate the model didn't understand the tool outputs.\n"
-                                "Returning to prompt."
-                            )
-                            # CRITICAL: Stop streaming UI before breaking
-                            if self.ui_manager.is_streaming_response:
-                                await self.ui_manager.stop_streaming_response()
-                            if hasattr(self.ui_manager, "streaming_handler"):
-                                self.ui_manager.streaming_handler = None
-                            break
+
+                            if self._consecutive_duplicate_count >= max_allowed:
+                                output.warning(
+                                    f"Model called same tools {self._consecutive_duplicate_count} times in a row.\n"
+                                    "This indicates the model is stuck. Returning to prompt."
+                                )
+                                # CRITICAL: Stop streaming UI before breaking
+                                if self.ui_manager.is_streaming_response:
+                                    await self.ui_manager.stop_streaming_response()
+                                if hasattr(self.ui_manager, "streaming_handler"):
+                                    self.ui_manager.streaming_handler = None
+                                break
+
+                            # For true duplicates (same args), inject state summary
+                            if is_true_duplicate:
+                                output.info(
+                                    "Detected repeated tool call. Using cached results and providing state summary."
+                                )
+
+                                # Generate state summary and inject as assistant context
+                                state_summary = (
+                                    self._tool_state.format_state_for_model()
+                                )
+                                if state_summary:
+                                    # Add state reminder as a system-like message
+                                    state_msg = (
+                                        "**Previously computed values (use these directly):**\n\n"
+                                        f"{state_summary}\n\n"
+                                        "Continue with the calculation using these stored values. "
+                                        "Do not re-call tools for values already computed."
+                                    )
+                                    self.context.conversation_history.append(
+                                        Message(
+                                            role=MessageRole.ASSISTANT,
+                                            content=state_msg,
+                                        )
+                                    )
+                                    log.info(
+                                        f"Injected state summary: {state_summary[:200]}"
+                                    )
+
+                                # Continue to next iteration - model will see the state
+                                continue
+                            # For different args, let it proceed (model is computing new values)
+                        else:
+                            # Not a duplicate, reset counter
+                            self._consecutive_duplicate_count = 0
 
                         last_tool_signature = current_sig_str
+                        last_tool_names = current_names_str
 
                         # Log the tool calls for debugging
                         for i, tc in enumerate(tool_calls):
@@ -227,6 +463,7 @@ class ConversationProcessor:
 
                     # Reset duplicate tracking on text response
                     last_tool_signature = None
+                    last_tool_names = None
 
                     # Display assistant response (if not already displayed by streaming)
                     elapsed = completion.elapsed_time
@@ -244,6 +481,29 @@ class ConversationProcessor:
                         # Clear streaming handler reference
                         if hasattr(self.ui_manager, "streaming_handler"):
                             self.ui_manager.streaming_handler = None
+
+                    # Check for unused tool results (dataflow hygiene warning)
+                    # NOTE: Disabled for cleaner demo output - models often compute
+                    # analytically without referencing tool results explicitly
+                    unused_warning = self._tool_state.format_unused_warning()
+                    if unused_warning:
+                        log.info("Unused tool results detected at end of turn")
+                        # output.info(unused_warning)  # Disabled - too noisy for demos
+
+                    # Extract and register any value bindings from assistant text
+                    # This allows values like "σ_d = 5" to become referenceable via $vN
+                    if response_content and response_content != "No response":
+                        new_bindings = self._tool_state.extract_bindings_from_text(
+                            response_content
+                        )
+                        if new_bindings:
+                            log.info(
+                                f"Extracted {len(new_bindings)} value bindings from assistant response"
+                            )
+                            for binding in new_bindings:
+                                log.debug(
+                                    f"  ${binding.id} = {binding.raw_value} (aliases: {binding.aliases})"
+                                )
 
                     # Add to conversation history
                     # Include reasoning_content if present (for DeepSeek reasoner and similar models)
@@ -398,3 +658,31 @@ class ConversationProcessor:
             log.error(f"Error loading tools: {exc}")
             self.context.openai_tools = []
             self.context.tool_name_mapping = {}
+
+    def _register_user_literals_from_history(self) -> int:
+        """Extract and register numeric literals from recent user messages.
+
+        Scans conversation history for the most recent user message(s) and
+        registers any numeric literals found. This whitelists user-provided
+        numbers so they pass ungrounded call detection.
+
+        Returns:
+            Number of literals registered
+        """
+        total_registered = 0
+
+        # Scan recent messages for user content
+        for msg in reversed(self.context.conversation_history):
+            if msg.role == MessageRole.USER and msg.content:
+                count = self._tool_state.register_user_literals(msg.content)
+                total_registered += count
+                log.debug(f"Registered {count} user literals from message")
+                # Only process the most recent user message
+                break
+
+        if total_registered > 0:
+            log.info(
+                f"Registered {total_registered} user literals for ungrounded check whitelist"
+            )
+
+        return total_registered

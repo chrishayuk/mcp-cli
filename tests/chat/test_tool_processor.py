@@ -210,7 +210,8 @@ async def test_process_tool_calls_successful_tool():
 
     # Verify the response record.
     assert response_record.role.value == "tool"
-    assert response_record.content == "Tool executed successfully"
+    # Content now includes value binding info ($vN = value)
+    assert "Tool executed successfully" in response_record.content
 
 
 @pytest.mark.asyncio
@@ -223,6 +224,12 @@ async def test_process_tool_calls_with_argument_parsing():
     ui_manager = DummyUIManager()
     processor = ToolProcessor(context, ui_manager)
 
+    # Register 123 as a user-provided literal so it passes ungrounded check
+    from mcp_cli.chat.tool_state import get_tool_state
+
+    tool_state = get_tool_state()
+    tool_state.register_user_literals("Test with value 123")
+
     tool_call = {
         "function": {"name": "parse_tool", "arguments": '{"num": 123}'},
         "id": "call_parse",
@@ -233,10 +240,11 @@ async def test_process_tool_calls_with_argument_parsing():
     assert isinstance(tool_manager.executed_args, dict)
     assert tool_manager.executed_args.get("num") == 123
 
-    # Check that the response record content is formatted as a JSON string.
+    # Check that the response record content contains the formatted result.
+    # Note: Content now includes value binding info ($vN = value) appended
     response_record = context.conversation_history[1]
     expected_formatted = json.dumps(result_dict["content"], indent=2)
-    assert response_record.content == expected_formatted
+    assert expected_formatted in response_record.content
 
 
 @pytest.mark.asyncio

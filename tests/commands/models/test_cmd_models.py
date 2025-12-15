@@ -253,7 +253,7 @@ class TestCmdActionParams:
         assert params.system_prompt is None
         assert params.raw is False
         assert params.single_turn is False
-        assert params.max_turns == 30
+        assert params.max_turns == 100
 
     def test_custom_params(self):
         """Test custom parameter values."""

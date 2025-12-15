@@ -229,6 +229,8 @@ async def test_get_tool_schema_unknown_tool(provider):
 @pytest.mark.asyncio
 async def test_call_tool_executes_tool(provider):
     """Test call_tool delegates to tool_manager."""
+    # Must fetch schema first (enforced workflow)
+    await provider.get_tool_schema("calculator")
     result = await provider.call_tool("calculator", {"expression": "2+2"})
 
     assert result["success"] is True
@@ -376,7 +378,10 @@ async def test_call_tool_unwraps_tool_result():
         def __init__(self):
             self.result = {"actual": "data"}
 
-    tool_manager = DummyToolManager([])
+    tools = [
+        ToolInfo(name="test", namespace="test", description="Test tool", parameters={}),
+    ]
+    tool_manager = DummyToolManager(tools)
     tool_manager.execute_tool = AsyncMock(
         return_value=ToolCallResult(
             tool_name="test",
@@ -386,6 +391,8 @@ async def test_call_tool_unwraps_tool_result():
     )
 
     provider = DynamicToolProvider(tool_manager)
+    # Must fetch schema first (enforced workflow)
+    await provider.get_tool_schema("test")
     result = await provider.call_tool("test", {})
 
     assert result["success"] is True
@@ -394,7 +401,10 @@ async def test_call_tool_unwraps_tool_result():
 @pytest.mark.asyncio
 async def test_call_tool_unwraps_content_dict():
     """Test call_tool extracts 'content' from result dicts."""
-    tool_manager = DummyToolManager([])
+    tools = [
+        ToolInfo(name="test", namespace="test", description="Test tool", parameters={}),
+    ]
+    tool_manager = DummyToolManager(tools)
     tool_manager.execute_tool = AsyncMock(
         return_value=ToolCallResult(
             tool_name="test",
@@ -404,6 +414,8 @@ async def test_call_tool_unwraps_content_dict():
     )
 
     provider = DynamicToolProvider(tool_manager)
+    # Must fetch schema first (enforced workflow)
+    await provider.get_tool_schema("test")
     result = await provider.call_tool("test", {})
 
     assert result["success"] is True
@@ -412,7 +424,10 @@ async def test_call_tool_unwraps_content_dict():
 @pytest.mark.asyncio
 async def test_call_tool_format_exception():
     """Test call_tool handles format_tool_response exception."""
-    tool_manager = DummyToolManager([])
+    tools = [
+        ToolInfo(name="test", namespace="test", description="Test tool", parameters={}),
+    ]
+    tool_manager = DummyToolManager(tools)
     tool_manager.execute_tool = AsyncMock(
         return_value=ToolCallResult(
             tool_name="test",
@@ -426,6 +441,8 @@ async def test_call_tool_format_exception():
     )
 
     provider = DynamicToolProvider(tool_manager)
+    # Must fetch schema first (enforced workflow)
+    await provider.get_tool_schema("test")
     result = await provider.call_tool("test", {})
 
     # Should fallback to str() representation
@@ -436,7 +453,10 @@ async def test_call_tool_format_exception():
 @pytest.mark.asyncio
 async def test_call_tool_failure():
     """Test call_tool handles tool execution failure."""
-    tool_manager = DummyToolManager([])
+    tools = [
+        ToolInfo(name="test", namespace="test", description="Test tool", parameters={}),
+    ]
+    tool_manager = DummyToolManager(tools)
     tool_manager.execute_tool = AsyncMock(
         return_value=ToolCallResult(
             tool_name="test",
@@ -446,6 +466,8 @@ async def test_call_tool_failure():
     )
 
     provider = DynamicToolProvider(tool_manager)
+    # Must fetch schema first (enforced workflow)
+    await provider.get_tool_schema("test")
     result = await provider.call_tool("test", {})
 
     assert result["success"] is False
@@ -455,14 +477,36 @@ async def test_call_tool_failure():
 @pytest.mark.asyncio
 async def test_call_tool_exception():
     """Test call_tool handles exceptions."""
-    tool_manager = DummyToolManager([])
+    tools = [
+        ToolInfo(name="test", namespace="test", description="Test tool", parameters={}),
+    ]
+    tool_manager = DummyToolManager(tools)
     tool_manager.execute_tool = AsyncMock(side_effect=RuntimeError("network error"))
 
     provider = DynamicToolProvider(tool_manager)
+    # Must fetch schema first (enforced workflow)
+    await provider.get_tool_schema("test")
     result = await provider.call_tool("test", {})
 
     assert result["success"] is False
     assert "network error" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_call_tool_requires_schema_first():
+    """Test call_tool rejects calls when schema hasn't been fetched."""
+    tools = [
+        ToolInfo(name="test", namespace="test", description="Test tool", parameters={}),
+    ]
+    tool_manager = DummyToolManager(tools)
+
+    provider = DynamicToolProvider(tool_manager)
+    # Don't fetch schema - call directly
+    result = await provider.call_tool("test", {})
+
+    assert result["success"] is False
+    assert "WORKFLOW_ERROR" in result["error"]
+    assert "get_tool_schema" in result["error"]
 
 
 @pytest.mark.asyncio

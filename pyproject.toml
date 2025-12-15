@@ -15,10 +15,10 @@ keywords = ["llm", "openai", "claude", "mcp", "cli"]
 license = {text = "MIT"}
 dependencies = [
   "asyncio>=3.4.3",
-  "chuk-llm>=0.17",
+  "chuk-llm>=0.17.1",
   "chuk-mcp-client-oauth>=0.3.5",
   "chuk-term>=0.3",
-  "chuk-tool-processor>=0.15",
+  "chuk-tool-processor>=0.17",
   "cryptography>=44.0.0",
   "fast-json>=0.3.2",
   "httpx>=0.27.0",

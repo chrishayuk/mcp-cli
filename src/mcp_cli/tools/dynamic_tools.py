@@ -3,6 +3,13 @@
 
 This module provides dynamic tools that allow the LLM to discover and load
 tool schemas on-demand, rather than loading all tools upfront.
+
+ENHANCED: Now uses intelligent search with:
+- Tokenized OR semantics (any matching keyword scores)
+- Synonym expansion ("gaussian" finds "normal", "cdf" finds "cumulative")
+- Fuzzy matching fallback for typos
+- Namespace aliasing ("math.normal_cdf" finds "normal_cdf")
+- Always returns results (fallback to popular tools)
 """
 
 from __future__ import annotations
@@ -12,10 +19,32 @@ import logging
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from mcp_cli.tools.search import ToolSearchEngine, find_tool_exact
+
+# Import directly from state subpackage to avoid circular import via chat/__init__.py
+from mcp_cli.chat.state import get_tool_state
+
 if TYPE_CHECKING:
     from mcp_cli.tools.manager import ToolManager
 
 logger = logging.getLogger(__name__)
+
+
+# Tool metadata: tools that require computed values before they can be called
+# These will be hidden/downranked in search results until values exist in state
+PARAMETERIZED_TOOLS: dict[str, dict[str, Any]] = {
+    "normal_cdf": {"requires_computed_values": True, "category": "statistics"},
+    "normal_pdf": {"requires_computed_values": True, "category": "statistics"},
+    "normal_sf": {"requires_computed_values": True, "category": "statistics"},
+    "t_test": {"requires_computed_values": True, "category": "statistics"},
+    "chi_square": {"requires_computed_values": True, "category": "statistics"},
+    # These compute tools don't require pre-computed values
+    "sqrt": {"requires_computed_values": False, "category": "compute"},
+    "add": {"requires_computed_values": False, "category": "compute"},
+    "subtract": {"requires_computed_values": False, "category": "compute"},
+    "multiply": {"requires_computed_values": False, "category": "compute"},
+    "divide": {"requires_computed_values": False, "category": "compute"},
+}
 
 
 class DynamicToolName(str, Enum):
@@ -24,11 +53,20 @@ class DynamicToolName(str, Enum):
     LIST_TOOLS = "list_tools"
     SEARCH_TOOLS = "search_tools"
     GET_TOOL_SCHEMA = "get_tool_schema"
+    GET_TOOL_SCHEMAS = "get_tool_schemas"  # Batch fetch
     CALL_TOOL = "call_tool"
 
 
 class DynamicToolProvider:
-    """Provides dynamic tools for on-demand tool discovery."""
+    """Provides dynamic tools for on-demand tool discovery.
+
+    ENHANCED: Uses intelligent search engine with:
+    - Synonym expansion for natural language queries
+    - Tokenized OR semantics (partial matches score)
+    - Fuzzy matching fallback for typos
+    - Namespace aliasing for flexible tool resolution
+    - Always returns results (never empty)
+    """
 
     def __init__(self, tool_manager: ToolManager) -> None:
         """Initialize with a tool manager.
@@ -38,6 +76,11 @@ class DynamicToolProvider:
         """
         self.tool_manager = tool_manager
         self._tool_cache: dict[str, dict[str, Any]] = {}
+        self._search_engine = ToolSearchEngine()
+        self._tools_indexed = False
+        # Track which tools have had their schema fetched
+        # Enforces workflow: search → get_tool_schema → call_tool
+        self._schema_fetched: set[str] = set()
 
     def get_dynamic_tools(self) -> list[dict[str, Any]]:
         """Get the dynamic tool definitions for the LLM.
@@ -163,57 +206,108 @@ class DynamicToolProvider:
             logger.error(f"Error in list_tools: {e}")
             return []
 
+    async def _ensure_tools_indexed(self) -> None:
+        """Ensure tools are indexed for efficient searching."""
+        if not self._tools_indexed:
+            all_tools = await self.tool_manager.get_all_tools()
+            self._search_engine.set_tools(all_tools)
+            self._tools_indexed = True
+            logger.info(f"Indexed {len(all_tools)} tools for search")
+
     async def search_tools(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         """Search for tools matching the query.
 
+        ENHANCED: Uses intelligent search with:
+        - Tokenized OR semantics (any keyword match scores)
+        - Synonym expansion ("gaussian" finds "normal", "cdf" finds "cumulative")
+        - Fuzzy matching fallback for typos and close matches
+        - Always returns results (fallback to popular/short-named tools)
+        - STATE-AWARE: Parameterized tools (normal_cdf, etc.) are hidden/downranked
+          until computed values exist in state
+
         Args:
-            query: Search query string
+            query: Search query string (natural language or keywords)
             limit: Maximum number of results
 
         Returns:
-            List of matching tools with name and brief description
+            List of matching tools with name, description, namespace, and score
         """
         try:
-            # Get all available tools
+            # Get all available tools and ensure indexed
             all_tools = await self.tool_manager.get_all_tools()
 
-            # Search in tool names and descriptions
-            query_lower = query.lower()
-            matches = []
+            # Update search index if tools changed
+            if not self._tools_indexed or len(all_tools) != len(
+                self._search_engine._tool_cache or []
+            ):
+                self._search_engine.set_tools(all_tools)
+                self._tools_indexed = True
 
-            for tool in all_tools:
-                score = 0
-                # Check name match
-                if query_lower in tool.name.lower():
-                    score += 10
-                # Check description match
-                if tool.description and query_lower in tool.description.lower():
-                    score += 5
+            # Use intelligent search engine
+            search_results = self._search_engine.search(
+                query=query,
+                tools=all_tools,
+                limit=limit * 2,  # Fetch extra to allow filtering
+            )
 
-                if score > 0:
-                    matches.append((score, tool))
+            # Check if computed values exist in state
+            tool_state = get_tool_state()
+            has_computed_values = bool(tool_state.bindings.bindings)
 
-            # Sort by score and limit
-            matches.sort(reverse=True, key=lambda x: x[0])
-            top_matches = matches[:limit]
-
-            # Return summary info
+            # Return summary info with scores, applying state-aware filtering
             results = []
-            for _, tool in top_matches:
+            for sr in search_results:
+                # Get base tool name for metadata lookup
+                base_name = (
+                    sr.tool.name.split(".")[-1].lower()
+                    if "." in sr.tool.name
+                    else sr.tool.name.lower()
+                )
+                tool_meta = PARAMETERIZED_TOOLS.get(base_name, {})
+
+                # Check if tool requires computed values but none exist
+                requires_values = tool_meta.get("requires_computed_values", False)
+                blocked = requires_values and not has_computed_values
+
                 # Truncate description to keep it brief
-                desc = tool.description or "No description"
+                desc = sr.tool.description or "No description"
                 if len(desc) > 200:
                     desc = desc[:197] + "..."
 
-                results.append(
-                    {
-                        "name": tool.name,
-                        "description": desc,
-                        "namespace": tool.namespace,
-                    }
-                )
+                result_entry = {
+                    "name": sr.tool.name,
+                    "description": desc,
+                    "namespace": sr.tool.namespace,
+                    "score": sr.score,
+                    "match_reasons": sr.match_reasons,
+                }
 
-            logger.info(f"search_tools('{query}') found {len(results)} matches")
+                if blocked:
+                    # Add blocked status and significantly reduce score
+                    result_entry["blocked"] = True
+                    result_entry["blocked_reason"] = "Requires computed values first"
+                    result_entry["score"] = sr.score * 0.1  # Heavy penalty
+                    result_entry["hint"] = (
+                        "Compute intermediate values with sqrt, multiply, divide first"
+                    )
+
+                results.append(result_entry)
+
+            # Re-sort by adjusted score and limit
+            def get_score(r: dict[str, Any]) -> float:
+                score = r.get("score", 0)
+                return float(score) if score is not None else 0.0
+
+            results.sort(key=get_score, reverse=True)
+            results = results[:limit]
+
+            # Log what was found
+            blocked_count = sum(1 for r in results if r.get("blocked"))
+            logger.info(
+                f"search_tools('{query}') found {len(results)} matches "
+                f"(top score: {results[0]['score'] if results else 0}, "
+                f"blocked: {blocked_count})"
+            )
             return results
 
         except Exception as e:
@@ -223,47 +317,81 @@ class DynamicToolProvider:
     async def get_tool_schema(self, tool_name: str) -> dict[str, Any]:
         """Get full schema for a specific tool.
 
+        ENHANCED: Supports namespace aliasing and normalized name variants.
+        Examples that all work:
+        - "normal_cdf" (exact)
+        - "math.normal_cdf" (with namespace)
+        - "normalCdf" (camelCase)
+        - "normal-cdf" (kebab-case)
+
         Args:
-            tool_name: Name of the tool
+            tool_name: Name of the tool (exact, with namespace, or variant)
 
         Returns:
             Full tool schema in OpenAI function format
         """
         try:
-            # Check cache first
+            # Check cache first (try both original and normalized)
             if tool_name in self._tool_cache:
                 logger.debug(f"Returning cached schema for {tool_name}")
                 return self._tool_cache[tool_name]
 
-            # Get all tools and find the match
+            # Get all tools
             all_tools = await self.tool_manager.get_all_tools()
 
-            for tool in all_tools:
-                if tool.name == tool_name:
-                    # Convert to OpenAI format
-                    schema = {
-                        "type": "function",
-                        "function": {
-                            "name": tool.name,
-                            "description": tool.description
-                            or "No description provided",
-                            "parameters": tool.parameters
-                            or {"type": "object", "properties": {}},
-                        },
-                    }
+            # Try exact match first
+            tool = None
+            for t in all_tools:
+                if t.name == tool_name:
+                    tool = t
+                    break
 
-                    # Cache it
-                    self._tool_cache[tool_name] = schema
+            # If not found, try alias resolution
+            if tool is None:
+                tool = find_tool_exact(tool_name, all_tools)
+                if tool:
+                    logger.info(f"Resolved '{tool_name}' to '{tool.name}' via alias")
 
-                    logger.info(
-                        f"get_tool_schema('{tool_name}') returned {len(json.dumps(schema))} chars"
-                    )
-                    return schema
+            if tool:
+                # Convert to OpenAI format
+                schema = {
+                    "type": "function",
+                    "function": {
+                        "name": tool.name,
+                        "description": tool.description or "No description provided",
+                        "parameters": tool.parameters
+                        or {"type": "object", "properties": {}},
+                    },
+                }
 
-            # Not found
+                # Cache it under both names
+                self._tool_cache[tool_name] = schema
+                if tool.name != tool_name:
+                    self._tool_cache[tool.name] = schema
+
+                # Mark this tool as having its schema fetched
+                # This allows call_tool to proceed for this tool
+                self._schema_fetched.add(tool.name)
+                self._schema_fetched.add(tool_name)
+                # Also add without namespace prefix
+                base_name = tool.name.split(".")[-1] if "." in tool.name else tool.name
+                self._schema_fetched.add(base_name)
+
+                logger.info(
+                    f"get_tool_schema('{tool_name}') returned {len(json.dumps(schema))} chars"
+                )
+                return schema
+
+            # Not found - try to suggest similar tools
+            similar = self._search_engine.search(tool_name, all_tools, limit=3)
+            suggestions = [s.tool.name for s in similar if s.score > 0]
+
             error_msg = f"Tool '{tool_name}' not found"
+            if suggestions:
+                error_msg += f". Did you mean: {', '.join(suggestions)}?"
+
             logger.warning(error_msg)
-            return {"error": error_msg}
+            return {"error": error_msg, "suggestions": suggestions}
 
         except Exception as e:
             logger.error(f"Error in get_tool_schema: {e}")
@@ -274,19 +402,60 @@ class DynamicToolProvider:
     ) -> dict[str, Any]:
         """Execute a tool by name with given arguments.
 
+        ENHANCED: Supports namespace aliasing for tool resolution.
+        If exact name not found, tries alias variants.
+
+        ENFORCED WORKFLOW: Requires get_tool_schema to be called first.
+        This ensures the model knows the correct parameters before calling.
+
         This is the proxy method that allows the LLM to call any discovered tool.
 
         Args:
-            tool_name: Name of the tool to execute
+            tool_name: Name of the tool to execute (exact or alias)
             arguments: Arguments to pass to the tool
 
         Returns:
             Tool execution result
         """
         try:
+            # Check if schema was fetched first (enforced workflow)
+            # Check various name forms: exact, with namespace, base name
+            base_name = tool_name.split(".")[-1] if "." in tool_name else tool_name
+            schema_known = (
+                tool_name in self._schema_fetched or base_name in self._schema_fetched
+            )
+
+            if not schema_known:
+                error_msg = (
+                    f"WORKFLOW_ERROR: Cannot call '{tool_name}' without first fetching its schema. "
+                    f"Please call get_tool_schema(tool_name='{tool_name}') first to see the "
+                    f"required parameters, then retry call_tool with the correct arguments."
+                )
+                logger.warning(error_msg)
+                return {
+                    "success": False,
+                    "error": error_msg,
+                }
+
+            # Resolve tool name via alias if needed
+            resolved_name = tool_name
+            all_tools = await self.tool_manager.get_all_tools()
+
+            # Check if exact name exists
+            exact_match = any(t.name == tool_name for t in all_tools)
+
+            if not exact_match:
+                # Try alias resolution
+                resolved_tool = find_tool_exact(tool_name, all_tools)
+                if resolved_tool:
+                    resolved_name = resolved_tool.name
+                    logger.info(
+                        f"Resolved tool '{tool_name}' to '{resolved_name}' via alias"
+                    )
+
             # Delegate to the tool manager's execute_tool method
             result = await self.tool_manager.execute_tool(
-                tool_name=tool_name,
+                tool_name=resolved_name,
                 arguments=arguments,
                 namespace=None,  # Let tool manager figure out the namespace
                 timeout=None,  # Use default timeout

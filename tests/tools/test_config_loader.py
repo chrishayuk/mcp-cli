@@ -242,11 +242,18 @@ def test_resolve_token_placeholder(token_config_file):
     """Test resolving token placeholders."""
     loader = ConfigLoader(token_config_file, ["oauth_server"])
 
-    # Mock token manager - use load_tokens method
-    mock_tokens = MagicMock()
-    mock_tokens.access_token = "test_access_token"
+    # Mock token store to return OAuth token data
+    stored_token_json = json.dumps(
+        {
+            "token_type": "oauth",
+            "name": "github",
+            "data": {"access_token": "test_access_token"},
+        }
+    )
 
-    with patch.object(loader._token_manager, "load_tokens", return_value=mock_tokens):
+    with patch.object(
+        loader._token_store, "_retrieve_raw", return_value=stored_token_json
+    ):
         config = loader.load()
 
     assert (
@@ -259,7 +266,8 @@ def test_resolve_token_placeholder_no_token(token_config_file):
     """Test handling missing tokens."""
     loader = ConfigLoader(token_config_file, ["oauth_server"])
 
-    with patch.object(loader._token_manager, "load_tokens", return_value=None):
+    # Mock token store to return None (no token found)
+    with patch.object(loader._token_store, "_retrieve_raw", return_value=None):
         config = loader.load()
 
     # Should keep placeholder if no token
@@ -279,10 +287,18 @@ def test_resolve_token_placeholder_nested(tmp_path):
 
     loader = ConfigLoader(str(config_path), ["server"])
 
-    mock_tokens = MagicMock()
-    mock_tokens.access_token = "nested_token"
+    # Mock token store to return OAuth token data
+    stored_token_json = json.dumps(
+        {
+            "token_type": "oauth",
+            "name": "provider",
+            "data": {"access_token": "nested_token"},
+        }
+    )
 
-    with patch.object(loader._token_manager, "load_tokens", return_value=mock_tokens):
+    with patch.object(
+        loader._token_store, "_retrieve_raw", return_value=stored_token_json
+    ):
         loaded = loader.load()
 
     assert (
@@ -303,10 +319,18 @@ def test_resolve_token_placeholder_in_list(tmp_path):
 
     loader = ConfigLoader(str(config_path), ["server"])
 
-    mock_tokens = MagicMock()
-    mock_tokens.access_token = "list_token"
+    # Mock token store to return OAuth token data
+    stored_token_json = json.dumps(
+        {
+            "token_type": "oauth",
+            "name": "provider",
+            "data": {"access_token": "list_token"},
+        }
+    )
 
-    with patch.object(loader._token_manager, "load_tokens", return_value=mock_tokens):
+    with patch.object(
+        loader._token_store, "_retrieve_raw", return_value=stored_token_json
+    ):
         loaded = loader.load()
 
     assert loaded["mcpServers"]["server"]["tokens"] == [
@@ -355,9 +379,11 @@ async def test_create_oauth_refresh_callback_maps_url():
 
     callback = loader.create_oauth_refresh_callback(http_servers, [])
 
-    # Mock the token manager to return no token
-    with patch.object(loader, "_token_manager") as mock_mgr:
-        mock_mgr.get_token.return_value = None
+    # Mock TokenStoreFactory to return a mock store with no token
+    with patch("mcp_cli.tools.config_loader.TokenStoreFactory") as MockFactory:
+        mock_store = MagicMock()
+        mock_store._retrieve_raw.return_value = None
+        MockFactory.create.return_value = mock_store
         result = await callback(server_url="https://api.example.com/mcp")
 
     assert result is None  # No token found
@@ -373,9 +399,18 @@ async def test_create_oauth_refresh_callback_no_refresh_token():
     callback = loader.create_oauth_refresh_callback(http_servers, [])
 
     # Return token data without refresh_token
-    with patch("mcp_cli.tools.config_loader.TokenManager") as MockTokenMgr:
-        mock_instance = MockTokenMgr.return_value
-        mock_instance.get_token.return_value = {"access_token": "old_token"}
+    stored_token_json = json.dumps(
+        {
+            "token_type": "oauth",
+            "name": "test_server",
+            "data": {"access_token": "old_token"},  # No refresh_token
+        }
+    )
+
+    with patch("mcp_cli.tools.config_loader.TokenStoreFactory") as MockFactory:
+        mock_store = MagicMock()
+        mock_store._retrieve_raw.return_value = stored_token_json
+        MockFactory.create.return_value = mock_store
 
         result = await callback(server_url="https://api.example.com")
 
@@ -413,9 +448,9 @@ def test_resolve_token_placeholder_exception(tmp_path):
 
     loader = ConfigLoader(str(config_path), ["server"])
 
-    # Make load_tokens raise an exception
+    # Make _retrieve_raw raise an exception
     with patch.object(
-        loader._token_manager, "load_tokens", side_effect=RuntimeError("token error")
+        loader._token_store, "_retrieve_raw", side_effect=RuntimeError("token error")
     ):
         loaded = loader.load()
 
@@ -436,15 +471,24 @@ async def test_create_oauth_refresh_callback_success():
     callback = loader.create_oauth_refresh_callback(http_servers, [])
 
     # Mock the full refresh flow
+    stored_token_json = json.dumps(
+        {
+            "token_type": "oauth",
+            "name": "test_server",
+            "data": {
+                "access_token": "old_token",
+                "refresh_token": "refresh_token_value",
+            },
+        }
+    )
+
     with (
-        patch("mcp_cli.tools.config_loader.TokenManager") as MockTokenMgr,
+        patch("mcp_cli.tools.config_loader.TokenStoreFactory") as MockFactory,
         patch("mcp_cli.tools.config_loader.OAuthHandler") as MockOAuth,
     ):
-        mock_token_mgr = MockTokenMgr.return_value
-        mock_token_mgr.get_token.return_value = {
-            "access_token": "old_token",
-            "refresh_token": "refresh_token_value",
-        }
+        mock_store = MagicMock()
+        mock_store._retrieve_raw.return_value = stored_token_json
+        MockFactory.create.return_value = mock_store
 
         mock_oauth = MockOAuth.return_value
         mock_oauth.refresh_access_token = AsyncMock(
@@ -457,7 +501,7 @@ async def test_create_oauth_refresh_callback_success():
         result = await callback(server_url="https://api.example.com")
 
     assert result == {"Authorization": "Bearer new_access_token"}
-    mock_token_mgr.store_token.assert_called_once()
+    mock_store._store_raw.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -469,15 +513,24 @@ async def test_create_oauth_refresh_callback_refresh_fails():
 
     callback = loader.create_oauth_refresh_callback(http_servers, [])
 
+    stored_token_json = json.dumps(
+        {
+            "token_type": "oauth",
+            "name": "test_server",
+            "data": {
+                "access_token": "old_token",
+                "refresh_token": "refresh_token_value",
+            },
+        }
+    )
+
     with (
-        patch("mcp_cli.tools.config_loader.TokenManager") as MockTokenMgr,
+        patch("mcp_cli.tools.config_loader.TokenStoreFactory") as MockFactory,
         patch("mcp_cli.tools.config_loader.OAuthHandler") as MockOAuth,
     ):
-        mock_token_mgr = MockTokenMgr.return_value
-        mock_token_mgr.get_token.return_value = {
-            "access_token": "old_token",
-            "refresh_token": "refresh_token_value",
-        }
+        mock_store = MagicMock()
+        mock_store._retrieve_raw.return_value = stored_token_json
+        MockFactory.create.return_value = mock_store
 
         mock_oauth = MockOAuth.return_value
         mock_oauth.refresh_access_token = AsyncMock(return_value=None)
@@ -496,15 +549,24 @@ async def test_create_oauth_refresh_callback_exception():
 
     callback = loader.create_oauth_refresh_callback(http_servers, [])
 
+    stored_token_json = json.dumps(
+        {
+            "token_type": "oauth",
+            "name": "test_server",
+            "data": {
+                "access_token": "old_token",
+                "refresh_token": "refresh_token_value",
+            },
+        }
+    )
+
     with (
-        patch("mcp_cli.tools.config_loader.TokenManager") as MockTokenMgr,
+        patch("mcp_cli.tools.config_loader.TokenStoreFactory") as MockFactory,
         patch("mcp_cli.tools.config_loader.OAuthHandler") as MockOAuth,
     ):
-        mock_token_mgr = MockTokenMgr.return_value
-        mock_token_mgr.get_token.return_value = {
-            "access_token": "old_token",
-            "refresh_token": "refresh_token_value",
-        }
+        mock_store = MagicMock()
+        mock_store._retrieve_raw.return_value = stored_token_json
+        MockFactory.create.return_value = mock_store
 
         mock_oauth = MockOAuth.return_value
         mock_oauth.refresh_access_token = AsyncMock(
@@ -525,9 +587,10 @@ async def test_create_oauth_refresh_callback_sse_server():
 
     callback = loader.create_oauth_refresh_callback([], sse_servers)
 
-    with patch("mcp_cli.tools.config_loader.TokenManager") as MockTokenMgr:
-        mock_token_mgr = MockTokenMgr.return_value
-        mock_token_mgr.get_token.return_value = None
+    with patch("mcp_cli.tools.config_loader.TokenStoreFactory") as MockFactory:
+        mock_store = MagicMock()
+        mock_store._retrieve_raw.return_value = None
+        MockFactory.create.return_value = mock_store
 
         result = await callback(server_url="https://sse.example.com")
 
@@ -603,10 +666,18 @@ async def test_load_async_resolves_tokens(token_config_file):
     """Test async loading resolves token placeholders."""
     loader = ConfigLoader(token_config_file, ["oauth_server"])
 
-    mock_tokens = MagicMock()
-    mock_tokens.access_token = "async_token"
+    # Mock token store to return OAuth token data
+    stored_token_json = json.dumps(
+        {
+            "token_type": "oauth",
+            "name": "github",
+            "data": {"access_token": "async_token"},
+        }
+    )
 
-    with patch.object(loader._token_manager, "load_tokens", return_value=mock_tokens):
+    with patch.object(
+        loader._token_store, "_retrieve_raw", return_value=stored_token_json
+    ):
         config = await loader.load_async()
 
     assert (

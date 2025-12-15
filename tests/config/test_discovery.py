@@ -95,7 +95,7 @@ class TestTriggerDiscoveryAfterSetup:
         mock_discovery = MagicMock(return_value=["func1", "func2", "func3"])
 
         with patch(
-            "chuk_llm.api.providers.trigger_ollama_discovery_and_refresh",
+            "chuk_llm.api.providers.refresh_provider_functions",
             mock_discovery,
         ):
             count = trigger_discovery_after_setup()
@@ -118,7 +118,7 @@ class TestTriggerDiscoveryAfterSetup:
         mock_discovery = MagicMock(return_value=[])
 
         with patch(
-            "chuk_llm.api.providers.trigger_ollama_discovery_and_refresh",
+            "chuk_llm.api.providers.refresh_provider_functions",
             mock_discovery,
         ):
             count = trigger_discovery_after_setup()
@@ -130,7 +130,7 @@ class TestTriggerDiscoveryAfterSetup:
         mock_discovery = MagicMock(side_effect=Exception("Discovery failed"))
 
         with patch(
-            "chuk_llm.api.providers.trigger_ollama_discovery_and_refresh",
+            "chuk_llm.api.providers.refresh_provider_functions",
             mock_discovery,
         ):
             count = trigger_discovery_after_setup()
@@ -272,7 +272,7 @@ class TestForceDiscoveryRefresh:
         mock_discovery = MagicMock(return_value=["func1", "func2"])
 
         with patch(
-            "chuk_llm.api.providers.trigger_ollama_discovery_and_refresh",
+            "chuk_llm.api.providers.refresh_provider_functions",
             mock_discovery,
         ):
             count = force_discovery_refresh()
@@ -289,7 +289,7 @@ class TestForceDiscoveryRefresh:
         mock_discovery = MagicMock(return_value=["func1"])
 
         with patch(
-            "chuk_llm.api.providers.trigger_ollama_discovery_and_refresh",
+            "chuk_llm.api.providers.refresh_provider_functions",
             mock_discovery,
         ):
             count = force_discovery_refresh()
