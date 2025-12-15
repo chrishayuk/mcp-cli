@@ -68,6 +68,7 @@ clean-all: clean-pyc clean-build clean-test
 install:
 	@echo "Installing package..."
 	pip install .
+	uv sync --extra dev
 
 # Install package in development mode
 dev-install:

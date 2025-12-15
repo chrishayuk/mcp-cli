@@ -111,6 +111,9 @@ class MCPConfig(BaseModel):
     vault_path_prefix: str = "mcp-cli/oauth"
     vault_namespace: str | None = None
 
+    # TOON optimization configuration
+    enable_toon_optimization: bool = False
+
     model_config = {"frozen": False, "arbitrary_types_allowed": True}
 
     @classmethod
@@ -149,6 +152,9 @@ class MCPConfig(BaseModel):
                 "vaultPathPrefix", "mcp-cli/oauth"
             )
             config.vault_namespace = token_storage.get("vaultNamespace")
+
+            # Load TOON optimization configuration
+            config.enable_toon_optimization = data.get("enableToonOptimization", False)
 
         except Exception as e:
             # Log error but return empty config
@@ -189,6 +195,10 @@ class MCPConfig(BaseModel):
 
         if token_storage:
             data["tokenStorage"] = token_storage
+
+        # Add TOON optimization configuration if enabled
+        if self.enable_toon_optimization:
+            data["enableToonOptimization"] = True
 
         with open(config_path, "w") as f:
             json.dump(data, f, indent=2)

@@ -13,6 +13,11 @@ from chuk_term.ui import output
 # mcp cli imports
 from mcp_cli.chat.models import Message, MessageRole
 from mcp_cli.chat.tool_processor import ToolProcessor
+from mcp_cli.llm.toon_optimizer import (
+    ToonOptimizer,
+    format_token_comparison,
+    get_format_decision_message,
+)
 
 log = logging.getLogger(__name__)
 
@@ -28,6 +33,18 @@ class ConversationProcessor:
         self.context = context
         self.ui_manager = ui_manager
         self.tool_processor = ToolProcessor(context, ui_manager)
+
+        # Initialize TOON optimizer based on config
+        toon_enabled = False
+        try:
+            from mcp_cli.config import get_config
+
+            config = get_config()
+            toon_enabled = config.enable_toon_optimization
+        except Exception as e:
+            log.debug(f"Could not load TOON config: {e}")
+
+        self.toon_optimizer = ToonOptimizer(enabled=toon_enabled)
 
     async def process_conversation(self, max_turns: int = 30):
         """Process the conversation loop, handling tool calls and responses with streaming.
@@ -100,11 +117,38 @@ class ConversationProcessor:
 
                     completion = None
 
+                    # Prepare messages for sending
+                    messages_to_send = [
+                        msg.to_dict() for msg in self.context.conversation_history
+                    ]
+
+                    # Compare formats to show potential savings (messages only, not tools)
+                    toon_comparison = self.toon_optimizer.compare_formats(
+                        messages_to_send, None
+                    )
+
+                    # Display token comparison
+                    if toon_comparison and toon_comparison.get("json_tokens", 0) > 0:
+                        comparison_msg = format_token_comparison(toon_comparison)
+                        output.info(comparison_msg)
+
+                        # Apply TOON compression if enabled and beneficial
+                        if self.toon_optimizer.enabled and toon_comparison.get("saved_tokens", 0) > 0:
+                            # Compress messages using TOON (whitespace removal, content optimization)
+                            messages_to_send = self.toon_optimizer.convert_to_toon_dict(messages_to_send)
+                            output.info("Using TOON compression to reduce tokens")
+                            log.info(f"TOON compression applied: {toon_comparison['saved_tokens']} tokens saved")
+                        elif self.toon_optimizer.enabled:
+                            output.info("Using JSON (no TOON savings for this request)")
+                        else:
+                            output.info("Using JSON (TOON optimization disabled in config)")
+
                     if supports_streaming:
                         # Use streaming response handler
                         try:
                             completion = await self._handle_streaming_completion(
-                                tools=tools_for_completion
+                                tools=tools_for_completion,
+                                messages=messages_to_send,
                             )
                         except Exception as e:
                             log.warning(
@@ -114,12 +158,14 @@ class ConversationProcessor:
                                 f"Streaming failed, falling back to regular completion: {e}"
                             )
                             completion = await self._handle_regular_completion(
-                                tools=tools_for_completion
+                                tools=tools_for_completion,
+                                messages=messages_to_send,
                             )
                     else:
                         # Regular completion
                         completion = await self._handle_regular_completion(
-                            tools=tools_for_completion
+                            tools=tools_for_completion,
+                            messages=messages_to_send,
                         )
 
                     response_content = completion.get("response", "No response")
@@ -232,13 +278,20 @@ class ConversationProcessor:
         except asyncio.CancelledError:
             raise
 
-    async def _handle_streaming_completion(self, tools: list | None = None) -> dict:
+    async def _handle_streaming_completion(
+        self, tools: list | None = None, messages: list | None = None
+    ) -> dict:
         """Handle streaming completion with UI integration.
 
         Args:
             tools: Tool definitions to pass to the LLM, or None to disable tools
+            messages: Optimized messages to send (can be TOON format or regular)
         """
         from mcp_cli.chat.streaming_handler import StreamingResponseHandler
+
+        # Use provided messages or convert from conversation history
+        if messages is None:
+            messages = [msg.to_dict() for msg in self.context.conversation_history]
 
         # Signal UI that streaming is starting
         self.ui_manager.start_streaming_response()
@@ -252,7 +305,7 @@ class ConversationProcessor:
         try:
             completion = await streaming_handler.stream_response(
                 client=self.context.client,
-                messages=[msg.to_dict() for msg in self.context.conversation_history],
+                messages=messages,
                 tools=tools,
             )
 
@@ -285,20 +338,24 @@ class ConversationProcessor:
             # Will be cleared after finalization in main conversation loop
             pass
 
-    async def _handle_regular_completion(self, tools: list | None = None) -> dict:
+    async def _handle_regular_completion(
+        self, tools: list | None = None, messages: list | None = None
+    ) -> dict:
         """Handle regular (non-streaming) completion.
 
         Args:
             tools: Tool definitions to pass to the LLM, or None to disable tools
+            messages: Optimized messages to send (can be TOON format or regular)
         """
         start_time = time.time()
 
+        # Use provided messages or convert from conversation history
+        if messages is None:
+            messages = [msg.to_dict() for msg in self.context.conversation_history]
+
         try:
-            messages_as_dicts = [
-                msg.to_dict() for msg in self.context.conversation_history
-            ]
             completion = await self.context.client.create_completion(
-                messages=messages_as_dicts,
+                messages=messages,
                 tools=tools,
             )
         except Exception as e:
@@ -309,11 +366,8 @@ class ConversationProcessor:
                 output.warning(
                     "Tool definitions rejected by model, retrying without tools..."
                 )
-                messages_as_dicts = [
-                    msg.to_dict() for msg in self.context.conversation_history
-                ]
                 completion = await self.context.client.create_completion(
-                    messages=messages_as_dicts
+                    messages=messages
                 )
             else:
                 raise
