@@ -212,8 +212,13 @@ class ToolProcessor:
 
             # Check for ungrounded calls (numeric args without $vN refs)
             # Skip discovery tools - they don't need grounded numeric inputs
+            # Skip idempotent math tools - they should be allowed to compute with any literals
             # Use SoftBlock repair system: attempt rebind → symbolic fallback → ask user
-            if not tool_state.is_discovery_tool(execution_tool_name):
+            is_math_tool = tool_state.is_idempotent_math_tool(actual_tool_for_checks)
+            if (
+                not tool_state.is_discovery_tool(execution_tool_name)
+                and not is_math_tool
+            ):
                 ungrounded_check = tool_state.check_ungrounded_call(
                     actual_tool_for_checks, arguments
                 )
@@ -298,23 +303,19 @@ class ToolProcessor:
                             )
                             continue
 
-            # Check per-tool call limit (anti-thrash)
-            if not tool_state.is_discovery_tool(execution_tool_name):
-                current_count = tool_state.get_tool_call_count(actual_tool_for_checks)
-                if current_count >= tool_state.per_tool_limit:
-                    log.warning(
-                        f"Tool {actual_tool_for_checks} at call limit ({current_count})"
-                    )
-                    output.warning(
-                        f"⚠ Tool {actual_tool_for_checks} called {current_count} times - limit reached"
-                    )
-                    # Add warning to history
-                    self._add_tool_result_to_history(
-                        llm_tool_name,
-                        call_id,
-                        tool_state.format_tool_limit_warning(actual_tool_for_checks),
-                    )
-                    continue
+            # Check per-tool call limit using the guard (handles exemptions for math/discovery)
+            per_tool_result = tool_state.check_per_tool_limit(actual_tool_for_checks)
+            if per_tool_result.blocked:
+                log.warning(f"Tool {actual_tool_for_checks} blocked by per-tool limit")
+                output.warning(
+                    f"⚠ Tool {actual_tool_for_checks} - {per_tool_result.reason}"
+                )
+                self._add_tool_result_to_history(
+                    llm_tool_name,
+                    call_id,
+                    per_tool_result.reason or "Per-tool limit reached",
+                )
+                continue
 
             # Resolve $vN references in arguments (substitute actual values)
             resolved_arguments = tool_state.resolve_references(arguments)

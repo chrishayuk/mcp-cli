@@ -120,6 +120,18 @@ class BindingManager(BaseModel):
             binding.used = True
             binding.used_in.append(used_in)
 
+    def get_numeric_values(self) -> set[float]:
+        """Get all numeric values from bindings.
+
+        Returns:
+            Set of float values from all bindings that have numeric raw_value
+        """
+        values: set[float] = set()
+        for binding in self.bindings.values():
+            if isinstance(binding.raw_value, (int, float)):
+                values.add(float(binding.raw_value))
+        return values
+
     def resolve_references(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Resolve $vN references in arguments to actual values."""
         args_str = json.dumps(arguments, default=str)

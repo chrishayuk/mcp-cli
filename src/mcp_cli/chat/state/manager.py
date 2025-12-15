@@ -91,9 +91,16 @@ class ToolStateManager(BaseModel):
 
     def _init_guards(self) -> None:
         """Initialize all guards with proper callbacks."""
+        # PreconditionGuard: explicitly configure which tools need grounded values
+        # and which values are always safe (standard normal distribution defaults)
         self.precondition_guard = PreconditionGuard(
-            config=PreconditionGuardConfig(),
-            get_binding_count=lambda: len(self.bindings),
+            config=PreconditionGuardConfig(
+                parameterized_tools=set(ToolClassification.PARAMETERIZED_TOOLS),
+                safe_values={0.0, 1.0},  # Standard normal defaults (mean=0, std=1)
+            ),
+            get_binding_count=lambda: len(self.bindings.bindings),
+            get_binding_values=lambda: self.bindings.get_numeric_values(),
+            get_user_literals=lambda: self.user_literals,
         )
 
         self.budget_guard = BudgetGuard(
@@ -573,11 +580,13 @@ class ToolStateManager(BaseModel):
                     val = float(val_str)
                     # Look for a binding with this value
                     for binding in self.bindings.bindings.values():
-                        if abs(binding.raw_value - val) < 1e-9:
-                            repaired[key] = f"${binding.id}"
-                            log.info(f"Repaired {key}={val} -> ${binding.id}")
-                            any_repaired = True
-                            break
+                        # Only compare numeric bindings
+                        if isinstance(binding.raw_value, (int, float)):
+                            if abs(binding.raw_value - val) < 1e-9:
+                                repaired[key] = f"${binding.id}"
+                                log.info(f"Repaired {key}={val} -> ${binding.id}")
+                                any_repaired = True
+                                break
                 except ValueError:
                     pass
 
@@ -605,6 +614,9 @@ class ToolStateManager(BaseModel):
         base_name = tool_name.split(".")[-1] if "." in tool_name else tool_name
         key = base_name.lower()
         self.tool_call_counts[key] = self.tool_call_counts.get(key, 0) + 1
+        # Also record in the guard for consistency
+        if self.per_tool_guard is not None:
+            self.per_tool_guard.record_call(tool_name)
 
     def track_tool_call(self, tool_name: str) -> PerToolCallStatus:
         """Track a tool call and return its status.
@@ -632,6 +644,25 @@ class ToolStateManager(BaseModel):
             f"⚠ Tool '{tool_name}' has been called {count} times (limit: {self.per_tool_limit}).\n"
             "Consider using cached results or computed values instead."
         )
+
+    def check_per_tool_limit(self, tool_name: str) -> GuardResult:
+        """Check if tool has exceeded its per-turn limit using the guard.
+
+        This delegates to PerToolGuard which already handles:
+        - Idempotent math tools (exempt)
+        - Discovery tools (checked separately)
+        - Per-tool overrides
+
+        Args:
+            tool_name: Name of the tool
+
+        Returns:
+            GuardResult from the guard
+        """
+        if self.per_tool_guard is None:
+            return GuardResult(verdict=GuardVerdict.ALLOW)
+
+        return self.per_tool_guard.check(tool_name, {})
 
     # =========================================================================
     # Runaway Detection

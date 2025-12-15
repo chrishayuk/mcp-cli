@@ -405,8 +405,9 @@ class DynamicToolProvider:
         ENHANCED: Supports namespace aliasing for tool resolution.
         If exact name not found, tries alias variants.
 
-        ENFORCED WORKFLOW: Requires get_tool_schema to be called first.
-        This ensures the model knows the correct parameters before calling.
+        IMPLICIT SCHEMA WARMUP: If schema hasn't been fetched yet, it's
+        automatically fetched before execution. The model doesn't need to
+        explicitly call get_tool_schema first.
 
         This is the proxy method that allows the LLM to call any discovered tool.
 
@@ -418,24 +419,24 @@ class DynamicToolProvider:
             Tool execution result
         """
         try:
-            # Check if schema was fetched first (enforced workflow)
-            # Check various name forms: exact, with namespace, base name
+            # Auto-fetch schema if not already known (implicit warmup)
+            # This removes friction - model doesn't need to explicitly call get_tool_schema
             base_name = tool_name.split(".")[-1] if "." in tool_name else tool_name
             schema_known = (
                 tool_name in self._schema_fetched or base_name in self._schema_fetched
             )
 
             if not schema_known:
-                error_msg = (
-                    f"WORKFLOW_ERROR: Cannot call '{tool_name}' without first fetching its schema. "
-                    f"Please call get_tool_schema(tool_name='{tool_name}') first to see the "
-                    f"required parameters, then retry call_tool with the correct arguments."
-                )
-                logger.warning(error_msg)
-                return {
-                    "success": False,
-                    "error": error_msg,
-                }
+                # Implicit schema fetch - do it automatically
+                logger.info(f"Auto-fetching schema for '{tool_name}' before execution")
+                schema_result = await self.get_tool_schema(tool_name)
+                if "error" in schema_result:
+                    # Tool doesn't exist or schema fetch failed
+                    return {
+                        "success": False,
+                        "error": f"Tool '{tool_name}' not found. Use search_tools to discover available tools.",
+                    }
+                # Schema is now cached, proceed with execution
 
             # Resolve tool name via alias if needed
             resolved_name = tool_name

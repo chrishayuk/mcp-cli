@@ -493,20 +493,22 @@ async def test_call_tool_exception():
 
 
 @pytest.mark.asyncio
-async def test_call_tool_requires_schema_first():
-    """Test call_tool rejects calls when schema hasn't been fetched."""
+async def test_call_tool_auto_fetches_schema():
+    """Test call_tool auto-fetches schema when not already fetched."""
     tools = [
         ToolInfo(name="test", namespace="test", description="Test tool", parameters={}),
     ]
     tool_manager = DummyToolManager(tools)
 
     provider = DynamicToolProvider(tool_manager)
-    # Don't fetch schema - call directly
+    # Don't fetch schema explicitly - call directly
+    # The provider should auto-fetch schema before execution
     result = await provider.call_tool("test", {})
 
-    assert result["success"] is False
-    assert "WORKFLOW_ERROR" in result["error"]
-    assert "get_tool_schema" in result["error"]
+    # Should succeed because schema is auto-fetched
+    assert result["success"] is True
+    # Schema should now be marked as fetched
+    assert "test" in provider._schema_fetched
 
 
 @pytest.mark.asyncio

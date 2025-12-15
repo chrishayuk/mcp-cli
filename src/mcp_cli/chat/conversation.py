@@ -55,7 +55,7 @@ class ConversationProcessor:
         self._tool_state = get_tool_state()
         # Counter for consecutive duplicate detections (for escalation)
         self._consecutive_duplicate_count = 0
-        self._max_consecutive_duplicates = 3  # Abort after this many
+        self._max_consecutive_duplicates = 5  # Abort after this many
         # Runtime uses adaptive policy: strict core with smooth wrapper
         # No mode selection needed - always enforces grounding with auto-repair
 
@@ -66,10 +66,7 @@ class ConversationProcessor:
             max_turns: Maximum number of conversation turns before forcing exit (default: 100)
         """
         turn_count = 0
-        last_tool_signature = None  # Track last tool call to detect duplicates
-        last_tool_names = (
-            None  # Track just tool names (for arg-insensitive duplicate detection)
-        )
+        last_tool_signature = None  # Track last tool call to detect true duplicates
         tools_for_completion = None  # Will be set based on context
 
         # Reset tool state for this new prompt
@@ -344,60 +341,39 @@ class ConversationProcessor:
                         # Create signature to detect duplicate tool calls
                         # ToolCall is a Pydantic model from chuk_llm with frozen function
                         current_signature = []
-                        tool_names_only = []
                         for tc in tool_calls:
                             name = tc.function.name
                             args = tc.function.arguments  # JSON string from chuk_llm
                             current_signature.append(f"{name}:{args}")
-                            tool_names_only.append(name)
 
                         current_sig_str = "|".join(sorted(current_signature))
-                        current_names_str = "|".join(sorted(tool_names_only))
 
-                        # Check if all tools are idempotent math tools with different args
-                        # These shouldn't trigger "stuck" detection when called with different args
-                        all_idempotent = all(
-                            self._tool_state.is_idempotent_math_tool(name)
-                            for name in tool_names_only
-                        )
-
-                        # If this is a duplicate, use cached results and inject state
-                        # For idempotent math tools, only count as duplicate if BOTH name AND args match
+                        # Detect TRUE duplicates: same tool(s) with exact same args
+                        # Different args = different computation, not stuck
                         is_true_duplicate: bool = bool(
                             last_tool_signature
                             and current_sig_str == last_tool_signature
                         )
 
-                        # For non-idempotent tools, also count same-tool-names as potential loop
-                        is_name_only_repeat = (
-                            not all_idempotent
-                            and last_tool_names
-                            and current_names_str == last_tool_names
+                        log.debug(
+                            f"Duplicate check: sig={current_sig_str[:50]}, "
+                            f"is_dup={is_true_duplicate}"
                         )
 
-                        if is_true_duplicate or is_name_only_repeat:
+                        if is_true_duplicate:
+                            # True duplicate: same tool with same args
                             self._consecutive_duplicate_count += 1
-
-                            if is_true_duplicate:
-                                log.warning(
-                                    f"Duplicate tool call detected ({self._consecutive_duplicate_count}x): {current_sig_str[:100]}"
-                                )
-                            else:
-                                log.info(
-                                    f"Same tools called again with different args ({self._consecutive_duplicate_count}x): {current_names_str}"
-                                )
-
-                            # Check if we've exceeded max duplicates (safety valve)
-                            # Be more lenient for idempotent math tools
-                            max_allowed = (
-                                self._max_consecutive_duplicates + 2
-                                if all_idempotent
-                                else self._max_consecutive_duplicates
+                            log.warning(
+                                f"Duplicate tool call detected ({self._consecutive_duplicate_count}x): {current_sig_str[:100]}"
                             )
 
-                            if self._consecutive_duplicate_count >= max_allowed:
+                            # Check if we've exceeded max duplicates (safety valve)
+                            if (
+                                self._consecutive_duplicate_count
+                                >= self._max_consecutive_duplicates
+                            ):
                                 output.warning(
-                                    f"Model called same tools {self._consecutive_duplicate_count} times in a row.\n"
+                                    f"Model called exact same tool {self._consecutive_duplicate_count} times in a row.\n"
                                     "This indicates the model is stuck. Returning to prompt."
                                 )
                                 # CRITICAL: Stop streaming UI before breaking
@@ -407,43 +383,35 @@ class ConversationProcessor:
                                     self.ui_manager.streaming_handler = None
                                 break
 
-                            # For true duplicates (same args), inject state summary
-                            if is_true_duplicate:
-                                output.info(
-                                    "Detected repeated tool call. Using cached results and providing state summary."
+                            # Inject state summary to help model use cached values
+                            output.info(
+                                "Detected repeated tool call. Using cached results and providing state summary."
+                            )
+                            state_summary = self._tool_state.format_state_for_model()
+                            if state_summary:
+                                state_msg = (
+                                    "**Previously computed values (use these directly):**\n\n"
+                                    f"{state_summary}\n\n"
+                                    "Continue with the calculation using these stored values. "
+                                    "Do not re-call tools for values already computed."
+                                )
+                                self.context.conversation_history.append(
+                                    Message(
+                                        role=MessageRole.ASSISTANT,
+                                        content=state_msg,
+                                    )
+                                )
+                                log.info(
+                                    f"Injected state summary: {state_summary[:200]}"
                                 )
 
-                                # Generate state summary and inject as assistant context
-                                state_summary = (
-                                    self._tool_state.format_state_for_model()
-                                )
-                                if state_summary:
-                                    # Add state reminder as a system-like message
-                                    state_msg = (
-                                        "**Previously computed values (use these directly):**\n\n"
-                                        f"{state_summary}\n\n"
-                                        "Continue with the calculation using these stored values. "
-                                        "Do not re-call tools for values already computed."
-                                    )
-                                    self.context.conversation_history.append(
-                                        Message(
-                                            role=MessageRole.ASSISTANT,
-                                            content=state_msg,
-                                        )
-                                    )
-                                    log.info(
-                                        f"Injected state summary: {state_summary[:200]}"
-                                    )
-
-                                # Continue to next iteration - model will see the state
-                                continue
-                            # For different args, let it proceed (model is computing new values)
+                            # Continue to next iteration - model will see the state
+                            continue
                         else:
                             # Not a duplicate, reset counter
                             self._consecutive_duplicate_count = 0
 
                         last_tool_signature = current_sig_str
-                        last_tool_names = current_names_str
 
                         # Log the tool calls for debugging
                         for i, tc in enumerate(tool_calls):
@@ -463,7 +431,6 @@ class ConversationProcessor:
 
                     # Reset duplicate tracking on text response
                     last_tool_signature = None
-                    last_tool_names = None
 
                     # Display assistant response (if not already displayed by streaming)
                     elapsed = completion.elapsed_time
