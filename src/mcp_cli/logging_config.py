@@ -38,6 +38,13 @@ def setup_logging(
     # Set environment variable that chuk components respect
     os.environ["CHUK_LOG_LEVEL"] = logging.getLevelName(log_level)
 
+    # Set MCP_CLI_VERBOSE environment variable for verbose mode detection
+    # This allows components to check if verbose mode is active
+    if verbose:
+        os.environ["MCP_CLI_VERBOSE"] = "1"
+    else:
+        os.environ.pop("MCP_CLI_VERBOSE", None)
+
     # Clear any existing handlers
     root_logger = logging.getLogger()
     for handler in root_logger.handlers[:]:
@@ -103,6 +110,22 @@ def setup_logging(
                 logger.removeHandler(handler)
             # Add null handler to prevent any output
             logger.addHandler(logging.NullHandler())
+    else:
+        # In DEBUG mode, enable HTTP client logging to show API requests
+        # This allows us to see the actual requests being made to OpenAI/Anthropic/etc.
+        http_loggers = [
+            "httpx",
+            "urllib3.connectionpool",
+        ]
+        for logger_name in http_loggers:
+            logger = logging.getLogger(logger_name)
+            logger.setLevel(logging.DEBUG)
+            logger.propagate = True
+
+        # Enable chuk_llm logging to see LLM client operations
+        chuk_llm_logger = logging.getLogger("chuk_llm")
+        chuk_llm_logger.setLevel(logging.DEBUG)
+        chuk_llm_logger.propagate = True
 
     # Set mcp_cli loggers to appropriate level
     logging.getLogger("mcp_cli").setLevel(log_level)

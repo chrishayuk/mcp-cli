@@ -37,7 +37,8 @@ class ToolProcessor:
 
         # Initialize token counter for measurements
         model = getattr(context, 'model', 'gpt-4o-mini')
-        self.token_counter = TokenCounter(model=model) if is_token_measurement_available() else None
+        provider = getattr(context, 'provider', 'openai')
+        self.token_counter = TokenCounter(model=model, provider=provider) if is_token_measurement_available() else None
 
         # Track if we should display token usage
         self.display_token_usage = is_token_measurement_available()

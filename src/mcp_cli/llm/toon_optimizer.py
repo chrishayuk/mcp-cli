@@ -20,14 +20,19 @@ logger = logging.getLogger(__name__)
 class ToonOptimizer:
     """Optimizer for converting messages to TOON format when it saves tokens."""
 
-    def __init__(self, enabled: bool = False):
+    def __init__(self, enabled: bool = False, provider: str = "openai"):
         """
         Initialize the TOON optimizer.
 
         Args:
             enabled: Whether TOON optimization is enabled
+            provider: LLM provider name (TOON only works with OpenAI)
         """
-        self.enabled = enabled
+        self.provider = provider.lower()
+        # TOON optimization only supported for OpenAI provider
+        self.enabled = enabled and self.provider == "openai"
+        if enabled and self.provider != "openai":
+            logger.info(f"TOON optimization is only supported for OpenAI provider, not '{provider}'")
 
     def convert_to_toon(
         self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None

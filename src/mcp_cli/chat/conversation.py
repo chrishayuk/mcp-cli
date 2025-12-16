@@ -8,6 +8,7 @@ FIXED: Updated to work with the new OpenAI client universal tool compatibility s
 import time
 import asyncio
 import logging
+import os
 from chuk_term.ui import output
 
 # mcp cli imports
@@ -34,17 +35,25 @@ class ConversationProcessor:
         self.ui_manager = ui_manager
         self.tool_processor = ToolProcessor(context, ui_manager)
 
-        # Initialize TOON optimizer based on config
+        # Initialize TOON optimizer based on config and provider
+        # TOON optimization only enabled for OpenAI provider
         toon_enabled = False
+        provider = getattr(context, 'provider', '').lower()
+
         try:
             from mcp_cli.config import get_config
 
             config = get_config()
-            toon_enabled = config.enable_toon_optimization
+            # Only enable TOON if config allows AND provider is OpenAI
+            toon_enabled = config.enable_toon_optimization and provider == 'openai'
+            if config.enable_toon_optimization and provider != 'openai':
+                log.info(f"TOON optimization disabled for provider '{provider}' (only supported for OpenAI)")
+            elif config.enable_toon_optimization and provider == 'openai':
+                log.info(f"TOON optimization enabled for OpenAI provider")
         except Exception as e:
-            log.debug(f"Could not load TOON config: {e}")
+            log.warning(f"Could not load TOON config, TOON optimization disabled: {e}")
 
-        self.toon_optimizer = ToonOptimizer(enabled=toon_enabled)
+        self.toon_optimizer = ToonOptimizer(enabled=toon_enabled, provider=getattr(context, 'provider', 'openai'))
 
     async def process_conversation(self, max_turns: int = 30):
         """Process the conversation loop, handling tool calls and responses with streaming.
@@ -141,7 +150,59 @@ class ConversationProcessor:
                         elif self.toon_optimizer.enabled:
                             output.info("Using JSON (no TOON savings for this request)")
                         else:
-                            output.info("Using JSON (TOON optimization disabled in config)")
+                            # TOON is disabled - could be config, provider, or error
+                            provider_name = getattr(self.context, 'provider', 'unknown')
+                            if provider_name.lower() != 'openai':
+                                output.info(f"Using JSON (TOON only supported for OpenAI, current provider: {provider_name})")
+                            else:
+                                output.info("Using JSON (TOON optimization disabled in config)")
+
+                    # Always log API request payloads to file for debugging
+                    try:
+                        import json
+                        import datetime
+
+                        # Write to log file for inspection
+                        log_file_path = os.path.expanduser("~/.mcp-cli/api_requests.log")
+                        os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
+
+                        with open(log_file_path, "a") as logf:
+                            timestamp = datetime.datetime.now().isoformat()
+
+                            output_lines = [
+                                "\n" + "=" * 80,
+                                f"API REQUEST PAYLOAD [{timestamp}]",
+                                "=" * 80,
+                                f"Provider: {getattr(self.context, 'provider', 'unknown')}",
+                                f"Model: {getattr(self.context, 'model', 'unknown')}",
+                                f"Number of messages: {len(messages_to_send)}",
+                                f"Number of tools: {len(tools_for_completion) if tools_for_completion else 0}",
+                                "-" * 80,
+                                "Messages being sent to LLM:",
+                            ]
+
+                            for idx, msg in enumerate(messages_to_send):
+                                output_lines.append(f"\n[Message {idx}]")
+                                output_lines.append(json.dumps(msg, indent=2, ensure_ascii=False))
+
+                            if tools_for_completion:
+                                output_lines.append("-" * 80)
+                                output_lines.append(f"Tools being sent to LLM ({len(tools_for_completion)} tools):")
+                                for idx, tool in enumerate(tools_for_completion[:3]):
+                                    output_lines.append(f"\n[Tool {idx}]")
+                                    output_lines.append(json.dumps(tool, indent=2, ensure_ascii=False))
+                                if len(tools_for_completion) > 3:
+                                    output_lines.append(f"\n... and {len(tools_for_completion) - 3} more tools")
+
+                            output_lines.append("=" * 80 + "\n")
+
+                            full_output = "\n".join(output_lines)
+                            logf.write(full_output)
+                            logf.flush()
+
+                        log.debug(f"API request logged to: {log_file_path}")
+                    except Exception as e:
+                        log.error(f"Failed to write API request log: {e}")
 
                     if supports_streaming:
                         # Use streaming response handler
@@ -170,6 +231,49 @@ class ConversationProcessor:
 
                     response_content = completion.get("response", "No response")
                     tool_calls = completion.get("tool_calls", [])
+
+                    # Log API response to file
+                    try:
+                        import json
+                        import datetime
+
+                        log_file_path = os.path.expanduser("~/.mcp-cli/api_requests.log")
+                        with open(log_file_path, "a") as logf:
+                            timestamp = datetime.datetime.now().isoformat()
+
+                            output_lines = [
+                                "\n" + "=" * 80,
+                                f"API RESPONSE [{timestamp}]",
+                                "=" * 80,
+                                f"Provider: {getattr(self.context, 'provider', 'unknown')}",
+                                f"Model: {getattr(self.context, 'model', 'unknown')}",
+                                f"Response length: {len(response_content)} chars",
+                                f"Tool calls: {len(tool_calls)}",
+                                "-" * 80,
+                            ]
+
+                            if response_content:
+                                output_lines.append("Response content:")
+                                output_lines.append(response_content[:500])  # First 500 chars
+                                if len(response_content) > 500:
+                                    output_lines.append(f"... ({len(response_content) - 500} more chars)")
+
+                            if tool_calls:
+                                output_lines.append("-" * 80)
+                                output_lines.append(f"Tool calls ({len(tool_calls)}):")
+                                for idx, tc in enumerate(tool_calls):
+                                    output_lines.append(f"\n[Tool Call {idx}]")
+                                    output_lines.append(json.dumps(tc, indent=2, ensure_ascii=False))
+
+                            output_lines.append("=" * 80 + "\n")
+
+                            full_output = "\n".join(output_lines)
+                            logf.write(full_output)
+                            logf.flush()
+
+                        log.debug(f"API response logged to: {log_file_path}")
+                    except Exception as e:
+                        log.error(f"Failed to write API response log: {e}")
 
                     # If model requested tool calls, execute them
                     if tool_calls and len(tool_calls) > 0:
@@ -302,12 +406,34 @@ class ConversationProcessor:
         )
         self.ui_manager.streaming_handler = streaming_handler
 
+        # Log the actual API call being made
+        if log.isEnabledFor(logging.DEBUG):
+            log.debug("=" * 80)
+            log.debug("MAKING STREAMING API CALL TO LLM")
+            log.debug("=" * 80)
+            log.debug(f"Calling: streaming_handler.stream_response()")
+            log.debug(f"Messages count: {len(messages)}")
+            log.debug(f"Tools count: {len(tools) if tools else 0}")
+            log.debug("=" * 80)
+
         try:
             completion = await streaming_handler.stream_response(
                 client=self.context.client,
                 messages=messages,
                 tools=tools,
             )
+
+            # Log streaming response completion
+            if log.isEnabledFor(logging.DEBUG):
+                log.debug("=" * 80)
+                log.debug("STREAMING RESPONSE COMPLETE")
+                log.debug("=" * 80)
+                log.debug(f"Response keys: {list(completion.keys())}")
+                if 'response' in completion:
+                    log.debug(f"Response text length: {len(completion['response'])} chars")
+                if 'tool_calls' in completion and completion['tool_calls']:
+                    log.debug(f"Tool calls returned: {len(completion['tool_calls'])}")
+                log.debug("=" * 80)
 
             # Enhanced tool call validation and logging
             if completion.get("tool_calls"):
@@ -353,11 +479,33 @@ class ConversationProcessor:
         if messages is None:
             messages = [msg.to_dict() for msg in self.context.conversation_history]
 
+        # Log the actual API call being made
+        if log.isEnabledFor(logging.DEBUG):
+            log.debug("=" * 80)
+            log.debug("MAKING API CALL TO LLM")
+            log.debug("=" * 80)
+            log.debug(f"Calling: client.create_completion()")
+            log.debug(f"Messages count: {len(messages)}")
+            log.debug(f"Tools count: {len(tools) if tools else 0}")
+            log.debug("=" * 80)
+
         try:
             completion = await self.context.client.create_completion(
                 messages=messages,
                 tools=tools,
             )
+
+            # Log the response
+            if log.isEnabledFor(logging.DEBUG):
+                log.debug("=" * 80)
+                log.debug("RECEIVED API RESPONSE")
+                log.debug("=" * 80)
+                log.debug(f"Response keys: {list(completion.keys())}")
+                if 'response' in completion:
+                    log.debug(f"Response text length: {len(completion['response'])} chars")
+                if 'tool_calls' in completion and completion['tool_calls']:
+                    log.debug(f"Tool calls returned: {len(completion['tool_calls'])}")
+                log.debug("=" * 80)
         except Exception as e:
             # If tools spec invalid, retry without tools
             err = str(e)

@@ -1,40 +1,13 @@
 {
-  "mcpServers": {
-    "sqlite": {
-      "command": "uvx",
-      "args": ["mcp-server-sqlite", "--db-path", "test.db"]
-    },
-    "echo": {
-      "command": "uvx",
-      "args": ["chuk-mcp-echo", "stdio"]
-    },
-    "notion": {
-      "url": "https://mcp.notion.com/mcp"
-    },
-    "cloudflare_workers": {
-      "url": "https://bindings.mcp.cloudflare.com/mcp"
-    },
-    "brave_search": {
-      "command": "npx",
-      "args": ["-y", "@brave/brave-search-mcp-server"],
-      "env": {
-        "BRAVE_API_KEY": "${TOKEN:bearer:brave_search}"
+    "mcpServers": {
+      "ibmcloud": {
+        "command": "/Users/sreekarbv/repos/bluemix-cli/out/ibmcloud-darwin-amd64",
+        "args": [
+          "--mcp-allow-write",
+          "--mcp-transport", "stdio",
+          "--mcp-tools", "is_instance-profiles"
+        ]
       }
     },
-    "monday": {
-      "url": "https://mcp.monday.com/mcp"
-    },
-    "playwright": {
-      "command": "npx",
-      "args": [
-        "@playwright/mcp@latest"
-      ]
-    },
-    "linkedin": {
-      "url": "https://linkedin.chukai.io/mcp"
-    },
-    "weather": {
-      "url": "https://weather.chukai.io/mcp"
-    }
+    "enableToonOptimization": true
   }
-}

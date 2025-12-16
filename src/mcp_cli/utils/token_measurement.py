@@ -65,21 +65,26 @@ class TokenMeasurement:
 class TokenCounter:
     """Token counter for measuring token usage with different formats."""
 
-    def __init__(self, model: str = "gpt-4o-mini"):
+    def __init__(self, model: str = "gpt-4o-mini", provider: str = "openai"):
         """Initialize token counter for a specific model.
 
         Args:
             model: Model name for tiktoken encoding (default: gpt-4o-mini)
+            provider: LLM provider name (tiktoken only works with OpenAI)
         """
         self.model = model
+        self.provider = provider.lower()
         self.encoding = None
 
-        if TIKTOKEN_AVAILABLE:
+        # Only use tiktoken for OpenAI provider
+        if TIKTOKEN_AVAILABLE and self.provider == "openai":
             try:
                 self.encoding = tiktoken.encoding_for_model(model)
             except KeyError:
                 log.warning(f"Model {model} not found, using o200k_base encoding")
                 self.encoding = tiktoken.get_encoding("o200k_base")
+        elif TIKTOKEN_AVAILABLE and self.provider != "openai":
+            log.debug(f"tiktoken disabled for provider '{provider}' (only supported for OpenAI)")
 
     def count_tokens(self, text: str) -> int:
         """Count tokens in a text string.

@@ -5,9 +5,9 @@
         "args": [
           "--mcp-allow-write",
           "--mcp-transport", "stdio",
-          "--mcp-tools", "target,resource_groups,is_vpcs,is_subnets,is_instances,is_instance-create,is_instance-profiles,is_images,is_virtual-network-interface-create"
+          "--mcp-tools", "is_instance-profiles"
         ]
       }
     },
-    "enableToonOptimization": false
+    "enableToonOptimization": true
   }
