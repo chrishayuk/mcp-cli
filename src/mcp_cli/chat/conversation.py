@@ -36,24 +36,27 @@ class ConversationProcessor:
         self.tool_processor = ToolProcessor(context, ui_manager)
 
         # Initialize TOON optimizer based on config and provider
-        # TOON optimization only enabled for OpenAI provider
+        # TOON optimization now supported for all providers
         toon_enabled = False
         provider = getattr(context, 'provider', '').lower()
+        model = getattr(context, 'model', '')
 
         try:
             from mcp_cli.config import get_config
 
             config = get_config()
-            # Only enable TOON if config allows AND provider is OpenAI
-            toon_enabled = config.enable_toon_optimization and provider == 'openai'
-            if config.enable_toon_optimization and provider != 'openai':
-                log.info(f"TOON optimization disabled for provider '{provider}' (only supported for OpenAI)")
-            elif config.enable_toon_optimization and provider == 'openai':
-                log.info(f"TOON optimization enabled for OpenAI provider")
+            # Enable TOON if config allows (now works with all providers)
+            toon_enabled = config.enable_toon_optimization
+            if config.enable_toon_optimization:
+                log.info(f"TOON optimization enabled for provider '{provider}' with model '{model}'")
         except Exception as e:
             log.warning(f"Could not load TOON config, TOON optimization disabled: {e}")
 
-        self.toon_optimizer = ToonOptimizer(enabled=toon_enabled, provider=getattr(context, 'provider', 'openai'))
+        self.toon_optimizer = ToonOptimizer(
+            enabled=toon_enabled,
+            provider=getattr(context, 'provider', 'openai'),
+            model=model
+        )
 
     async def process_conversation(self, max_turns: int = 30):
         """Process the conversation loop, handling tool calls and responses with streaming.
@@ -150,12 +153,8 @@ class ConversationProcessor:
                         elif self.toon_optimizer.enabled:
                             output.info("Using JSON (no TOON savings for this request)")
                         else:
-                            # TOON is disabled - could be config, provider, or error
-                            provider_name = getattr(self.context, 'provider', 'unknown')
-                            if provider_name.lower() != 'openai':
-                                output.info(f"Using JSON (TOON only supported for OpenAI, current provider: {provider_name})")
-                            else:
-                                output.info("Using JSON (TOON optimization disabled in config)")
+                            # TOON is disabled in config
+                            output.info("Using JSON (TOON optimization disabled in config)")
 
                     # Always log API request payloads to file for debugging
                     try:

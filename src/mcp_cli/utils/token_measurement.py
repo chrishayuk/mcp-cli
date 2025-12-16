@@ -1,6 +1,6 @@
 """Token measurement utilities for comparing JSON and TOON formats.
 
-This module provides utilities to measure token consumption using tiktoken
+This module provides utilities to measure token consumption using HuggingFace transformers
 and compare the efficiency of JSON vs TOON serialization formats.
 """
 
@@ -8,15 +8,19 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any
 from dataclasses import dataclass
 
+# Disable tokenizers parallelism warnings to avoid fork-related messages
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 try:
-    import tiktoken
-    TIKTOKEN_AVAILABLE = True
+    from transformers import AutoTokenizer
+    TRANSFORMERS_AVAILABLE = True
 except ImportError:
-    TIKTOKEN_AVAILABLE = False
-    logging.warning("tiktoken not available - token measurement disabled")
+    TRANSFORMERS_AVAILABLE = False
+    logging.warning("transformers not available - token measurement disabled")
 
 try:
     from toon_format import encode as toon_encode
@@ -65,26 +69,97 @@ class TokenMeasurement:
 class TokenCounter:
     """Token counter for measuring token usage with different formats."""
 
+    # Model to tokenizer mapping for different providers
+    MODEL_TOKENIZER_MAP = {
+        # OpenAI models
+        "gpt-4": "Xenova/gpt-4",
+        "gpt-4o": "Xenova/gpt-4o",
+        "gpt-4o-mini": "Xenova/gpt-4o",
+        "gpt-3.5-turbo": "Xenova/gpt-3.5-turbo",
+        "o1": "Xenova/gpt-4o",
+        "o3": "Xenova/gpt-4o",
+        # Anthropic Claude models
+        "claude": "Xenova/claude-tokenizer",
+        # Meta Llama models
+        "llama": "meta-llama/Llama-2-7b-hf",
+        "llama-2": "meta-llama/Llama-2-7b-hf",
+        "llama-3": "meta-llama/Meta-Llama-3-8B",
+        "llama-3.1": "meta-llama/Llama-3.1-8B",
+        "llama-3.2": "meta-llama/Llama-3.2-1B",
+        # Mistral models
+        "mistral": "mistralai/Mistral-7B-v0.1",
+        "mixtral": "mistralai/Mixtral-8x7B-v0.1",
+        # Google Gemini - use a general tokenizer
+        "gemini": "google/gemma-2b",
+        # Groq uses Llama models typically
+        "groq": "meta-llama/Llama-2-7b-hf",
+        # Default fallback
+        "default": "gpt2"
+    }
+
     def __init__(self, model: str = "gpt-4o-mini", provider: str = "openai"):
         """Initialize token counter for a specific model.
 
         Args:
-            model: Model name for tiktoken encoding (default: gpt-4o-mini)
-            provider: LLM provider name (tiktoken only works with OpenAI)
+            model: Model name for tokenization (default: gpt-4o-mini)
+            provider: LLM provider name (now works with all providers)
         """
         self.model = model
         self.provider = provider.lower()
-        self.encoding = None
+        self.tokenizer = None
 
-        # Only use tiktoken for OpenAI provider
-        if TIKTOKEN_AVAILABLE and self.provider == "openai":
+        if TRANSFORMERS_AVAILABLE:
             try:
-                self.encoding = tiktoken.encoding_for_model(model)
-            except KeyError:
-                log.warning(f"Model {model} not found, using o200k_base encoding")
-                self.encoding = tiktoken.get_encoding("o200k_base")
-        elif TIKTOKEN_AVAILABLE and self.provider != "openai":
-            log.debug(f"tiktoken disabled for provider '{provider}' (only supported for OpenAI)")
+                # Find the appropriate tokenizer for the model
+                tokenizer_name = self._get_tokenizer_name(model, provider)
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    tokenizer_name,
+                    trust_remote_code=True,
+                    use_fast=True
+                )
+                # Disable max length warnings since we're only counting, not generating
+                self.tokenizer.model_max_length = float('inf')
+                log.info(f"Loaded tokenizer '{tokenizer_name}' for model '{model}' (provider: {provider})")
+            except Exception as e:
+                log.warning(f"Failed to load tokenizer for {model}: {e}, using default GPT-2 tokenizer")
+                try:
+                    self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
+                except Exception as fallback_error:
+                    log.error(f"Failed to load fallback tokenizer: {fallback_error}")
+                    self.tokenizer = None
+        else:
+            log.warning("transformers library not available - token counting disabled")
+
+    def _get_tokenizer_name(self, model: str, provider: str) -> str:
+        """Get the appropriate tokenizer name for a given model and provider.
+
+        Args:
+            model: Model name
+            provider: Provider name
+
+        Returns:
+            Tokenizer name to use with HuggingFace
+        """
+        model_lower = model.lower()
+
+        # Check if model name contains any of our known patterns
+        for pattern, tokenizer in self.MODEL_TOKENIZER_MAP.items():
+            if pattern in model_lower:
+                return tokenizer
+
+        # Provider-specific defaults
+        if provider == "openai":
+            return "Xenova/gpt-4o"
+        elif provider == "anthropic":
+            return "Xenova/claude-tokenizer"
+        elif provider == "google":
+            return "google/gemma-2b"
+        elif provider in ["ollama", "groq"]:
+            # These typically use Llama models
+            return "meta-llama/Llama-2-7b-hf"
+
+        # Ultimate fallback
+        return self.MODEL_TOKENIZER_MAP["default"]
 
     def count_tokens(self, text: str) -> int:
         """Count tokens in a text string.
@@ -93,13 +168,18 @@ class TokenCounter:
             text: Text to count tokens for
 
         Returns:
-            Number of tokens (0 if tiktoken not available)
+            Number of tokens (0 if transformers not available)
         """
-        if not self.encoding:
+        if not self.tokenizer:
             return 0
 
         try:
-            return len(self.encoding.encode(text))
+            # Tokenize and count tokens (truncation=False allows counting beyond max_length)
+            import warnings
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message="Token indices sequence length")
+                tokens = self.tokenizer.encode(text, add_special_tokens=False, truncation=False)
+            return len(tokens)
         except Exception as e:
             log.error(f"Error counting tokens: {e}")
             return 0
@@ -189,7 +269,7 @@ class TokenCounter:
 
 def is_token_measurement_available() -> bool:
     """Check if token measurement is available."""
-    return TIKTOKEN_AVAILABLE
+    return TRANSFORMERS_AVAILABLE
 
 
 def debug_toon_encoding(data: Any) -> dict[str, Any]:
@@ -203,7 +283,7 @@ def debug_toon_encoding(data: Any) -> dict[str, Any]:
     """
     result = {
         "toon_available": TOON_AVAILABLE,
-        "tiktoken_available": TIKTOKEN_AVAILABLE,
+        "transformers_available": TRANSFORMERS_AVAILABLE,
         "input_type": type(data).__name__,
         "input_size": len(str(data)),
     }
@@ -216,9 +296,10 @@ def debug_toon_encoding(data: Any) -> dict[str, Any]:
             result["toon_length"] = len(toon_str)
             result["toon_preview"] = toon_str[:500]
 
-            if TIKTOKEN_AVAILABLE:
-                enc = tiktoken.encoding_for_model("gpt-4o-mini")
-                result["toon_tokens"] = len(enc.encode(toon_str))
+            if TRANSFORMERS_AVAILABLE:
+                tokenizer = AutoTokenizer.from_pretrained("gpt2")
+                tokens = tokenizer.encode(toon_str, add_special_tokens=False)
+                result["toon_tokens"] = len(tokens)
         except Exception as e:
             result["toon_success"] = False
             result["toon_error"] = str(e)

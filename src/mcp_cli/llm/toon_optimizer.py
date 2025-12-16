@@ -3,7 +3,7 @@ TOON (Token-Optimized Object Notation) optimizer for reducing LLM token costs.
 
 This module provides utilities to:
 1. Convert messages and tools to TOON format
-2. Count tokens for both JSON and TOON formats
+2. Count tokens for both JSON and TOON formats using HuggingFace transformers
 3. Compare costs and select the cheaper format
 4. Display token savings information
 """
@@ -12,7 +12,18 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any
+
+# Disable tokenizers parallelism warnings to avoid fork-related messages
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+try:
+    from transformers import AutoTokenizer
+    TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    TRANSFORMERS_AVAILABLE = False
+    logging.warning("transformers not available - accurate token counting disabled")
 
 logger = logging.getLogger(__name__)
 
@@ -20,19 +31,100 @@ logger = logging.getLogger(__name__)
 class ToonOptimizer:
     """Optimizer for converting messages to TOON format when it saves tokens."""
 
-    def __init__(self, enabled: bool = False, provider: str = "openai"):
+    # Model to tokenizer mapping for different providers
+    MODEL_TOKENIZER_MAP = {
+        # OpenAI models
+        "gpt-4": "Xenova/gpt-4",
+        "gpt-4o": "Xenova/gpt-4o",
+        "gpt-4o-mini": "Xenova/gpt-4o",
+        "gpt-3.5-turbo": "Xenova/gpt-3.5-turbo",
+        "o1": "Xenova/gpt-4o",
+        "o3": "Xenova/gpt-4o",
+        # Anthropic Claude models
+        "claude": "Xenova/claude-tokenizer",
+        # Meta Llama models
+        "llama": "meta-llama/Llama-2-7b-hf",
+        "llama-2": "meta-llama/Llama-2-7b-hf",
+        "llama-3": "meta-llama/Meta-Llama-3-8B",
+        "llama-3.1": "meta-llama/Llama-3.1-8B",
+        "llama-3.2": "meta-llama/Llama-3.2-1B",
+        # Mistral models
+        "mistral": "mistralai/Mistral-7B-v0.1",
+        "mixtral": "mistralai/Mixtral-8x7B-v0.1",
+        # Google Gemini - use a general tokenizer
+        "gemini": "google/gemma-2b",
+        # Groq uses Llama models typically
+        "groq": "meta-llama/Llama-2-7b-hf",
+        # Default fallback
+        "default": "gpt2"
+    }
+
+    def __init__(self, enabled: bool = False, provider: str = "openai", model: str = ""):
         """
         Initialize the TOON optimizer.
 
         Args:
             enabled: Whether TOON optimization is enabled
-            provider: LLM provider name (TOON only works with OpenAI)
+            provider: LLM provider name (now works with all providers)
+            model: Model name for accurate tokenization
         """
         self.provider = provider.lower()
-        # TOON optimization only supported for OpenAI provider
-        self.enabled = enabled and self.provider == "openai"
-        if enabled and self.provider != "openai":
-            logger.info(f"TOON optimization is only supported for OpenAI provider, not '{provider}'")
+        self.model = model
+        self.enabled = enabled
+        self.tokenizer = None
+
+        # Load tokenizer if transformers is available
+        if TRANSFORMERS_AVAILABLE and enabled:
+            try:
+                tokenizer_name = self._get_tokenizer_name(model, provider)
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    tokenizer_name,
+                    trust_remote_code=True,
+                    use_fast=True
+                )
+                # Disable max length warnings since we're only counting, not generating
+                self.tokenizer.model_max_length = float('inf')
+                logger.info(f"TOON optimizer loaded tokenizer '{tokenizer_name}' for model '{model}' (provider: {provider})")
+            except Exception as e:
+                logger.warning(f"Failed to load tokenizer for {model}: {e}, using default GPT-2 tokenizer")
+                try:
+                    self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
+                except Exception as fallback_error:
+                    logger.warning(f"Failed to load fallback tokenizer: {fallback_error}. Using heuristic token counting.")
+                    self.tokenizer = None
+        elif enabled and not TRANSFORMERS_AVAILABLE:
+            logger.warning("transformers library not available - using heuristic token counting")
+
+    def _get_tokenizer_name(self, model: str, provider: str) -> str:
+        """Get the appropriate tokenizer name for a given model and provider.
+
+        Args:
+            model: Model name
+            provider: Provider name
+
+        Returns:
+            Tokenizer name to use with HuggingFace
+        """
+        model_lower = model.lower()
+
+        # Check if model name contains any of our known patterns
+        for pattern, tokenizer in self.MODEL_TOKENIZER_MAP.items():
+            if pattern in model_lower:
+                return tokenizer
+
+        # Provider-specific defaults
+        if provider == "openai":
+            return "Xenova/gpt-4o"
+        elif provider == "anthropic":
+            return "Xenova/claude-tokenizer"
+        elif provider == "google":
+            return "google/gemma-2b"
+        elif provider in ["ollama", "groq"]:
+            # These typically use Llama models
+            return "meta-llama/Llama-2-7b-hf"
+
+        # Ultimate fallback
+        return self.MODEL_TOKENIZER_MAP["default"]
 
     def convert_to_toon(
         self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None
@@ -190,17 +282,28 @@ class ToonOptimizer:
 
     def count_tokens(self, text: str) -> int:
         """
-        Estimate token count for text.
+        Count tokens for text using HuggingFace transformers tokenizer.
 
-        This is a simple estimation based on common tokenization patterns.
-        For more accurate counting, integrate with tiktoken or similar libraries.
+        Falls back to heuristic estimation if tokenizer is not available.
 
         Args:
             text: Text to count tokens for
 
         Returns:
-            Estimated token count
+            Token count
         """
+        if self.tokenizer:
+            try:
+                # Use HuggingFace transformers for accurate token counting
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", message="Token indices sequence length")
+                    tokens = self.tokenizer.encode(text, add_special_tokens=False, truncation=False)
+                return len(tokens)
+            except Exception as e:
+                logger.warning(f"Error using tokenizer, falling back to heuristic: {e}")
+
+        # Fallback to heuristic estimation
         # Simple approximation: ~4 characters per token for English text
         # This is a rough estimate; actual token counts vary by tokenizer
         # For JSON, we count characters more directly due to structure

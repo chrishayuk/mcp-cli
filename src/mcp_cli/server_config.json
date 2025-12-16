@@ -5,7 +5,7 @@
         "args": [
           "--mcp-allow-write",
           "--mcp-transport", "stdio",
-          "--mcp-tools", "is_instance-profiles"
+          "--mcp-tools", "is_instance-profiles,is_vpcs"
         ]
       }
     },
