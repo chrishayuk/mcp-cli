@@ -1313,6 +1313,172 @@ class TestExecutionBudgetWithMessage:
         mock_tool_state.format_execution_exhausted_message.assert_called()
 
 
+class TestPollingToolDetection:
+    """Tests for polling tool detection and loop exemption."""
+
+    def test_is_polling_tool_status(self):
+        """Test that 'status' tools are detected as polling tools."""
+        context = MockContext()
+        ui_manager = MockUIManager()
+        processor = ConversationProcessor(context, ui_manager)
+
+        assert processor._is_polling_tool("render_status") is True
+        assert processor._is_polling_tool("get_status") is True
+        assert processor._is_polling_tool("remotion_render_status") is True
+        assert processor._is_polling_tool("job_status_check") is True
+
+    def test_is_polling_tool_progress(self):
+        """Test that 'progress' tools are detected as polling tools."""
+        context = MockContext()
+        ui_manager = MockUIManager()
+        processor = ConversationProcessor(context, ui_manager)
+
+        assert processor._is_polling_tool("check_progress") is True
+        assert processor._is_polling_tool("get_progress") is True
+        assert processor._is_polling_tool("render_progress") is True
+
+    def test_is_polling_tool_check(self):
+        """Test that 'check' tools are detected as polling tools."""
+        context = MockContext()
+        ui_manager = MockUIManager()
+        processor = ConversationProcessor(context, ui_manager)
+
+        assert processor._is_polling_tool("health_check") is True
+        assert processor._is_polling_tool("check_job") is True
+
+    def test_is_polling_tool_poll(self):
+        """Test that 'poll' tools are detected as polling tools."""
+        context = MockContext()
+        ui_manager = MockUIManager()
+        processor = ConversationProcessor(context, ui_manager)
+
+        assert processor._is_polling_tool("poll_results") is True
+        assert processor._is_polling_tool("poll_queue") is True
+
+    def test_is_polling_tool_monitor(self):
+        """Test that 'monitor' tools are detected as polling tools."""
+        context = MockContext()
+        ui_manager = MockUIManager()
+        processor = ConversationProcessor(context, ui_manager)
+
+        assert processor._is_polling_tool("monitor_job") is True
+        assert processor._is_polling_tool("system_monitor") is True
+
+    def test_is_polling_tool_watch(self):
+        """Test that 'watch' tools are detected as polling tools."""
+        context = MockContext()
+        ui_manager = MockUIManager()
+        processor = ConversationProcessor(context, ui_manager)
+
+        assert processor._is_polling_tool("watch_progress") is True
+        assert processor._is_polling_tool("file_watch") is True
+
+    def test_is_polling_tool_wait(self):
+        """Test that 'wait' tools are detected as polling tools."""
+        context = MockContext()
+        ui_manager = MockUIManager()
+        processor = ConversationProcessor(context, ui_manager)
+
+        assert processor._is_polling_tool("wait_for_completion") is True
+        assert processor._is_polling_tool("wait_job") is True
+
+    def test_is_polling_tool_state(self):
+        """Test that 'state' tools are detected as polling tools."""
+        context = MockContext()
+        ui_manager = MockUIManager()
+        processor = ConversationProcessor(context, ui_manager)
+
+        assert processor._is_polling_tool("get_state") is True
+        assert processor._is_polling_tool("job_state") is True
+
+    def test_is_not_polling_tool(self):
+        """Test that non-polling tools are not detected as polling tools."""
+        context = MockContext()
+        ui_manager = MockUIManager()
+        processor = ConversationProcessor(context, ui_manager)
+
+        assert processor._is_polling_tool("sqrt") is False
+        assert processor._is_polling_tool("add") is False
+        assert processor._is_polling_tool("create_video") is False
+        assert processor._is_polling_tool("render_video") is False  # render but not status
+        assert processor._is_polling_tool("calculate") is False
+        assert processor._is_polling_tool("search") is False
+
+    def test_is_polling_tool_case_insensitive(self):
+        """Test that polling tool detection is case-insensitive."""
+        context = MockContext()
+        ui_manager = MockUIManager()
+        processor = ConversationProcessor(context, ui_manager)
+
+        assert processor._is_polling_tool("GET_STATUS") is True
+        assert processor._is_polling_tool("Check_Progress") is True
+        assert processor._is_polling_tool("POLL_RESULTS") is True
+
+    @pytest.mark.asyncio
+    async def test_polling_tool_not_marked_as_duplicate(self):
+        """Test that polling tools calling same args are not marked as duplicates."""
+        context = MockContext()
+        context.conversation_history = [
+            Message(role=MessageRole.USER, content="Check the status")
+        ]
+        context.openai_tools = [
+            {"type": "function", "function": {"name": "render_status"}}
+        ]
+        context.tool_name_mapping = {}
+
+        # Same status check tool call
+        tool_call = ToolCall(
+            id="call_1",
+            type="function",
+            function=FunctionCall(name="render_status", arguments='{"job_id": "abc123"}'),
+        )
+
+        # Return same tool call multiple times, then final response
+        call_count = [0]
+
+        async def repeated_status_checks(**kwargs):
+            call_count[0] += 1
+            if call_count[0] <= 3:  # First 3 calls return same status check
+                return {"response": "", "tool_calls": [tool_call.model_dump()]}
+            else:
+                return {"response": "Render complete!", "tool_calls": []}
+
+        context.client.create_completion = repeated_status_checks
+
+        ui_manager = MockUIManager()
+        ui_manager.is_streaming_response = False
+        ui_manager.stop_streaming_response = AsyncMock()
+        ui_manager.print_assistant_message = AsyncMock()
+
+        processor = ConversationProcessor(context, ui_manager)
+
+        # Create mock tool state
+        mock_tool_state = MagicMock()
+        mock_tool_state.reset_for_new_prompt = MagicMock()
+        mock_tool_state.register_user_literals = MagicMock(return_value=0)
+        mock_tool_state.is_discovery_tool = MagicMock(return_value=False)
+        mock_tool_state.is_execution_tool = MagicMock(return_value=False)
+        mock_tool_state.extract_bindings_from_text = MagicMock(return_value=[])
+        mock_tool_state.format_unused_warning = MagicMock(return_value=None)
+        mock_tool_state.format_state_for_model = MagicMock(return_value="")
+        from mcp_cli.chat.tool_state import RunawayStatus
+
+        mock_tool_state.check_runaway = MagicMock(
+            return_value=RunawayStatus(should_stop=False)
+        )
+        processor._tool_state = mock_tool_state
+
+        # Mock tool processor
+        processor.tool_processor.process_tool_calls = AsyncMock()
+
+        await processor.process_conversation(max_turns=10)
+
+        # All 3 status checks should have been processed (not skipped as duplicates)
+        assert processor.tool_processor.process_tool_calls.call_count >= 3
+        # Duplicate counter should not have incremented for polling tools
+        assert processor._consecutive_duplicate_count == 0
+
+
 class TestBindingExtractionWithResults:
     """Tests for binding extraction returning actual bindings."""
 

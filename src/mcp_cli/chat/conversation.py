@@ -40,6 +40,19 @@ class ConversationProcessor:
     - Injects state summaries to help model track computed values
     """
 
+    # Tool name patterns that are polling/status tools - exempt from loop detection
+    # These tools are expected to be called repeatedly with the same args
+    POLLING_TOOL_PATTERNS = frozenset({
+        "status",
+        "poll",
+        "check",
+        "monitor",
+        "watch",
+        "wait",
+        "progress",
+        "state",
+    })
+
     def __init__(
         self,
         context,
@@ -58,6 +71,19 @@ class ConversationProcessor:
         self._max_consecutive_duplicates = 5  # Abort after this many
         # Runtime uses adaptive policy: strict core with smooth wrapper
         # No mode selection needed - always enforces grounding with auto-repair
+
+    def _is_polling_tool(self, tool_name: str) -> bool:
+        """Check if a tool is a polling/status tool that should be exempt from loop detection.
+
+        Polling tools (like render_status, check_progress, etc.) are expected to be called
+        repeatedly with the same arguments to monitor changing state. These should not
+        trigger the duplicate call detection.
+        """
+        tool_lower = tool_name.lower()
+        for pattern in self.POLLING_TOOL_PATTERNS:
+            if pattern in tool_lower:
+                return True
+        return False
 
     async def process_conversation(self, max_turns: int = 100):
         """Process the conversation loop, handling tool calls and responses with streaming.
@@ -341,23 +367,31 @@ class ConversationProcessor:
                         # Create signature to detect duplicate tool calls
                         # ToolCall is a Pydantic model from chuk_llm with frozen function
                         current_signature = []
+                        tool_names = []
                         for tc in tool_calls:
                             name = tc.function.name
                             args = tc.function.arguments  # JSON string from chuk_llm
                             current_signature.append(f"{name}:{args}")
+                            tool_names.append(name)
 
                         current_sig_str = "|".join(sorted(current_signature))
 
+                        # Check if ALL tools in this call are polling tools
+                        # If so, exempt from duplicate detection
+                        all_polling = all(self._is_polling_tool(n) for n in tool_names)
+
                         # Detect TRUE duplicates: same tool(s) with exact same args
                         # Different args = different computation, not stuck
+                        # Polling tools are exempt - they're meant to be called repeatedly
                         is_true_duplicate: bool = bool(
                             last_tool_signature
                             and current_sig_str == last_tool_signature
+                            and not all_polling
                         )
 
                         log.debug(
                             f"Duplicate check: sig={current_sig_str[:50]}, "
-                            f"is_dup={is_true_duplicate}"
+                            f"is_dup={is_true_duplicate}, all_polling={all_polling}"
                         )
 
                         if is_true_duplicate:

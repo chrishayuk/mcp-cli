@@ -63,6 +63,9 @@
     },
     "powerpoint": {
        "url": "https://powerpoint.chukai.io/mcp"
+    },
+    "motion": {
+       "url": "https://motion.chukai.io/mcp"
     }
   }
 }
