@@ -201,7 +201,12 @@ class ChatDisplayManager:
                 k: v for k, v in args.items() if v is not None and str(v).strip()
             }
             for key, value in filtered_args.items():
-                output.print(f"  {key}: {value}")
+                # Disable wrapping for URLs to preserve them intact
+                str_value = str(value)
+                if str_value.startswith(('http://', 'https://', 'ftp://')):
+                    output.print(f"  {key}: {str_value}", wrap=False)
+                else:
+                    output.print(f"  {key}: {value}")
 
         # Result
         result = tool_info.result
