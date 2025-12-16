@@ -24,7 +24,7 @@ from mcp_cli.chat.response_models import Message, MessageRole, ToolCall
 from mcp_cli.chat.models import ToolProcessorContext, UIManagerProtocol
 from mcp_cli.chat.tool_state import get_tool_state, SoftBlockReason
 from mcp_cli.display import display_tool_call_result
-from mcp_cli.tools.search import get_search_engine
+from chuk_tool_processor.discovery import get_search_engine
 from mcp_cli.llm.content_models import ContentBlockType
 from mcp_cli.utils.preferences import get_preference_manager
 

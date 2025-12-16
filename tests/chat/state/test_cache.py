@@ -110,3 +110,46 @@ class TestResultCache:
         msg = cache.format_duplicate_message("sqrt", {"x": 18})
         assert "sqrt" in msg
         assert "4.2426" in msg or "cached" in msg.lower()
+
+    # -------------------------------------------------------------------------
+    # Additional coverage tests for uncovered lines
+    # -------------------------------------------------------------------------
+
+    def test_format_duplicate_message_no_cache(self, cache):
+        """Test format_duplicate_message when not in cache."""
+        msg = cache.format_duplicate_message("sqrt", {"x": 99})
+        assert "sqrt" in msg
+        assert "no cached result" in msg.lower()
+
+    def test_format_state_with_variables_only(self, cache):
+        """Test format_state with only variables (no tool results)."""
+        cache.store_variable("sigma", 5.5, units="units/day")
+        state = cache.format_state()
+        assert "sigma" in state
+        assert "Stored Variables" in state
+
+    def test_format_state_variables_and_results(self, cache):
+        """Test format_state with both variables and results."""
+        cache.store_variable("sigma", 5.5)
+        cache.put("sqrt", {"x": 18}, 4.2426)
+        state = cache.format_state()
+        assert "sigma" in state
+        assert "sqrt" in state
+
+    def test_format_state_max_items_limit(self, cache):
+        """Test format_state respects max_items."""
+        # Add multiple variables
+        for i in range(15):
+            cache.store_variable(f"var{i}", float(i))
+        state = cache.format_state(max_items=5)
+        # Should only show 5 variables
+        assert state.count("var") <= 10  # Some slack for formatting
+
+    def test_format_state_separator_between_sections(self, cache):
+        """Test format_state adds separator between variable and result sections."""
+        cache.store_variable("sigma", 5.5)
+        cache.put("sqrt", {"x": 18}, 4.2426)
+        state = cache.format_state()
+        # Should have both sections
+        assert "Stored Variables" in state
+        assert "Computed Values" in state

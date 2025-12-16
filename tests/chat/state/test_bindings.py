@@ -138,3 +138,162 @@ class TestBindingManager:
         b1 = manager.bind("sqrt", {"x": 18}, 4.2426)
         b2 = manager.bind("sqrt", {"x": 19}, 4.3589)
         assert b1.id != b2.id
+
+    # -------------------------------------------------------------------------
+    # Additional coverage tests for uncovered lines
+    # -------------------------------------------------------------------------
+
+    def test_add_alias_success(self, manager):
+        """Test add_alias to existing binding."""
+        manager.bind("sqrt", {"x": 18}, 4.2426)
+        result = manager.add_alias("v1", "sigma")
+        assert result is True
+        # Can now get by alias
+        binding = manager.get("sigma")
+        assert binding is not None
+        assert binding.id == "v1"
+
+    def test_add_alias_to_nonexistent_binding(self, manager):
+        """Test add_alias returns False for non-existent binding."""
+        result = manager.add_alias("v99", "sigma")
+        assert result is False
+
+    def test_add_alias_duplicate(self, manager):
+        """Test adding same alias twice."""
+        manager.bind("sqrt", {"x": 18}, 4.2426, aliases=["sigma"])
+        result = manager.add_alias("v1", "sigma")
+        assert result is True
+        # Alias should not be duplicated
+        binding = manager.get("v1")
+        assert binding.aliases.count("sigma") == 1
+
+    def test_get_numeric_values(self, manager):
+        """Test get_numeric_values returns all numeric values."""
+        manager.bind("sqrt", {"x": 18}, 4.2426)
+        manager.bind("multiply", {"a": 2, "b": 3}, 6)
+        manager.bind("echo", {"msg": "hello"}, "hello")  # non-numeric
+        values = manager.get_numeric_values()
+        assert 4.2426 in values
+        assert 6.0 in values
+        assert len(values) == 2
+
+    def test_get_numeric_values_empty(self, manager):
+        """Test get_numeric_values with no bindings."""
+        values = manager.get_numeric_values()
+        assert values == set()
+
+    def test_resolve_references_with_non_numeric_value(self, manager):
+        """Test resolve_references with string value."""
+        manager.bind("echo", {"msg": "test"}, "hello world")
+        resolved = manager.resolve_references({"msg": "$v1"})
+        # String values get JSON serialized - when it fails to resolve,
+        # the original reference is preserved
+        # When it succeeds, value is inserted
+        assert "msg" in resolved
+
+    def test_find_by_value_exact_match(self, manager):
+        """Test find_by_value with exact match."""
+        manager.bind("sqrt", {"x": 18}, 4.2426)
+        binding = manager.find_by_value(4.2426)
+        assert binding is not None
+        assert binding.raw_value == 4.2426
+
+    def test_find_by_value_tolerance_match(self, manager):
+        """Test find_by_value with tolerance match."""
+        manager.bind("sqrt", {"x": 18}, 4.2426)
+        binding = manager.find_by_value(4.24261, tolerance=0.001)
+        assert binding is not None
+
+    def test_find_by_value_no_match(self, manager):
+        """Test find_by_value with no match."""
+        manager.bind("sqrt", {"x": 18}, 4.2426)
+        binding = manager.find_by_value(999.999)
+        assert binding is None
+
+    def test_find_by_value_non_numeric_bindings(self, manager):
+        """Test find_by_value skips non-numeric bindings."""
+        manager.bind("echo", {"msg": "test"}, "hello")
+        binding = manager.find_by_value(4.2426)
+        assert binding is None
+
+    def test_find_by_value_with_small_values(self, manager):
+        """Test find_by_value with very small values (avoid division issues)."""
+        manager.bind("divide", {"a": 1, "b": 1000000}, 0.000001)
+        binding = manager.find_by_value(0.000001)
+        assert binding is not None
+
+    def test_get_unused(self, manager):
+        """Test get_unused returns unused bindings."""
+        manager.bind("sqrt", {"x": 18}, 4.2426)
+        manager.bind("multiply", {"a": 2, "b": 3}, 6)
+        manager.mark_used("v1", "normal_cdf")
+
+        unused = manager.get_unused()
+        assert len(unused) == 1
+        assert unused[0].id == "v2"
+
+    def test_get_unused_all_used(self, manager):
+        """Test get_unused when all bindings are used."""
+        manager.bind("sqrt", {"x": 18}, 4.2426)
+        manager.mark_used("v1", "normal_cdf")
+
+        unused = manager.get_unused()
+        assert len(unused) == 0
+
+    def test_format_unused_warning_with_unused(self, manager):
+        """Test format_unused_warning with unused bindings."""
+        manager.bind("sqrt", {"x": 18}, 4.2426)
+        manager.bind("multiply", {"a": 2, "b": 3}, 6)
+
+        warning = manager.format_unused_warning()
+        assert "$v1" in warning
+        assert "$v2" in warning
+
+    def test_format_unused_warning_none_unused(self, manager):
+        """Test format_unused_warning when all used."""
+        manager.bind("sqrt", {"x": 18}, 4.2426)
+        manager.mark_used("v1", "normal_cdf")
+
+        warning = manager.format_unused_warning()
+        assert warning == ""
+
+    def test_bool_empty(self, manager):
+        """Test __bool__ returns False when empty."""
+        assert bool(manager) is False
+
+    def test_bool_with_bindings(self, manager):
+        """Test __bool__ returns True with bindings."""
+        manager.bind("sqrt", {"x": 18}, 4.2426)
+        assert bool(manager) is True
+
+
+class TestClassifyValueType:
+    """Tests for classify_value_type function."""
+
+    def test_classify_list_type(self):
+        """Test classifying list values."""
+        from mcp_cli.chat.state.bindings import classify_value_type
+        from mcp_cli.chat.state.models import ValueType
+
+        assert classify_value_type([1, 2, 3]) == ValueType.LIST
+
+    def test_classify_dict_type(self):
+        """Test classifying dict values."""
+        from mcp_cli.chat.state.bindings import classify_value_type
+        from mcp_cli.chat.state.models import ValueType
+
+        assert classify_value_type({"key": "value"}) == ValueType.OBJECT
+
+    def test_classify_unknown_type(self):
+        """Test classifying unknown type (None, etc)."""
+        from mcp_cli.chat.state.bindings import classify_value_type
+        from mcp_cli.chat.state.models import ValueType
+
+        assert classify_value_type(None) == ValueType.UNKNOWN
+
+    def test_classify_numeric_string(self):
+        """Test classifying numeric string."""
+        from mcp_cli.chat.state.bindings import classify_value_type
+        from mcp_cli.chat.state.models import ValueType
+
+        assert classify_value_type("123.45") == ValueType.NUMBER

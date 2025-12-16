@@ -424,11 +424,12 @@ class TestToolManagerLLMTools:
         with patch.dict(os.environ, {"MCP_CLI_DYNAMIC_TOOLS": "1"}):
             tools = await tm.get_tools_for_llm()
 
-        # Should return 4 dynamic tools
-        assert len(tools) == 4
+        # Should return 5 dynamic tools (list, search, get_schema, get_schemas, call)
+        assert len(tools) == 5
         names = {t["function"]["name"] for t in tools}
         assert "list_tools" in names
         assert "search_tools" in names
+        assert "get_tool_schemas" in names
 
     @pytest.mark.asyncio
     async def test_get_tools_for_llm_include_filter(self, manager):

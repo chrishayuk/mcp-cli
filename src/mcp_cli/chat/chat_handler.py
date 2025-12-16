@@ -18,7 +18,8 @@ from chuk_term.ui import (
 )
 
 # Local imports
-from mcp_cli.chat.chat_context import ChatContext, TestChatContext
+from mcp_cli.chat.chat_context import ChatContext
+from mcp_cli.chat.testing import TestChatContext
 from mcp_cli.chat.ui_manager import ChatUIManager
 from mcp_cli.chat.conversation import ConversationProcessor
 from mcp_cli.tools.manager import ToolManager

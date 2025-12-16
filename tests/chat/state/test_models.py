@@ -305,3 +305,376 @@ class TestPerToolCallStatus:
             requires_justification=True,
         )
         assert status.requires_justification is True
+
+
+# =============================================================================
+# Additional coverage tests for models.py
+# =============================================================================
+
+
+class TestValueBindingTypedValue:
+    """Tests for ValueBinding.typed_value edge cases."""
+
+    def test_typed_value_invalid_conversion(self):
+        """Test typed_value when conversion fails."""
+        binding = ValueBinding(
+            id="v1",
+            tool_name="test",
+            args_hash="abc123",
+            raw_value="not-a-number",
+            value_type=ValueType.NUMBER,  # Misclassified
+        )
+        # Should return raw value when conversion fails
+        assert binding.typed_value == "not-a-number"
+
+    def test_typed_value_int(self):
+        """Test typed_value with int."""
+        binding = ValueBinding(
+            id="v1",
+            tool_name="test",
+            args_hash="abc123",
+            raw_value=42,
+            value_type=ValueType.NUMBER,
+        )
+        assert binding.typed_value == 42.0
+
+    def test_typed_value_non_number(self):
+        """Test typed_value with non-number type."""
+        binding = ValueBinding(
+            id="v1",
+            tool_name="test",
+            args_hash="abc123",
+            raw_value=["a", "b"],
+            value_type=ValueType.LIST,
+        )
+        assert binding.typed_value == ["a", "b"]
+
+
+class TestValueBindingFormatForModel:
+    """Tests for ValueBinding.format_for_model edge cases."""
+
+    def test_format_scientific_large(self):
+        """Test format_for_model with large number (scientific notation)."""
+        binding = ValueBinding(
+            id="v1",
+            tool_name="test",
+            args_hash="abc123",
+            raw_value=1.5e10,
+            value_type=ValueType.NUMBER,
+        )
+        formatted = binding.format_for_model()
+        assert "e" in formatted.lower() or "E" in formatted
+
+    def test_format_scientific_small(self):
+        """Test format_for_model with small number (scientific notation)."""
+        binding = ValueBinding(
+            id="v1",
+            tool_name="test",
+            args_hash="abc123",
+            raw_value=1.5e-10,
+            value_type=ValueType.NUMBER,
+        )
+        formatted = binding.format_for_model()
+        assert "e" in formatted.lower() or "E" in formatted
+
+    def test_format_string_long(self):
+        """Test format_for_model with long string (truncated)."""
+        binding = ValueBinding(
+            id="v1",
+            tool_name="test",
+            args_hash="abc123",
+            raw_value="x" * 100,
+            value_type=ValueType.STRING,
+        )
+        formatted = binding.format_for_model()
+        assert "..." in formatted
+        assert len(formatted) < 150
+
+    def test_format_string_short(self):
+        """Test format_for_model with short string."""
+        binding = ValueBinding(
+            id="v1",
+            tool_name="test",
+            args_hash="abc123",
+            raw_value="hello",
+            value_type=ValueType.STRING,
+        )
+        formatted = binding.format_for_model()
+        assert '"hello"' in formatted
+
+    def test_format_empty_list(self):
+        """Test format_for_model with empty list."""
+        binding = ValueBinding(
+            id="v1",
+            tool_name="test",
+            args_hash="abc123",
+            raw_value=[],
+            value_type=ValueType.LIST,
+        )
+        formatted = binding.format_for_model()
+        assert "[]" in formatted
+
+    def test_format_small_list(self):
+        """Test format_for_model with small list."""
+        binding = ValueBinding(
+            id="v1",
+            tool_name="test",
+            args_hash="abc123",
+            raw_value=[1, 2, 3],
+            value_type=ValueType.LIST,
+        )
+        formatted = binding.format_for_model()
+        assert "[" in formatted
+
+    def test_format_large_list(self):
+        """Test format_for_model with large list."""
+        binding = ValueBinding(
+            id="v1",
+            tool_name="test",
+            args_hash="abc123",
+            raw_value=list(range(100)),
+            value_type=ValueType.LIST,
+        )
+        formatted = binding.format_for_model()
+        assert "100 items" in formatted
+
+    def test_format_list_non_list_value(self):
+        """Test format_for_model with LIST type but non-list value."""
+        binding = ValueBinding(
+            id="v1",
+            tool_name="test",
+            args_hash="abc123",
+            raw_value="not-a-list",
+            value_type=ValueType.LIST,
+        )
+        formatted = binding.format_for_model()
+        assert "not-a-list" in formatted
+
+    def test_format_empty_object(self):
+        """Test format_for_model with empty object."""
+        binding = ValueBinding(
+            id="v1",
+            tool_name="test",
+            args_hash="abc123",
+            raw_value={},
+            value_type=ValueType.OBJECT,
+        )
+        formatted = binding.format_for_model()
+        assert "{}" in formatted
+
+    def test_format_small_object(self):
+        """Test format_for_model with small object."""
+        binding = ValueBinding(
+            id="v1",
+            tool_name="test",
+            args_hash="abc123",
+            raw_value={"a": 1, "b": 2},
+            value_type=ValueType.OBJECT,
+        )
+        formatted = binding.format_for_model()
+        assert "keys" in formatted
+
+    def test_format_large_object(self):
+        """Test format_for_model with large object."""
+        binding = ValueBinding(
+            id="v1",
+            tool_name="test",
+            args_hash="abc123",
+            raw_value={f"key{i}": i for i in range(20)},
+            value_type=ValueType.OBJECT,
+        )
+        formatted = binding.format_for_model()
+        assert "20 keys" in formatted
+
+    def test_format_object_non_dict_value(self):
+        """Test format_for_model with OBJECT type but non-dict value."""
+        binding = ValueBinding(
+            id="v1",
+            tool_name="test",
+            args_hash="abc123",
+            raw_value="not-a-dict",
+            value_type=ValueType.OBJECT,
+        )
+        formatted = binding.format_for_model()
+        assert "not-a-dict" in formatted
+
+    def test_format_unknown_type(self):
+        """Test format_for_model with UNKNOWN type."""
+        binding = ValueBinding(
+            id="v1",
+            tool_name="test",
+            args_hash="abc123",
+            raw_value=None,
+            value_type=ValueType.UNKNOWN,
+        )
+        formatted = binding.format_for_model()
+        assert "None" in formatted
+
+    def test_format_with_aliases(self):
+        """Test format_for_model includes aliases."""
+        binding = ValueBinding(
+            id="v1",
+            tool_name="test",
+            args_hash="abc123",
+            raw_value=42,
+            value_type=ValueType.NUMBER,
+            aliases=["sigma", "std_dev"],
+        )
+        formatted = binding.format_for_model()
+        assert "sigma" in formatted
+        assert "std_dev" in formatted
+
+    def test_format_typed_value_non_float(self):
+        """Test format_for_model when typed_value is not float."""
+        binding = ValueBinding(
+            id="v1",
+            tool_name="test",
+            args_hash="abc123",
+            raw_value="invalid",
+            value_type=ValueType.NUMBER,
+        )
+        formatted = binding.format_for_model()
+        # Should use str() for non-float typed value
+        assert "invalid" in formatted
+
+
+class TestRunawayStatusMessage:
+    """Tests for RunawayStatus.message edge cases."""
+
+    def test_message_unknown_reason(self):
+        """Test message with unknown stop reason."""
+        status = RunawayStatus(should_stop=True)
+        assert status.message == "Unknown stop reason"
+
+    def test_message_custom_reason(self):
+        """Test message with custom reason."""
+        status = RunawayStatus(should_stop=True, reason="Custom stop reason")
+        assert status.message == "Custom stop reason"
+
+
+class TestCachedToolResultFormatArgs:
+    """Tests for CachedToolResult._format_args edge cases."""
+
+    def test_format_args_empty(self):
+        """Test _format_args with no arguments."""
+        result = CachedToolResult(
+            tool_name="test",
+            arguments={},
+            result="output",
+        )
+        formatted = result.format_compact()
+        assert "test()" in formatted
+
+    def test_format_args_single_numeric(self):
+        """Test _format_args with single numeric arg."""
+        result = CachedToolResult(
+            tool_name="sqrt",
+            arguments={"x": 18},
+            result=4.2426,
+        )
+        formatted = result.format_compact()
+        assert "18" in formatted
+
+    def test_format_args_multiple(self):
+        """Test _format_args with multiple args."""
+        result = CachedToolResult(
+            tool_name="add",
+            arguments={"a": 1, "b": 2},
+            result=3,
+        )
+        formatted = result.format_compact()
+        assert "a=" in formatted
+        assert "b=" in formatted
+
+    def test_format_args_string_short(self):
+        """Test _format_args with short string arg."""
+        result = CachedToolResult(
+            tool_name="echo",
+            arguments={"msg": "hello"},
+            result="hello",
+        )
+        formatted = result.format_compact()
+        assert '"hello"' in formatted
+
+    def test_format_args_string_long(self):
+        """Test _format_args with long string arg (truncated)."""
+        result = CachedToolResult(
+            tool_name="echo",
+            arguments={"msg": "x" * 100},
+            result="long",
+        )
+        formatted = result.format_compact()
+        assert "..." in formatted
+
+    def test_format_compact_long_result(self):
+        """Test format_compact with long non-numeric result."""
+        result = CachedToolResult(
+            tool_name="echo",
+            arguments={"msg": "hi"},
+            result="x" * 100,
+        )
+        formatted = result.format_compact()
+        assert "..." in formatted
+
+    def test_format_compact_numeric_int(self):
+        """Test format_compact with integer result."""
+        result = CachedToolResult(
+            tool_name="add",
+            arguments={"a": 1, "b": 2},
+            result=3,
+        )
+        formatted = result.format_compact()
+        assert "3" in formatted
+
+    def test_numeric_value_with_none_result(self):
+        """Test numeric_value property when result is not numeric."""
+        result = CachedToolResult(
+            tool_name="echo",
+            arguments={"msg": "hi"},
+            result={"key": "value"},  # Not numeric
+        )
+        assert result.numeric_value is None
+
+
+class TestSoftBlockNextRepairAction:
+    """Tests for SoftBlock.next_repair_action edge cases."""
+
+    def test_next_repair_action_missing_dependency(self):
+        """Test next_repair_action with MISSING_DEPENDENCY reason."""
+        block = SoftBlock(reason=SoftBlockReason.MISSING_DEPENDENCY)
+        assert block.next_repair_action == RepairAction.COMPUTE_MISSING
+
+    def test_next_repair_action_budget_exhausted(self):
+        """Test next_repair_action with BUDGET_EXHAUSTED reason."""
+        block = SoftBlock(reason=SoftBlockReason.BUDGET_EXHAUSTED)
+        assert block.next_repair_action == RepairAction.ASK_USER
+
+    def test_next_repair_action_per_tool_limit(self):
+        """Test next_repair_action with PER_TOOL_LIMIT reason."""
+        block = SoftBlock(reason=SoftBlockReason.PER_TOOL_LIMIT)
+        assert block.next_repair_action == RepairAction.ASK_USER
+
+
+class TestToolClassificationMethods:
+    """Tests for ToolClassification class methods."""
+
+    def test_is_discovery_tool_namespaced(self):
+        """Test is_discovery_tool with namespaced tool."""
+        from mcp_cli.chat.state.models import ToolClassification
+
+        assert ToolClassification.is_discovery_tool("namespace.search_tools") is True
+        assert ToolClassification.is_discovery_tool("namespace.sqrt") is False
+
+    def test_is_idempotent_math_tool_namespaced(self):
+        """Test is_idempotent_math_tool with namespaced tool."""
+        from mcp_cli.chat.state.models import ToolClassification
+
+        assert ToolClassification.is_idempotent_math_tool("math.sqrt") is True
+        assert ToolClassification.is_idempotent_math_tool("stats.normal_cdf") is False
+
+    def test_is_parameterized_tool_namespaced(self):
+        """Test is_parameterized_tool with namespaced tool."""
+        from mcp_cli.chat.state.models import ToolClassification
+
+        assert ToolClassification.is_parameterized_tool("stats.normal_cdf") is True
+        assert ToolClassification.is_parameterized_tool("math.sqrt") is False

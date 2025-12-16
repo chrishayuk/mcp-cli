@@ -74,7 +74,7 @@ class ConversationProcessor:
 
         # Advance search engine turn for session boosting
         # Tools used recently get boosted in search results
-        from mcp_cli.tools.search import get_search_engine
+        from chuk_tool_processor.discovery import get_search_engine
 
         search_engine = get_search_engine()
         search_engine.advance_turn()

@@ -4,7 +4,8 @@
 import pytest
 from unittest.mock import AsyncMock
 
-from mcp_cli.tools.dynamic_tools import DynamicToolName, DynamicToolProvider
+from chuk_tool_processor.discovery import DynamicToolName
+from mcp_cli.tools.dynamic_tools import DynamicToolProvider
 from mcp_cli.tools.models import ToolInfo, ToolCallResult
 
 
@@ -107,16 +108,17 @@ def provider(sample_tools) -> DynamicToolProvider:
 
 
 def test_get_dynamic_tools_returns_all_tools(provider):
-    """Verify get_dynamic_tools returns all 4 dynamic tools."""
+    """Verify get_dynamic_tools returns all 5 dynamic tools."""
     tools = provider.get_dynamic_tools()
 
-    assert len(tools) == 4
+    assert len(tools) == 5
 
     tool_names = {t["function"]["name"] for t in tools}
     expected = {
         DynamicToolName.LIST_TOOLS.value,
         DynamicToolName.SEARCH_TOOLS.value,
         DynamicToolName.GET_TOOL_SCHEMA.value,
+        DynamicToolName.GET_TOOL_SCHEMAS.value,
         DynamicToolName.CALL_TOOL.value,
     }
     assert tool_names == expected
@@ -242,7 +244,7 @@ async def test_execute_dynamic_tool_list_tools(provider):
     """Test execute_dynamic_tool handles list_tools."""
     result = await provider.execute_dynamic_tool("list_tools", {"limit": 10})
 
-    assert "results" in result
+    assert "result" in result
     assert "count" in result
     assert "total_available" in result
 
@@ -254,7 +256,7 @@ async def test_execute_dynamic_tool_search_tools(provider):
         "search_tools", {"query": "calc", "limit": 5}
     )
 
-    assert "results" in result
+    assert "result" in result
     assert "count" in result
 
 

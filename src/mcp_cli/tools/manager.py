@@ -557,7 +557,9 @@ class ToolManager:
             dynamic_mode = os.environ.get("MCP_CLI_DYNAMIC_TOOLS") == "1"
 
             if dynamic_mode:
-                dynamic_tools = self.dynamic_tool_provider.get_dynamic_tools()
+                dynamic_tools: list[dict[str, Any]] = (
+                    self.dynamic_tool_provider.get_dynamic_tools()
+                )
                 logger.info(
                     f"Dynamic tools mode: Returning {len(dynamic_tools)} dynamic tools only"
                 )
