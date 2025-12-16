@@ -463,7 +463,7 @@ wheels = [
 
 [[package]]
 name = "chuk-tool-processor"
-version = "0.17"
+version = "0.18"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "chuk-mcp" },
@@ -472,9 +472,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "uuid" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2d/67/b10de68d7705917bae29f59399e55c7aacfab5c0fe940552a5092f14ff77/chuk_tool_processor-0.17.tar.gz", hash = "sha256:248733adc680d9c503ce4dedc77e526c2df4d4b66ed471e3ea535ffb501776bb", size = 184115, upload-time = "2025-12-14T14:50:45.403Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/81/38/84e26cd880202f8a2aa38145b7d56c282b967ddb4e6f5d7b66a48f0adfaf/chuk_tool_processor-0.18.tar.gz", hash = "sha256:b8af13bc99bb14253f329c34d76bf929f69efd6e8c891689c83373e2233c26af", size = 243250, upload-time = "2025-12-16T00:34:00.995Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2f/47/be2d73a58e52f90d6de32779557a1f9ec5b044fc7854f1df0cf98b1f9d9d/chuk_tool_processor-0.17-py3-none-any.whl", hash = "sha256:5a5755dd816780ebd453c53a7569cb71ebf265257a524168e6b9a2ba58664673", size = 217382, upload-time = "2025-12-14T14:50:43.774Z" },
+    { url = "https://files.pythonhosted.org/packages/7f/ac/5c01495fa7cbf391680948097a26472834449e832b5c6088fdfab3462c54/chuk_tool_processor-0.18-py3-none-any.whl", hash = "sha256:58d4e5a07772fe23e0fbd6639355a9757a2f44d19d639ac81817c1f2550580bb", size = 290633, upload-time = "2025-12-16T00:33:59.661Z" },
 ]
 
 [[package]]
@@ -1052,7 +1052,7 @@ name = "importlib-metadata"
 version = "8.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "zipp" },
+    { name = "zipp", marker = "python_full_version < '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/76/66/650a33bd90f786193e4de4b3ad86ea60b53c89b669a5c7be931fac31cdb0/importlib_metadata-8.7.0.tar.gz", hash = "sha256:d13b81ad223b890aa16c5471f2ac3056cf76c5f10f82d6f9292f0b415f389000", size = 56641, upload-time = "2025-04-27T15:29:01.736Z" }
 wheels = [
@@ -1419,7 +1419,7 @@ requires-dist = [
     { name = "chuk-llm", specifier = ">=0.17.1" },
     { name = "chuk-mcp-client-oauth", specifier = ">=0.3.5" },
     { name = "chuk-term", specifier = ">=0.3" },
-    { name = "chuk-tool-processor", specifier = ">=0.17" },
+    { name = "chuk-tool-processor", specifier = ">=0.18" },
     { name = "cryptography", specifier = ">=44.0.0" },
     { name = "fast-json", specifier = ">=0.3.2" },
     { name = "httpx", specifier = ">=0.27.0" },
