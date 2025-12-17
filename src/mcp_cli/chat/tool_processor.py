@@ -22,7 +22,7 @@ from chuk_tool_processor import ToolResult as CTPToolResult
 
 from mcp_cli.chat.response_models import Message, MessageRole, ToolCall
 from mcp_cli.chat.models import ToolProcessorContext, UIManagerProtocol
-from mcp_cli.chat.tool_state import get_tool_state, SoftBlockReason
+from chuk_ai_session_manager.guards import get_tool_state, SoftBlockReason
 from mcp_cli.display import display_tool_call_result
 from chuk_tool_processor.discovery import get_search_engine
 from mcp_cli.llm.content_models import ContentBlockType
@@ -759,7 +759,7 @@ class ToolProcessor:
                 tool_calls=tool_calls,
                 reasoning_content=reasoning_content,
             )
-            self.context.conversation_history.append(assistant_msg)
+            self.context.inject_tool_message(assistant_msg)
             log.debug(
                 f"Added assistant message with {len(tool_calls)} tool calls to history"
             )
@@ -771,14 +771,13 @@ class ToolProcessor:
     ) -> None:
         """Add tool result to conversation history."""
         try:
-            self.context.conversation_history.append(
-                Message(
-                    role=MessageRole.TOOL,
-                    name=llm_tool_name,
-                    content=content,
-                    tool_call_id=call_id,
-                )
+            tool_msg = Message(
+                role=MessageRole.TOOL,
+                name=llm_tool_name,
+                content=content,
+                tool_call_id=call_id,
             )
+            self.context.inject_tool_message(tool_msg)
             log.debug(f"Added tool result to conversation history: {llm_tool_name}")
         except Exception as e:
             log.error(f"Error updating conversation history: {e}")
@@ -788,7 +787,8 @@ class ToolProcessor:
     ) -> None:
         """Add cancelled tool call to conversation history."""
         try:
-            self.context.conversation_history.append(
+            # User cancellation message
+            self.context.inject_tool_message(
                 Message(
                     role=MessageRole.USER,
                     content=f"Cancel {llm_tool_name} tool execution.",
@@ -801,7 +801,8 @@ class ToolProcessor:
                 else str(raw_arguments or {})
             )
 
-            self.context.conversation_history.append(
+            # Assistant acknowledgement with tool call
+            self.context.inject_tool_message(
                 Message(
                     role=MessageRole.ASSISTANT,
                     content="User cancelled tool execution.",
@@ -818,7 +819,8 @@ class ToolProcessor:
                 )
             )
 
-            self.context.conversation_history.append(
+            # Tool result
+            self.context.inject_tool_message(
                 Message(
                     role=MessageRole.TOOL,
                     name=llm_tool_name,

@@ -23,7 +23,7 @@ from mcp_cli.chat.response_models import (
     MessageRole,
 )
 from mcp_cli.chat.tool_processor import ToolProcessor
-from mcp_cli.chat.tool_state import get_tool_state
+from chuk_ai_session_manager.guards import get_tool_state
 
 log = logging.getLogger(__name__)
 
@@ -259,12 +259,7 @@ class ConversationProcessor:
                                 )
 
                                 stop_msg = self._tool_state.format_discovery_exhausted_message()
-                                self.context.conversation_history.append(
-                                    Message(
-                                        role=MessageRole.ASSISTANT,
-                                        content=stop_msg,
-                                    )
-                                )
+                                self.context.inject_assistant_message(stop_msg)
 
                                 if self.ui_manager.is_streaming_response:
                                     await self.ui_manager.stop_streaming_response()
@@ -288,12 +283,7 @@ class ConversationProcessor:
                                 )
 
                                 stop_msg = self._tool_state.format_execution_exhausted_message()
-                                self.context.conversation_history.append(
-                                    Message(
-                                        role=MessageRole.ASSISTANT,
-                                        content=stop_msg,
-                                    )
-                                )
+                                self.context.inject_assistant_message(stop_msg)
 
                                 if self.ui_manager.is_streaming_response:
                                     await self.ui_manager.stop_streaming_response()
@@ -329,12 +319,7 @@ class ConversationProcessor:
                                 )
 
                             # Inject stop message and continue without tools
-                            self.context.conversation_history.append(
-                                Message(
-                                    role=MessageRole.ASSISTANT,
-                                    content=stop_msg,
-                                )
-                            )
+                            self.context.inject_assistant_message(stop_msg)
 
                             # Stop streaming UI and continue to get final answer
                             if self.ui_manager.is_streaming_response:
@@ -351,11 +336,8 @@ class ConversationProcessor:
                             output.warning(
                                 f"Maximum conversation turns ({max_turns}) reached. Stopping to prevent infinite loop."
                             )
-                            self.context.conversation_history.append(
-                                Message(
-                                    role=MessageRole.ASSISTANT,
-                                    content="I've reached the maximum number of conversation turns. The tool results have been provided above.",
-                                )
+                            self.context.inject_assistant_message(
+                                "I've reached the maximum number of conversation turns. The tool results have been provided above."
                             )
                             # Stop streaming UI before breaking
                             if self.ui_manager.is_streaming_response:
@@ -429,12 +411,7 @@ class ConversationProcessor:
                                     "Continue with the calculation using these stored values. "
                                     "Do not re-call tools for values already computed."
                                 )
-                                self.context.conversation_history.append(
-                                    Message(
-                                        role=MessageRole.ASSISTANT,
-                                        content=state_msg,
-                                    )
-                                )
+                                self.context.inject_assistant_message(state_msg)
                                 log.info(
                                     f"Injected state summary: {state_summary[:200]}"
                                 )
@@ -506,14 +483,9 @@ class ConversationProcessor:
                                     f"  ${binding.id} = {binding.raw_value} (aliases: {binding.aliases})"
                                 )
 
-                    # Add to conversation history
+                    # Add to conversation history via SessionManager
                     # Include reasoning_content if present (for DeepSeek reasoner and similar models)
-                    message = Message(
-                        role=MessageRole.ASSISTANT, content=response_content
-                    )
-                    if reasoning_content:
-                        message.reasoning_content = reasoning_content
-                    self.context.conversation_history.append(message)
+                    await self.context.add_assistant_message(response_content)
                     break
 
                 except asyncio.CancelledError:
@@ -523,12 +495,7 @@ class ConversationProcessor:
                     import traceback
 
                     traceback.print_exc()
-                    self.context.conversation_history.append(
-                        Message(
-                            role=MessageRole.ASSISTANT,
-                            content=f"I encountered an error: {exc}",
-                        )
-                    )
+                    self.context.inject_assistant_message(f"I encountered an error: {exc}")
                     # Stop streaming UI before breaking
                     if self.ui_manager.is_streaming_response:
                         await self.ui_manager.stop_streaming_response()

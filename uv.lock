@@ -204,11 +204,11 @@ wheels = [
 
 [[package]]
 name = "cachetools"
-version = "6.2.3"
+version = "6.2.4"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/b5/44/5dc354b9f2df614673c2a542a630ef95d578b4a8673a1046d1137a7e2453/cachetools-6.2.3.tar.gz", hash = "sha256:64e0a4ddf275041dd01f5b873efa87c91ea49022b844b8c5d1ad3407c0f42f1f", size = 31641, upload-time = "2025-12-12T21:18:06.011Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bc/1d/ede8680603f6016887c062a2cf4fc8fdba905866a3ab8831aa8aa651320c/cachetools-6.2.4.tar.gz", hash = "sha256:82c5c05585e70b6ba2d3ae09ea60b79548872185d2f24ae1f2709d37299fd607", size = 31731, upload-time = "2025-12-15T18:24:53.744Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ab/de/aa4cfc69feb5b3d604310214369979bb222ed0df0e2575a1b6e7af1a5579/cachetools-6.2.3-py3-none-any.whl", hash = "sha256:3fde34f7033979efb1e79b07ae529c2c40808bdd23b0b731405a48439254fba5", size = 11554, upload-time = "2025-12-12T21:18:04.556Z" },
+    { url = "https://files.pythonhosted.org/packages/2c/fc/1d7b80d0eb7b714984ce40efc78859c022cd930e402f599d8ca9e39c78a4/cachetools-6.2.4-py3-none-any.whl", hash = "sha256:69a7a52634fed8b8bf6e24a050fb60bff1c9bd8f6d24572b99c32d4e71e62a51", size = 11551, upload-time = "2025-12-15T18:24:52.332Z" },
 ]
 
 [[package]]
@@ -365,16 +365,44 @@ wheels = [
 
 [[package]]
 name = "chuk-ai-session-manager"
-version = "0.7.1"
-source = { registry = "https://pypi.org/simple" }
+version = "0.7"
+source = { editable = "../chuk-ai/chuk-ai-session-manager" }
 dependencies = [
     { name = "chuk-sessions" },
     { name = "chuk-tool-processor" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/32/c5/93806ff3827ba1a01b792e367f54381e45f5f7c5d81b717d3b4761192a8d/chuk_ai_session_manager-0.7.1.tar.gz", hash = "sha256:21f73e34197f5195d584cf7385e818770b2fb26a815883813e5561e3a2be5f10", size = 75229, upload-time = "2025-06-23T09:04:27.032Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/bf/c9/cf472a0e4225d3f4104d1e78f91d307399dc8d29d56d46a9ccab256053dc/chuk_ai_session_manager-0.7.1-py3-none-any.whl", hash = "sha256:2df9396b45855835771bc18c6b6ad1e38dc21ef651a837c4822a902aecf61af7", size = 43326, upload-time = "2025-06-23T09:04:25.822Z" },
+
+[package.metadata]
+requires-dist = [
+    { name = "black", marker = "extra == 'dev'", specifier = ">=23.0.0" },
+    { name = "chuk-sessions", specifier = ">=0.4.1" },
+    { name = "chuk-sessions", extras = ["redis"], marker = "extra == 'all'", specifier = ">=0.4" },
+    { name = "chuk-sessions", extras = ["redis"], marker = "extra == 'redis'", specifier = ">=0.4.1" },
+    { name = "chuk-tool-processor", specifier = ">=0.18" },
+    { name = "isort", marker = "extra == 'dev'", specifier = ">=5.12.0" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0.0" },
+    { name = "pydantic", specifier = ">=2.11.3" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
+    { name = "redis", marker = "extra == 'all'", specifier = ">=4.0.0" },
+    { name = "redis", marker = "extra == 'redis'", specifier = ">=4.0.0" },
+    { name = "tiktoken", marker = "extra == 'all'", specifier = ">=0.9.0" },
+    { name = "tiktoken", marker = "extra == 'tiktoken'", specifier = ">=0.9.0" },
+]
+provides-extras = ["redis", "tiktoken", "dev", "all"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "bs4", specifier = ">=0.0.2" },
+    { name = "chuk-llm", specifier = ">=0.3" },
+    { name = "fastapi", specifier = ">=0.115.12" },
+    { name = "geopy", specifier = ">=2.4.1" },
+    { name = "openai", specifier = ">=1.88.0" },
+    { name = "pytest-asyncio", specifier = ">=1.0.0" },
+    { name = "tiktoken", specifier = ">=0.9.0" },
+    { name = "uvicorn", specifier = ">=0.34.2" },
 ]
 
 [[package]]
@@ -463,7 +491,7 @@ wheels = [
 
 [[package]]
 name = "chuk-tool-processor"
-version = "0.18"
+version = "0.19"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "chuk-mcp" },
@@ -472,9 +500,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "uuid" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/81/38/84e26cd880202f8a2aa38145b7d56c282b967ddb4e6f5d7b66a48f0adfaf/chuk_tool_processor-0.18.tar.gz", hash = "sha256:b8af13bc99bb14253f329c34d76bf929f69efd6e8c891689c83373e2233c26af", size = 243250, upload-time = "2025-12-16T00:34:00.995Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/61/7c/6ac59f37ab45ea807b75330d0fe01af839b565d2fb600859861f18ea3772/chuk_tool_processor-0.19.tar.gz", hash = "sha256:4fa11f9de46cf59def042b39d8c16d60fb15d025433ae9e29d214835253b0347", size = 271352, upload-time = "2025-12-16T16:45:44.649Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7f/ac/5c01495fa7cbf391680948097a26472834449e832b5c6088fdfab3462c54/chuk_tool_processor-0.18-py3-none-any.whl", hash = "sha256:58d4e5a07772fe23e0fbd6639355a9757a2f44d19d639ac81817c1f2550580bb", size = 290633, upload-time = "2025-12-16T00:33:59.661Z" },
+    { url = "https://files.pythonhosted.org/packages/65/a7/d42185df660fa1233740f2e2c9a4c026b4118797a6d92193dd537cb0f7b6/chuk_tool_processor-0.19-py3-none-any.whl", hash = "sha256:3f61e6a81fe0fa73134d8fd8404bc7fd37ac6412cd154c4e93836e9e9ee370c5", size = 323285, upload-time = "2025-12-16T16:45:41.82Z" },
 ]
 
 [[package]]
@@ -710,11 +738,11 @@ sdist = { url = "https://files.pythonhosted.org/packages/0f/1e/eafcfca27a76a7674
 
 [[package]]
 name = "filelock"
-version = "3.20.0"
+version = "3.20.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/58/46/0028a82567109b5ef6e4d2a1f04a583fb513e6cf9527fcdd09afd817deeb/filelock-3.20.0.tar.gz", hash = "sha256:711e943b4ec6be42e1d4e6690b48dc175c822967466bb31c0c293f34334c13f4", size = 18922, upload-time = "2025-10-08T18:03:50.056Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a7/23/ce7a1126827cedeb958fc043d61745754464eb56c5937c35bbf2b8e26f34/filelock-3.20.1.tar.gz", hash = "sha256:b8360948b351b80f420878d8516519a2204b07aefcdcfd24912a5d33127f188c", size = 19476, upload-time = "2025-12-15T23:54:28.027Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/76/91/7216b27286936c16f5b4d0c530087e4a54eead683e6b0b73dd0c64844af6/filelock-3.20.0-py3-none-any.whl", hash = "sha256:339b4732ffda5cd79b13f4e2711a31b0365ce445d95d243bb996273d072546a2", size = 16054, upload-time = "2025-10-08T18:03:48.35Z" },
+    { url = "https://files.pythonhosted.org/packages/e3/7f/a1a97644e39e7316d850784c642093c99df1290a460df4ede27659056834/filelock-3.20.1-py3-none-any.whl", hash = "sha256:15d9e9a67306188a44baa72f569d2bfd803076269365fdea0934385da4dc361a", size = 16666, upload-time = "2025-12-15T23:54:26.874Z" },
 ]
 
 [[package]]
@@ -833,16 +861,16 @@ wheels = [
 
 [[package]]
 name = "google-auth"
-version = "2.43.0"
+version = "2.45.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cachetools" },
     { name = "pyasn1-modules" },
     { name = "rsa" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ff/ef/66d14cf0e01b08d2d51ffc3c20410c4e134a1548fc246a6081eae585a4fe/google_auth-2.43.0.tar.gz", hash = "sha256:88228eee5fc21b62a1b5fe773ca15e67778cb07dc8363adcb4a8827b52d81483", size = 296359, upload-time = "2025-11-06T00:13:36.587Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e5/00/3c794502a8b892c404b2dea5b3650eb21bfc7069612fbfd15c7f17c1cb0d/google_auth-2.45.0.tar.gz", hash = "sha256:90d3f41b6b72ea72dd9811e765699ee491ab24139f34ebf1ca2b9cc0c38708f3", size = 320708, upload-time = "2025-12-15T22:58:42.889Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6f/d1/385110a9ae86d91cc14c5282c61fe9f4dc41c0b9f7d423c6ad77038c4448/google_auth-2.43.0-py2.py3-none-any.whl", hash = "sha256:af628ba6fa493f75c7e9dbe9373d148ca9f4399b5ea29976519e0a3848eddd16", size = 223114, upload-time = "2025-11-06T00:13:35.209Z" },
+    { url = "https://files.pythonhosted.org/packages/c6/97/451d55e05487a5cd6279a01a7e34921858b16f7dc8aa38a2c684743cd2b3/google_auth-2.45.0-py2.py3-none-any.whl", hash = "sha256:82344e86dc00410ef5382d99be677c6043d72e502b625aa4f4afa0bdacca0f36", size = 233312, upload-time = "2025-12-15T22:58:40.777Z" },
 ]
 
 [package.optional-dependencies]
@@ -1377,6 +1405,7 @@ version = "0.11.1"
 source = { editable = "." }
 dependencies = [
     { name = "asyncio" },
+    { name = "chuk-ai-session-manager" },
     { name = "chuk-llm" },
     { name = "chuk-mcp-client-oauth" },
     { name = "chuk-term" },
@@ -1416,6 +1445,7 @@ dev = [
 requires-dist = [
     { name = "asyncio", specifier = ">=3.4.3" },
     { name = "asyncio", marker = "extra == 'dev'", specifier = ">=3.4.3" },
+    { name = "chuk-ai-session-manager", editable = "../chuk-ai/chuk-ai-session-manager" },
     { name = "chuk-llm", specifier = ">=0.17.1" },
     { name = "chuk-mcp-client-oauth", specifier = ">=0.3.5" },
     { name = "chuk-term", specifier = ">=0.3" },
@@ -1694,7 +1724,7 @@ wheels = [
 
 [[package]]
 name = "openai"
-version = "2.11.0"
+version = "2.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -1706,9 +1736,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f4/8c/aa6aea6072f985ace9d6515046b9088ff00c157f9654da0c7b1e129d9506/openai-2.11.0.tar.gz", hash = "sha256:b3da01d92eda31524930b6ec9d7167c535e843918d7ba8a76b1c38f1104f321e", size = 624540, upload-time = "2025-12-11T19:11:58.539Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0f/39/8e347e9fda125324d253084bb1b82407e5e3c7777a03dc398f79b2d95626/openai-2.13.0.tar.gz", hash = "sha256:9ff633b07a19469ec476b1e2b5b26c5ef700886524a7a72f65e6f0b5203142d5", size = 626583, upload-time = "2025-12-16T18:19:44.387Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e5/f1/d9251b565fce9f8daeb45611e3e0d2f7f248429e40908dcee3b6fe1b5944/openai-2.11.0-py3-none-any.whl", hash = "sha256:21189da44d2e3d027b08c7a920ba4454b8b7d6d30ae7e64d9de11dbe946d4faa", size = 1064131, upload-time = "2025-12-11T19:11:56.816Z" },
+    { url = "https://files.pythonhosted.org/packages/bb/d5/eb52edff49d3d5ea116e225538c118699ddeb7c29fa17ec28af14bc10033/openai-2.13.0-py3-none-any.whl", hash = "sha256:746521065fed68df2f9c2d85613bb50844343ea81f60009b60e6a600c9352c79", size = 1066837, upload-time = "2025-12-16T18:19:43.124Z" },
 ]
 
 [[package]]

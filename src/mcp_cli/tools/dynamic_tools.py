@@ -21,8 +21,8 @@ from chuk_tool_processor.discovery import (
     SearchResult,
 )
 
-# Import directly from state subpackage to avoid circular import via chat/__init__.py
-from mcp_cli.chat.state import get_tool_state
+# Import directly from chuk-ai-session-manager
+from chuk_ai_session_manager.guards import get_tool_state
 from mcp_cli.tools.models import ToolInfo
 
 if TYPE_CHECKING:

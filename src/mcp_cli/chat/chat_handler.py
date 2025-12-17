@@ -292,7 +292,7 @@ async def _run_enhanced_chat_loop(
             # Normal conversation turn with streaming support
             if ui.verbose_mode:
                 ui.print_user_message(user_msg)
-            ctx.add_user_message(user_msg)
+            await ctx.add_user_message(user_msg)
 
             # Use the enhanced conversation processor that handles streaming
             await convo.process_conversation(max_turns=max_turns)
