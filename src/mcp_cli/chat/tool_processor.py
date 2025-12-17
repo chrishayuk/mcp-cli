@@ -18,6 +18,8 @@ from chuk_term.ui import output
 from mcp_cli.chat.models import Message, MessageRole
 from mcp_cli.ui.formatting import display_tool_call_result
 from mcp_cli.utils.preferences import get_preference_manager
+from mcp_cli.utils.token_measurement import TokenCounter, is_token_measurement_available
+from mcp_cli.ui.token_display import display_token_comparison, display_compact_token_stats
 
 log = logging.getLogger(__name__)
 
@@ -32,6 +34,14 @@ class ToolProcessor:
     def __init__(self, context, ui_manager, *, max_concurrency: int = 4) -> None:
         self.context = context
         self.ui_manager = ui_manager
+
+        # Initialize token counter for measurements
+        model = getattr(context, 'model', 'gpt-4o-mini')
+        provider = getattr(context, 'provider', 'openai')
+        self.token_counter = TokenCounter(model=model, provider=provider) if is_token_measurement_available() else None
+
+        # Track if we should display token usage
+        self.display_token_usage = is_token_measurement_available()
 
         # Tool manager for execution
         self.tool_manager = getattr(context, "tool_manager", None)
@@ -222,11 +232,68 @@ class ToolProcessor:
                     # Reset on success
                     self._consecutive_transport_failures = 0
 
+                # Extract structured data from tool result for token measurement
+                extracted_data = None
+                if tool_result.success:
+                    result_data = tool_result.result
+
+                    # Handle MCP SDK ToolResult objects
+                    if isinstance(result_data, dict):
+                        # Check for MCP response structure: {'isError': bool, 'content': ToolResult}
+                        if 'content' in result_data and hasattr(result_data['content'], 'content'):
+                            # Extract content array from MCP ToolResult
+                            tool_result_content = result_data['content'].content
+                            if isinstance(tool_result_content, list):
+                                # Extract text from content blocks and try to parse as JSON
+                                for block in tool_result_content:
+                                    if isinstance(block, dict) and block.get('type') == 'text':
+                                        text_content = block.get('text', '')
+                                        # Try to parse text as JSON
+                                        try:
+                                            extracted_data = json.loads(text_content)
+                                            break
+                                        except (json.JSONDecodeError, ValueError):
+                                            # Not JSON, use text as-is
+                                            extracted_data = text_content
+                                            break
+                        else:
+                            # Regular dict response
+                            extracted_data = result_data
+                    elif isinstance(result_data, list):
+                        # Regular list response
+                        extracted_data = result_data
+                    else:
+                        # Try to parse string result as JSON
+                        try:
+                            extracted_data = json.loads(str(result_data))
+                        except (json.JSONDecodeError, ValueError, TypeError):
+                            # Not JSON-parseable, skip measurement
+                            extracted_data = None
+
                 # Prepare content for conversation history
                 if tool_result.success:
                     content = self._format_tool_response(tool_result.result)
                 else:
                     content = f"Error: {tool_result.error}"
+
+                # Measure token usage for tool response
+                if self.display_token_usage and self.token_counter and tool_result.success:
+                    try:
+                        # Only measure extracted data (dict, list, or text)
+                        if extracted_data is not None and isinstance(extracted_data, (dict, list, str)):
+                            log.debug(f"Measuring tokens for extracted data type: {type(extracted_data)}")
+                            measurement = self.token_counter.measure_formats(extracted_data)
+
+                            log.debug(f"Token measurement - JSON: {measurement.json_tokens}, TOON: {measurement.toon_tokens}")
+
+                            # Display compact stats inline
+                            display_compact_token_stats(measurement)
+
+                            # Optionally display full comparison in verbose mode
+                            if hasattr(self.ui_manager, 'verbose_mode') and self.ui_manager.verbose_mode:
+                                display_token_comparison(measurement, tool_name=execution_tool_name)
+                    except Exception as e:
+                        log.error(f"Token measurement failed: {e}", exc_info=True)
 
                 # Add to conversation history
                 self._add_tool_call_to_history(

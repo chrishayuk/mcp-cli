@@ -42,5 +42,6 @@
     "weather": {
       "url": "https://weather.chukai.io/mcp"
     }
-  }
+  },
+  "enableToonOptimization": false
 }

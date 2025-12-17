@@ -9,7 +9,9 @@
       "args": ["chuk-mcp-echo", "stdio"]
     },
     "notion": {
-      "url": "https://mcp.notion.com/mcp"
+      "url": "https://mcp.notion.com/mcp",
+      "timeout": 300,
+      "max_retries": 0
     },
     "cloudflare_workers": {
       "url": "https://bindings.mcp.cloudflare.com/mcp"
@@ -33,8 +35,13 @@
     "linkedin": {
       "url": "https://linkedin.chukai.io/mcp"
     },
+    "math": {
+      "command": "uvx",
+      "args": ["chuk-mcp-math-server"]
+    },
     "weather": {
       "url": "https://weather.chukai.io/mcp"
     }
-  }
+  },
+  "enableToonOptimization": false
 }
