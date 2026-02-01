@@ -1,7 +1,7 @@
 """Extended tests for exit command to achieve 100% coverage."""
 
 import pytest
-from mcp_cli.commands.definitions.exit import ExitCommand
+from mcp_cli.commands.core.exit import ExitCommand
 from mcp_cli.commands.base import CommandMode
 
 

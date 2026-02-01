@@ -539,14 +539,17 @@ class TestPreferenceManagerExtended:
             # Verify patterns added
             patterns = manager.preferences.ui.tool_confirmation.patterns
             assert len(patterns) == 2
-            assert {"pattern": "write_*", "action": "always"} in patterns
-            assert {"pattern": "read_*", "action": "never"} in patterns
+            # Patterns are now ToolPatternRule Pydantic models
+            assert any(
+                p.pattern == "write_*" and p.action == "always" for p in patterns
+            )
+            assert any(p.pattern == "read_*" and p.action == "never" for p in patterns)
 
             # Remove pattern
             assert manager.remove_tool_pattern("write_*") is True
             patterns = manager.preferences.ui.tool_confirmation.patterns
             assert len(patterns) == 1
-            assert {"pattern": "read_*", "action": "never"} in patterns
+            assert any(p.pattern == "read_*" and p.action == "never" for p in patterns)
 
             # Remove non-existent pattern
             assert manager.remove_tool_pattern("nonexistent_*") is False

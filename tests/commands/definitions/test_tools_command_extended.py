@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
-from mcp_cli.commands.definitions.tools import ToolsCommand
+from mcp_cli.commands.tools.tools import ToolsCommand
 
 
 class TestToolsCommand:
@@ -34,7 +34,7 @@ class TestToolsCommand:
         mock_tm = MagicMock()
         mock_tm.get_unique_tools = AsyncMock(return_value=[mock_tool])
 
-        with patch("mcp_cli.commands.definitions.tools.get_context") as mock_get_ctx:
+        with patch("mcp_cli.commands.tools.tools.get_context") as mock_get_ctx:
             mock_ctx = MagicMock()
             mock_ctx.tool_manager = mock_tm
             mock_get_ctx.return_value = mock_ctx
@@ -65,7 +65,7 @@ class TestToolsCommand:
         mock_tm = MagicMock()
         mock_tm.get_unique_tools = AsyncMock(return_value=[mock_tool1, mock_tool2])
 
-        with patch("mcp_cli.commands.definitions.tools.get_context") as mock_get_ctx:
+        with patch("mcp_cli.commands.tools.tools.get_context") as mock_get_ctx:
             mock_ctx = MagicMock()
             mock_ctx.tool_manager = mock_tm
             mock_get_ctx.return_value = mock_ctx
@@ -97,7 +97,7 @@ class TestToolsCommand:
         mock_tm = MagicMock()
         mock_tm.get_unique_tools = AsyncMock(return_value=[mock_tool])
 
-        with patch("mcp_cli.commands.definitions.tools.get_context") as mock_get_ctx:
+        with patch("mcp_cli.commands.tools.tools.get_context") as mock_get_ctx:
             mock_ctx = MagicMock()
             mock_ctx.tool_manager = mock_tm
             mock_get_ctx.return_value = mock_ctx
@@ -110,7 +110,7 @@ class TestToolsCommand:
     @pytest.mark.asyncio
     async def test_tools_no_manager(self, command):
         """Test when no tool manager is available."""
-        with patch("mcp_cli.commands.definitions.tools.get_context") as mock_get_ctx:
+        with patch("mcp_cli.commands.tools.tools.get_context") as mock_get_ctx:
             mock_get_ctx.return_value = None
 
             result = await command.execute()
@@ -131,7 +131,7 @@ class TestToolsCommand:
         mock_tm = MagicMock()
         mock_tm.get_unique_tools = AsyncMock(return_value=[mock_tool])
 
-        with patch("mcp_cli.commands.definitions.tools.get_context") as mock_get_ctx:
+        with patch("mcp_cli.commands.tools.tools.get_context") as mock_get_ctx:
             mock_ctx = MagicMock()
             mock_ctx.tool_manager = mock_tm
             mock_get_ctx.return_value = mock_ctx
@@ -154,7 +154,7 @@ class TestToolsCommand:
         mock_tm = MagicMock()
         mock_tm.get_unique_tools = AsyncMock(return_value=[mock_tool])
 
-        with patch("mcp_cli.commands.definitions.tools.get_context") as mock_get_ctx:
+        with patch("mcp_cli.commands.tools.tools.get_context") as mock_get_ctx:
             mock_ctx = MagicMock()
             mock_ctx.tool_manager = mock_tm
             mock_get_ctx.return_value = mock_ctx
@@ -178,7 +178,7 @@ class TestToolsCommand:
         mock_tm = MagicMock()
         mock_tm.get_unique_tools = AsyncMock(return_value=[mock_tool])
 
-        with patch("mcp_cli.commands.definitions.tools.get_context") as mock_get_ctx:
+        with patch("mcp_cli.commands.tools.tools.get_context") as mock_get_ctx:
             mock_ctx = MagicMock()
             mock_ctx.tool_manager = mock_tm
             mock_get_ctx.return_value = mock_ctx

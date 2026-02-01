@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
-from mcp_cli.commands.definitions.conversation import ConversationCommand
+from mcp_cli.commands.conversation.conversation import ConversationCommand
 from mcp_cli.commands.base import CommandMode
 from mcp_cli.chat.models import Message, MessageRole
 

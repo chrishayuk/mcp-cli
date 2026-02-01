@@ -273,7 +273,6 @@ class TestUnifiedCommandRegistry:
 
         assert self.registry.get("test") is None
         assert len(self.registry._commands) == 0
-        assert len(self.registry._groups) == 0
 
     def test_reset_singleton(self):
         """Test resetting the singleton instance."""
@@ -287,16 +286,15 @@ class TestUnifiedCommandRegistry:
         assert registry1 is not registry2
         assert registry2.get("test") is None
 
-    def test_register_to_nonexistent_group(self):
-        """Test registering a command to a non-existent group."""
+    def test_register_with_group_param_ignored(self):
+        """Test that the deprecated group parameter is ignored."""
         cmd = DummyCommand(name="subcommand")
 
-        # Try to register to a group that doesn't exist
-        # Should log warning and not register
+        # Group parameter is ignored - command is registered normally
         self.registry.register(cmd, group="nonexistent_group")
 
-        # Command should not be registered
-        assert self.registry.get("subcommand") is None
+        # Command should be registered (group param is ignored)
+        assert self.registry.get("subcommand") is cmd
 
     def test_get_command_names_with_hidden_commands(self):
         """Test that hidden commands are not in the command names list."""
@@ -325,20 +323,17 @@ class TestUnifiedCommandRegistry:
         # Register the group as a top-level command
         self.registry.register(group)
 
-        # Pre-register the group in _groups for subcommand registration
-        self.registry._groups["tools"] = group
-
-        # Create and register subcommands
+        # Add subcommands via CommandGroup.add_subcommand()
         list_cmd = DummyCommand(name="list", description="List tools")
         call_cmd = DummyCommand(name="call", description="Call a tool")
 
-        self.registry.register(list_cmd, group="tools")
-        self.registry.register(call_cmd, group="tools")
+        group.add_subcommand(list_cmd)
+        group.add_subcommand(call_cmd)
 
         # Verify the group is registered
         assert self.registry.get("tools") is group
 
-        # Verify we can get subcommands
+        # Verify we can get subcommands via "group subcommand" syntax
         assert self.registry.get("tools list") is list_cmd
         assert self.registry.get("tools call") is call_cmd
 
@@ -347,14 +342,13 @@ class TestUnifiedCommandRegistry:
         # Create a command group
         group = DummyCommandGroup(name="tools", modes=CommandMode.ALL)
         self.registry.register(group)
-        self.registry._groups["tools"] = group
 
-        # Create subcommands with different modes
+        # Add subcommands with different modes
         list_cmd = DummyCommand(name="list", modes=CommandMode.CHAT)
         call_cmd = DummyCommand(name="call", modes=CommandMode.CLI)
 
-        self.registry.register(list_cmd, group="tools")
-        self.registry.register(call_cmd, group="tools")
+        group.add_subcommand(list_cmd)
+        group.add_subcommand(call_cmd)
 
         # Get subcommand with mode filter
         assert self.registry.get("tools list", mode=CommandMode.CHAT) is list_cmd
@@ -368,11 +362,10 @@ class TestUnifiedCommandRegistry:
         # Create a command group
         group = DummyCommandGroup(name="tools")
         self.registry.register(group)
-        self.registry._groups["tools"] = group
 
-        # Create a subcommand
+        # Add a subcommand
         list_cmd = DummyCommand(name="list")
-        self.registry.register(list_cmd, group="tools")
+        group.add_subcommand(list_cmd)
 
         # Try to get non-existent subcommand
         assert self.registry.get("tools nonexistent") is None

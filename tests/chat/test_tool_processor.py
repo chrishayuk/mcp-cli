@@ -1,9 +1,37 @@
 # tests/mcp_cli/chat/test_tool_processor.py
 import json
 import pytest
+from datetime import datetime, UTC
+
+from chuk_tool_processor import ToolResult as CTPToolResult
+import chuk_ai_session_manager.guards.manager as _guard_mgr
+from chuk_ai_session_manager.guards import (
+    get_tool_state,
+    reset_tool_state,
+    RuntimeLimits,
+    ToolStateManager,
+)
 
 from mcp_cli.chat.tool_processor import ToolProcessor
+from mcp_cli.chat.response_models import ToolCall, FunctionCall
 from mcp_cli.tools.models import ToolCallResult
+
+
+@pytest.fixture(autouse=True)
+def _fresh_tool_state():
+    """Reset the global tool state singleton before each test with permissive limits."""
+    reset_tool_state()
+    _guard_mgr._tool_state = ToolStateManager(
+        limits=RuntimeLimits(
+            per_tool_cap=100,
+            tool_budget_total=100,
+            discovery_budget=50,
+            execution_budget=50,
+        )
+    )
+    yield
+    reset_tool_state()
+
 
 # ---------------------------
 # Dummy classes for testing
@@ -18,13 +46,17 @@ class DummyUIManager:
     def print_tool_call(self, tool_name, raw_arguments):
         self.printed_calls.append((tool_name, raw_arguments))
 
-    def finish_tool_execution(self, result=None, success=True):
-        # Add method that tool processor expects
+    async def finish_tool_execution(self, result=None, success=True):
+        # Add async method that tool processor expects
         pass
 
     def do_confirm_tool_execution(self, tool_name, arguments):
         # Mock confirmation - always return True for tests
         return True
+
+    async def start_tool_execution(self, tool_name, arguments):
+        # Mock start tool execution - no-op for tests
+        pass
 
 
 class DummyStreamManager:
@@ -47,7 +79,7 @@ class DummyStreamManager:
 
 
 class DummyToolManager:
-    """Mock tool manager with execute_tool method that returns ToolCallResult."""
+    """Mock tool manager with execute_tool and stream_execute_tools methods."""
 
     def __init__(self, return_result=None, raise_exception=False):
         self.return_result = return_result or {
@@ -58,7 +90,7 @@ class DummyToolManager:
         self.executed_tool = None
         self.executed_args = None
 
-    async def execute_tool(self, tool_name, arguments):
+    async def execute_tool(self, tool_name, arguments, namespace=None, timeout=None):
         self.executed_tool = tool_name
         self.executed_args = arguments
         if self.raise_exception:
@@ -80,6 +112,58 @@ class DummyToolManager:
                 error=None,
             )
 
+    async def stream_execute_tools(
+        self, calls, timeout=None, on_tool_start=None, max_concurrency=4
+    ):
+        """Yield CTPToolResult for each call."""
+        import platform
+        import os
+
+        for call in calls:
+            self.executed_tool = call.tool
+            self.executed_args = call.arguments
+
+            # Invoke start callback if provided
+            if on_tool_start:
+                await on_tool_start(call)
+
+            if self.raise_exception:
+                now = datetime.now(UTC)
+                yield CTPToolResult(
+                    id=call.id,
+                    tool=call.tool,
+                    result=None,
+                    error="Simulated execute_tool exception",
+                    start_time=now,
+                    end_time=now,
+                    machine=platform.node(),
+                    pid=os.getpid(),
+                )
+            elif self.return_result.get("isError"):
+                now = datetime.now(UTC)
+                yield CTPToolResult(
+                    id=call.id,
+                    tool=call.tool,
+                    result=None,
+                    error=self.return_result.get("error", "Simulated error"),
+                    start_time=now,
+                    end_time=now,
+                    machine=platform.node(),
+                    pid=os.getpid(),
+                )
+            else:
+                now = datetime.now(UTC)
+                yield CTPToolResult(
+                    id=call.id,
+                    tool=call.tool,
+                    result=self.return_result.get("content"),
+                    error=None,
+                    start_time=now,
+                    end_time=now,
+                    machine=platform.node(),
+                    pid=os.getpid(),
+                )
+
 
 class DummyContext:
     """A dummy context object with conversation_history and managers."""
@@ -88,6 +172,10 @@ class DummyContext:
         self.conversation_history = []
         self.stream_manager = stream_manager
         self.tool_manager = tool_manager
+
+    def inject_tool_message(self, message):
+        """Add a message to conversation history (matches ChatContext API)."""
+        self.conversation_history.append(message)
 
 
 # ---------------------------
@@ -124,10 +212,12 @@ async def test_process_tool_calls_successful_tool():
     ui_manager = DummyUIManager()
     processor = ToolProcessor(context, ui_manager)
 
-    tool_call = {
-        "function": {"name": "echo", "arguments": '{"msg": "Hello"}'},
-        "id": "call_echo",
-    }
+    # Create a proper ToolCall Pydantic model instead of a dict
+    tool_call = ToolCall(
+        id="call_echo",
+        type="function",
+        function=FunctionCall(name="echo", arguments='{"msg": "Hello"}'),
+    )
     await processor.process_tool_calls([tool_call])
 
     # Verify that the UI manager printed the tool call.
@@ -143,11 +233,13 @@ async def test_process_tool_calls_successful_tool():
 
     # Verify the tool call record contains the correct id.
     assert call_record.tool_calls is not None
-    assert any(item.get("id") == "call_echo" for item in call_record.tool_calls)
+    # tool_calls is now a list of ToolCall Pydantic models, not dicts
+    assert any(item.id == "call_echo" for item in call_record.tool_calls)
 
     # Verify the response record.
     assert response_record.role.value == "tool"
-    assert response_record.content == "Tool executed successfully"
+    # Content now includes value binding info ($vN = value)
+    assert "Tool executed successfully" in response_record.content
 
 
 @pytest.mark.asyncio
@@ -160,6 +252,10 @@ async def test_process_tool_calls_with_argument_parsing():
     ui_manager = DummyUIManager()
     processor = ToolProcessor(context, ui_manager)
 
+    # Register 123 as a user-provided literal so it passes ungrounded check
+    tool_state = get_tool_state()
+    tool_state.register_user_literals("Test with value 123")
+
     tool_call = {
         "function": {"name": "parse_tool", "arguments": '{"num": 123}'},
         "id": "call_parse",
@@ -170,10 +266,11 @@ async def test_process_tool_calls_with_argument_parsing():
     assert isinstance(tool_manager.executed_args, dict)
     assert tool_manager.executed_args.get("num") == 123
 
-    # Check that the response record content is formatted as a JSON string.
+    # Check that the response record content contains the formatted result.
+    # Note: Content now includes value binding info ($vN = value) appended
     response_record = context.conversation_history[1]
     expected_formatted = json.dumps(result_dict["content"], indent=2)
-    assert response_record.content == expected_formatted
+    assert expected_formatted in response_record.content
 
 
 @pytest.mark.asyncio
@@ -203,8 +300,8 @@ async def test_process_tool_calls_tool_call_error():
 
 
 @pytest.mark.asyncio
-async def test_process_tool_calls_no_stream_manager(capfd):
-    # Test when no stream manager is available.
+async def test_process_tool_calls_no_tool_manager():
+    # Test when no tool manager is available.
     context = DummyContext(stream_manager=None, tool_manager=None)
     ui_manager = DummyUIManager()
     processor = ToolProcessor(context, ui_manager)
@@ -215,16 +312,9 @@ async def test_process_tool_calls_no_stream_manager(capfd):
         "id": "test1",
     }
 
-    # Pass as a list to process_tool_calls
-    await processor.process_tool_calls([tool_call])
-
-    # The actual error message is "No tool manager available for tool execution"
-    error_msgs = [
-        entry.content
-        for entry in context.conversation_history
-        if entry.content is not None
-    ]
-    assert any("No tool manager available" in msg for msg in error_msgs)
+    # Pass as a list to process_tool_calls - should raise RuntimeError
+    with pytest.raises(RuntimeError, match="No tool manager available"):
+        await processor.process_tool_calls([tool_call])
 
 
 @pytest.mark.asyncio

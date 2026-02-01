@@ -7,11 +7,11 @@ A powerful, feature-rich command-line interface for interacting with Model Conte
 
 **Default Configuration**: MCP CLI defaults to using Ollama with the `gpt-oss` reasoning model for local, privacy-focused operation without requiring API keys.
 
-## 🆕 Recent Updates (v0.11)
+## 🆕 Recent Updates (v0.11.1)
 
 ### Architecture & Performance
-- **Updated to chuk-llm v0.14**: Dynamic model discovery with capability-based selection, llama.cpp integration (1.53x faster), 52x faster imports
-- **Updated to chuk-tool-processor v0.11.2**: Production-grade middleware with timeouts, retries, circuit breakers, and comprehensive observability
+- **Updated to chuk-llm v0.16+**: Dynamic model discovery with capability-based selection, llama.cpp integration (1.53x faster), 52x faster imports
+- **Updated to chuk-tool-processor v0.13+**: Now using CTP's production-grade middleware (retry, circuit breaker, rate limiting)
 - **Slimmed ToolManager**: Reduced from 2000+ lines to ~800 lines by delegating to StreamManager while keeping OAuth, filtering, and LLM adaptation
 
 ### Reliability Improvements
@@ -28,7 +28,7 @@ A powerful, feature-rich command-line interface for interacting with Model Conte
 
 The MCP CLI is built on a modular architecture with clean separation of concerns:
 
-- **[CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor)**: Production-grade async tool execution with middleware (timeouts, retries, circuit breakers), multiple execution strategies (in-process, subprocess, remote MCP), and comprehensive observability
+- **[CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor)**: Production-grade async tool execution with middleware (retry, circuit breaker, rate limiting), multiple execution strategies, and observability
 - **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)**: Unified LLM provider with dynamic model discovery, capability-based selection, and llama.cpp integration (1.53x faster than Ollama with automatic model reuse)
 - **[CHUK-Term](https://github.com/chrishayuk/chuk-term)**: Enhanced terminal UI with themes, cross-platform terminal management, and rich formatting
 - **MCP CLI**: Command orchestration and integration layer (this project)
@@ -43,7 +43,7 @@ The MCP CLI is built on a modular architecture with clean separation of concerns
 
 ### Advanced Chat Interface
 - **Streaming Responses**: Real-time response generation with live UI updates
-- **Reasoning Visibility**: See AI's thinking process with reasoning models (gpt-oss, GPT-5, Claude 4)
+- **Reasoning Visibility**: See AI's thinking process with reasoning models (gpt-oss, GPT-5, Claude 4.5)
 - **Concurrent Tool Execution**: Execute multiple tools simultaneously while preserving conversation order
 - **Smart Interruption**: Interrupt streaming responses or tool execution with Ctrl+C
 - **Performance Metrics**: Response timing, words/second, and execution statistics
@@ -57,7 +57,7 @@ MCP CLI supports all providers and models from CHUK-LLM, including cutting-edge 
 |----------|------------|------------------|
 | **Ollama** (Default) | 🧠 gpt-oss, llama3.3, llama3.2, qwen3, qwen2.5-coder, deepseek-coder, granite3.3, mistral, gemma3, phi3, codellama | Local reasoning models, privacy-focused, no API key required |
 | **OpenAI** | 🚀 GPT-5 family (gpt-5, gpt-5-mini, gpt-5-nano), GPT-4o family, O3 series (o3, o3-mini) | Advanced reasoning, function calling, vision |
-| **Anthropic** | 🧠 Claude 4 family (claude-4-1-opus, claude-4-sonnet), Claude 3.5 Sonnet | Enhanced reasoning, long context |
+| **Anthropic** | 🧠 Claude 4.5 family (claude-4-5-opus, claude-4-5-sonnet), Claude 3.5 Sonnet | Enhanced reasoning, long context |
 | **Azure OpenAI** 🏢 | Enterprise GPT-5, GPT-4 models | Private endpoints, compliance, audit logs |
 | **Google Gemini** | Gemini 2.0 Flash, Gemini 1.5 Pro | Multimodal, fast inference |
 | **Groq** ⚡ | Llama 3.1 models, Mixtral | Ultra-fast inference (500+ tokens/sec) |
@@ -65,7 +65,7 @@ MCP CLI supports all providers and models from CHUK-LLM, including cutting-edge 
 | **IBM watsonx** 🏢 | Granite, Llama models | Enterprise compliance |
 | **Mistral AI** 🇪🇺 | Mistral Large, Medium | European, efficient models |
 
-### Robust Tool System (Powered by CHUK Tool Processor v0.11+)
+### Robust Tool System (Powered by CHUK Tool Processor v0.13+)
 - **Automatic Discovery**: Server-provided tools are automatically detected and catalogued
 - **Provider Adaptation**: Tool names are automatically sanitized for provider compatibility
 - **Production-Grade Execution**: Middleware layers with timeouts, retries, exponential backoff, caching, and circuit breakers
@@ -73,7 +73,7 @@ MCP CLI supports all providers and models from CHUK-LLM, including cutting-edge 
 - **Concurrent Execution**: Multiple tools can run simultaneously with proper coordination
 - **Rich Progress Display**: Real-time progress indicators and execution timing
 - **Tool History**: Complete audit trail of all tool executions
-- **Observability**: Built-in OpenTelemetry tracing and Prometheus metrics for production monitoring
+- **Middleware**: Retry with exponential backoff, circuit breakers, and rate limiting via CTP
 - **Streaming Tool Calls**: Support for tools that return streaming data
 
 ### Advanced Configuration Management
@@ -121,7 +121,7 @@ Comprehensive documentation is available in the `docs/` directory:
   - Pull the default reasoning model: `ollama pull gpt-oss`
 - **For Cloud Providers** (Optional):
   - OpenAI: `OPENAI_API_KEY` environment variable (for GPT-5, GPT-4, O3 models)
-  - Anthropic: `ANTHROPIC_API_KEY` environment variable (for Claude 4, Claude 3.5)
+  - Anthropic: `ANTHROPIC_API_KEY` environment variable (for Claude 4.5, Claude 3.5)
   - Azure: `AZURE_OPENAI_API_KEY` and `AZURE_OPENAI_ENDPOINT` (for enterprise GPT-5)
   - Google: `GEMINI_API_KEY` (for Gemini models)
   - Groq: `GROQ_API_KEY` (for fast Llama models)
@@ -186,9 +186,9 @@ mcp-cli --provider openai --model gpt-4o-mini    # Smaller GPT-4
 mcp-cli --provider openai --model o3             # O3 reasoning
 mcp-cli --provider openai --model o3-mini        # Efficient O3
 
-# Claude 4 Family (requires Anthropic API key)
-mcp-cli --provider anthropic --model claude-4-1-opus    # Most advanced Claude
-mcp-cli --provider anthropic --model claude-4-sonnet    # Balanced Claude 4
+# Claude 4.5 Family (requires Anthropic API key)
+mcp-cli --provider anthropic --model claude-4-5-opus    # Most advanced Claude
+mcp-cli --provider anthropic --model claude-4-5-sonnet  # Balanced Claude 4.5
 mcp-cli --provider anthropic --model claude-3-5-sonnet  # Claude 3.5
 
 # Enterprise Azure (requires Azure configuration)
@@ -231,7 +231,7 @@ export LLM_MODEL=gpt-oss                # Default model (already the default)
 
 # For cloud providers (optional)
 export OPENAI_API_KEY=sk-...           # For GPT-5, GPT-4, O3 models
-export ANTHROPIC_API_KEY=sk-ant-...    # For Claude 4, Claude 3.5
+export ANTHROPIC_API_KEY=sk-ant-...    # For Claude 4.5, Claude 3.5
 export AZURE_OPENAI_API_KEY=sk-...     # For enterprise GPT-5
 export AZURE_OPENAI_ENDPOINT=https://...
 export GEMINI_API_KEY=...              # For Gemini models
@@ -254,7 +254,7 @@ mcp-cli --server sqlite
 # See the AI's thinking process with reasoning models
 mcp-cli --server sqlite --model gpt-oss     # Open-source reasoning
 mcp-cli --server sqlite --provider openai --model gpt-5  # GPT-5 reasoning
-mcp-cli --server sqlite --provider anthropic --model claude-4-1-opus  # Claude 4 reasoning
+mcp-cli --server sqlite --provider anthropic --model claude-4-5-opus  # Claude 4.5 reasoning
 
 # Use different local models
 mcp-cli --server sqlite --model llama3.3
@@ -262,7 +262,7 @@ mcp-cli --server sqlite --model qwen2.5-coder
 
 # Switch to cloud providers (requires API keys)
 mcp-cli chat --server sqlite --provider openai --model gpt-5
-mcp-cli chat --server sqlite --provider anthropic --model claude-4-sonnet
+mcp-cli chat --server sqlite --provider anthropic --model claude-4-5-sonnet
 ```
 
 ### 2. Interactive Mode
@@ -311,7 +311,7 @@ mcp-cli models
 
 # Show models for specific provider
 mcp-cli models openai    # Shows GPT-5, GPT-4, O3 models
-mcp-cli models anthropic # Shows Claude 4, Claude 3.5 models
+mcp-cli models anthropic # Shows Claude 4.5, Claude 3.5 models
 mcp-cli models ollama    # Shows gpt-oss, llama3.3, etc.
 
 # Ping servers
@@ -346,7 +346,7 @@ mcp-cli --server sqlite,filesystem
 
 # With advanced reasoning models
 mcp-cli --server sqlite --provider openai --model gpt-5
-mcp-cli --server sqlite --provider anthropic --model claude-4-1-opus
+mcp-cli --server sqlite --provider anthropic --model claude-4-5-opus
 ```
 
 ### Chat Commands (Slash Commands)
@@ -370,7 +370,7 @@ mcp-cli --server sqlite --provider anthropic --model claude-4-1-opus
 /model                             # Show current model (default: gpt-oss)
 /model llama3.3                    # Switch to different Ollama model
 /model gpt-5                       # Switch to GPT-5 (if using OpenAI)
-/model claude-4-1-opus             # Switch to Claude 4 (if using Anthropic)
+/model claude-4-5-opus             # Switch to Claude 4.5 (if using Anthropic)
 /models                            # List available models for current provider
 ```
 
@@ -535,7 +535,7 @@ provider openai gpt-5             # Switch to GPT-5
 # Model management
 model                             # Show current model
 model gpt-oss                     # Switch to reasoning model
-model claude-4-1-opus             # Switch to Claude 4
+model claude-4-5-opus             # Switch to Claude 4.5
 models                            # List available models
 
 # Tool operations
@@ -591,7 +591,7 @@ ls *.txt | parallel mcp-cli cmd --server sqlite --input {} --output {}.summary -
 
 ### Ollama Configuration (Default)
 
-Ollama runs locally by default on `http://localhost:11434`. MCP CLI v0.11+ with CHUK-LLM v0.14 includes **llama.cpp integration** that automatically discovers and reuses Ollama's downloaded models for 1.53x faster inference (311 vs 204 tokens/sec) without re-downloading.
+Ollama runs locally by default on `http://localhost:11434`. MCP CLI v0.11.1+ with CHUK-LLM v0.16+ includes **llama.cpp integration** that automatically discovers and reuses Ollama's downloaded models for 1.53x faster inference (311 vs 204 tokens/sec) without re-downloading.
 
 To use reasoning and other models:
 
@@ -624,7 +624,7 @@ To use cloud providers with advanced models, configure API keys:
 # Configure OpenAI (for GPT-5, GPT-4, O3 models)
 mcp-cli provider set openai api_key sk-your-key-here
 
-# Configure Anthropic (for Claude 4, Claude 3.5)
+# Configure Anthropic (for Claude 4.5, Claude 3.5)
 mcp-cli provider set anthropic api_key sk-ant-your-key-here
 
 # Configure Azure OpenAI (for enterprise GPT-5)
@@ -684,7 +684,7 @@ openai:
 
 anthropic:
   api_base: https://api.anthropic.com
-  default_model: claude-4-1-opus
+  default_model: claude-4-5-opus
 
 azure_openai:
   api_base: https://your-resource.openai.azure.com
@@ -747,7 +747,7 @@ This means you can:
 
 ### Bundled Default Servers
 
-MCP CLI v0.11+ comes with an expanded set of pre-configured servers in the bundled `server_config.json`:
+MCP CLI v0.11.1+ comes with an expanded set of pre-configured servers in the bundled `server_config.json`:
 
 | Server | Type | Description | Configuration |
 |--------|------|-------------|---------------|
@@ -929,9 +929,9 @@ mcp-cli
 [See GPT-5's reasoning approach]
 
 > /provider anthropic
-> /model claude-4-1-opus
+> /model claude-4-5-opus
 > Think through this problem step by step: If a train leaves New York at 3 PM...
-[See Claude 4's analytical process]
+[See Claude 4.5's analytical process]
 ```
 
 ### Local-First Workflow with Reasoning
@@ -957,7 +957,7 @@ mcp-cli chat --server sqlite
 > Complex enterprise architecture design...
 
 > /provider anthropic
-> /model claude-4-1-opus
+> /model claude-4-5-opus
 > Detailed strategic analysis...
 
 > /provider ollama
@@ -978,13 +978,13 @@ mcp-cli chat --server sqlite
 > /provider openai gpt-5        # Requires API key
 > What's the best way to optimize this SQL query?
 
-> /provider anthropic claude-4-sonnet  # Requires API key
+> /provider anthropic claude-4-5-sonnet  # Requires API key
 > What's the best way to optimize this SQL query?
 
 # Use each provider's strengths
 > /provider ollama gpt-oss      # Local reasoning, privacy
 > /provider openai gpt-5        # Advanced reasoning
-> /provider anthropic claude-4-1-opus  # Deep analysis
+> /provider anthropic claude-4-5-opus  # Deep analysis
 > /provider groq llama-3.1-70b  # Ultra-fast responses
 ```
 
@@ -1041,7 +1041,7 @@ Provider Diagnostics
 Provider      | Status      | Response Time | Features      | Models
 ollama        | ✅ Ready    | 56ms         | 📡🔧         | gpt-oss, llama3.3, qwen3, ...
 openai        | ✅ Ready    | 234ms        | 📡🔧👁️      | gpt-5, gpt-4o, o3, ...
-anthropic     | ✅ Ready    | 187ms        | 📡🔧         | claude-4-1-opus, claude-4-sonnet, ...
+anthropic     | ✅ Ready    | 187ms        | 📡🔧         | claude-4-5-opus, claude-4-5-sonnet, ...
 azure_openai  | ✅ Ready    | 198ms        | 📡🔧👁️      | gpt-5, gpt-4o, ...
 gemini        | ✅ Ready    | 156ms        | 📡🔧👁️      | gemini-2.0-flash, ...
 groq          | ✅ Ready    | 45ms         | 📡🔧         | llama-3.1-70b, ...
@@ -1091,7 +1091,7 @@ granite3.3          | Available
    
    # For cloud providers, check supported models
    mcp-cli models openai     # Shows GPT-5, GPT-4, O3 models
-   mcp-cli models anthropic  # Shows Claude 4, Claude 3.5 models
+   mcp-cli models anthropic  # Shows Claude 4.5, Claude 3.5 models
    ```
 
 3. **Provider not found or API key missing**:
@@ -1142,21 +1142,21 @@ mcp-cli --log-level DEBUG interactive --server sqlite
 
 ### Execution Security
 - **Tool Validation**: All tool calls are validated before execution
-- **Timeout Protection**: Configurable timeouts prevent hanging operations (v0.11.2+)
-- **Circuit Breakers**: Automatic failure detection and recovery to prevent cascading failures (v0.11.2+)
+- **Timeout Protection**: Configurable timeouts prevent hanging operations (v0.13+)
+- **Circuit Breakers**: Automatic failure detection and recovery to prevent cascading failures (v0.13+)
 - **Server Isolation**: Each server runs in its own process
 - **File Access**: Filesystem access can be disabled with `--disable-filesystem`
 - **Transport Monitoring**: Automatic detection of connection failures with warnings (v0.11+)
 
 ## 🚀 Performance Features
 
-### LLM Provider Performance (v0.14)
+### LLM Provider Performance (v0.16+)
 - **52x Faster Imports**: Reduced from 735ms to 14ms through lazy loading
 - **112x Faster Client Creation**: Automatic thread-safe caching
 - **llama.cpp Integration**: 1.53x faster inference (311 vs 204 tokens/sec) with automatic Ollama model reuse
 - **Dynamic Model Discovery**: Zero overhead capability-based model selection
 
-### Tool Execution Performance (v0.11.2)
+### Tool Execution Performance (v0.13+)
 - **Production Middleware**: Timeouts, retries with exponential backoff, circuit breakers, and result caching
 - **Concurrent Tool Execution**: Multiple tools can run simultaneously with proper coordination
 - **Connection Health Monitoring**: Automatic detection and recovery from transport failures
@@ -1176,8 +1176,8 @@ Core dependencies are organized into feature groups:
 
 - **cli**: Terminal UI and command framework (Rich, Typer, chuk-term)
 - **dev**: Development tools, testing utilities, linting
-- **chuk-tool-processor v0.11.2+**: Production-grade tool execution with middleware, multiple execution strategies, and observability (OpenTelemetry, Prometheus)
-- **chuk-llm v0.14+**: Unified LLM provider with dynamic model discovery, capability-based selection, and llama.cpp integration for 52x faster imports and 112x faster client creation
+- **chuk-tool-processor v0.13+**: Production-grade tool execution with middleware, multiple execution strategies, and observability
+- **chuk-llm v0.16+**: Unified LLM provider with dynamic model discovery, capability-based selection, and llama.cpp integration for 52x faster imports and 112x faster client creation
 - **chuk-term**: Enhanced terminal UI with themes, prompts, and cross-platform support
 
 Install with specific features:
@@ -1249,8 +1249,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- **[CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor)** - Production-grade async tool execution with middleware and observability (v0.11.2+)
-- **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)** - Unified LLM provider with dynamic model discovery, llama.cpp integration, and GPT-5/Claude 4 support (v0.14+)
+- **[CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor)** - Production-grade async tool execution with middleware and observability
+- **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)** - Unified LLM provider with dynamic model discovery, llama.cpp integration, and GPT-5/Claude 4.5 support (v0.16+)
 - **[CHUK-Term](https://github.com/chrishayuk/chuk-term)** - Enhanced terminal UI with themes and cross-platform support
 - **[Rich](https://github.com/Textualize/rich)** - Beautiful terminal formatting
 - **[Typer](https://typer.tiangolo.com/)** - CLI framework
@@ -1261,5 +1261,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **[Model Context Protocol](https://modelcontextprotocol.io/)** - Core protocol specification
 - **[MCP Servers](https://github.com/modelcontextprotocol/servers)** - Official MCP server implementations
 - **[CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor)** - Production-grade tool execution with middleware and observability
-- **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)** - LLM provider abstraction with dynamic model discovery, GPT-5, Claude 4, O3 series support, and llama.cpp integration
+- **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)** - LLM provider abstraction with dynamic model discovery, GPT-5, Claude 4.5, O3 series support, and llama.cpp integration
 - **[CHUK-Term](https://github.com/chrishayuk/chuk-term)** - Terminal UI library with themes and cross-platform support

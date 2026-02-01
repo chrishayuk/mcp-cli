@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import atexit
 import gc
+import logging
 import os
 import signal
 import sys
@@ -13,7 +14,7 @@ import sys
 import typer
 
 # Module imports
-from mcp_cli.logging_config import (
+from mcp_cli.config.logging import (
     setup_logging,
     get_logger,
     setup_silent_mcp_environment,
@@ -94,27 +95,54 @@ def main_callback(
     tool_timeout: float | None = typer.Option(
         None,
         "--tool-timeout",
-        help="Tool execution timeout in seconds (default: 120, can also set MCP_TOOL_TIMEOUT env var)",
+        help="Tool execution timeout in seconds (default: 120, streaming timeout: 300, can also set MCP_TOOL_TIMEOUT env var)",
     ),
     token_backend: str | None = typer.Option(
         None,
         "--token-backend",
         help="Token storage backend: auto, keychain, windows, secretservice, encrypted, vault",
     ),
-    max_turns: int = typer.Option(30, "--max-turns", help="Maximum conversation turns"),
+    max_turns: int = typer.Option(
+        100, "--max-turns", help="Maximum conversation turns"
+    ),
+    include_tools: str | None = typer.Option(
+        None,
+        "--include-tools",
+        help="Comma-separated list of tool names to include (filters out all others)",
+    ),
+    exclude_tools: str | None = typer.Option(
+        None,
+        "--exclude-tools",
+        help="Comma-separated list of tool names to exclude",
+    ),
+    dynamic_tools: bool = typer.Option(
+        False,
+        "--dynamic-tools",
+        help="Enable dynamic tool discovery mode (uses meta-tools for on-demand loading)",
+    ),
 ) -> None:
     """MCP CLI - If no subcommand is given, start chat mode."""
 
     # Re-configure logging based on user options (this overrides the default ERROR level)
     setup_logging(level=log_level, quiet=quiet, verbose=verbose)
 
-    # Store tool timeout if specified
+    # Store tool timeout if specified (type-safe!)
+    from mcp_cli.config import EnvVar, set_env
+
     if tool_timeout is not None:
-        os.environ["MCP_TOOL_TIMEOUT"] = str(tool_timeout)
+        set_env(EnvVar.TOOL_TIMEOUT, str(tool_timeout))
 
     # Store token backend preference if specified
     if token_backend:
-        os.environ["MCP_CLI_TOKEN_BACKEND"] = token_backend
+        set_env(EnvVar.CLI_TOKEN_BACKEND, token_backend)
+
+    # Store tool filtering options if specified
+    if include_tools:
+        set_env(EnvVar.CLI_INCLUDE_TOOLS, include_tools)
+    if exclude_tools:
+        set_env(EnvVar.CLI_EXCLUDE_TOOLS, exclude_tools)
+    if dynamic_tools:
+        set_env(EnvVar.CLI_DYNAMIC_TOOLS, "1")
 
     # Set UI theme and confirmation mode - use preference if not specified
     from mcp_cli.utils.preferences import get_preference_manager
@@ -152,18 +180,15 @@ def main_callback(
         )
         output.info(f"Running: provider {provider}")
 
-        # Execute the provider command
-        from mcp_cli.commands.actions.providers import provider_action_async
+        # Use unified command system via CLI adapter
+        from mcp_cli.adapters.cli import cli_execute
         from mcp_cli.context import initialize_context
 
         # Initialize context for the provider command
         initialize_context(token_backend=token_backend)
 
         try:
-            from mcp_cli.commands.models import ProviderActionParams
-
-            params = ProviderActionParams(args=[provider])
-            asyncio.run(provider_action_async(params))
+            asyncio.run(cli_execute("provider", args=[provider]))
         except Exception as e:
             output.error(f"Error: {e}")
         finally:
@@ -266,6 +291,34 @@ def main_callback(
         quiet=quiet,
     )
 
+    # NEW: Create clean RuntimeConfig with type-safe overrides
+    from mcp_cli.config import ConfigOverride, TimeoutType, load_runtime_config
+
+    # Build type-safe CLI overrides
+    cli_overrides = ConfigOverride()
+
+    if tool_timeout is not None:
+        # Apply tool_timeout to all related timeouts (type-safe!)
+        cli_overrides.apply_tool_timeout_to_all(tool_timeout)
+        logger.debug(
+            f"Applied --tool-timeout={tool_timeout} to all streaming/tool timeouts"
+        )
+
+    if init_timeout != 120.0:
+        cli_overrides.set_timeout(TimeoutType.SERVER_INIT, init_timeout)
+        logger.debug(f"Set server init timeout: {init_timeout}s")
+
+    # Load runtime config with file + CLI overrides
+    runtime_config = load_runtime_config(config_file, cli_overrides)
+
+    # Debug: show what we're using
+    if verbose or logger.isEnabledFor(logging.DEBUG):
+        timeouts = runtime_config.get_all_timeouts()
+        logger.debug(
+            f"Runtime timeouts: chunk={timeouts.streaming_chunk}s, "
+            f"global={timeouts.streaming_global}s, tool={timeouts.tool_execution}s"
+        )
+
     from mcp_cli.chat.chat_handler import handle_chat_mode
 
     # Start chat mode directly with proper cleanup
@@ -276,7 +329,7 @@ def main_callback(
             from mcp_cli.run_command import _init_tool_manager
 
             tm = await _init_tool_manager(
-                config_file, servers, server_names, init_timeout
+                config_file, servers, server_names, init_timeout, runtime_config
             )
 
             logger.debug("Starting chat mode handler")
@@ -288,6 +341,7 @@ def main_callback(
                 api_key=api_key,
                 max_turns=max_turns,
                 model_manager=model_manager,  # FIXED: Pass the model manager with runtime provider
+                runtime_config=runtime_config,  # Pass runtime config with timeout overrides
             )
             logger.debug(f"Chat mode completed with success: {success}")
         except asyncio.TimeoutError:
@@ -678,13 +732,13 @@ direct_registered = ["chat"]  # Chat is registered directly via @app.command
 # Shared provider command function
 def _run_provider_command(args, log_prefix="Provider command"):
     """Shared function to run provider commands."""
-    from mcp_cli.commands.actions.providers import provider_action_async
+    from mcp_cli.adapters.cli import cli_execute
 
     # Initialize context for the provider command
     initialize_context()
 
     try:
-        asyncio.run(provider_action_async(args))
+        asyncio.run(cli_execute("providers", args=args))
     except Exception as e:
         output.error(f"Error: {e}")
         raise typer.Exit(1)
@@ -874,14 +928,15 @@ def tools_command(
         server, disable_filesystem, provider, model, config_file, quiet=quiet
     )
 
-    # Import and use the tools action - USE ASYNC VERSION
-    from mcp_cli.commands.actions.tools import tools_action_async
+    # Use unified command system via CLI adapter
+    from mcp_cli.adapters.cli import cli_execute
 
     # Execute via run_command_sync with async wrapper
     async def _tools_wrapper(**params):
-        return await tools_action_async(
-            show_details=params.get("all", False),
-            show_raw=params.get("raw", False),
+        return await cli_execute(
+            "tools",
+            details=params.get("all", False),
+            raw=params.get("raw", False),
         )
 
     run_command_sync(
@@ -962,13 +1017,15 @@ def servers_command(
         server, disable_filesystem, provider, model, config_file, quiet=quiet
     )
 
-    from mcp_cli.commands.actions.servers import servers_action_async
+    # Use unified command system via CLI adapter
+    from mcp_cli.adapters.cli import cli_execute
 
     async def _servers_wrapper(**params):
-        return await servers_action_async(
+        return await cli_execute(
+            "servers",
             detailed=params.get("detailed", False),
-            show_capabilities=params.get("capabilities", False),
-            show_transport=params.get("transport", False),
+            capabilities=params.get("capabilities", False),
+            transport=params.get("transport", False),
             output_format=params.get("output_format", "table"),
         )
 
@@ -1014,10 +1071,11 @@ def resources_command(
         server, disable_filesystem, provider, model, config_file
     )
 
-    from mcp_cli.commands.resources import resources_action_async
+    # Use unified command system via CLI adapter
+    from mcp_cli.adapters.cli import cli_execute
 
     async def _resources_wrapper(**params):
-        return await resources_action_async()
+        return await cli_execute("resources")
 
     run_command_sync(
         _resources_wrapper,
@@ -1055,10 +1113,11 @@ def prompts_command(
         server, disable_filesystem, provider, model, config_file
     )
 
-    from mcp_cli.commands.prompts import prompts_action_async
+    # Use unified command system via CLI adapter
+    from mcp_cli.adapters.cli import cli_execute
 
     async def _prompts_wrapper(**params):
-        return await prompts_action_async()
+        return await cli_execute("prompts")
 
     run_command_sync(
         _prompts_wrapper,
@@ -1180,10 +1239,20 @@ def theme_command(
         quiet, verbose, log_level, "default"
     )  # Start with default theme
 
-    from mcp_cli.commands.theme import theme_command as theme_cmd
+    # Use unified command system via CLI adapter
+    from mcp_cli.adapters.cli import cli_execute
+    import asyncio
+
+    async def _theme_wrapper():
+        return await cli_execute(
+            "theme",
+            theme_name=theme_name,
+            list_themes=list_themes,
+            select=select,
+        )
 
     # Execute theme command
-    theme_cmd(theme_name, list_themes, select)
+    asyncio.run(_theme_wrapper())
 
 
 direct_registered.append("theme")
@@ -1235,107 +1304,34 @@ def token_command(
     # Configure logging for this command
     _setup_command_logging(quiet, verbose, log_level, "default")
 
-    from mcp_cli.commands.actions.token import (
-        token_list_action_async,
-        token_set_action_async,
-        token_get_action_async,
-        token_delete_action_async,
-        token_clear_action_async,
-        token_backends_action_async,
-        token_set_provider_action_async,
-        token_get_provider_action_async,
-        token_delete_provider_action_async,
-    )
+    # Use unified command system via CLI adapter
+    from mcp_cli.adapters.cli import cli_execute
     import asyncio
 
+    # Compute default namespace
+    default_namespace = token_type if token_type in ["bearer", "api-key"] else "generic"
+
     async def _token_wrapper():
-        if action == "list":
-            return await token_list_action_async(
-                namespace=namespace,
-                show_oauth=show_oauth,
-                show_bearer=show_bearer,
-                show_api_keys=show_api_keys,
-                show_providers=show_providers,
-            )
-        elif action == "set":
-            if not name:
-                output.error("Token name is required for 'set' action")
-                raise typer.Exit(1)
-            from mcp_cli.commands.models import TokenSetParams
-
-            # Use token_type as default namespace if not specified
-            default_namespace = (
-                token_type if token_type in ["bearer", "api-key"] else "generic"
-            )
-            return await token_set_action_async(
-                TokenSetParams(
-                    name=name,
-                    token_type=token_type,
-                    value=value,
-                    provider=provider,
-                    namespace=namespace or default_namespace,
-                )
-            )
-        elif action == "get":
-            if not name:
-                output.error("Token name is required for 'get' action")
-                raise typer.Exit(1)
-            # Use token_type as default namespace if not specified
-            default_namespace = (
-                token_type if token_type in ["bearer", "api-key"] else "generic"
-            )
-            return await token_get_action_async(
-                name=name,
-                namespace=namespace or default_namespace,
-            )
-        elif action == "delete":
-            if not name:
-                output.error("Token name is required for 'delete' action")
-                raise typer.Exit(1)
-            from mcp_cli.commands.models import TokenDeleteParams
-
-            # Use token_type as default namespace if not specified
-            default_namespace = (
-                token_type if token_type in ["bearer", "api-key"] else "generic"
-            )
-            return await token_delete_action_async(
-                TokenDeleteParams(
-                    name=name,
-                    namespace=namespace or default_namespace,
-                    oauth=is_oauth,
-                )
-            )
-        elif action == "clear":
-            return await token_clear_action_async(
-                namespace=namespace,
-                force=force,
-            )
-        elif action == "backends":
-            return await token_backends_action_async()
-        elif action == "set-provider":
-            if not name:
-                output.error("Provider name is required for 'set-provider' action")
-                raise typer.Exit(1)
-            return await token_set_provider_action_async(
-                provider=name,
-                api_key=value,
-            )
-        elif action == "get-provider":
-            if not name:
-                output.error("Provider name is required for 'get-provider' action")
-                raise typer.Exit(1)
-            return await token_get_provider_action_async(provider=name)
-        elif action == "delete-provider":
-            if not name:
-                output.error("Provider name is required for 'delete-provider' action")
-                raise typer.Exit(1)
-            return await token_delete_provider_action_async(provider=name)
-        else:
-            output.error(f"Unknown action: {action}")
-            output.hint(
-                "Valid actions: list, set, get, delete, clear, backends, set-provider, get-provider, delete-provider"
-            )
-            raise typer.Exit(1)
+        return await cli_execute(
+            "token",
+            action=action,
+            name=name
+            if action not in ["set-provider", "get-provider", "delete-provider"]
+            else None,
+            value=value,
+            token_type=token_type,
+            provider=name
+            if action in ["set-provider", "get-provider", "delete-provider"]
+            else provider,
+            namespace=namespace or default_namespace,
+            show_oauth=show_oauth,
+            show_bearer=show_bearer,
+            show_api_keys=show_api_keys,
+            show_providers=show_providers,
+            is_oauth=is_oauth,
+            force=force,
+            api_key=value if action == "set-provider" else None,
+        )
 
     # Run the async function
     asyncio.run(_token_wrapper())
@@ -1390,125 +1386,35 @@ def tokens_command(
     # Configure logging for this command
     _setup_command_logging(quiet, verbose, log_level, "default")
 
-    from mcp_cli.commands.actions.token import (
-        token_list_action_async,
-        token_set_action_async,
-        token_get_action_async,
-        token_delete_action_async,
-        token_clear_action_async,
-        token_backends_action_async,
-        token_set_provider_action_async,
-        token_get_provider_action_async,
-        token_delete_provider_action_async,
-    )
+    # Use unified command system via CLI adapter
+    from mcp_cli.adapters.cli import cli_execute
     import asyncio
 
     async def _tokens_wrapper():
-        # Default to 'list' if no action specified (like providers command)
+        # Default to 'list' if no action specified
         effective_action = action or "list"
 
-        if effective_action == "list":
-            from mcp_cli.commands.models import TokenListParams
-            import json
-            from pathlib import Path
-
-            # Load server names from config
-            server_names = []
-            try:
-                config_path = Path("server_config.json")
-                if config_path.exists():
-                    with open(config_path, "r") as f:
-                        config = json.load(f)
-                        server_names = list(config.get("mcpServers", {}).keys())
-            except Exception:
-                pass  # Silently ignore config load errors
-
-            params = TokenListParams(
-                namespace=namespace,
-                show_oauth=show_oauth,
-                show_bearer=show_bearer,
-                show_api_keys=show_api_keys,
-                show_providers=show_providers,
-                server_names=server_names,
-            )
-            return await token_list_action_async(params)
-        elif effective_action == "set":
-            if not name:
-                output.error("Token name is required for 'set' action")
-                raise typer.Exit(1)
-            from mcp_cli.commands.models import TokenSetParams
-
-            params = TokenSetParams(
-                name=name,
-                token_type=token_type,
-                value=value,
-                provider=provider,
-                namespace=namespace or "generic",
-            )
-            return await token_set_action_async(params)
-        elif effective_action == "get":
-            if not name:
-                output.error("Token name is required for 'get' action")
-                raise typer.Exit(1)
-            return await token_get_action_async(
-                name=name,
-                namespace=namespace or "generic",
-            )
-        elif effective_action == "delete":
-            if not name:
-                output.error("Token name is required for 'delete' action")
-                raise typer.Exit(1)
-            from mcp_cli.commands.models import TokenDeleteParams
-
-            params = TokenDeleteParams(
-                name=name,
-                namespace=namespace,
-                oauth=is_oauth,
-            )
-            return await token_delete_action_async(params)
-        elif effective_action == "clear":
-            from mcp_cli.commands.models import TokenClearParams
-
-            params = TokenClearParams(
-                namespace=namespace,
-                force=force,
-            )
-            return await token_clear_action_async(params)
-        elif effective_action == "backends":
-            return await token_backends_action_async()
-        elif effective_action == "set-provider":
-            if not name:
-                output.error("Provider name is required for 'set-provider' action")
-                raise typer.Exit(1)
-            from mcp_cli.commands.models import TokenProviderParams
-
-            params = TokenProviderParams(
-                provider=name,
-                api_key=value,
-            )
-            return await token_set_provider_action_async(params)
-        elif effective_action == "get-provider":
-            if not name:
-                output.error("Provider name is required for 'get-provider' action")
-                raise typer.Exit(1)
-            from mcp_cli.commands.models import TokenProviderParams
-
-            params = TokenProviderParams(provider=name)
-            return await token_get_provider_action_async(params)
-        elif effective_action == "delete-provider":
-            if not name:
-                output.error("Provider name is required for 'delete-provider' action")
-                raise typer.Exit(1)
-            from mcp_cli.commands.models import TokenProviderParams
-
-            params = TokenProviderParams(provider=name)
-            return await token_delete_provider_action_async(params)
-        else:
-            output.error(f"Unknown action: {effective_action}")
-            output.hint(
-                "Valid actions: list, set, get, delete, clear, backends, set-provider, get-provider, delete-provider"
-            )
-            raise typer.Exit(1)
+        return await cli_execute(
+            "token",
+            action=effective_action,
+            name=name
+            if effective_action
+            not in ["set-provider", "get-provider", "delete-provider"]
+            else None,
+            value=value,
+            token_type=token_type,
+            provider=name
+            if effective_action in ["set-provider", "get-provider", "delete-provider"]
+            else provider,
+            namespace=namespace or "generic",
+            show_oauth=show_oauth,
+            show_bearer=show_bearer,
+            show_api_keys=show_api_keys,
+            show_providers=show_providers,
+            is_oauth=is_oauth,
+            force=force,
+            api_key=value if effective_action == "set-provider" else None,
+        )
 
     # Run the async function
     asyncio.run(_tokens_wrapper())
@@ -1538,7 +1444,9 @@ def cmd_command(
     single_turn: bool = typer.Option(
         False, "--single-turn", help="Disable multi-turn conversation"
     ),
-    max_turns: int = typer.Option(30, "--max-turns", help="Maximum conversation turns"),
+    max_turns: int = typer.Option(
+        100, "--max-turns", help="Maximum conversation turns"
+    ),
     config_file: str = typer.Option(
         "server_config.json", help="Configuration file path"
     ),
@@ -1589,12 +1497,13 @@ def cmd_command(
         quiet=quiet,
     )
 
-    # Import cmd action
-    from mcp_cli.commands.actions.cmd import cmd_action_async
+    # Use unified command system via CLI adapter
+    from mcp_cli.adapters.cli import cli_execute
 
     # Execute via run_command_sync
     async def _cmd_wrapper(**params):
-        return await cmd_action_async(
+        return await cli_execute(
+            "cmd",
             input_file=params.get("input_file"),
             output_file=params.get("output_file"),
             prompt=params.get("prompt"),
@@ -1603,7 +1512,7 @@ def cmd_command(
             system_prompt=params.get("system_prompt"),
             raw=params.get("raw", False),
             single_turn=params.get("single_turn", False),
-            max_turns=params.get("max_turns", 30),
+            max_turns=params.get("max_turns", 100),
         )
 
     run_command_sync(
@@ -1662,17 +1571,13 @@ def ping_command(
         server, disable_filesystem, provider, model, config_file, quiet=quiet
     )
 
-    # Import and use the ping action
-    from mcp_cli.commands.actions.ping import ping_action_async
+    # Use unified command system via CLI adapter
+    from mcp_cli.adapters.cli import cli_execute
 
     # Wrapper for the async action
     async def _ping_wrapper(**params):
-        # Get the tool manager from the global context, which is initialized by run_command_sync
-        from mcp_cli.context import get_context
-        tm = get_context().tool_manager
-
-        return await ping_action_async(
-            tm=tm,
+        return await cli_execute(
+            "ping",
             server_names=params.get("server_names"),
             targets=params.get("targets", []),
         )

@@ -8,6 +8,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from mcp_cli.llm.content_models import ContentBlockType
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Constants and Enums
@@ -136,7 +138,8 @@ class ServerInfo(BaseModel):
     capabilities: dict[str, Any] = Field(default_factory=dict)
     description: str | None = None  # From server metadata
     version: str | None = None  # Server version
-    command: str | None = None  # Server command if known
+    command: str | None = None  # Server command if known (for stdio)
+    url: str | None = None  # Server URL (for http/sse)
     args: list[str] = Field(default_factory=list)  # Command arguments
     env: dict[str, str] = Field(default_factory=dict)  # Environment variables
 
@@ -251,17 +254,20 @@ class ToolCallResult(BaseModel):
         """Extract text content from MCP SDK ToolResult structure."""
         if isinstance(result, dict):
             # Check for MCP response structure: {'isError': bool, 'content': ToolResult}
-            if 'content' in result and hasattr(result['content'], 'content'):
+            if "content" in result and hasattr(result["content"], "content"):
                 # Extract content array from MCP ToolResult
-                tool_result_content = result['content'].content
+                tool_result_content = result["content"].content
                 if isinstance(tool_result_content, list):
-                    # Extract text from content blocks
+                    # Extract text from content blocks - use enum, no magic strings!
                     text_parts = []
                     for block in tool_result_content:
-                        if isinstance(block, dict) and block.get('type') == 'text':
-                            text_parts.append(block.get('text', ''))
+                        if (
+                            isinstance(block, dict)
+                            and block.get("type") == ContentBlockType.TEXT.value
+                        ):
+                            text_parts.append(block.get("text", ""))
                     if text_parts:
-                        return '\n'.join(text_parts)
+                        return "\n".join(text_parts)
         return None
 
     @property
@@ -543,3 +549,33 @@ class LLMToolDefinition(BaseModel):
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary format for LLM API calls."""
         return self.model_dump(mode="json")  # type: ignore[no-any-return]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Tool Definition Input Models (for parsing raw tool dicts)
+# ──────────────────────────────────────────────────────────────────────────────
+class ToolInputSchema(BaseModel):
+    """Input schema for tool parameters (JSON Schema format)."""
+
+    type: str = "object"
+    properties: dict[str, Any] = Field(default_factory=dict)
+    required: list[str] = Field(default_factory=list)
+    additionalProperties: bool = False
+
+    model_config = {"frozen": True, "extra": "allow"}
+
+
+class ToolDefinitionInput(BaseModel):
+    """Input model for parsing tool definitions from dicts.
+
+    Used to convert raw tool dicts from chuk_tool_processor into ToolInfo models.
+    """
+
+    name: str
+    namespace: str = "default"
+    description: str | None = None
+    inputSchema: dict[str, Any] = Field(default_factory=dict)
+    is_async: bool = False
+    tags: list[str] = Field(default_factory=list)
+
+    model_config = {"frozen": False, "extra": "ignore"}

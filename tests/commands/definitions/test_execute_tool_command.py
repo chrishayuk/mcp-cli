@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from mcp_cli.commands.definitions.execute_tool import ExecuteToolCommand
+from mcp_cli.commands.tools.execute_tool import ExecuteToolCommand
 from mcp_cli.commands.base import CommandMode
 from mcp_cli.tools.models import ToolCallResult
 
@@ -92,7 +92,7 @@ class TestExecuteToolCommand:
     @pytest.mark.asyncio
     async def test_execute_list_tools(self, execute_command, mock_tool_manager):
         """Test listing tools when no tool specified."""
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(tool_manager=mock_tool_manager)
 
             # Should list available tools
@@ -104,7 +104,7 @@ class TestExecuteToolCommand:
     @pytest.mark.asyncio
     async def test_execute_tool_not_found(self, execute_command, mock_tool_manager):
         """Test execute with non-existent tool."""
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 tool="nonexistent_tool", tool_manager=mock_tool_manager
             )
@@ -116,7 +116,7 @@ class TestExecuteToolCommand:
     @pytest.mark.asyncio
     async def test_execute_show_tool_info(self, execute_command, mock_tool_manager):
         """Test showing tool info when no params provided."""
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 tool="test_tool", tool_manager=mock_tool_manager
             )
@@ -130,7 +130,7 @@ class TestExecuteToolCommand:
     @pytest.mark.asyncio
     async def test_execute_tool_success(self, execute_command, mock_tool_manager):
         """Test successful tool execution."""
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 tool="test_tool",
                 params='{"text": "hello", "count": 5}',
@@ -147,7 +147,7 @@ class TestExecuteToolCommand:
     @pytest.mark.asyncio
     async def test_execute_tool_with_server(self, execute_command, mock_tool_manager):
         """Test tool execution with server specification."""
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 tool="test_tool",
                 server="test_server",
@@ -165,7 +165,7 @@ class TestExecuteToolCommand:
         self, execute_command, mock_tool_manager
     ):
         """Test execution with invalid JSON parameters."""
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 tool="test_tool", params="invalid json", tool_manager=mock_tool_manager
             )
@@ -179,7 +179,7 @@ class TestExecuteToolCommand:
         self, execute_command, mock_tool_manager
     ):
         """Test execution with plain string instead of JSON."""
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 tool="test_tool",
                 params="hello world",  # Plain string, not JSON
@@ -194,7 +194,7 @@ class TestExecuteToolCommand:
     @pytest.mark.asyncio
     async def test_execute_tool_with_args(self, execute_command, mock_tool_manager):
         """Test parsing tool name and params from args."""
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 args=["test_tool", '{"text": "hello"}'], tool_manager=mock_tool_manager
             )
@@ -213,7 +213,7 @@ class TestExecuteToolCommand:
             )
         )
 
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 tool="test_tool",
                 params='{"text": "hello"}',
@@ -230,7 +230,7 @@ class TestExecuteToolCommand:
             side_effect=Exception("Unexpected error")
         )
 
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 tool="test_tool",
                 params='{"text": "hello"}',
@@ -245,7 +245,7 @@ class TestExecuteToolCommand:
     @pytest.mark.asyncio
     async def test_execute_empty_params(self, execute_command, mock_tool_manager):
         """Test execution with empty parameters."""
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 tool="another_tool", params="{}", tool_manager=mock_tool_manager
             )
@@ -276,7 +276,7 @@ class TestExecuteToolCommand:
     @pytest.mark.asyncio
     async def test_execute_with_quoted_params(self, execute_command, mock_tool_manager):
         """Test handling params with surrounding quotes."""
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 tool="test_tool",
                 params='\'{"text": "hello"}\'',  # Extra quotes
@@ -301,7 +301,7 @@ class TestExecuteToolCommand:
             )
         )
 
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 tool="test_tool",
                 params='{"count": 5}',  # Missing required "text"
@@ -316,7 +316,7 @@ class TestExecuteToolCommand:
         self, execute_command, mock_tool_manager
     ):
         """Test parsing simple key=value params."""
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             # The execute command should try to parse key=value format
             result = await execute_command.execute(
                 tool="test_tool",
@@ -340,7 +340,7 @@ class TestExecuteToolCommand:
             )
         )
 
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 tool="test_tool",
                 params='{"text": "hello"}',
@@ -355,7 +355,7 @@ class TestExecuteToolCommand:
         """Test handling when tool returns no result."""
         mock_tool_manager.execute_tool = AsyncMock(return_value=None)
 
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 tool="test_tool",
                 params='{"text": "hello"}',
@@ -368,7 +368,7 @@ class TestExecuteToolCommand:
     @pytest.mark.asyncio
     async def test_execute_args_as_string(self, execute_command, mock_tool_manager):
         """Test args provided as string instead of list."""
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 args="test_tool", tool_manager=mock_tool_manager
             )

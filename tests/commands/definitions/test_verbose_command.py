@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import Mock
-from mcp_cli.commands.definitions.verbose import VerboseCommand
+from mcp_cli.commands.core.verbose import VerboseCommand
 from mcp_cli.commands.base import CommandMode
 
 

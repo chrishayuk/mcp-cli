@@ -279,9 +279,11 @@ def list_all_provider_tokens(
         all_providers = list_available_providers()
 
         # Check each provider for token status
+        from mcp_cli.config import PROVIDER_OLLAMA
+
         for provider_name in all_providers.keys():
             # Skip ollama (doesn't need tokens)
-            if provider_name.lower() == "ollama":
+            if provider_name.lower() == PROVIDER_OLLAMA:
                 continue
 
             status = check_provider_token_status(provider_name, token_manager)

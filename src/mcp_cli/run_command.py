@@ -1,4 +1,4 @@
-# mcp_cli/run_command.py - COMPLETE FIXED VERSION
+# mcp_cli/run_command.py
 """
 Main entry-point helpers for all CLI sub-commands.
 
@@ -14,25 +14,69 @@ ENHANCED: Now properly handles namespace selection for HTTP vs STDIO servers.
 from __future__ import annotations
 
 import asyncio
-import importlib
 import logging
 import sys
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 from pathlib import Path
 
 import typer
 from rich.panel import Panel
 from chuk_term.ui import output
 
-from mcp_cli.tools.manager import set_tool_manager  # only the setter
+from mcp_cli.config.defaults import DEFAULT_PROVIDER, DEFAULT_MODEL
+from mcp_cli.tools.manager import ToolManager, set_tool_manager
 from mcp_cli.context import initialize_context
+
+if TYPE_CHECKING:
+    from mcp_cli.config.runtime import RuntimeConfig
 
 logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------- #
 # internal helpers / globals                                                  #
 # --------------------------------------------------------------------------- #
-_ALL_TM: list[Any] = []  # referenced by the unit-tests
+_ALL_TM: list[ToolManager] = []  # referenced by the unit-tests
+
+# Factory function for ToolManager - can be patched in tests
+_tool_manager_factory: Callable[..., ToolManager] | None = None
+
+
+def set_tool_manager_factory(factory: Callable[..., ToolManager] | None) -> None:
+    """Set a custom ToolManager factory for testing.
+
+    Args:
+        factory: A callable that creates ToolManager instances, or None to reset.
+    """
+    global _tool_manager_factory
+    _tool_manager_factory = factory
+
+
+def _create_tool_manager(
+    config_file: str,
+    servers: list[str],
+    server_names: dict[int, str | None] | None = None,
+    initialization_timeout: float = 120.0,
+    runtime_config: "RuntimeConfig | None" = None,
+) -> ToolManager:
+    """Create a ToolManager instance using factory or default constructor.
+
+    This pattern allows tests to inject mock ToolManagers without dynamic getattr.
+    """
+    if _tool_manager_factory is not None:
+        return _tool_manager_factory(
+            config_file,
+            servers,
+            server_names,
+            initialization_timeout=initialization_timeout,
+            runtime_config=runtime_config,
+        )
+    return ToolManager(
+        config_file,
+        servers,
+        server_names,
+        initialization_timeout=initialization_timeout,
+        runtime_config=runtime_config,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -43,19 +87,22 @@ async def _init_tool_manager(
     servers: list[str],
     server_names: dict[int, str | None] | None = None,
     initialization_timeout: float = 120.0,
-):
+    runtime_config: "RuntimeConfig | None" = None,
+) -> ToolManager:
     """
-    Dynamically import **ToolManager** (so monkey-patching works) and create it.
+    Create and initialize a ToolManager instance.
+
+    Uses _create_tool_manager() which can be patched via set_tool_manager_factory()
+    for testing purposes.
+
     ENHANCED: Automatically selects appropriate namespace based on server type.
     """
-    tm_mod = importlib.import_module("mcp_cli.tools.manager")
-    ToolManager = getattr(tm_mod, "ToolManager")  # patched in tests
-
-    tm = ToolManager(
+    tm = _create_tool_manager(
         config_file,
         servers,
         server_names,
         initialization_timeout=initialization_timeout,
+        runtime_config=runtime_config,
     )
 
     # ENHANCED: Let ToolManager automatically select the namespace
@@ -63,7 +110,7 @@ async def _init_tool_manager(
     ok = await tm.initialize()  # Remove the hardcoded namespace parameter
 
     # Clean up any loggers that were created during initialization
-    from mcp_cli.logging_config import setup_logging
+    from mcp_cli.config.logging import setup_logging
     import os
 
     log_level = os.environ.get("LOG_LEVEL", "WARNING")
@@ -133,8 +180,8 @@ async def run_command(
         context = initialize_context(
             tool_manager=tm,
             config_path=Path(config_file),
-            provider=(extra_params or {}).get("provider", "openai"),
-            model=(extra_params or {}).get("model", "gpt-4o-mini"),
+            provider=(extra_params or {}).get("provider", DEFAULT_PROVIDER),
+            model=(extra_params or {}).get("model", DEFAULT_MODEL),
             api_base=(extra_params or {}).get("api_base"),
             api_key=(extra_params or {}).get("api_key"),
         )

@@ -108,18 +108,28 @@ async def failing_async_command():
 
 
 # --------------------------------------------------------------------------- #
-# Monkey-patch **ToolManager** in the correct module for every test
+# Monkey-patch **ToolManager** using the factory pattern for every test
 # --------------------------------------------------------------------------- #
 @pytest.fixture(autouse=True)
 def patch_tool_manager(monkeypatch):
-    # default -> success manager; individual tests override if needed
+    """Use the new factory pattern for ToolManager injection."""
+    from mcp_cli.run_command import set_tool_manager_factory
+
+    # Set the factory to use DummyToolManager
+    set_tool_manager_factory(DummyToolManager)
+
+    # Also patch the direct import for backward compatibility
     monkeypatch.setattr(
         "mcp_cli.tools.manager.ToolManager", DummyToolManager, raising=True
     )
-    # clean collected list between tests
+
+    # Clean collected list between tests
     _ALL_TM.clear()
     yield
     _ALL_TM.clear()
+
+    # Reset the factory after test
+    set_tool_manager_factory(None)
 
 
 # --------------------------------------------------------------------------- #
@@ -154,6 +164,9 @@ async def test_run_command_sync_callable():
 
 @pytest.mark.asyncio
 async def test_run_command_cleanup_on_exception(monkeypatch):
+    from mcp_cli.run_command import set_tool_manager_factory
+
+    set_tool_manager_factory(DummyToolManager)
     monkeypatch.setattr(
         "mcp_cli.tools.manager.ToolManager", DummyToolManager, raising=True
     )
@@ -169,6 +182,10 @@ async def test_run_command_cleanup_on_exception(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_run_command_init_failure_raises(monkeypatch):
+    from mcp_cli.run_command import set_tool_manager_factory
+
+    # Use the factory to inject the failing manager
+    set_tool_manager_factory(DummyInitFailToolManager)
     monkeypatch.setattr(
         "mcp_cli.tools.manager.ToolManager", DummyInitFailToolManager, raising=True
     )
@@ -179,7 +196,7 @@ async def test_run_command_init_failure_raises(monkeypatch):
             servers=["S1"],
             extra_params={},
         )
-    assert _ALL_TM[0].closed  # close even when init “fails”
+    assert _ALL_TM[0].closed  # close even when init "fails"
 
 
 # --------------------------------------------------------------------------- #

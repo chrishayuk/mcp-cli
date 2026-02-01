@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from mcp_cli.commands.definitions.execute_tool import ExecuteToolCommand
+from mcp_cli.commands.tools.execute_tool import ExecuteToolCommand
 from mcp_cli.tools.models import ToolCallResult
 
 
@@ -70,7 +70,7 @@ class TestExecuteToolExtended:
         manager.get_all_tools = AsyncMock(return_value=[tool1, tool2])
         manager.server_names = {0: "sqlite", 1: "echo"}
 
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(tool_manager=manager)
 
             assert result.success is True
@@ -98,7 +98,7 @@ class TestExecuteToolExtended:
         manager.server_names = {}  # Add server_names attribute
         manager.get_all_tools = AsyncMock(return_value=[mock_tool_with_input_schema])
 
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 tool="schema_tool", tool_manager=manager
             )
@@ -122,7 +122,7 @@ class TestExecuteToolExtended:
         manager.server_names = {}  # Add server_names attribute
         manager.get_all_tools = AsyncMock(return_value=[tool])
 
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 tool="simple_tool", tool_manager=manager
             )
@@ -139,7 +139,7 @@ class TestExecuteToolExtended:
         manager.server_names = {}  # Add server_names attribute
         manager.get_all_tools = AsyncMock(return_value=[mock_tool_with_schema])
 
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 tool="complex_tool", tool_manager=manager
             )
@@ -171,7 +171,7 @@ class TestExecuteToolExtended:
             )
         )
 
-        with patch("mcp_cli.commands.definitions.execute_tool.output"):
+        with patch("mcp_cli.commands.tools.execute_tool.output"):
             result = await execute_command.execute(
                 tool="test_tool",
                 params="key1=value1 key2=value2 flag=true",
@@ -202,7 +202,7 @@ class TestExecuteToolExtended:
             )
         )
 
-        with patch("mcp_cli.commands.definitions.execute_tool.output"):
+        with patch("mcp_cli.commands.tools.execute_tool.output"):
             result = await execute_command.execute(
                 tool="test_tool",
                 params='"{"text": "hello"}"',  # Double quoted JSON
@@ -220,7 +220,7 @@ class TestExecuteToolExtended:
         manager.server_names = {}  # Add server_names attribute
         manager.get_all_tools = AsyncMock(return_value=[mock_tool_with_schema])
 
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 tool="complex_tool", params="{invalid json}", tool_manager=manager
             )
@@ -247,7 +247,7 @@ class TestExecuteToolExtended:
             return_value={"status": "ok", "data": [1, 2, 3]}
         )
 
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 tool="test_tool", params="{}", tool_manager=manager
             )
@@ -273,7 +273,7 @@ class TestExecuteToolExtended:
             )
         )
 
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 tool="test_tool", params="{}", tool_manager=manager
             )
@@ -299,7 +299,7 @@ class TestExecuteToolExtended:
             )
         )
 
-        with patch("mcp_cli.commands.definitions.execute_tool.output"):
+        with patch("mcp_cli.commands.tools.execute_tool.output"):
             result = await execute_command.execute(
                 tool="test_tool",
                 server="specific_server",
@@ -328,7 +328,7 @@ class TestExecuteToolExtended:
             )
         )
 
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 tool="test_tool", params="{}", tool_manager=manager
             )
@@ -361,7 +361,7 @@ class TestExecuteToolExtended:
             )
         )
 
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 tool="test_tool", params="{}", tool_manager=manager
             )
@@ -391,7 +391,7 @@ class TestExecuteToolExtended:
             )
         )
 
-        with patch("mcp_cli.commands.definitions.execute_tool.output") as mock_output:
+        with patch("mcp_cli.commands.tools.execute_tool.output") as mock_output:
             result = await execute_command.execute(
                 tool="test_tool", params="{}", tool_manager=manager
             )
@@ -417,7 +417,7 @@ class TestExecuteToolExtended:
             )
         )
 
-        with patch("mcp_cli.commands.definitions.execute_tool.output"):
+        with patch("mcp_cli.commands.tools.execute_tool.output"):
             result = await execute_command.execute(
                 args=["test_tool", '{"text": "hello"}', "extra_arg"],
                 tool_manager=manager,
@@ -442,7 +442,7 @@ class TestExecuteToolExtended:
 
         manager.get_all_tools = AsyncMock(return_value=[tool])
 
-        with patch("mcp_cli.commands.definitions.execute_tool.output"):
+        with patch("mcp_cli.commands.tools.execute_tool.output"):
             result = await execute_command.execute(
                 tool="test_tool",
                 params="key=value",  # Has equals but will be parsed differently

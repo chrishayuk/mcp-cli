@@ -1,17 +1,64 @@
 # mcp_cli/tools/filter.py
-"""
-from __future__ import annotations
+"""Tool filtering and management system - async native, pydantic native!
 
-Tool filtering and management system.
 AGGRESSIVE AUTO-FIX: Always attempt to fix tools before validation.
 """
 
+from __future__ import annotations
+
 import logging
+from enum import Enum
 from typing import Any
+
+from pydantic import BaseModel, Field
 
 from mcp_cli.tools.validation import ToolSchemaValidator
 
 logger = logging.getLogger(__name__)
+
+
+class DisabledReason(str, Enum):
+    """Reason why a tool was disabled - no magic strings!"""
+
+    VALIDATION = "validation"  # Failed validation
+    USER = "user"  # Manually disabled by user
+    UNKNOWN = "unknown"  # Unknown reason
+
+
+class FilterStats(BaseModel):
+    """Auto-fix statistics - no dict goop!"""
+
+    attempted: int = Field(default=0, description="Number of fix attempts")
+    successful: int = Field(default=0, description="Number of successful fixes")
+    failed: int = Field(default=0, description="Number of failed fixes")
+
+    model_config = {"frozen": False}
+
+    def increment_attempted(self) -> None:
+        """Increment attempted counter."""
+        self.attempted += 1
+
+    def increment_successful(self) -> None:
+        """Increment successful counter."""
+        self.successful += 1
+
+    def increment_failed(self) -> None:
+        """Increment failed counter."""
+        self.failed += 1
+
+    def reset(self) -> None:
+        """Reset all counters."""
+        self.attempted = 0
+        self.successful = 0
+        self.failed = 0
+
+    def to_dict(self) -> dict[str, int]:
+        """Convert to dict for compatibility."""
+        return {
+            "attempted": self.attempted,
+            "successful": self.successful,
+            "failed": self.failed,
+        }
 
 
 class ToolFilter:
@@ -23,20 +70,22 @@ class ToolFilter:
         self.disabled_by_user: set[str] = set()
         self.auto_fix_enabled: bool = True
         self._validation_cache: dict[str, tuple[bool, str | None]] = {}
-        self._fix_stats: dict[str, int] = {"attempted": 0, "successful": 0, "failed": 0}
+        self._fix_stats = FilterStats()  # Use Pydantic model instead of dict!
 
     def is_tool_enabled(self, tool_name: str) -> bool:
         """Check if a tool is enabled (not disabled)."""
         return tool_name not in self.disabled_tools
 
-    def disable_tool(self, tool_name: str, reason: str = "user") -> None:
-        """Disable a tool for a specific reason."""
+    def disable_tool(
+        self, tool_name: str, reason: DisabledReason = DisabledReason.USER
+    ) -> None:
+        """Disable a tool for a specific reason - uses enum, no magic strings!"""
         self.disabled_tools.add(tool_name)
-        if reason == "validation":
+        if reason == DisabledReason.VALIDATION:
             self.disabled_by_validation.add(tool_name)
-        elif reason == "user":
+        elif reason == DisabledReason.USER:
             self.disabled_by_user.add(tool_name)
-        logger.info(f"Disabled tool '{tool_name}' (reason: {reason})")
+        logger.info(f"Disabled tool '{tool_name}' (reason: {reason.value})")
 
     def enable_tool(self, tool_name: str) -> None:
         """Re-enable a previously disabled tool."""
@@ -46,19 +95,22 @@ class ToolFilter:
         logger.info(f"Enabled tool '{tool_name}'")
 
     def get_disabled_tools(self) -> dict[str, str]:
-        """Get all disabled tools with their reasons."""
+        """Get all disabled tools with their reasons - uses enum values!"""
         result = {}
         for tool in self.disabled_by_validation:
-            result[tool] = "validation"
+            result[tool] = DisabledReason.VALIDATION.value
         for tool in self.disabled_by_user:
-            result[tool] = "user"
+            result[tool] = DisabledReason.USER.value
         return result
 
-    def get_disabled_tools_by_reason(self, reason: str) -> set:
-        """Get disabled tools by specific reason."""
-        if reason == "validation":
+    def get_disabled_tools_by_reason(self, reason: DisabledReason | str) -> set[str]:
+        """Get disabled tools by specific reason - accepts enum or string!"""
+        # Support both enum and string for backward compatibility
+        reason_value = reason.value if isinstance(reason, DisabledReason) else reason
+
+        if reason_value == DisabledReason.VALIDATION.value:
             return self.disabled_by_validation.copy()
-        elif reason == "user":
+        elif reason_value == DisabledReason.USER.value:
             return self.disabled_by_user.copy()
         return set()
 
@@ -67,7 +119,7 @@ class ToolFilter:
         self.disabled_tools -= self.disabled_by_validation
         self.disabled_by_validation.clear()
         self._validation_cache.clear()
-        self._fix_stats = {"attempted": 0, "successful": 0, "failed": 0}
+        self._fix_stats.reset()  # Use model method instead of dict assignment!
         logger.info("Cleared all validation-disabled tools")
 
     def filter_tools(
@@ -92,7 +144,7 @@ class ToolFilter:
                     {
                         **tool,
                         "_disabled_reason": self.get_disabled_tools().get(
-                            tool_name, "unknown"
+                            tool_name, DisabledReason.UNKNOWN.value
                         ),
                     }
                 )
@@ -101,7 +153,7 @@ class ToolFilter:
             # For OpenAI, use comprehensive validation and fixing
             if provider == "openai":
                 if self.auto_fix_enabled:
-                    self._fix_stats["attempted"] += 1
+                    self._fix_stats.increment_attempted()  # Use model method!
 
                     # Use the comprehensive validate_and_fix method
                     is_valid, fixed_tool, error_msg = (
@@ -109,7 +161,7 @@ class ToolFilter:
                     )
 
                     if is_valid:
-                        self._fix_stats["successful"] += 1
+                        self._fix_stats.increment_successful()  # Use model method!
 
                         # Check if the tool was actually modified
                         if fixed_tool != tool:
@@ -120,18 +172,18 @@ class ToolFilter:
                         valid_tools.append(fixed_tool)
                         continue
                     else:
-                        self._fix_stats["failed"] += 1
+                        self._fix_stats.increment_failed()  # Use model method!
                         logger.warning(
                             f"Tool '{tool_name}' failed validation even after auto-fix: {error_msg}"
                         )
 
-                        # Disable invalid tool
-                        self.disable_tool(tool_name, "validation")
+                        # Disable invalid tool - use enum!
+                        self.disable_tool(tool_name, DisabledReason.VALIDATION)
                         invalid_tools.append(
                             {
                                 **tool,
                                 "_validation_error": error_msg,
-                                "_disabled_reason": "validation",
+                                "_disabled_reason": DisabledReason.VALIDATION.value,
                             }
                         )
                 else:
@@ -144,22 +196,24 @@ class ToolFilter:
                         logger.warning(
                             f"Tool '{tool_name}' failed validation: {validation.error_message}"
                         )
-                        self.disable_tool(tool_name, "validation")
+                        self.disable_tool(
+                            tool_name, DisabledReason.VALIDATION
+                        )  # Use enum!
                         invalid_tools.append(
                             {
                                 **tool,
                                 "_validation_error": validation.error_message,
-                                "_disabled_reason": "validation",
+                                "_disabled_reason": DisabledReason.VALIDATION.value,
                             }
                         )
             else:
                 # For other providers, assume valid for now
                 valid_tools.append(tool)
 
-        # Log fix statistics
-        if self._fix_stats["attempted"] > 0:
+        # Log fix statistics - use model properties!
+        if self._fix_stats.attempted > 0:
             logger.info(
-                f"Auto-fix results: {self._fix_stats['successful']}/{self._fix_stats['attempted']} tools fixed successfully"
+                f"Auto-fix results: {self._fix_stats.successful}/{self._fix_stats.attempted} tools fixed successfully"
             )
 
         return valid_tools, invalid_tools
@@ -173,24 +227,23 @@ class ToolFilter:
         return tool_name
 
     def get_validation_summary(self) -> dict[str, Any]:
-        """Get a summary of validation results."""
+        """Get a summary of validation results - uses model!"""
         return {
             "total_disabled": len(self.disabled_tools),
             "disabled_by_validation": len(self.disabled_by_validation),
             "disabled_by_user": len(self.disabled_by_user),
             "auto_fix_enabled": self.auto_fix_enabled,
             "cache_size": len(self._validation_cache),
-            "fix_stats": self._fix_stats.copy(),
+            "fix_stats": self._fix_stats.to_dict(),  # Use model method!
         }
 
     def get_fix_statistics(self) -> dict[str, int]:
-        """Get auto-fix statistics."""
-        stats: dict[str, int] = self._fix_stats.copy()
-        return stats
+        """Get auto-fix statistics - uses model!"""
+        return self._fix_stats.to_dict()  # Use model method!
 
     def reset_statistics(self) -> None:
-        """Reset fix statistics."""
-        self._fix_stats = {"attempted": 0, "successful": 0, "failed": 0}
+        """Reset fix statistics - uses model method!"""
+        self._fix_stats.reset()  # Use model method!
 
     def set_auto_fix_enabled(self, enabled: bool) -> None:
         """Enable or disable auto-fixing."""

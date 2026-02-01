@@ -8,9 +8,11 @@ if __name__ == "__main__":
     import sys
     import asyncio
 
+    from mcp_cli.config import PLATFORM_WINDOWS
+
     # Set up proper event loop policy on Windows
-    if sys.platform == "win32":
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    if sys.platform == PLATFORM_WINDOWS:
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())  # type: ignore[attr-defined]
 
     try:
         from mcp_cli.main import app

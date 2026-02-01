@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from mcp_cli.commands.definitions.help import HelpCommand
+from mcp_cli.commands.core.help import HelpCommand
 from mcp_cli.commands.base import (
     CommandMode,
     CommandResult,
@@ -120,7 +120,7 @@ class TestHelpCommandCoverage:
         assert self.help_cmd.requires_context is False
 
     @pytest.mark.asyncio
-    @patch("mcp_cli.commands.definitions.help.output")
+    @patch("mcp_cli.commands.core.help.output")
     async def test_list_commands_with_subcommands_indicator(self, mock_output):
         """Test that commands with subcommands show the ▸ indicator."""
         # Create a command group with subcommands
@@ -141,7 +141,7 @@ class TestHelpCommandCoverage:
         assert mock_output.print_table.called
 
     @pytest.mark.asyncio
-    @patch("mcp_cli.commands.definitions.help.output")
+    @patch("mcp_cli.commands.core.help.output")
     async def test_list_commands_with_many_subcommands(self, mock_output):
         """Test that commands with many subcommands are truncated in table."""
         # Create a command group with many subcommands
@@ -161,7 +161,7 @@ class TestHelpCommandCoverage:
         assert mock_output.print_table.called
 
     @pytest.mark.asyncio
-    @patch("mcp_cli.commands.definitions.help.output")
+    @patch("mcp_cli.commands.core.help.output")
     async def test_list_commands_shows_subcommands_column(self, mock_output):
         """Test that the subcommands column appears when there are command groups."""
         # Create regular command
@@ -182,7 +182,7 @@ class TestHelpCommandCoverage:
         assert mock_output.print_table.called
 
     @pytest.mark.asyncio
-    @patch("mcp_cli.commands.definitions.help.output")
+    @patch("mcp_cli.commands.core.help.output")
     async def test_list_commands_shows_subcommand_hints(self, mock_output):
         """Test that hints about subcommands are shown."""
         # Create a command group with subcommands
@@ -211,7 +211,7 @@ class TestHelpCommandCoverage:
 
         # Mock the registry to raise an exception
         with patch(
-            "mcp_cli.commands.definitions.help.UnifiedCommandRegistry"
+            "mcp_cli.commands.core.help.UnifiedCommandRegistry"
         ) as mock_registry_class:
             mock_registry = MagicMock()
             mock_registry.list_commands.side_effect = RuntimeError("Test error")
@@ -226,7 +226,7 @@ class TestHelpCommandCoverage:
             assert "Test error" in result.error
 
     @pytest.mark.asyncio
-    @patch("mcp_cli.commands.definitions.help.output")
+    @patch("mcp_cli.commands.core.help.output")
     async def test_list_commands_with_aliases_and_subcommands(self, mock_output):
         """Test listing commands that have both aliases and subcommands."""
         # Create a command group with aliases and subcommands
@@ -247,7 +247,7 @@ class TestHelpCommandCoverage:
         assert mock_output.print_table.called
 
     @pytest.mark.asyncio
-    @patch("mcp_cli.commands.definitions.help.output")
+    @patch("mcp_cli.commands.core.help.output")
     async def test_list_commands_with_few_subcommands(self, mock_output):
         """Test that commands with 3 or fewer subcommands show all names."""
         # Create a command group with exactly 3 subcommands

@@ -14,6 +14,7 @@ def test_ping_command_exists():
     assert result.exit_code == 0
     assert "Test connectivity to MCP servers" in result.stdout
 
+
 def test_all_direct_commands_are_registered():
     """
     Test that all commands intended for direct registration are present.
@@ -40,4 +41,6 @@ def test_all_direct_commands_are_registered():
     registered_commands = [cmd.name for cmd in app.registered_commands if cmd.name]
 
     for cmd_name in expected_commands:
-        assert cmd_name in registered_commands, f"Command '{cmd_name}' is not registered in main.py"
+        assert cmd_name in registered_commands, (
+            f"Command '{cmd_name}' is not registered in main.py"
+        )

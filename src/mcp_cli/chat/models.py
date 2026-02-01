@@ -1,11 +1,14 @@
-"""Chat-specific Pydantic models."""
+"""Chat-specific Pydantic models and protocols."""
 
 from __future__ import annotations
 
 import json
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from mcp_cli.tools.manager import ToolManager
 
 
 class MessageRole(str, Enum):
@@ -15,6 +18,28 @@ class MessageRole(str, Enum):
     ASSISTANT = "assistant"
     SYSTEM = "system"
     TOOL = "tool"
+
+
+class MessageField(str, Enum):
+    """Message field names for API serialization."""
+
+    ROLE = "role"
+    CONTENT = "content"
+    NAME = "name"
+    TOOL_CALLS = "tool_calls"
+    TOOL_CALL_ID = "tool_call_id"
+    REASONING_CONTENT = "reasoning_content"
+
+
+class ToolCallField(str, Enum):
+    """Tool call field names for API serialization."""
+
+    ID = "id"
+    TYPE = "type"
+    FUNCTION = "function"
+    INDEX = "index"
+    NAME = "name"
+    ARGUMENTS = "arguments"
 
 
 class FunctionCall(BaseModel):
@@ -45,17 +70,18 @@ class ToolCallData(BaseModel):
     id: str = Field(description="Tool call ID")
     type: str = Field(default="function", description="Type of tool call")
     function: FunctionCall = Field(description="Function call data")
+    index: int = Field(default=0, description="Tool call index in batch")
 
     model_config = {"frozen": False}
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for API."""
         return {
-            "id": self.id,
-            "type": self.type,
-            "function": {
-                "name": self.function.name,
-                "arguments": self.function.arguments,
+            ToolCallField.ID: self.id,
+            ToolCallField.TYPE: self.type,
+            ToolCallField.FUNCTION: {
+                ToolCallField.NAME: self.function.name,
+                ToolCallField.ARGUMENTS: self.function.arguments,
             },
         }
 
@@ -63,13 +89,30 @@ class ToolCallData(BaseModel):
     def from_dict(cls, data: dict[str, Any]) -> "ToolCallData":
         """Create from dict."""
         return cls(
-            id=data["id"],
-            type=data.get("type", "function"),
+            id=data.get(ToolCallField.ID, ""),
+            type=data.get(ToolCallField.TYPE, "function"),
+            index=data.get(ToolCallField.INDEX, 0),
             function=FunctionCall(
-                name=data["function"]["name"],
-                arguments=data["function"]["arguments"],
+                name=data.get(ToolCallField.FUNCTION, {}).get(ToolCallField.NAME, ""),
+                arguments=data.get(ToolCallField.FUNCTION, {}).get(
+                    ToolCallField.ARGUMENTS, ""
+                ),
             ),
         )
+
+    def merge_chunk(self, chunk: "ToolCallData") -> None:
+        """Merge data from a streaming chunk into this tool call.
+
+        Args:
+            chunk: New chunk data to merge
+        """
+        # Update function name if provided
+        if chunk.function.name:
+            self.function.name = chunk.function.name
+
+        # Accumulate arguments (concatenate JSON strings)
+        if chunk.function.arguments:
+            self.function.arguments += chunk.function.arguments
 
 
 class Message(BaseModel):
@@ -86,12 +129,36 @@ class Message(BaseModel):
     tool_call_id: str | None = Field(
         default=None, description="Tool call ID (for tool response messages)"
     )
+    reasoning_content: str | None = Field(
+        default=None,
+        description="Reasoning content (for models like DeepSeek reasoner)",
+    )
 
     model_config = {"frozen": False}
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dict for LLM API calls."""
-        return self.model_dump(exclude_none=True, mode="json")  # type: ignore[no-any-return]
+        """Convert to dict for LLM API calls.
+
+        Handles provider-specific requirements:
+        - OpenAI: Requires 'content' field in assistant messages with tool_calls
+        - DeepSeek Reasoner: Requires 'reasoning_content' field when model provided it
+        """
+        result = self.model_dump(exclude_none=True, mode="json")
+
+        # CRITICAL FIX: OpenAI (especially newer models like gpt-5-mini) requires
+        # the 'content' field to be present in assistant messages with tool_calls,
+        # even if it's null. Without this, some models may hang or reject the request.
+        if self.role == MessageRole.ASSISTANT and MessageField.TOOL_CALLS in result:
+            if MessageField.CONTENT not in result:
+                result[MessageField.CONTENT] = None
+
+        # NOTE: reasoning_content is automatically included if set (not None)
+        # because we're not explicitly excluding it. The exclude_none=True will
+        # only exclude it if it's None. This is correct behavior per DeepSeek docs:
+        # https://api-docs.deepseek.com/guides/thinking_mode#tool-calls
+        # "the user needs to send the reasoning content back to the API"
+
+        return result  # type: ignore[no-any-return]
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Message:
@@ -188,3 +255,80 @@ class ChatStatus(BaseModel):
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict."""
         return self.model_dump(mode="json")  # type: ignore[no-any-return]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Protocols - formalize interfaces for type safety
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@runtime_checkable
+class ToolProcessorContext(Protocol):
+    """Protocol for context objects used by ToolProcessor.
+
+    Formalizes the interface instead of using dynamic getattr/setattr.
+    This ensures type safety and makes dependencies explicit.
+    """
+
+    # Required attributes
+    tool_manager: "ToolManager"
+    conversation_history: list[Message]
+
+    # Optional processor back-reference (set by ToolProcessor)
+    tool_processor: Any  # Will be set to ToolProcessor instance
+
+    def get_display_name_for_tool(self, tool_name: str) -> str:
+        """Get display name for a tool (may be namespaced)."""
+        ...
+
+    def inject_tool_message(self, message: Message) -> None:
+        """Add a message directly to conversation history."""
+        ...
+
+
+@runtime_checkable
+class UIManagerProtocol(Protocol):
+    """Protocol for UI managers used by ToolProcessor.
+
+    Defines the minimal interface required by ToolProcessor.
+    The actual ChatUIManager has many more methods, but these are
+    the core ones used during tool execution.
+
+    Note: Uses Any return types where the implementation varies.
+    """
+
+    # Core attributes
+    interrupt_requested: bool
+    verbose_mode: bool
+    console: Any  # Rich Console instance
+
+    def print_tool_call(self, tool_name: str, arguments: dict[str, Any]) -> None:
+        """Print tool call info to console."""
+        ...
+
+    def do_confirm_tool_execution(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+    ) -> bool:
+        """Ask user to confirm tool execution.
+
+        Returns True if user confirms, False otherwise.
+        """
+        ...
+
+    async def start_tool_execution(
+        self, tool_name: str, arguments: dict[str, Any]
+    ) -> None:
+        """Signal start of tool execution for UI updates."""
+        ...
+
+    async def finish_tool_execution(
+        self, result: str | None = None, success: bool = True
+    ) -> None:
+        """Signal end of tool execution for UI updates."""
+        ...
+
+    def finish_tool_calls(self) -> None:
+        """Clean up after all tool calls complete."""
+        ...

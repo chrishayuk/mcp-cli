@@ -1,8 +1,4 @@
-# src/mcp_cli/model_management/client_factory.py
-"""
-from __future__ import annotations
-
-Client factory for creating LLM clients using chuk_llm.
+"""mcp_cli.model_management.client_factory - Client factory for creating LLM clients using chuk_llm.
 
 This module handles the creation and caching of LLM clients for all providers
 using chuk_llm's unified client factory. For custom OpenAI-compatible providers,
@@ -11,10 +7,15 @@ we pass api_key and api_base overrides to chuk_llm's get_client() function.
 NO direct OpenAI client creation - everything goes through chuk_llm.
 """
 
+from __future__ import annotations
+
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mcp_cli.model_management.provider import RuntimeProviderConfig
+
+if TYPE_CHECKING:
+    from chuk_llm.llm.core.base import BaseLLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ class ClientFactory:
         model: str | None,
         config: RuntimeProviderConfig | None = None,
         chuk_config: Any = None,
-    ) -> Any:
+    ) -> "BaseLLMClient":
         """
         Get or create a client for the specified provider and model.
 

@@ -2,8 +2,8 @@
 
 import pytest
 from unittest.mock import patch, Mock
-from mcp_cli.commands.definitions.theme_singular import ThemeSingularCommand
-from mcp_cli.commands.definitions.themes_plural import ThemesPluralCommand
+from mcp_cli.commands.theme.theme_singular import ThemeSingularCommand
+from mcp_cli.commands.theme.themes_plural import ThemesPluralCommand
 
 
 class TestThemeSingularCommand:
@@ -26,36 +26,38 @@ class TestThemeSingularCommand:
         """Test showing current theme."""
         # Just test that the command executes without error
         # The actual theme display is handled by chuk_term which is tested separately
-        with patch("chuk_term.ui") as mock_ui:
-            # Mock the entire ui module to avoid import issues
-            mock_ui.output = Mock()
-            mock_ui.theme = Mock()
-            mock_ui.theme.get_theme.return_value = Mock(
-                name="dark", description="Dark theme"
-            )
+        with patch("chuk_term.ui.theme.get_theme") as mock_get_theme:
+            with patch("mcp_cli.utils.preferences.get_preference_manager") as mock_pref:
+                mock_theme = Mock()
+                mock_theme.description = "Dark theme"
+                mock_get_theme.return_value = mock_theme
+                mock_pref_mgr = Mock()
+                mock_pref_mgr.get_theme.return_value = "dark"
+                mock_pref.return_value = mock_pref_mgr
+                with patch("chuk_term.ui.output"):
+                    result = await command.execute()
 
-            result = await command.execute()
-
-            # We just care that it executes successfully
-            assert result.success is True
+                    # We just care that it executes successfully
+                    assert result.success is True
 
     @pytest.mark.asyncio
     async def test_execute_set_theme(self, command):
         """Test setting a theme."""
-        with patch("mcp_cli.commands.actions.theme.theme_action_async") as mock_action:
-            result = await command.execute(args=["dark"])
+        with patch("chuk_term.ui.theme.set_theme") as mock_set:
+            with patch("mcp_cli.utils.preferences.get_preference_manager") as mock_pref:
+                mock_pref_mgr = Mock()
+                mock_pref.return_value = mock_pref_mgr
+                with patch("chuk_term.ui.output"):
+                    result = await command.execute(args=["dark"])
 
-            mock_action.assert_called_once()
-            call_args = mock_action.call_args[0][0]
-            assert call_args.theme_name == "dark"
-            assert result.success is True
+                    mock_set.assert_called_once_with("dark")
+                    mock_pref_mgr.set_theme.assert_called_once_with("dark")
+                    assert result.success is True
 
     @pytest.mark.asyncio
     async def test_execute_invalid_theme(self, command):
         """Test setting an invalid theme."""
-        with patch("mcp_cli.commands.actions.theme.theme_action_async") as mock_action:
-            mock_action.side_effect = ValueError("Invalid theme")
-
+        with patch("chuk_term.ui.output"):
             result = await command.execute(args=["invalid"])
 
             # The command will catch the exception and return an error
@@ -80,16 +82,11 @@ class TestThemesPluralCommand:
     @pytest.mark.asyncio
     async def test_execute_list_themes(self, command):
         """Test listing available themes."""
-        with patch("mcp_cli.commands.actions.theme.theme_action_async") as mock_action:
-            # Mock the theme action
-            mock_action.return_value = (
-                None  # theme_action_async doesn't return anything
-            )
+        with patch("mcp_cli.utils.preferences.get_preference_manager") as mock_pref:
+            mock_pref_mgr = Mock()
+            mock_pref_mgr.get_theme.return_value = "dark"
+            mock_pref.return_value = mock_pref_mgr
+            with patch("chuk_term.ui.output"):
+                result = await command.execute()
 
-            result = await command.execute()
-
-            assert result.success is True
-            mock_action.assert_called_once()
-            call_args = mock_action.call_args[0][0]
-            # For themes plural, it shows list (no specific theme_name)
-            assert call_args.theme_name is None or call_args.theme_name == ""
+                assert result.success is True

@@ -5,6 +5,7 @@ Clean chat handler that uses ModelManager and ChatContext with streaming support
 
 from __future__ import annotations
 
+import asyncio
 import gc
 import logging
 
@@ -17,12 +18,14 @@ from chuk_term.ui import (
 )
 
 # Local imports
-from mcp_cli.chat.chat_context import ChatContext, TestChatContext
+from mcp_cli.chat.chat_context import ChatContext
+from mcp_cli.chat.testing import TestChatContext
 from mcp_cli.chat.ui_manager import ChatUIManager
 from mcp_cli.chat.conversation import ConversationProcessor
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.context import initialize_context
 from mcp_cli.config import initialize_config
+from mcp_cli.config.defaults import DEFAULT_PROVIDER, DEFAULT_MODEL
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -35,11 +38,17 @@ async def handle_chat_mode(
     api_base: str | None = None,
     api_key: str | None = None,
     confirm_mode: str | None = None,
-    max_turns: int = 30,
+    max_turns: int = 100,
     model_manager=None,  # FIXED: Accept model_manager from caller
+    runtime_config=None,  # RuntimeConfig | None
 ) -> bool:
     """
     Launch the interactive chat loop with streaming support.
+
+    Runtime uses adaptive policy: strict core with smooth wrapper.
+    - Always enforces grounding rules (no ungrounded numeric calls)
+    - Automatically attempts to repair blocked calls (rebind, symbolic fallback)
+    - Only surfaces errors when all repair options exhausted
 
     Args:
         tool_manager: Initialized ToolManager instance
@@ -48,8 +57,9 @@ async def handle_chat_mode(
         api_base: API base URL override (optional)
         api_key: API key override (optional)
         confirm_mode: Tool confirmation mode override (optional)
-        max_turns: Maximum conversation turns before forcing exit (default: 30)
+        max_turns: Maximum conversation turns before forcing exit (default: 100)
         model_manager: Pre-configured ModelManager (optional, creates new if None)
+        runtime_config: Runtime configuration with timeout overrides (optional)
 
     Returns:
         True if session ended normally, False on failure
@@ -65,8 +75,8 @@ async def handle_chat_mode(
         # Initialize global context manager for commands to work
         app_context = initialize_context(
             tool_manager=tool_manager,
-            provider=provider or "openai",
-            model=model or "gpt-4",
+            provider=provider or DEFAULT_PROVIDER,
+            model=model or DEFAULT_MODEL,
             api_base=api_base,
             api_key=api_key,
             model_manager=model_manager,  # FIXED: Pass model_manager with runtime providers
@@ -131,7 +141,7 @@ async def handle_chat_mode(
 
         # UI and conversation processor
         ui = ChatUIManager(ctx)
-        convo = ConversationProcessor(ctx, ui)
+        convo = ConversationProcessor(ctx, ui, runtime_config)
 
         # Main chat loop with streaming support
         await _run_enhanced_chat_loop(ui, ctx, convo, max_turns)
@@ -170,7 +180,8 @@ async def handle_chat_mode_for_testing(
     stream_manager,
     provider: str | None = None,
     model: str | None = None,
-    max_turns: int = 30,
+    max_turns: int = 100,
+    runtime_config=None,  # RuntimeConfig | None
 ) -> bool:
     """
     Launch chat mode for testing with stream_manager.
@@ -181,7 +192,8 @@ async def handle_chat_mode_for_testing(
         stream_manager: Test stream manager
         provider: Provider for testing
         model: Model for testing
-        max_turns: Maximum conversation turns before forcing exit (default: 30)
+        max_turns: Maximum conversation turns before forcing exit (default: 100)
+        runtime_config: Runtime configuration with timeout overrides (optional)
 
     Returns:
         True if session ended normally, False on failure
@@ -207,7 +219,7 @@ async def handle_chat_mode_for_testing(
 
         # UI and conversation processor
         ui = ChatUIManager(ctx)
-        convo = ConversationProcessor(ctx, ui)
+        convo = ConversationProcessor(ctx, ui, runtime_config)
 
         # Main chat loop with streaming support
         await _run_enhanced_chat_loop(ui, ctx, convo, max_turns)
@@ -233,7 +245,7 @@ async def _run_enhanced_chat_loop(
     ui: ChatUIManager,
     ctx: ChatContext,
     convo: ConversationProcessor,
-    max_turns: int = 30,
+    max_turns: int = 100,
 ) -> None:
     """
     Run the main chat loop with enhanced streaming support.
@@ -242,7 +254,7 @@ async def _run_enhanced_chat_loop(
         ui: UI manager with streaming coordination
         ctx: Chat context
         convo: Conversation processor with streaming support
-        max_turns: Maximum conversation turns before forcing exit (default: 30)
+        max_turns: Maximum conversation turns before forcing exit (default: 100)
     """
     while True:
         try:
@@ -281,13 +293,16 @@ async def _run_enhanced_chat_loop(
             # Normal conversation turn with streaming support
             if ui.verbose_mode:
                 ui.print_user_message(user_msg)
-            ctx.add_user_message(user_msg)
+            await ctx.add_user_message(user_msg)
 
             # Use the enhanced conversation processor that handles streaming
             await convo.process_conversation(max_turns=max_turns)
 
-        except KeyboardInterrupt:
-            # Handle Ctrl+C gracefully
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            # Handle Ctrl+C gracefully (KeyboardInterrupt or asyncio.CancelledError in async code)
+            logger.info(
+                f"Interrupt in chat loop - streaming={ui.is_streaming_response}, tools_running={ui.tools_running}"
+            )
             if ui.is_streaming_response:
                 output.warning("\nStreaming interrupted - type 'exit' to quit.")
                 ui.interrupt_streaming()
@@ -296,6 +311,9 @@ async def _run_enhanced_chat_loop(
                 ui._interrupt_now()
             else:
                 output.warning("\nInterrupted - type 'exit' to quit.")
+            # CRITICAL: Continue the loop instead of exiting
+            logger.info("Continuing chat loop after interrupt...")
+            continue
         except EOFError:
             output.panel("EOF detected - exiting chat.", style="red", title="Exit")
             break
@@ -316,7 +334,7 @@ async def _safe_cleanup(ui: ChatUIManager) -> None:
         # Stop any streaming responses
         if ui.is_streaming_response:
             ui.interrupt_streaming()
-            ui.stop_streaming_response()
+            ui.stop_streaming_response_sync()
 
         # Stop any tool execution
         if ui.tools_running:

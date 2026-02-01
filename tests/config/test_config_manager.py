@@ -6,6 +6,7 @@ Target: 90%+ coverage
 
 import json
 import pytest
+from unittest.mock import patch, MagicMock
 
 from mcp_cli.config.config_manager import (
     ServerConfig,
@@ -134,7 +135,7 @@ class TestMCPConfig:
         config = MCPConfig()
         assert config.servers == {}
         assert config.default_provider == "openai"
-        assert config.default_model == "gpt-4"
+        assert config.default_model == "gpt-4o-mini"
         assert config.theme == "default"
         assert config.verbose is True
         assert config.confirm_tools is True
@@ -683,3 +684,363 @@ class TestValidateServerConfig:
 
         assert is_valid is False
         assert len(errors) == 2
+
+
+class TestMCPConfigLoadFromFileTimeouts:
+    """Test loading timeouts from config file."""
+
+    def test_load_with_timeouts(self, tmp_path):
+        """Test loading config with timeout configuration."""
+        # LegacyMCPConfig parses timeouts section and creates TimeoutConfig
+        config_data = {
+            "mcpServers": {},
+            "timeouts": {
+                "streamingChunkTimeout": 60.0,
+                "streamingGlobalTimeout": 600.0,
+                "streamingFirstChunkTimeout": 90.0,
+                "toolExecutionTimeout": 180.0,
+                "serverInitTimeout": 60.0,
+                "httpRequestTimeout": 45.0,
+                "httpConnectTimeout": 15.0,
+            },
+        }
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_data))
+
+        config = MCPConfig.load_from_file(config_file)
+
+        # Verify timeouts object exists and has positive values
+        assert config.timeouts is not None
+        assert config.timeouts.streaming_chunk > 0
+        assert config.timeouts.streaming_global > 0
+
+    def test_load_with_tools_config(self, tmp_path):
+        """Test loading config with tool configuration."""
+        config_data = {
+            "mcpServers": {},
+            "tools": {
+                "includeTools": ["tool1", "tool2"],
+                "excludeTools": ["bad_tool"],
+                "dynamicToolsEnabled": False,
+                "confirmTools": True,
+                "maxConcurrency": 5,
+            },
+        }
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps(config_data))
+
+        config = MCPConfig.load_from_file(config_file)
+
+        assert config.tools.include_tools == ["tool1", "tool2"]
+        assert config.tools.exclude_tools == ["bad_tool"]
+        assert config.tools.dynamic_tools_enabled is False
+        assert config.tools.confirm_tools is True
+        assert config.tools.max_concurrency == 5
+
+    def test_load_with_vault_non_defaults(self, tmp_path):
+        """Test saving config with non-default vault settings."""
+        config = MCPConfig()
+        config.vault_mount_point = "kv"
+        config.vault_path_prefix = "custom/path"
+        config.vault_namespace = "prod"
+
+        config_file = tmp_path / "vault_config.json"
+        config.save_to_file(config_file)
+
+        with open(config_file) as f:
+            data = json.load(f)
+
+        assert "tokenStorage" in data
+        assert data["tokenStorage"]["vaultMountPoint"] == "kv"
+        assert data["tokenStorage"]["vaultPathPrefix"] == "custom/path"
+        assert data["tokenStorage"]["vaultNamespace"] == "prod"
+
+    def test_load_with_error_returns_empty_config(self, tmp_path):
+        """Test that loading invalid config returns default config."""
+        config_file = tmp_path / "invalid.json"
+        config_file.write_text("{ invalid json }")
+
+        config = MCPConfig.load_from_file(config_file)
+        # Should return default config rather than crashing
+        assert config is not None
+        assert config.servers == {}
+
+
+class TestConfigManagerPackageFallback:
+    """Test ConfigManager package fallback behavior."""
+
+    def test_initialize_without_path_no_cwd_file(self, tmp_path, monkeypatch):
+        """Test initialize without path when no server_config.json in cwd."""
+        monkeypatch.chdir(tmp_path)
+        # No server_config.json in tmp_path
+
+        manager = ConfigManager()
+        manager.reset()
+
+        # Mock the importlib.resources behavior
+        with patch("importlib.resources.files") as mock_files:
+            mock_package = MagicMock()
+            mock_config_file = MagicMock()
+            mock_config_file.is_file.return_value = False
+            mock_package.__truediv__ = MagicMock(return_value=mock_config_file)
+            mock_files.return_value = mock_package
+
+            config = manager.initialize()
+            assert config is not None
+
+    def test_initialize_with_cwd_file_priority(self, tmp_path, monkeypatch):
+        """Test that cwd config takes priority over bundled."""
+        config_data = {"mcpServers": {"local-server": {"command": "local-cmd"}}}
+        config_file = tmp_path / "server_config.json"
+        config_file.write_text(json.dumps(config_data))
+
+        monkeypatch.chdir(tmp_path)
+
+        manager = ConfigManager()
+        manager.reset()
+
+        config = manager.initialize()
+        assert "local-server" in config.servers
+
+
+class TestRuntimeConfigOld:
+    """Test legacy RuntimeConfig in config_manager.py."""
+
+    def test_runtime_config_creation(self):
+        """Test creating RuntimeConfig."""
+        from mcp_cli.config.config_manager import RuntimeConfig as LegacyRuntimeConfig
+
+        mcp_config = MCPConfig()
+        runtime = LegacyRuntimeConfig(mcp_config)
+
+        assert runtime.mcp_config == mcp_config
+        assert runtime.cli_overrides == {}
+
+    def test_runtime_config_with_cli_overrides(self):
+        """Test RuntimeConfig with CLI overrides."""
+        from mcp_cli.config.config_manager import RuntimeConfig as LegacyRuntimeConfig
+
+        mcp_config = MCPConfig()
+        cli_overrides = {"streaming_chunk_timeout": 60.0}
+        runtime = LegacyRuntimeConfig(mcp_config, cli_overrides)
+
+        assert runtime.cli_overrides == cli_overrides
+
+    def test_get_timeout_from_cli(self):
+        """Test getting timeout from CLI overrides."""
+        from mcp_cli.config.config_manager import RuntimeConfig as LegacyRuntimeConfig
+
+        mcp_config = MCPConfig()
+        cli_overrides = {"streaming_chunk_timeout": 75.0}
+        runtime = LegacyRuntimeConfig(mcp_config, cli_overrides)
+
+        timeout = runtime.get_timeout("streaming_chunk")
+        assert timeout == 75.0
+
+    def test_get_timeout_from_env(self, monkeypatch):
+        """Test getting timeout from environment variable."""
+        from mcp_cli.config.config_manager import RuntimeConfig as LegacyRuntimeConfig
+
+        monkeypatch.setenv("MCP_STREAMING_CHUNK_TIMEOUT", "88.0")
+
+        mcp_config = MCPConfig()
+        runtime = LegacyRuntimeConfig(mcp_config)
+
+        timeout = runtime.get_timeout("streaming_chunk")
+        assert timeout == 88.0
+
+    def test_get_timeout_from_tool_timeout_env(self, monkeypatch):
+        """Test MCP_TOOL_TIMEOUT applies to multiple timeouts."""
+        from mcp_cli.config.config_manager import RuntimeConfig as LegacyRuntimeConfig
+
+        monkeypatch.setenv("MCP_TOOL_TIMEOUT", "150.0")
+
+        mcp_config = MCPConfig()
+        runtime = LegacyRuntimeConfig(mcp_config)
+
+        assert runtime.get_timeout("streaming_chunk") == 150.0
+        assert runtime.get_timeout("streaming_global") == 150.0
+        assert runtime.get_timeout("tool_execution") == 150.0
+
+    def test_get_timeout_invalid_env_value(self, monkeypatch):
+        """Test invalid env value falls back to config."""
+        from mcp_cli.config.config_manager import RuntimeConfig as LegacyRuntimeConfig
+
+        monkeypatch.setenv("MCP_STREAMING_CHUNK_TIMEOUT", "not_a_number")
+
+        mcp_config = MCPConfig()
+        runtime = LegacyRuntimeConfig(mcp_config)
+
+        # Should not crash, should get config value
+        timeout = runtime.get_timeout("streaming_chunk")
+        assert timeout > 0
+
+    def test_get_timeout_fallback(self):
+        """Test timeout fallback when not found anywhere."""
+        from mcp_cli.config.config_manager import RuntimeConfig as LegacyRuntimeConfig
+
+        mcp_config = MCPConfig()
+        runtime = LegacyRuntimeConfig(mcp_config)
+
+        # Non-existent timeout should fall back to 120.0
+        timeout = runtime.get_timeout("nonexistent_timeout")
+        assert timeout == 120.0
+
+    def test_get_tool_config_value_from_cli(self):
+        """Test getting tool config from CLI overrides."""
+        from mcp_cli.config.config_manager import RuntimeConfig as LegacyRuntimeConfig
+
+        mcp_config = MCPConfig()
+        cli_overrides = {"include_tools": ["tool1", "tool2"]}
+        runtime = LegacyRuntimeConfig(mcp_config, cli_overrides)
+
+        tools = runtime.get_tool_config_value("include_tools")
+        assert tools == ["tool1", "tool2"]
+
+    def test_get_tool_config_value_from_env_list(self, monkeypatch):
+        """Test getting tool list from environment."""
+        from mcp_cli.config.config_manager import RuntimeConfig as LegacyRuntimeConfig
+
+        monkeypatch.setenv("MCP_CLI_INCLUDE_TOOLS", "tool_a,tool_b,tool_c")
+
+        mcp_config = MCPConfig()
+        runtime = LegacyRuntimeConfig(mcp_config)
+
+        tools = runtime.get_tool_config_value("include_tools")
+        assert tools == ["tool_a", "tool_b", "tool_c"]
+
+    def test_get_tool_config_value_dynamic_tools_enabled(self, monkeypatch):
+        """Test getting dynamic_tools_enabled from env."""
+        from mcp_cli.config.config_manager import RuntimeConfig as LegacyRuntimeConfig
+
+        monkeypatch.setenv("MCP_CLI_DYNAMIC_TOOLS_ENABLED", "true")
+
+        mcp_config = MCPConfig()
+        runtime = LegacyRuntimeConfig(mcp_config)
+
+        enabled = runtime.get_tool_config_value("dynamic_tools_enabled")
+        assert enabled is True
+
+    def test_get_tool_config_value_confirm_tools_disabled(self, monkeypatch):
+        """Test getting confirm_tools disabled from env."""
+        from mcp_cli.config.config_manager import RuntimeConfig as LegacyRuntimeConfig
+
+        monkeypatch.setenv("MCP_CLI_CONFIRM_TOOLS", "false")
+
+        mcp_config = MCPConfig()
+        runtime = LegacyRuntimeConfig(mcp_config)
+
+        confirm = runtime.get_tool_config_value("confirm_tools")
+        assert confirm is False
+
+    def test_get_tool_config_value_max_concurrency(self, monkeypatch):
+        """Test getting max_concurrency from env."""
+        from mcp_cli.config.config_manager import RuntimeConfig as LegacyRuntimeConfig
+
+        monkeypatch.setenv("MCP_CLI_MAX_CONCURRENCY", "10")
+
+        mcp_config = MCPConfig()
+        runtime = LegacyRuntimeConfig(mcp_config)
+
+        concurrency = runtime.get_tool_config_value("max_concurrency")
+        assert concurrency == 10
+
+    def test_get_tool_config_value_invalid_max_concurrency(self, monkeypatch):
+        """Test invalid max_concurrency falls back to config."""
+        from mcp_cli.config.config_manager import RuntimeConfig as LegacyRuntimeConfig
+
+        monkeypatch.setenv("MCP_CLI_MAX_CONCURRENCY", "not_a_number")
+
+        mcp_config = MCPConfig()
+        runtime = LegacyRuntimeConfig(mcp_config)
+
+        concurrency = runtime.get_tool_config_value("max_concurrency")
+        # Should get from config, not crash
+        assert concurrency is not None
+
+    def test_get_all_timeouts(self):
+        """Test getting all timeouts."""
+        from mcp_cli.config.config_manager import RuntimeConfig as LegacyRuntimeConfig
+
+        mcp_config = MCPConfig()
+        runtime = LegacyRuntimeConfig(mcp_config)
+
+        all_timeouts = runtime.get_all_timeouts()
+        assert "streaming_chunk" in all_timeouts
+        assert "streaming_global" in all_timeouts
+        assert "tool_execution" in all_timeouts
+        assert "server_init" in all_timeouts
+
+    def test_update_from_cli(self):
+        """Test update_from_cli method."""
+        from mcp_cli.config.config_manager import RuntimeConfig as LegacyRuntimeConfig
+
+        mcp_config = MCPConfig()
+        runtime = LegacyRuntimeConfig(mcp_config)
+
+        runtime.update_from_cli(streaming_chunk_timeout=99.0, custom_key="value")
+
+        assert runtime.cli_overrides["streaming_chunk_timeout"] == 99.0
+        assert runtime.cli_overrides["custom_key"] == "value"
+
+
+class TestGetRuntimeConfig:
+    """Test get_runtime_config function."""
+
+    def test_get_runtime_config_with_config(self):
+        """Test get_runtime_config with provided config."""
+        from mcp_cli.config.config_manager import (
+            get_runtime_config,
+            RuntimeConfig as LegacyRuntimeConfig,
+        )
+
+        mcp_config = MCPConfig()
+        runtime = get_runtime_config(mcp_config)
+
+        assert isinstance(runtime, LegacyRuntimeConfig)
+
+    def test_get_runtime_config_without_config(self, tmp_path, monkeypatch):
+        """Test get_runtime_config without config uses ConfigManager."""
+        from mcp_cli.config.config_manager import (
+            get_runtime_config,
+            RuntimeConfig as LegacyRuntimeConfig,
+        )
+
+        # Reset ConfigManager
+        manager = ConfigManager()
+        manager.reset()
+
+        # This will create default config since ConfigManager not initialized
+        runtime = get_runtime_config()
+
+        assert isinstance(runtime, LegacyRuntimeConfig)
+
+    def test_get_runtime_config_with_cli_overrides(self):
+        """Test get_runtime_config with CLI overrides."""
+        from mcp_cli.config.config_manager import get_runtime_config
+
+        mcp_config = MCPConfig()
+        cli_overrides = {"timeout": 60.0}
+        runtime = get_runtime_config(mcp_config, cli_overrides)
+
+        assert runtime.cli_overrides == cli_overrides
+
+
+class TestServerConfigOAuth:
+    """Test ServerConfig OAuth handling."""
+
+    def test_from_dict_with_oauth_dict(self):
+        """Test ServerConfig.from_dict when oauth is provided as dict."""
+        data = {
+            "command": "python",
+            "oauth": {
+                "client_id": "test",
+                "authorization_url": "https://auth.example.com/authorize",
+                "token_url": "https://auth.example.com/token",
+            },
+        }
+
+        config = ServerConfig.from_dict("test", data)
+        assert config.command == "python"
+        assert config.oauth is not None
+        assert config.oauth.client_id == "test"

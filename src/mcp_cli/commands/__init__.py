@@ -69,27 +69,39 @@ def register_all_commands() -> None:
 
     This should be called once during application startup.
     """
-    # Import all command implementations
-    from mcp_cli.commands.definitions.servers import ServersCommand
-    from mcp_cli.commands.definitions.server_singular import ServerSingularCommand
-    from mcp_cli.commands.definitions.help import HelpCommand
-    from mcp_cli.commands.definitions.exit import ExitCommand
-    from mcp_cli.commands.definitions.clear import ClearCommand
-    from mcp_cli.commands.definitions.tools import ToolsCommand
-    from mcp_cli.commands.definitions.providers import ProviderCommand
-    from mcp_cli.commands.definitions.provider_singular import ProviderSingularCommand
-    from mcp_cli.commands.definitions.models import ModelCommand
-    from mcp_cli.commands.definitions.ping import PingCommand
-    from mcp_cli.commands.definitions.theme_singular import ThemeSingularCommand
-    from mcp_cli.commands.definitions.themes_plural import ThemesPluralCommand
-    from mcp_cli.commands.definitions.resources import ResourcesCommand
-    from mcp_cli.commands.definitions.prompts import PromptsCommand
-    from mcp_cli.commands.definitions.conversation import ConversationCommand
-    from mcp_cli.commands.definitions.verbose import VerboseCommand
-    from mcp_cli.commands.definitions.interrupt import InterruptCommand
-    from mcp_cli.commands.definitions.tool_history import ToolHistoryCommand
-    from mcp_cli.commands.definitions.execute_tool import ExecuteToolCommand
-    from mcp_cli.commands.definitions.token import TokenCommand
+    # Import all command implementations from grouped modules
+    from mcp_cli.commands.core import (
+        HelpCommand,
+        ExitCommand,
+        ClearCommand,
+        VerboseCommand,
+        InterruptCommand,
+    )
+    from mcp_cli.commands.tools import (
+        ToolsCommand,
+        ExecuteToolCommand,
+        ToolHistoryCommand,
+    )
+    from mcp_cli.commands.servers import (
+        ServersCommand,
+        ServerSingularCommand,
+        PingCommand,
+    )
+    from mcp_cli.commands.providers import (
+        ProviderCommand,
+        ProviderSingularCommand,
+        ModelCommand,
+    )
+    from mcp_cli.commands.resources import (
+        ResourcesCommand,
+        PromptsCommand,
+    )
+    from mcp_cli.commands.tokens import TokenCommand
+    from mcp_cli.commands.theme import (
+        ThemeSingularCommand,
+        ThemesPluralCommand,
+    )
+    from mcp_cli.commands.conversation import ConversationCommand
 
     # Register basic commands
     registry.register(HelpCommand())

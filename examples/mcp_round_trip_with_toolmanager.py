@@ -23,7 +23,7 @@ from dotenv import load_dotenv
 # ── MCP & LLM helpers ───────────────────────────────────────────────────
 from chuk_llm.llm.client import get_client
 from mcp_cli.tools.manager import ToolManager
-from mcp_cli.llm.system_prompt_generator import SystemPromptGenerator
+from mcp_cli.chat.system_prompt import generate_system_prompt
 
 colorama_init(autoreset=True)
 
@@ -95,7 +95,8 @@ async def main() -> None:
 
         # 3️⃣  Initial LLM call (allow tool usage)
         client = get_client(provider=args.provider, model=args.model)
-        sys_prompt = SystemPromptGenerator().generate_prompt({"tools": llm_tools})
+        # Tools are passed via API, not embedded in system prompt
+        sys_prompt = generate_system_prompt(llm_tools)
         messages: List[Dict[str, str | None]] = [
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": args.prompt},

@@ -1,12 +1,10 @@
-# src/mcp_cli/model_management/provider_discovery.py
-"""
-from __future__ import annotations
-
-Provider and model discovery functionality.
+"""mcp_cli.model_management.provider_discovery - Provider and model discovery functionality.
 
 This module handles discovering models from OpenAI-compatible APIs
 and refreshing model lists for providers.
 """
+
+from __future__ import annotations
 
 import logging
 
@@ -55,7 +53,9 @@ class ProviderDiscovery:
             headers = {"Authorization": f"Bearer {api_key}"}
             logger.debug(f"Discovering models from {models_url}")
 
-            with httpx.Client(timeout=10.0) as client:
+            from mcp_cli.config import DISCOVERY_TIMEOUT
+
+            with httpx.Client(timeout=DISCOVERY_TIMEOUT) as client:
                 response = client.get(models_url, headers=headers)
                 response.raise_for_status()
 

@@ -36,7 +36,7 @@ from chuk_tool_processor.registry.tool_export import openai_functions
 
 # LLM helpers
 from chuk_llm.llm.client import get_client
-from mcp_cli.llm.system_prompt_generator import SystemPromptGenerator
+from mcp_cli.chat.system_prompt import generate_system_prompt
 
 load_dotenv()
 
@@ -94,7 +94,8 @@ async def round_trip(
 
     client = get_client(provider=provider, model=model)
 
-    system_prompt = SystemPromptGenerator().generate_prompt({"tools": tools_schema})
+    # Tools are passed via the API's tools= parameter, not embedded in system prompt
+    system_prompt = generate_system_prompt(tools_schema)
     messages: List[Dict[str, Any]] = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},

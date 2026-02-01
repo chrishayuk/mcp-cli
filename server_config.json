@@ -32,15 +32,40 @@
         "@playwright/mcp@latest"
       ]
     },
+    "telnet": {
+      "url": "http://127.0.0.1:8001/mcp"
+    },
     "linkedin": {
       "url": "https://linkedin.chukai.io/mcp"
     },
     "math": {
-      "command": "uvx",
-      "args": ["chuk-mcp-math-server"]
+      "url": "https://math.chukai.io/mcp"
     },
     "weather": {
       "url": "https://weather.chukai.io/mcp"
+    },
+    "celestial": {
+      "url": "https://celestial.chukai.io/mcp"
+    },
+    "time": {
+      "url": "https://time.chukai.io/mcp"
+    },
+    "physics": {
+      "url": "https://physics.chukai.io/mcp"
+    },
+    "fetch": {
+        "command": "uvx",
+        "args": ["mcp-server-fetch"]
+      },
+    "solver": {
+      "command": "uv",
+      "args": ["--directory", "/Users/christopherhay/chris-source/chuk-ai/mcp-servers/chuk-mcp-solver", "run", "chuk-mcp-solver", "stdio"]
+    },
+    "powerpoint": {
+       "url": "https://powerpoint.chukai.io/mcp"
+    },
+    "motion": {
+       "url": "https://motion.chukai.io/mcp"
     }
   }
 }

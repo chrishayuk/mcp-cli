@@ -45,8 +45,8 @@ def load_config(config_file: str) -> MCPConfig | None:
                     # Try to parse as JSON to verify it's valid
                     import json
 
-                    config_path.read_text()
-                    json.loads(config_path.read_text())
+                    content = config_path.read_text()
+                    json.loads(content)
                 except json.JSONDecodeError:
                     # Invalid JSON - return None
                     return None
@@ -101,28 +101,6 @@ def extract_server_names(
             if not pref_manager.is_server_disabled(server_name):
                 enabled_servers.append(server_name)
         return {i: name for i, name in enumerate(enabled_servers)}
-
-
-def inject_logging_env_vars(cfg: MCPConfig, quiet: bool = False) -> None:
-    """Inject logging environment variables into MCP server configs (modifies in place)."""
-    if not cfg or not cfg.servers:
-        return
-
-    log_level = "ERROR" if quiet else "WARNING"
-    logging_env_vars = {
-        "PYTHONWARNINGS": "ignore",
-        "LOG_LEVEL": log_level,
-        "CHUK_LOG_LEVEL": log_level,
-        "MCP_LOG_LEVEL": log_level,
-    }
-
-    for server_name, server_config in cfg.servers.items():
-        # Only inject env vars for STDIO servers (those with 'command')
-        if server_config.command:
-            # Inject logging env vars if not already set
-            for env_key, env_value in logging_env_vars.items():
-                if env_key not in server_config.env:
-                    server_config.env[env_key] = env_value
 
 
 def process_options(
@@ -212,21 +190,9 @@ def process_options(
                 logger.error(f"  - {error}")
             # Continue anyway but warn user
 
-    # STEP 7: Handle MCP server logging
-    if cfg:
-        inject_logging_env_vars(cfg, quiet=quiet)
-
-        # Save modified config for MCP tool manager
-        temp_config_path = (
-            Path(config_file).parent / f"_modified_{Path(config_file).name}"
-        )
-        try:
-            cfg.save_to_file(temp_config_path)
-            os.environ["MCP_CLI_MODIFIED_CONFIG"] = str(temp_config_path)
-        except Exception as e:
-            logger.warning(f"Failed to create modified config: {e}")
-
-    # STEP 8: Build server list and extract server names
+    # STEP 7: Build server list and extract server names
+    # Note: Removed inject_logging_env_vars - env vars should be set at runtime,
+    # not injected into config files
     server_names = extract_server_names(cfg, user_specified)
 
     # STEP 9: Log server type detection for debugging
