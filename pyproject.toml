@@ -92,3 +92,8 @@ module = [
     "langchain_text_splitters.*",
 ]
 ignore_errors = true
+
+[tool.coverage.run]
+omit = [
+    "src/mcp_cli/chat/__main__.py",  # legacy dead code – imports non-existent module
+]
