@@ -2,7 +2,7 @@
 """Parallel and streaming tool execution utilities.
 
 Provides async-native parallel execution with callbacks for tool calls.
-Uses chuk-tool-processor's ToolCall/ToolResult models.
+Uses chuk-tool-processor's ToolCall/ToolResult models
 """
 
 from __future__ import annotations
