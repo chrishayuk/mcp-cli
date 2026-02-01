@@ -15,6 +15,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer, Completion
 
 # mcp cli
+from mcp_cli.config.defaults import DEFAULT_PROVIDER, DEFAULT_MODEL
 from mcp_cli.tools.manager import ToolManager
 
 # Use unified command system
@@ -23,8 +24,6 @@ from mcp_cli.adapters.interactive import (
     InteractiveExitException,
 )
 from mcp_cli.commands import register_all_commands as register_unified_commands
-
-# Keep old registry for now just for command name completion
 
 # logger
 logger = logging.getLogger(__name__)
@@ -49,8 +48,8 @@ class SlashCompleter(Completer):
 async def interactive_mode(
     stream_manager: Any = None,
     tool_manager: ToolManager | None = None,
-    provider: str = "openai",
-    model: str = "gpt-4o-mini",
+    provider: str = DEFAULT_PROVIDER,
+    model: str = DEFAULT_MODEL,
     server_names: dict[int, str | None] | None = None,
     **kwargs,
 ) -> bool:

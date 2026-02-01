@@ -295,7 +295,7 @@ Tips:
             # Build example
             example_params: dict[str, Any] = {}
             if "properties" in schema:
-                from mcp_cli.constants import (
+                from mcp_cli.config import (
                     JSON_TYPE_BOOLEAN,
                     JSON_TYPE_NUMBER,
                     JSON_TYPE_STRING,

@@ -3,7 +3,7 @@
 
 import pytest
 
-from mcp_cli.chat.state.models import (
+from chuk_ai_session_manager.guards.models import (
     CachedToolResult,
     NamedVariable,
     PerToolCallStatus,
@@ -660,21 +660,21 @@ class TestToolClassificationMethods:
 
     def test_is_discovery_tool_namespaced(self):
         """Test is_discovery_tool with namespaced tool."""
-        from mcp_cli.chat.state.models import ToolClassification
+        from chuk_ai_session_manager.guards.models import ToolClassification
 
         assert ToolClassification.is_discovery_tool("namespace.search_tools") is True
         assert ToolClassification.is_discovery_tool("namespace.sqrt") is False
 
     def test_is_idempotent_math_tool_namespaced(self):
         """Test is_idempotent_math_tool with namespaced tool."""
-        from mcp_cli.chat.state.models import ToolClassification
+        from chuk_ai_session_manager.guards.models import ToolClassification
 
         assert ToolClassification.is_idempotent_math_tool("math.sqrt") is True
         assert ToolClassification.is_idempotent_math_tool("stats.normal_cdf") is False
 
     def test_is_parameterized_tool_namespaced(self):
         """Test is_parameterized_tool with namespaced tool."""
-        from mcp_cli.chat.state.models import ToolClassification
+        from chuk_ai_session_manager.guards.models import ToolClassification
 
         assert ToolClassification.is_parameterized_tool("stats.normal_cdf") is True
         assert ToolClassification.is_parameterized_tool("math.sqrt") is False

@@ -3,7 +3,7 @@
 
 import pytest
 
-from mcp_cli.chat.state.cache import ResultCache
+from chuk_ai_session_manager.guards.cache import ResultCache
 
 
 class TestResultCache:

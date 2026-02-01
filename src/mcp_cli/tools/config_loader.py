@@ -193,6 +193,7 @@ class ConfigLoader:
                                 f"Failed to get token {namespace}:{name}: {e}"
                             )
 
+            # FIXED: dict/list recursion was unreachable (nested inside `if isinstance(value, str)`)
             elif isinstance(value, dict):
                 return {k: process_value(v) for k, v in value.items()}
             elif isinstance(value, list):

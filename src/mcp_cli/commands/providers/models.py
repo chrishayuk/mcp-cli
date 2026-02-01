@@ -196,7 +196,7 @@ class ModelListCommand(UnifiedCommand):
     def _discover_models(self, provider: str, current_model: str) -> list["ModelInfo"]:
         """Discover available models for a provider."""
         from mcp_cli.commands.models.model import ModelInfo
-        from mcp_cli.constants import PROVIDER_OLLAMA
+        from mcp_cli.config import PROVIDER_OLLAMA
 
         # For Ollama, get actual running models from CLI
         if provider.lower() == PROVIDER_OLLAMA:

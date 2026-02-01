@@ -6,6 +6,8 @@ tool execution progress, and final results.
 
 from __future__ import annotations
 
+import json
+import sys
 from typing import TYPE_CHECKING
 
 from chuk_term.ui import output
@@ -92,8 +94,6 @@ def show_final_streaming_response(
         elapsed: Elapsed time
         interrupted: Whether interrupted
     """
-    import sys
-
     # Note: Display is already cleared by manager's _finish_display()
 
     if interrupted:
@@ -138,9 +138,6 @@ def show_tool_execution_result(
     Args:
         tool: Tool execution state
     """
-    import json
-    import sys
-
     # Note: Display is already cleared by manager's _finish_display()
 
     if tool.success:

@@ -12,6 +12,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, ConfigDict, PrivateAttr, SkipValidation
 
+from mcp_cli.config.defaults import DEFAULT_PROVIDER, DEFAULT_MODEL
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.model_management import ModelManager
 from mcp_cli.tools.models import ServerInfo, ToolInfo, ConversationMessage
@@ -35,8 +36,8 @@ class ApplicationContext(BaseModel):
 
     # Configuration
     config_path: Path = Field(default_factory=lambda: Path("server_config.json"))
-    provider: str = "openai"
-    model: str = "gpt-4"
+    provider: str = DEFAULT_PROVIDER
+    model: str = DEFAULT_MODEL
     api_base: str | None = None
     api_key: str | None = None
 
@@ -90,8 +91,8 @@ class ApplicationContext(BaseModel):
         context = cls(
             tool_manager=tool_manager,
             config_path=config_path or Path("server_config.json"),
-            provider=provider or "openai",
-            model=model or "gpt-4",
+            provider=provider or DEFAULT_PROVIDER,
+            model=model or DEFAULT_MODEL,
             **kwargs,
         )
         return context

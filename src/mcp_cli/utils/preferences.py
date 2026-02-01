@@ -55,34 +55,33 @@ class ToolPatternRule(BaseModel):
 class ToolConfirmationPreferences(BaseModel):
     """Tool confirmation preferences."""
 
-    mode: str = "smart"  # Global confirmation mode
+    mode: ConfirmationMode = ConfirmationMode.SMART
     per_tool: dict[str, str] = Field(
         default_factory=dict, description="Per-tool overrides (always/never/ask)"
     )
     patterns: list[ToolPatternRule] = Field(
         default_factory=list, description="Pattern-based rules"
     )
-    risk_thresholds: dict[str, bool] = Field(
+    risk_thresholds: dict[ToolRiskLevel, bool] = Field(
         default_factory=lambda: {
-            "safe": False,  # Don't confirm safe tools
-            "moderate": True,  # Confirm moderate risk tools
-            "high": True,  # Always confirm high risk tools
+            ToolRiskLevel.SAFE: False,
+            ToolRiskLevel.MODERATE: True,
+            ToolRiskLevel.HIGH: True,
         }
     )
-    categories: dict[str, str] = Field(
+    categories: dict[str, ToolRiskLevel] = Field(
         default_factory=lambda: {
-            # Default risk categories for common tool patterns
-            "read_*": "safe",
-            "list_*": "safe",
-            "get_*": "safe",
-            "describe_*": "safe",
-            "write_*": "moderate",
-            "create_*": "moderate",
-            "update_*": "moderate",
-            "delete_*": "high",
-            "remove_*": "high",
-            "execute_*": "high",
-            "run_*": "high",
+            "read_*": ToolRiskLevel.SAFE,
+            "list_*": ToolRiskLevel.SAFE,
+            "get_*": ToolRiskLevel.SAFE,
+            "describe_*": ToolRiskLevel.SAFE,
+            "write_*": ToolRiskLevel.MODERATE,
+            "create_*": ToolRiskLevel.MODERATE,
+            "update_*": ToolRiskLevel.MODERATE,
+            "delete_*": ToolRiskLevel.HIGH,
+            "remove_*": ToolRiskLevel.HIGH,
+            "execute_*": ToolRiskLevel.HIGH,
+            "run_*": ToolRiskLevel.HIGH,
         }
     )
 
@@ -90,7 +89,7 @@ class ToolConfirmationPreferences(BaseModel):
 class UIPreferences(BaseModel):
     """UI-related preferences."""
 
-    theme: str = "default"
+    theme: Theme = Theme.DEFAULT
     verbose: bool = True
     confirm_tools: bool = True
     show_reasoning: bool = True
@@ -124,12 +123,12 @@ class CustomProvider(BaseModel):
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary (no API key stored)."""
-        return self.model_dump()  # type: ignore[no-any-return]
+        return self.model_dump()
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "CustomProvider":
         """Create from dictionary."""
-        return cls.model_validate(data)  # type: ignore[no-any-return]
+        return cls.model_validate(data)
 
     def get_env_var_name(self) -> str:
         """Get the environment variable name for this provider's API key."""
@@ -171,13 +170,13 @@ class MCPPreferences(BaseModel):
 
     def to_dict(self) -> dict[str, Any]:
         """Convert preferences to dictionary."""
-        return self.model_dump()  # type: ignore[no-any-return]
+        return self.model_dump()
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MCPPreferences":
         """Create preferences from dictionary."""
         # Pydantic will handle nested model validation automatically
-        return cls.model_validate(data)  # type: ignore[no-any-return]
+        return cls.model_validate(data)
 
 
 class PreferenceManager:
@@ -201,8 +200,8 @@ class PreferenceManager:
                 with open(self.preferences_file, "r") as f:
                     data = json.load(f)
                     return MCPPreferences.from_dict(data)
-            except (json.JSONDecodeError, KeyError):
-                # If preferences are corrupted, backup and create new
+            except (json.JSONDecodeError, KeyError, ValueError):
+                # If preferences are corrupted or invalid, backup and create new
                 backup_file = self.preferences_file.with_suffix(".json.backup")
                 self.preferences_file.rename(backup_file)
                 return MCPPreferences()
@@ -226,14 +225,15 @@ class PreferenceManager:
         Raises:
             ValueError: If theme is not valid
         """
-        # Validate theme
-        valid_themes = [t.value for t in Theme]
-        if theme not in valid_themes:
+        try:
+            theme_enum = Theme(theme)
+        except ValueError:
+            valid_themes = [t.value for t in Theme]
             raise ValueError(
                 f"Invalid theme: {theme}. Valid themes are: {', '.join(valid_themes)}"
             )
 
-        self.preferences.ui.theme = theme
+        self.preferences.ui.theme = theme_enum
         self.save_preferences()
 
     def get_verbose(self) -> bool:
@@ -247,16 +247,17 @@ class PreferenceManager:
 
     def get_confirm_tools(self) -> bool:
         """Get tool confirmation setting (legacy compatibility)."""
-        return self.preferences.ui.tool_confirmation.mode != "never"
+        return self.preferences.ui.tool_confirmation.mode != ConfirmationMode.NEVER
 
     def set_confirm_tools(self, confirm: bool) -> None:
         """Set tool confirmation mode (legacy compatibility)."""
         self.preferences.ui.confirm_tools = confirm
-        # Also update new confirmation mode
-        self.preferences.ui.tool_confirmation.mode = "smart" if confirm else "never"
+        self.preferences.ui.tool_confirmation.mode = (
+            ConfirmationMode.SMART if confirm else ConfirmationMode.NEVER
+        )
         self.save_preferences()
 
-    def get_tool_confirmation_mode(self) -> str:
+    def get_tool_confirmation_mode(self) -> ConfirmationMode:
         """Get the global tool confirmation mode."""
         return self.preferences.ui.tool_confirmation.mode
 
@@ -266,11 +267,12 @@ class PreferenceManager:
         Args:
             mode: One of 'always', 'never', or 'smart'
         """
-        if mode not in [m.value for m in ConfirmationMode]:
+        try:
+            confirmation_mode = ConfirmationMode(mode)
+        except ValueError:
             raise ValueError(f"Invalid confirmation mode: {mode}")
-        self.preferences.ui.tool_confirmation.mode = mode
-        # Update legacy flag
-        self.preferences.ui.confirm_tools = mode != "never"
+        self.preferences.ui.tool_confirmation.mode = confirmation_mode
+        self.preferences.ui.confirm_tools = confirmation_mode != ConfirmationMode.NEVER
         self.save_preferences()
 
     def get_tool_confirmation(self, tool_name: str) -> str | None:
@@ -308,16 +310,15 @@ class PreferenceManager:
         self.preferences.ui.tool_confirmation.per_tool.clear()
         self.save_preferences()
 
-    def get_tool_risk_level(self, tool_name: str) -> str:
+    def get_tool_risk_level(self, tool_name: str) -> ToolRiskLevel:
         """Determine the risk level of a tool based on patterns.
 
         Args:
             tool_name: Name of the tool
 
         Returns:
-            Risk level: 'safe', 'moderate', or 'high'
+            Risk level enum value.
         """
-        # Check if tool matches any category pattern
         for pattern, risk in self.preferences.ui.tool_confirmation.categories.items():
             if pattern.endswith("*"):
                 prefix = pattern[:-1]
@@ -328,8 +329,7 @@ class PreferenceManager:
                 if tool_name.endswith(suffix):
                     return risk
 
-        # Default to moderate risk
-        return "moderate"
+        return ToolRiskLevel.MODERATE
 
     def should_confirm_tool(self, tool_name: str) -> bool:
         """Determine if a tool should be confirmed based on preferences.
@@ -346,25 +346,21 @@ class PreferenceManager:
             return True
         elif tool_setting == "never":
             return False
-        elif tool_setting == "ask":
-            # Use global mode
-            pass
+        # "ask" falls through to global mode
 
         # Check global mode
-        mode = self.get_tool_confirmation_mode()
-        if mode == "always":
+        mode = self.preferences.ui.tool_confirmation.mode
+        if mode == ConfirmationMode.ALWAYS:
             return True
-        elif mode == "never":
+        elif mode == ConfirmationMode.NEVER:
             return False
-        elif mode == "smart":
-            # Use risk-based decision
+        elif mode == ConfirmationMode.SMART:
             risk_level = self.get_tool_risk_level(tool_name)
             return self.preferences.ui.tool_confirmation.risk_thresholds.get(
                 risk_level, True
             )
 
-        # Default to confirming
-        return True
+        return True  # type: ignore[unreachable]  # safety fallback
 
     def add_tool_pattern(self, pattern: str, action: str) -> None:
         """Add a pattern-based rule for tool confirmations.
@@ -403,11 +399,11 @@ class PreferenceManager:
             risk_level: 'safe', 'moderate', or 'high'
             should_confirm: Whether to confirm tools at this risk level
         """
-        if risk_level not in ["safe", "moderate", "high"]:
+        try:
+            level = ToolRiskLevel(risk_level)
+        except ValueError:
             raise ValueError(f"Invalid risk level: {risk_level}")
-        self.preferences.ui.tool_confirmation.risk_thresholds[risk_level] = (
-            should_confirm
-        )
+        self.preferences.ui.tool_confirmation.risk_thresholds[level] = should_confirm
         self.save_preferences()
 
     def get_active_provider(self) -> str | None:

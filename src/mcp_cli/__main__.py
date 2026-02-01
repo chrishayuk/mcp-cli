@@ -8,7 +8,7 @@ if __name__ == "__main__":
     import sys
     import asyncio
 
-    from mcp_cli.constants import PLATFORM_WINDOWS
+    from mcp_cli.config import PLATFORM_WINDOWS
 
     # Set up proper event loop policy on Windows
     if sys.platform == PLATFORM_WINDOWS:

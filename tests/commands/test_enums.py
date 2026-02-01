@@ -10,10 +10,10 @@ from mcp_cli.commands.enums import (
     SpecialValues,
     SuccessMessages,
     TokenNamespace,
-    TokenSource,
     ToolCommand,
-    TransportType,
 )
+from mcp_cli.commands.models.provider import TokenSource
+from mcp_cli.tools.models import TransportType
 
 
 class TestCommandAction:

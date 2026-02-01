@@ -1,10 +1,9 @@
-# mcp_cli/tools/validation.py
-"""
-from __future__ import annotations
+"""mcp_cli.tools.validation - Tool schema validation and filtering system.
 
-Tool schema validation and filtering system.
 SIMPLIFIED: Focus on auto-fixing rather than strict validation.
 """
+
+from __future__ import annotations
 
 import json
 import logging

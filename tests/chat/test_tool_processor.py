@@ -4,10 +4,34 @@ import pytest
 from datetime import datetime, UTC
 
 from chuk_tool_processor import ToolResult as CTPToolResult
+import chuk_ai_session_manager.guards.manager as _guard_mgr
+from chuk_ai_session_manager.guards import (
+    get_tool_state,
+    reset_tool_state,
+    RuntimeLimits,
+    ToolStateManager,
+)
 
 from mcp_cli.chat.tool_processor import ToolProcessor
 from mcp_cli.chat.response_models import ToolCall, FunctionCall
 from mcp_cli.tools.models import ToolCallResult
+
+
+@pytest.fixture(autouse=True)
+def _fresh_tool_state():
+    """Reset the global tool state singleton before each test with permissive limits."""
+    reset_tool_state()
+    _guard_mgr._tool_state = ToolStateManager(
+        limits=RuntimeLimits(
+            per_tool_cap=100,
+            tool_budget_total=100,
+            discovery_budget=50,
+            execution_budget=50,
+        )
+    )
+    yield
+    reset_tool_state()
+
 
 # ---------------------------
 # Dummy classes for testing
@@ -149,6 +173,10 @@ class DummyContext:
         self.stream_manager = stream_manager
         self.tool_manager = tool_manager
 
+    def inject_tool_message(self, message):
+        """Add a message to conversation history (matches ChatContext API)."""
+        self.conversation_history.append(message)
+
 
 # ---------------------------
 # Tests for ToolProcessor
@@ -225,8 +253,6 @@ async def test_process_tool_calls_with_argument_parsing():
     processor = ToolProcessor(context, ui_manager)
 
     # Register 123 as a user-provided literal so it passes ungrounded check
-    from mcp_cli.chat.tool_state import get_tool_state
-
     tool_state = get_tool_state()
     tool_state.register_user_literals("Test with value 123")
 

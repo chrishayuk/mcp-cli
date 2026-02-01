@@ -304,8 +304,9 @@ class ToolProcessor:
                             continue
 
             # Check per-tool call limit using the guard (handles exemptions for math/discovery)
+            # per_tool_cap=0 means "disabled/unlimited" (see RuntimeLimits presets)
             per_tool_result = tool_state.check_per_tool_limit(actual_tool_for_checks)
-            if per_tool_result.blocked:
+            if tool_state.limits.per_tool_cap > 0 and per_tool_result.blocked:
                 log.warning(f"Tool {actual_tool_for_checks} blocked by per-tool limit")
                 output.warning(
                     f"⚠ Tool {actual_tool_for_checks} - {per_tool_result.reason}"
@@ -470,15 +471,17 @@ class ToolProcessor:
         # Add to conversation history
         self._add_tool_result_to_history(llm_tool_name, result.id, content)
 
-        # Add to tool history for /toolhistory command
+        # Add to tool history for /toolhistory command (use Pydantic model, not raw dict)
         if hasattr(self.context, "tool_history"):
+            from mcp_cli.chat.models import ToolExecutionRecord
+
             self.context.tool_history.append(
-                {
-                    "tool": execution_tool_name,
-                    "arguments": arguments,
-                    "result": result.result if success else result.error,
-                    "success": success,
-                }
+                ToolExecutionRecord(
+                    tool_name=execution_tool_name,
+                    arguments=arguments,
+                    result=result.result if success else None,
+                    error=result.error if not success else None,
+                )
             )
 
         # Finish UI display

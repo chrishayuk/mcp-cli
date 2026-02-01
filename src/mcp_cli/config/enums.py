@@ -89,6 +89,28 @@ class TokenAction(str, Enum):
     DELETE = "delete"
     CLEAR = "clear"
     BACKENDS = "backends"
+    SET_PROVIDER = "set-provider"
+    GET_PROVIDER = "get-provider"
+    DELETE_PROVIDER = "delete-provider"
+
+
+class OutputFormat(str, Enum):
+    """Output format types for command results."""
+
+    JSON = "json"
+    TABLE = "table"
+    TEXT = "text"
+    TREE = "tree"
+
+
+class TokenNamespace(str, Enum):
+    """Token storage namespaces."""
+
+    GENERIC = "generic"
+    PROVIDER = "provider"
+    BEARER = "bearer"
+    API_KEY = "api-key"
+    OAUTH = "oauth"
 
 
 class ServerAction(str, Enum):
@@ -131,4 +153,7 @@ __all__ = [
     "ServerAction",
     "ToolAction",
     "ThemeAction",
+    # Format/Namespace enums
+    "OutputFormat",
+    "TokenNamespace",
 ]

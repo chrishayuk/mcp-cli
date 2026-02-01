@@ -2,12 +2,26 @@
 """
 Enums and constants for command actions.
 
-Centralized enums to replace hardcoded strings throughout the codebase.
+NOTE: Core enums (TokenAction, ServerAction, ToolAction, OutputFormat,
+TokenNamespace, etc.) are defined in mcp_cli.config.enums as the canonical
+source. TransportType is in mcp_cli.tools.models. TokenSource is in
+mcp_cli.commands.models.provider.
+
+This file contains command-specific enums that don't belong in config.
 """
 
 from __future__ import annotations
 
 from enum import Enum
+
+# Re-export canonical enums for convenience
+from mcp_cli.config.enums import (  # noqa: F401
+    OutputFormat,
+    TokenAction,
+    TokenNamespace,
+    ServerAction,
+    ToolAction,
+)
 
 
 class CommandAction(str, Enum):
@@ -32,32 +46,6 @@ class CommandAction(str, Enum):
     DIAGNOSTIC = "diagnostic"
 
 
-class TokenNamespace(str, Enum):
-    """Token storage namespaces."""
-
-    GENERIC = "generic"
-    PROVIDER = "provider"
-    BEARER = "bearer"
-    API_KEY = "api-key"
-    OAUTH = "oauth"
-
-
-class TransportType(str, Enum):
-    """Server transport types."""
-
-    STDIO = "stdio"
-    SSE = "sse"
-    HTTP = "http"
-
-
-class OutputFormat(str, Enum):
-    """Output format types."""
-
-    JSON = "json"
-    TABLE = "table"
-    TEXT = "text"
-
-
 class ProviderCommand(str, Enum):
     """Provider-specific commands."""
 
@@ -68,14 +56,6 @@ class ProviderCommand(str, Enum):
     CONFIG = "config"
     DIAGNOSTIC = "diagnostic"
     CUSTOM = "custom"
-
-
-class TokenSource(str, Enum):
-    """Where a token comes from."""
-
-    ENV = "env"
-    STORAGE = "storage"
-    NONE = "none"
 
 
 class ServerCommand(str, Enum):

@@ -1,6 +1,8 @@
 # src/mcp_cli/ui/formatting.py
 """Helper functions for tool display and formatting using chuk-term."""
 
+import json
+
 from chuk_term.ui import output, format_table
 
 from mcp_cli.tools.models import ToolInfo, ServerInfo
@@ -85,8 +87,6 @@ def create_servers_table(servers: list[ServerInfo]):
 
 def display_tool_call_result(result, console=None):
     """Display the result of a tool call using chuk-term."""
-    import json
-
     if result.success:
         # Display success header with timing
         title = f"✓ Tool '{result.tool_name}' completed"
@@ -145,8 +145,6 @@ def display_tool_call_result(result, console=None):
         else:
             # For other types, format as JSON
             try:
-                import json
-
                 formatted = json.dumps(result.result, indent=2)
                 if len(formatted) > 500:
                     output.code(formatted[:500] + "\n... (truncated)", language="json")

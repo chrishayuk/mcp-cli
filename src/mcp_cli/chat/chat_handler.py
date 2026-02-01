@@ -25,6 +25,7 @@ from mcp_cli.chat.conversation import ConversationProcessor
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.context import initialize_context
 from mcp_cli.config import initialize_config
+from mcp_cli.config.defaults import DEFAULT_PROVIDER, DEFAULT_MODEL
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -74,8 +75,8 @@ async def handle_chat_mode(
         # Initialize global context manager for commands to work
         app_context = initialize_context(
             tool_manager=tool_manager,
-            provider=provider or "openai",
-            model=model or "gpt-4",
+            provider=provider or DEFAULT_PROVIDER,
+            model=model or DEFAULT_MODEL,
             api_base=api_base,
             api_key=api_key,
             model_manager=model_manager,  # FIXED: Pass model_manager with runtime providers

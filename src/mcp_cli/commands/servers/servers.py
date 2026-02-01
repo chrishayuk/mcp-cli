@@ -14,6 +14,7 @@ from mcp_cli.commands.base import (
     CommandParameter,
     CommandResult,
 )
+from mcp_cli.config.enums import OutputFormat
 
 if TYPE_CHECKING:
     from mcp_cli.commands.models.server import ServerStatusInfo
@@ -114,7 +115,7 @@ Note: For server management (add/remove/enable/disable), use /server command
                 )
 
             # Output as JSON if requested
-            if output_format == "json":
+            if output_format == OutputFormat.JSON:
                 server_data = [s.model_dump() for s in servers]
                 output.print(json.dumps(server_data, indent=2, default=str))
                 return CommandResult(success=True, data=server_data)

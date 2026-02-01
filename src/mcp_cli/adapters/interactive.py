@@ -22,8 +22,6 @@ logger = logging.getLogger(__name__)
 class InteractiveExitException(Exception):
     """Custom exception for exiting interactive mode without interfering with pytest."""
 
-    pass
-
 
 class InteractiveCommandAdapter:
     """
@@ -67,10 +65,6 @@ class InteractiveCommandAdapter:
 
         args = parts[1:] if len(parts) > 1 else []
 
-        # Debug: log what we parsed
-        import logging
-
-        logger = logging.getLogger(__name__)
         logger.debug(f"Parsed command: {command_name}, args: {args}")
 
         # Look up command in registry
@@ -184,14 +178,9 @@ class InteractiveCommandAdapter:
 
             i += 1
 
-        # Add positional arguments
+        # Add positional arguments (always as a list for consistency)
         if positional:
-            # If command expects specific positional args, map them
-            # For now, just add as "args"
-            if len(positional) == 1:
-                kwargs["args"] = positional[0]
-            else:
-                kwargs["args"] = positional
+            kwargs["args"] = positional
 
         return kwargs
 

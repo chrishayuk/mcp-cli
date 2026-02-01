@@ -173,16 +173,24 @@ class ChatContext:
 
         # System prompt first
         if self._system_prompt:
-            messages.append(Message(role=MessageRole.SYSTEM, content=self._system_prompt))
+            messages.append(
+                Message(role=MessageRole.SYSTEM, content=self._system_prompt)
+            )
 
         # Get events from session
         if self.session._session:
             for event in self.session._session.events:
                 if event.type == EventType.MESSAGE:
                     if event.source == EventSource.USER:
-                        messages.append(Message(role=MessageRole.USER, content=str(event.message)))
+                        messages.append(
+                            Message(role=MessageRole.USER, content=str(event.message))
+                        )
                     elif event.source in (EventSource.LLM, EventSource.SYSTEM):
-                        messages.append(Message(role=MessageRole.ASSISTANT, content=str(event.message)))
+                        messages.append(
+                            Message(
+                                role=MessageRole.ASSISTANT, content=str(event.message)
+                            )
+                        )
                 elif event.type == EventType.TOOL_CALL:
                     # Tool messages stored as dict - reconstruct Message
                     if isinstance(event.message, dict):
@@ -225,7 +233,9 @@ class ChatContext:
 
     def _generate_system_prompt(self) -> None:
         """Generate system prompt from available tools."""
-        tools_for_prompt = [tool.to_llm_format().to_dict() for tool in self.internal_tools]
+        tools_for_prompt = [
+            tool.to_llm_format().to_dict() for tool in self.internal_tools
+        ]
         self._system_prompt = generate_system_prompt(tools_for_prompt)
 
     async def _initialize_tools(self) -> None:
@@ -268,7 +278,9 @@ class ChatContext:
                 )
                 self.openai_tools = tools_and_mapping[0]
                 self.tool_name_mapping = tools_and_mapping[1]
-                logger.debug(f"Adapted {len(self.openai_tools)} tools for {self.provider}")
+                logger.debug(
+                    f"Adapted {len(self.openai_tools)} tools for {self.provider}"
+                )
             else:
                 self.openai_tools = await self.tool_manager.get_tools_for_llm()
                 self.tool_name_mapping = {}
@@ -307,7 +319,9 @@ class ChatContext:
 
     async def add_assistant_message(self, content: str) -> None:
         """Add assistant message to conversation."""
-        await self.session.ai_responds(content, model=self.model, provider=self.provider)
+        await self.session.ai_responds(
+            content, model=self.model, provider=self.provider
+        )
         logger.debug(f"Assistant message added: {content[:50]}...")
 
     def inject_assistant_message(self, content: str) -> None:
@@ -372,7 +386,9 @@ class ChatContext:
 
         # Record in procedural memory for learning
         outcome = ToolOutcome.SUCCESS if success else ToolOutcome.FAILURE
-        error_type = type(error).__name__ if error and not isinstance(error, str) else None
+        error_type = (
+            type(error).__name__ if error and not isinstance(error, str) else None
+        )
 
         await self.tool_memory.record_call(
             tool_name=tool_name,
@@ -388,12 +404,17 @@ class ChatContext:
 
     async def get_messages_for_llm(self) -> list[dict[str, str]]:
         """Get messages formatted for LLM API calls."""
-        return await self.session.get_messages_for_llm(include_system=True)
+        result: list[dict[str, str]] = await self.session.get_messages_for_llm(
+            include_system=True
+        )
+        return result
 
     def get_conversation_length(self) -> int:
         """Get conversation length (excluding system prompt)."""
         if self.session._session:
-            return sum(1 for e in self.session._session.events if e.type == EventType.MESSAGE)
+            return sum(
+                1 for e in self.session._session.events if e.type == EventType.MESSAGE
+            )
         return 0
 
     async def clear_conversation_history(self, keep_system_prompt: bool = True) -> None:
@@ -410,20 +431,17 @@ class ChatContext:
 
     # ── Procedural memory helpers ─────────────────────────────────────────
     def get_procedural_context_for_tools(
-        self,
-        tool_names: list[str],
-        context_goal: str | None = None
+        self, tool_names: list[str], context_goal: str | None = None
     ) -> str:
         """
         Get procedural memory context for tools about to be called.
 
         Use this to inject relevant tool history before making LLM calls.
         """
-        return self.procedural_formatter.format_for_tools(
-            self.tool_memory,
-            tool_names,
-            context_goal
+        result: str = self.procedural_formatter.format_for_tools(
+            self.tool_memory, tool_names, context_goal
         )
+        return result
 
     def get_recent_tool_history(self, limit: int = 5) -> list[dict[str, Any]]:
         """Get recent tool call history from procedural memory."""
@@ -455,7 +473,9 @@ class ChatContext:
     def to_dict(self) -> dict[str, Any]:
         """Export context for command handlers."""
         return {
-            "conversation_history": [msg.to_dict() for msg in self.conversation_history],
+            "conversation_history": [
+                msg.to_dict() for msg in self.conversation_history
+            ],
             "tools": self.tools,
             "internal_tools": self.internal_tools,
             "client": self.client,
@@ -516,7 +536,8 @@ class ChatContext:
 
     async def get_session_stats(self) -> dict[str, Any]:
         """Get session statistics."""
-        return await self.session.get_stats()
+        result: dict[str, Any] = await self.session.get_stats()
+        return result
 
     def __repr__(self) -> str:
         return (

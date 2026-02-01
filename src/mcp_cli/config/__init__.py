@@ -11,12 +11,14 @@ from importlib.metadata import PackageNotFoundError, version
 from mcp_cli.config.enums import (
     ConfigSource,
     ConversationAction,
+    OutputFormat,
     ServerAction,
     ServerStatus,
     ThemeAction,
     TimeoutType,
     TokenAction,
     TokenBackend,
+    TokenNamespace,
     ToolAction,
 )
 
@@ -151,12 +153,14 @@ __all__ = [
     # Enums
     "ConfigSource",
     "ConversationAction",
+    "OutputFormat",
     "ServerAction",
     "ServerStatus",
     "ThemeAction",
     "TimeoutType",
     "TokenAction",
     "TokenBackend",
+    "TokenNamespace",
     "ToolAction",
     # Environment variables
     "EnvVar",

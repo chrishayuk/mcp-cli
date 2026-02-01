@@ -59,19 +59,12 @@ class CLICommandAdapter:
             annotations = {}
 
             for param in command.parameters:
-                # Create Typer parameter
-                if param.is_flag:
-                    typer_param = typer.Option(
-                        param.default,
-                        f"--{param.name}",
-                        help=param.help,
-                    )
-                else:
-                    typer_param = typer.Option(
-                        param.default,
-                        f"--{param.name}",
-                        help=param.help,
-                    )
+                typer_param = typer.Option(
+                    param.default,
+                    f"--{param.name}",
+                    help=param.help,
+                    is_flag=param.is_flag,
+                )
 
                 params[param.name] = typer_param
                 annotations[param.name] = param.type
@@ -118,9 +111,9 @@ class CLICommandAdapter:
         # Create a sub-app for the group
         sub_app = typer.Typer(help=group.description)
 
-        # Register each subcommand
-        for subcommand in group.subcommands.values():
-            if subcommand.name != subcommand.name:  # Skip aliases
+        # Register each subcommand (skip alias entries)
+        for key, subcommand in group.subcommands.items():
+            if key != subcommand.name:  # Skip aliases
                 continue
             CLICommandAdapter._register_command(sub_app, subcommand)
 

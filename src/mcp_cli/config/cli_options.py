@@ -45,8 +45,8 @@ def load_config(config_file: str) -> MCPConfig | None:
                     # Try to parse as JSON to verify it's valid
                     import json
 
-                    config_path.read_text()
-                    json.loads(config_path.read_text())
+                    content = config_path.read_text()
+                    json.loads(content)
                 except json.JSONDecodeError:
                     # Invalid JSON - return None
                     return None
@@ -183,7 +183,7 @@ def process_options(
             logger.warning("No enabled servers found")
 
     if servers_list:
-        is_valid, errors = validate_server_config(cfg, servers_list)
+        is_valid, errors = validate_server_config(cfg, servers_list)  # type: ignore[arg-type]
         if not is_valid:
             logger.error("Server configuration validation failed:")
             for error in errors:
@@ -197,7 +197,7 @@ def process_options(
 
     # STEP 9: Log server type detection for debugging
     if cfg:
-        http_servers, stdio_servers = detect_server_types(cfg, servers_list)
+        http_servers, stdio_servers = detect_server_types(cfg, servers_list)  # type: ignore[arg-type]
         logger.debug(
             f"Detected {len(http_servers)} HTTP servers, {len(stdio_servers)} STDIO servers"
         )
@@ -221,7 +221,7 @@ def get_config_summary(config_file: str) -> dict[str, Any]:
         return {"error": "Could not load config file"}
 
     server_names = list(cfg.servers.keys())
-    http_servers, stdio_servers = detect_server_types(cfg, server_names)
+    http_servers, stdio_servers = detect_server_types(cfg, server_names)  # type: ignore[arg-type]
 
     return {
         "config_file": config_file,

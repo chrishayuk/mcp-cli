@@ -48,7 +48,7 @@ def restore_terminal():
                     try:
                         # Close the subprocess if it's still running
                         if obj._proc.poll() is None:
-                            from mcp_cli.constants import SHUTDOWN_TIMEOUT
+                            from mcp_cli.config import SHUTDOWN_TIMEOUT
 
                             obj._proc.kill()
                             obj._proc.wait(timeout=SHUTDOWN_TIMEOUT)
@@ -76,12 +76,11 @@ def restore_terminal():
 
                     # Wait for tasks to be cancelled (with timeout)
                     try:
-                        if sys.version_info >= (3, 7):
-                            from mcp_cli.constants import SHUTDOWN_TIMEOUT
+                        from mcp_cli.config import SHUTDOWN_TIMEOUT
 
-                            loop.run_until_complete(
-                                asyncio.wait(tasks, timeout=SHUTDOWN_TIMEOUT)
-                            )
+                        loop.run_until_complete(
+                            asyncio.wait(tasks, timeout=SHUTDOWN_TIMEOUT)
+                        )
                     except (asyncio.CancelledError, asyncio.TimeoutError):
                         pass  # Expected during cancellation
 

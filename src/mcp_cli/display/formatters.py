@@ -7,6 +7,7 @@ of tool arguments, reasoning content, and other display elements.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 
@@ -77,7 +78,6 @@ def format_reasoning_preview(
 
     # Deduplicate repeated sentences within a sliding window (helps with repetitive reasoning)
     # Split on sentence boundaries (., !, ?)
-    import re
 
     # Split but keep the delimiters
     parts = re.split(r"([.!?]\s+)", cleaned)

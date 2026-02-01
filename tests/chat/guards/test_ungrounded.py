@@ -3,13 +3,14 @@
 
 import pytest
 
-from mcp_cli.chat.guards import (
+from chuk_ai_session_manager.guards import (
     EnforcementLevel,
-    GuardVerdict,
     UngroundedGuard,
     UngroundedGuardConfig,
+    ValueBinding,
+    ValueType,
 )
-from mcp_cli.chat.state.models import ValueBinding, ValueType
+from chuk_tool_processor.guards import GuardVerdict
 
 
 class TestUngroundedGuard:

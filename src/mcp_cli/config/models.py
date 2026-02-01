@@ -182,7 +182,7 @@ class MCPConfig(BaseModel):
         data = await loop.run_in_executor(None, config_path.read_text)
         parsed = json.loads(data)
 
-        return cls.model_validate(parsed)  # type: ignore[no-any-return]
+        return cls.model_validate(parsed)
 
     @classmethod
     def load_sync(cls, config_path: Path) -> MCPConfig:
@@ -193,7 +193,7 @@ class MCPConfig(BaseModel):
             return cls()
 
         data = json.loads(config_path.read_text())
-        return cls.model_validate(data)  # type: ignore[no-any-return]
+        return cls.model_validate(data)
 
     @classmethod
     def load_from_file(cls, config_path: Path) -> MCPConfig:

@@ -19,6 +19,7 @@ from typing import Any, Callable
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+from prompt_toolkit.shortcuts import CompleteStyle
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.keys import Keys
@@ -138,7 +139,7 @@ class ChatUIManager:
             complete_while_typing=True,  # Auto-trigger completions as you type
             complete_in_thread=False,  # Complete in main thread for responsiveness
             style=merged_style,
-            complete_style="MULTI_COLUMN",  # Show completions in multi-column menu
+            complete_style=CompleteStyle.MULTI_COLUMN,  # Show completions in multi-column menu
             key_bindings=bindings,  # Custom Tab behavior
         )
 
@@ -368,7 +369,7 @@ class ChatUIManager:
 
     def show_status(self) -> None:
         """Show current chat status."""
-        status = self.context.get_status()
+        status = self.context.get_status_summary()
 
         output.info("📊 Chat Status:")
         output.print(f"  Provider: {status.provider}")

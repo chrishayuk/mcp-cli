@@ -235,7 +235,7 @@ class ProviderListCommand(UnifiedCommand):
     def _get_provider_status(self, provider) -> "ProviderStatus":
         """Get the status for a provider."""
         from mcp_cli.commands.models.provider import ProviderStatus
-        from mcp_cli.constants import PROVIDER_OLLAMA
+        from mcp_cli.config import PROVIDER_OLLAMA
 
         # Special handling for Ollama (no API key needed)
         if provider.name.lower() == PROVIDER_OLLAMA:

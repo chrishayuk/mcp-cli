@@ -3,13 +3,17 @@
 
 import pytest
 
-from mcp_cli.chat.state.manager import (
+from chuk_ai_session_manager.guards.manager import (
     ToolStateManager,
     get_tool_state,
     reset_tool_state,
 )
-from mcp_cli.chat.state.models import EnforcementLevel, RuntimeLimits, RuntimeMode
-from mcp_cli.chat.guards import GuardVerdict
+from chuk_ai_session_manager.guards.models import (
+    EnforcementLevel,
+    RuntimeLimits,
+    RuntimeMode,
+)
+from chuk_tool_processor.guards import GuardVerdict
 
 
 class TestToolStateManager:
@@ -457,7 +461,7 @@ class TestSoftBlockRepair:
 
     def test_try_soft_block_repair_no_bindings(self, manager):
         """Test repair fails when no bindings exist."""
-        from mcp_cli.chat.state.models import UngroundedCallResult
+        from chuk_ai_session_manager.guards.models import UngroundedCallResult
 
         result = UngroundedCallResult(
             is_ungrounded=True,
@@ -472,7 +476,7 @@ class TestSoftBlockRepair:
 
     def test_try_soft_block_repair_with_matching_binding(self, manager):
         """Test repair succeeds when binding matches."""
-        from mcp_cli.chat.state.models import UngroundedCallResult
+        from chuk_ai_session_manager.guards.models import UngroundedCallResult
 
         manager.bind_value("sqrt", {"x": 18}, 4.2426)
         result = UngroundedCallResult(
@@ -489,7 +493,7 @@ class TestSoftBlockRepair:
 
     def test_try_soft_block_repair_no_matching_binding(self, manager):
         """Test repair fails when no binding matches."""
-        from mcp_cli.chat.state.models import UngroundedCallResult
+        from chuk_ai_session_manager.guards.models import UngroundedCallResult
 
         manager.bind_value("sqrt", {"x": 18}, 4.2426)
         result = UngroundedCallResult(
@@ -506,7 +510,7 @@ class TestSoftBlockRepair:
 
     def test_try_soft_block_repair_with_soft_block_reason(self, manager):
         """Test repair with SoftBlockReason enum."""
-        from mcp_cli.chat.state.models import SoftBlockReason
+        from chuk_ai_session_manager.guards.models import SoftBlockReason
 
         manager.bind_value("sqrt", {"x": 18}, 4.2426)
         should_proceed, repaired, fallback = manager.try_soft_block_repair(
@@ -516,7 +520,7 @@ class TestSoftBlockRepair:
 
     def test_try_soft_block_repair_unknown_reason(self, manager):
         """Test repair with unknown reason returns False."""
-        from mcp_cli.chat.state.models import SoftBlockReason
+        from chuk_ai_session_manager.guards.models import SoftBlockReason
 
         should_proceed, repaired, fallback = manager.try_soft_block_repair(
             "sqrt", {"x": 5}, SoftBlockReason.BUDGET_EXHAUSTED
@@ -525,7 +529,7 @@ class TestSoftBlockRepair:
 
     def test_try_soft_block_repair_no_bindings_soft_block_reason(self, manager):
         """Test repair with SoftBlockReason when no bindings exist."""
-        from mcp_cli.chat.state.models import SoftBlockReason
+        from chuk_ai_session_manager.guards.models import SoftBlockReason
 
         should_proceed, repaired, fallback = manager.try_soft_block_repair(
             "sqrt", {"x": 5}, SoftBlockReason.UNGROUNDED_ARGS

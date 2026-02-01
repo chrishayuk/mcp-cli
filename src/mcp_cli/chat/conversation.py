@@ -1,6 +1,4 @@
-# mcp_cli/chat/conversation.py - FIXED VERSION
-"""
-from __future__ import annotations
+"""mcp_cli.chat.conversation - FIXED VERSION
 
 FIXED: Updated to work with the new OpenAI client universal tool compatibility system.
 Clean Pydantic models - no dictionary goop!
@@ -10,6 +8,8 @@ ENHANCED: Added tool state management to prevent "model getting lost":
 - Injects compact state summaries back to the model
 - Continues conversation instead of aborting on duplicate calls
 """
+
+from __future__ import annotations
 
 import time
 import asyncio
@@ -42,16 +42,18 @@ class ConversationProcessor:
 
     # Tool name patterns that are polling/status tools - exempt from loop detection
     # These tools are expected to be called repeatedly with the same args
-    POLLING_TOOL_PATTERNS = frozenset({
-        "status",
-        "poll",
-        "check",
-        "monitor",
-        "watch",
-        "wait",
-        "progress",
-        "state",
-    })
+    POLLING_TOOL_PATTERNS = frozenset(
+        {
+            "status",
+            "poll",
+            "check",
+            "monitor",
+            "watch",
+            "wait",
+            "progress",
+            "state",
+        }
+    )
 
     def __init__(
         self,
@@ -201,23 +203,22 @@ class ConversationProcessor:
                     tool_calls = completion.tool_calls
                     reasoning_content = completion.reasoning_content
 
-                    # DEBUG: Log what we got from the model
-                    log.info("=== COMPLETION RESULT ===")
-                    log.info(
+                    # Trace-level logging for completion results
+                    log.debug("=== COMPLETION RESULT ===")
+                    log.debug(
                         f"Response length: {len(response_content) if response_content else 0}"
                     )
-                    log.info(
+                    log.debug(
                         f"Tool calls count: {len(tool_calls) if tool_calls else 0}"
                     )
-                    log.info(
+                    log.debug(
                         f"Reasoning length: {len(reasoning_content) if reasoning_content else 0}"
                     )
                     if response_content and response_content != "No response":
-                        log.info(f"Response preview: {response_content[:200]}")
+                        log.debug(f"Response preview: {response_content[:200]}")
                     if tool_calls:
                         for i, tc in enumerate(tool_calls):
-                            # ToolCall is a Pydantic model from chuk_llm
-                            log.info(
+                            log.debug(
                                 f"Tool call {i}: {tc.function.name} args={tc.function.arguments}"
                             )
 
@@ -495,7 +496,9 @@ class ConversationProcessor:
                     import traceback
 
                     traceback.print_exc()
-                    self.context.inject_assistant_message(f"I encountered an error: {exc}")
+                    self.context.inject_assistant_message(
+                        f"I encountered an error: {exc}"
+                    )
                     # Stop streaming UI before breaking
                     if self.ui_manager.is_streaming_response:
                         await self.ui_manager.stop_streaming_response()
@@ -609,7 +612,9 @@ class ConversationProcessor:
         try:
             if hasattr(self.context.tool_manager, "get_adapted_tools_for_llm"):
                 # EXPLICITLY specify provider for proper adaptation
-                provider = getattr(self.context, "provider", "openai")
+                from mcp_cli.config.defaults import DEFAULT_PROVIDER
+
+                provider = getattr(self.context, "provider", DEFAULT_PROVIDER)
                 tools_and_mapping = (
                     await self.context.tool_manager.get_adapted_tools_for_llm(provider)
                 )

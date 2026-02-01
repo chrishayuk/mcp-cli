@@ -11,7 +11,8 @@ from chuk_term.ui import output, format_table
 from mcp_cli.auth import TokenManager, TokenStoreBackend, TokenStoreFactory
 from mcp_cli.auth import APIKeyToken, BearerToken, TokenType
 from mcp_cli.config.config_manager import get_config
-from mcp_cli.constants import NAMESPACE, OAUTH_NAMESPACE, GENERIC_NAMESPACE
+from mcp_cli.config.enums import TokenNamespace
+from mcp_cli.config import NAMESPACE, OAUTH_NAMESPACE, GENERIC_NAMESPACE
 from mcp_cli.commands.base import (
     UnifiedCommand,
     CommandMode,
@@ -210,7 +211,7 @@ Examples:
         server_names = tool_manager.servers if tool_manager else []
 
         # Route to appropriate sub-action
-        from mcp_cli.constants import TokenAction
+        from mcp_cli.config import TokenAction
 
         try:
             if not action or action == TokenAction.LIST.value:
@@ -225,11 +226,11 @@ Examples:
                 return await self._action_clear(kwargs, args)
             elif action == TokenAction.BACKENDS.value:
                 return await self._action_backends()
-            elif action == "set-provider":
+            elif action == TokenAction.SET_PROVIDER.value:
                 return await self._action_set_provider(kwargs)
-            elif action == "get-provider":
+            elif action == TokenAction.GET_PROVIDER.value:
                 return await self._action_get_provider(kwargs)
-            elif action == "delete-provider":
+            elif action == TokenAction.DELETE_PROVIDER.value:
                 return await self._action_delete_provider(kwargs)
             else:
                 return CommandResult(
@@ -263,7 +264,7 @@ Examples:
 
             # Show provider tokens with hierarchical status
             if params.show_providers and (
-                params.namespace is None or params.namespace == "provider"
+                params.namespace is None or params.namespace == TokenNamespace.PROVIDER
             ):
                 from mcp_cli.auth.provider_tokens import list_all_provider_tokens
 
@@ -394,7 +395,7 @@ Examples:
                 token_name = entry.get("name", "unknown")
                 token_namespace = entry.get("namespace", "unknown")
 
-                if params.show_providers and token_namespace == "provider":
+                if params.show_providers and token_namespace == TokenNamespace.PROVIDER:
                     continue
                 if params.show_oauth and token_namespace == OAUTH_NAMESPACE:
                     continue
@@ -426,7 +427,7 @@ Examples:
                 details = []
                 if metadata.get("provider"):
                     details.append(f"provider={metadata['provider']}")
-                if token_namespace != "generic":
+                if token_namespace != TokenNamespace.GENERIC:
                     details.append(f"ns={token_namespace}")
 
                 table_data.append(
@@ -501,7 +502,11 @@ Examples:
 
             registry = manager.registry
 
-            if params.token_type == "bearer":
+            # Normalize token_type: CLI uses hyphens (api-key) but
+            # TokenType enum uses underscores (api_key)
+            normalized_type = params.token_type.replace("-", "_")
+
+            if normalized_type == TokenType.BEARER.value:
                 bearer = BearerToken(token=params.value)
                 stored = bearer.to_stored_token(params.name)
                 stored.metadata = {"namespace": params.namespace}
@@ -521,7 +526,7 @@ Examples:
                 )
                 output.success(f"Bearer token '{params.name}' stored successfully")
 
-            elif params.token_type == "api-key":
+            elif normalized_type == TokenType.API_KEY.value:
                 if not params.provider:
                     return CommandResult(
                         success=False,
@@ -545,7 +550,7 @@ Examples:
                     f"API key '{params.name}' for '{params.provider}' stored successfully"
                 )
 
-            elif params.token_type == "generic":
+            elif normalized_type == TokenNamespace.GENERIC:
                 store.store_generic(params.name, params.value, params.namespace)
                 registry.register(
                     params.name, TokenType.BEARER, params.namespace, metadata={}
@@ -648,7 +653,12 @@ Examples:
             if params.namespace:
                 namespaces = [params.namespace]
             else:
-                namespaces = ["bearer", "api-key", "provider", "generic"]
+                namespaces = [
+                    TokenNamespace.BEARER,
+                    TokenNamespace.API_KEY,
+                    TokenNamespace.PROVIDER,
+                    TokenNamespace.GENERIC,
+                ]
 
             deleted = False
             for ns in namespaces:

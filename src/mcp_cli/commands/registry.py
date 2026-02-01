@@ -23,7 +23,6 @@ class UnifiedCommandRegistry:
 
     _instance: UnifiedCommandRegistry | None = None
     _commands: dict[str, UnifiedCommand] = {}
-    _groups: dict[str, CommandGroup] = {}
     _initialized: bool = False
 
     def __new__(cls):
@@ -36,7 +35,6 @@ class UnifiedCommandRegistry:
         """Initialize the registry."""
         if not self._initialized:
             self._commands = {}
-            self._groups = {}
             self._initialized = True
 
     def register(self, command: UnifiedCommand, group: str | None = None) -> None:
@@ -45,28 +43,21 @@ class UnifiedCommandRegistry:
 
         Args:
             command: The command to register.
-            group: Optional group name (e.g., 'tools' for 'tools list').
+            group: Deprecated, ignored. Groups register as regular commands
+                   and dispatch subcommands via CommandGroup.get().
         """
         if group:
-            # Register as a subcommand in a group
-            if group not in self._groups:
-                # Groups must be pre-registered, cannot create them dynamically
-                logger.warning(
-                    f"Group '{group}' not found for command '{command.name}'"
-                )
-                return
+            logger.debug(
+                f"Ignoring group='{group}' for '{command.name}' (groups are auto-dispatched)"
+            )
 
-            self._groups[group].add_subcommand(command)
-            logger.debug(f"Registered subcommand: {group} {command.name}")
-        else:
-            # Register as a top-level command
-            self._commands[command.name] = command
+        self._commands[command.name] = command
 
-            # Also register aliases
-            for alias in command.aliases:
-                self._commands[alias] = command
+        # Also register aliases
+        for alias in command.aliases:
+            self._commands[alias] = command
 
-            logger.debug(f"Registered command: {command.name}")
+        logger.debug(f"Registered command: {command.name}")
 
     def get(self, name: str, mode: CommandMode | None = None) -> UnifiedCommand | None:
         """
@@ -171,7 +162,6 @@ class UnifiedCommandRegistry:
     def clear(self) -> None:
         """Clear all registered commands (useful for testing)."""
         self._commands.clear()
-        self._groups.clear()
 
     @classmethod
     def reset(cls) -> None:

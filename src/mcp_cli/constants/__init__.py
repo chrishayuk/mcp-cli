@@ -42,10 +42,12 @@ from mcp_cli.config import (
     JSON_TYPES,
     # Enums
     ConversationAction,
+    OutputFormat,
     ServerAction,
     ServerStatus,
     ThemeAction,
     TokenAction,
+    TokenNamespace,
     ToolAction,
     # Environment variables
     EnvVar,
@@ -73,7 +75,9 @@ __all__ = [
     # Enums
     "ServerStatus",
     "ConversationAction",
+    "OutputFormat",
     "TokenAction",
+    "TokenNamespace",
     "ServerAction",
     "ToolAction",
     "ThemeAction",

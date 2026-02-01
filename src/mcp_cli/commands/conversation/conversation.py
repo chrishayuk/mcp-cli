@@ -162,7 +162,7 @@ Examples:
                 )
 
         # Handle actions
-        from mcp_cli.constants import ConversationAction
+        from mcp_cli.config import ConversationAction
 
         if action == ConversationAction.SHOW.value:
             # Show conversation history in table format

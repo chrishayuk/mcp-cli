@@ -45,6 +45,20 @@ class MockContext:
         self.tool_manager.get_adapted_tools_for_llm = AsyncMock(return_value=([], {}))
         self.provider = "openai"
 
+    async def add_assistant_message(self, content):
+        """Add assistant message to conversation history."""
+        self.conversation_history.append(
+            Message(role=MessageRole.ASSISTANT, content=content)
+        )
+
+    def inject_assistant_message(self, message):
+        """Inject a message into conversation history."""
+        self.conversation_history.append(message)
+
+    def inject_tool_message(self, message):
+        """Inject a tool message into conversation history."""
+        self.conversation_history.append(message)
+
 
 class TestConversationProcessorInit:
     """Tests for ConversationProcessor initialization."""
@@ -399,7 +413,7 @@ class TestHandleStreamingCompletion:
         mock_tool_state.is_execution_tool = MagicMock(return_value=False)
         mock_tool_state.extract_bindings_from_text = MagicMock(return_value=[])
         mock_tool_state.format_unused_warning = MagicMock(return_value=None)
-        from mcp_cli.chat.tool_state import RunawayStatus
+        from chuk_ai_session_manager.guards import RunawayStatus
 
         mock_tool_state.check_runaway = MagicMock(
             return_value=RunawayStatus(should_stop=False)
@@ -497,7 +511,7 @@ class TestBudgetExhaustion:
         processor = ConversationProcessor(context, ui_manager)
 
         # Mock the tool state to indicate discovery budget exhausted
-        from mcp_cli.chat.tool_state import RunawayStatus
+        from chuk_ai_session_manager.guards import RunawayStatus
 
         mock_status = RunawayStatus(
             should_stop=True, reason="Discovery budget exhausted", budget_exhausted=True
@@ -557,7 +571,7 @@ class TestBudgetExhaustion:
         ui_manager.stop_streaming_response = AsyncMock()
         processor = ConversationProcessor(context, ui_manager)
 
-        from mcp_cli.chat.tool_state import RunawayStatus
+        from chuk_ai_session_manager.guards import RunawayStatus
 
         mock_status = RunawayStatus(
             should_stop=True, reason="Execution budget exhausted", budget_exhausted=True
@@ -621,7 +635,7 @@ class TestRunawayDetection:
         ui_manager.stop_streaming_response = AsyncMock()
         processor = ConversationProcessor(context, ui_manager)
 
-        from mcp_cli.chat.tool_state import RunawayStatus
+        from chuk_ai_session_manager.guards import RunawayStatus
 
         mock_status = RunawayStatus(
             should_stop=True,
@@ -736,7 +750,9 @@ class TestConversationErrorHandling:
         # Should have added error message to history
         assert len(context.conversation_history) >= 2
         last_msg = context.conversation_history[-1]
-        assert "error" in last_msg.content.lower()
+        # Error message may be a Message object or a string depending on the error path
+        content = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
+        assert "error" in content.lower()
 
     @pytest.mark.asyncio
     async def test_cancelled_error_propagates(self):
@@ -912,7 +928,7 @@ class TestMaxTurnsWithToolCalls:
         mock_tool_state.register_user_literals = MagicMock(return_value=0)
         mock_tool_state.is_discovery_tool = MagicMock(return_value=False)
         mock_tool_state.is_execution_tool = MagicMock(return_value=False)
-        from mcp_cli.chat.tool_state import RunawayStatus
+        from chuk_ai_session_manager.guards import RunawayStatus
 
         mock_tool_state.check_runaway = MagicMock(
             return_value=RunawayStatus(should_stop=False)
@@ -954,7 +970,7 @@ class TestGeneralRunawayDetection:
         ui_manager.print_assistant_message = AsyncMock()
         processor = ConversationProcessor(context, ui_manager)
 
-        from mcp_cli.chat.tool_state import RunawayStatus
+        from chuk_ai_session_manager.guards import RunawayStatus
 
         mock_status = RunawayStatus(
             should_stop=True,
@@ -1055,7 +1071,7 @@ class TestDuplicateToolCallHandling:
         mock_tool_state.extract_bindings_from_text = MagicMock(return_value=[])
         mock_tool_state.format_unused_warning = MagicMock(return_value=None)
         mock_tool_state.format_state_for_model = MagicMock(return_value="State: v0=4.0")
-        from mcp_cli.chat.tool_state import RunawayStatus
+        from chuk_ai_session_manager.guards import RunawayStatus
 
         mock_tool_state.check_runaway = MagicMock(
             return_value=RunawayStatus(should_stop=False)
@@ -1152,7 +1168,7 @@ class TestMaxDuplicatesExceeded:
         mock_tool_state.is_discovery_tool = MagicMock(return_value=False)
         mock_tool_state.is_execution_tool = MagicMock(return_value=False)
         mock_tool_state.format_state_for_model = MagicMock(return_value="")
-        from mcp_cli.chat.tool_state import RunawayStatus
+        from chuk_ai_session_manager.guards import RunawayStatus
 
         mock_tool_state.check_runaway = MagicMock(
             return_value=RunawayStatus(should_stop=False)
@@ -1195,7 +1211,7 @@ class TestDiscoveryBudgetWithMessage:
 
         processor = ConversationProcessor(context, ui_manager)
 
-        from mcp_cli.chat.tool_state import RunawayStatus
+        from chuk_ai_session_manager.guards import RunawayStatus
 
         # Discovery budget exhausted with "Discovery" in reason
         mock_status = RunawayStatus(
@@ -1267,7 +1283,7 @@ class TestExecutionBudgetWithMessage:
 
         processor = ConversationProcessor(context, ui_manager)
 
-        from mcp_cli.chat.tool_state import RunawayStatus
+        from chuk_ai_session_manager.guards import RunawayStatus
 
         # Execution budget exhausted with "Execution" in reason
         # The check passes tool name to check_runaway for execution tools
@@ -1400,7 +1416,9 @@ class TestPollingToolDetection:
         assert processor._is_polling_tool("sqrt") is False
         assert processor._is_polling_tool("add") is False
         assert processor._is_polling_tool("create_video") is False
-        assert processor._is_polling_tool("render_video") is False  # render but not status
+        assert (
+            processor._is_polling_tool("render_video") is False
+        )  # render but not status
         assert processor._is_polling_tool("calculate") is False
         assert processor._is_polling_tool("search") is False
 
@@ -1430,7 +1448,9 @@ class TestPollingToolDetection:
         tool_call = ToolCall(
             id="call_1",
             type="function",
-            function=FunctionCall(name="render_status", arguments='{"job_id": "abc123"}'),
+            function=FunctionCall(
+                name="render_status", arguments='{"job_id": "abc123"}'
+            ),
         )
 
         # Return same tool call multiple times, then final response
@@ -1461,7 +1481,7 @@ class TestPollingToolDetection:
         mock_tool_state.extract_bindings_from_text = MagicMock(return_value=[])
         mock_tool_state.format_unused_warning = MagicMock(return_value=None)
         mock_tool_state.format_state_for_model = MagicMock(return_value="")
-        from mcp_cli.chat.tool_state import RunawayStatus
+        from chuk_ai_session_manager.guards import RunawayStatus
 
         mock_tool_state.check_runaway = MagicMock(
             return_value=RunawayStatus(should_stop=False)

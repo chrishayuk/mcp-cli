@@ -127,7 +127,7 @@ def main_callback(
     setup_logging(level=log_level, quiet=quiet, verbose=verbose)
 
     # Store tool timeout if specified (type-safe!)
-    from mcp_cli.constants import EnvVar, set_env
+    from mcp_cli.config import EnvVar, set_env
 
     if tool_timeout is not None:
         set_env(EnvVar.TOOL_TIMEOUT, str(tool_timeout))

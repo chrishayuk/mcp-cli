@@ -283,12 +283,9 @@ class ChatCommandAdapter:
                 return []
 
             # For now, return parameter names as completions
-            completions = []
-            for param in command.parameters:
-                if not param.is_flag:
-                    completions.append(f"/{command_name} --{param.name}")
-                else:
-                    completions.append(f"/{command_name} --{param.name}")
+            completions = [
+                f"/{command_name} --{param.name}" for param in command.parameters
+            ]
 
             return completions
 

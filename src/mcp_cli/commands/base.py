@@ -72,10 +72,6 @@ class UnifiedCommand(ABC):
     Commands implement this interface once and work in all modes.
     """
 
-    def __init__(self):
-        """Initialize the command."""
-        pass
-
     @property
     @abstractmethod
     def name(self) -> str:

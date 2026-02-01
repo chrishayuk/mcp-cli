@@ -9,6 +9,8 @@ Replaces the dual display system (ChatDisplayManager + StreamingContext).
 from __future__ import annotations
 
 import asyncio
+import sys
+import time
 from typing import Protocol, TYPE_CHECKING
 
 from chuk_term.ui import output
@@ -200,7 +202,7 @@ class StreamingDisplayManager:
             name: Tool name
             arguments: Tool arguments
         """
-        import time
+
         from mcp_cli.chat.models import ToolExecutionState
 
         # Acquire render lock to prevent race conditions during transition
@@ -260,7 +262,6 @@ class StreamingDisplayManager:
         render lock is already held.
         """
         from chuk_term.ui.terminal import clear_lines, move_cursor_up
-        import sys
 
         if self._last_line_count > 0:
             # Move to first line if needed
@@ -283,8 +284,6 @@ class StreamingDisplayManager:
             result: Tool execution result
             success: Whether execution succeeded
         """
-        import sys
-        import time
 
         if not self.tool_execution:
             logger.warning("No active tool execution to stop")
@@ -345,7 +344,7 @@ class StreamingDisplayManager:
 
     async def _stop_refresh_loop(self) -> None:
         """Stop background refresh loop."""
-        from mcp_cli.constants import REFRESH_TIMEOUT
+        from mcp_cli.config import REFRESH_TIMEOUT
 
         self._refresh_active = False
 
@@ -450,8 +449,6 @@ class StreamingDisplayManager:
 
             # Only update if changed
             if display_status != self._last_status:
-                import sys
-
                 if mode_switched:
                     # Clear previous display if switching from multi-line thinking
                     if self._showing_thinking and self._last_line_count > 1:
@@ -538,7 +535,6 @@ class StreamingDisplayManager:
         Must be called from async context to properly acquire render lock.
         """
         from chuk_term.ui.terminal import clear_lines, move_cursor_up
-        import sys
 
         async with self._render_lock:
             if self._last_line_count > 0:
@@ -565,7 +561,6 @@ class StreamingDisplayManager:
         coordinate with the render lock.
         """
         from chuk_term.ui.terminal import clear_lines, move_cursor_up
-        import sys
 
         if self._last_line_count > 0:
             # Move to first line if needed
@@ -587,7 +582,6 @@ class StreamingDisplayManager:
         This clears the current display and resets state so that
         subsequent output appears normally without being mangled.
         """
-        import sys
 
         # Clear current display
         self._clear_current_display()
@@ -657,7 +651,6 @@ class StreamingDisplayManager:
             self._last_reasoning_preview = ""
             return
 
-        import time
         from mcp_cli.display.formatters import format_reasoning_preview
 
         current_time = time.time()
@@ -711,8 +704,6 @@ class StreamingDisplayManager:
         if not self.tool_execution:
             return
 
-        import time
-
         # Acquire lock to prevent simultaneous rendering with streaming
         async with self._render_lock:
             # Update spinner
@@ -751,7 +742,6 @@ class StreamingDisplayManager:
         Args:
             tool: Tool execution state
         """
-        import sys
 
         show_tool_execution_result(tool)
 

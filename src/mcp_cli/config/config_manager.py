@@ -19,6 +19,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from mcp_cli.auth import OAuthConfig
+from mcp_cli.config.defaults import DEFAULT_PROVIDER, DEFAULT_MODEL
 from mcp_cli.tools.models import ServerInfo, TransportType
 
 # Import clean models from new config system
@@ -124,8 +125,8 @@ class LegacyMCPConfig(BaseModel):
     """
 
     servers: dict[str, ServerConfig] = Field(default_factory=dict)
-    default_provider: str = "openai"
-    default_model: str = "gpt-4"
+    default_provider: str = DEFAULT_PROVIDER
+    default_model: str = DEFAULT_MODEL
     theme: str = "default"
     verbose: bool = True
     confirm_tools: bool = True  # DEPRECATED: Use tools.confirm_tools instead
@@ -170,8 +171,8 @@ class LegacyMCPConfig(BaseModel):
                     config.servers[name] = ServerConfig.from_dict(name, server_data)
 
             # Load other settings
-            config.default_provider = data.get("defaultProvider", "openai")
-            config.default_model = data.get("defaultModel", "gpt-4")
+            config.default_provider = data.get("defaultProvider", DEFAULT_PROVIDER)
+            config.default_model = data.get("defaultModel", DEFAULT_MODEL)
             config.theme = data.get("theme", "default")
             config.verbose = data.get("verbose", True)
             config.confirm_tools = data.get("confirmTools", True)
@@ -188,33 +189,33 @@ class LegacyMCPConfig(BaseModel):
             )
             config.vault_namespace = token_storage.get("vaultNamespace")
 
-            # NEW: Load timeout configuration
+            # Load timeout configuration (field names match clean TimeoutConfig)
             if "timeouts" in data:
                 timeout_data = data["timeouts"]
                 config.timeouts = TimeoutConfig(
-                    streaming_chunk_timeout=timeout_data.get(
+                    streaming_chunk=timeout_data.get(
                         "streamingChunkTimeout",
-                        config.timeouts.streaming_chunk_timeout,
+                        config.timeouts.streaming_chunk,
                     ),
-                    streaming_global_timeout=timeout_data.get(
+                    streaming_global=timeout_data.get(
                         "streamingGlobalTimeout",
-                        config.timeouts.streaming_global_timeout,
+                        config.timeouts.streaming_global,
                     ),
-                    streaming_first_chunk_timeout=timeout_data.get(
+                    streaming_first_chunk=timeout_data.get(
                         "streamingFirstChunkTimeout",
-                        config.timeouts.streaming_first_chunk_timeout,
+                        config.timeouts.streaming_first_chunk,
                     ),
-                    tool_execution_timeout=timeout_data.get(
-                        "toolExecutionTimeout", config.timeouts.tool_execution_timeout
+                    tool_execution=timeout_data.get(
+                        "toolExecutionTimeout", config.timeouts.tool_execution
                     ),
-                    server_init_timeout=timeout_data.get(
-                        "serverInitTimeout", config.timeouts.server_init_timeout
+                    server_init=timeout_data.get(
+                        "serverInitTimeout", config.timeouts.server_init
                     ),
-                    http_request_timeout=timeout_data.get(
-                        "httpRequestTimeout", config.timeouts.http_request_timeout
+                    http_request=timeout_data.get(
+                        "httpRequestTimeout", config.timeouts.http_request
                     ),
-                    http_connect_timeout=timeout_data.get(
-                        "httpConnectTimeout", config.timeouts.http_connect_timeout
+                    http_connect=timeout_data.get(
+                        "httpConnectTimeout", config.timeouts.http_connect
                     ),
                 )
 
@@ -367,22 +368,12 @@ class ConfigManager:
                     import importlib.resources as resources
 
                     try:
-                        # Python 3.9+
-                        if hasattr(resources, "files"):
-                            package_files = resources.files("mcp_cli")
-                            config_file = package_files / "server_config.json"
-                            if config_file.is_file():
-                                self._config_path = Path(str(config_file))
-                            else:
-                                # Package config doesn't exist, use cwd path anyway
-                                self._config_path = cwd_config
+                        package_files = resources.files("mcp_cli")
+                        config_file = package_files / "server_config.json"
+                        if config_file.is_file():
+                            self._config_path = Path(str(config_file))
                         else:
-                            # Python 3.8 fallback
-                            with resources.path("mcp_cli", "server_config.json") as p:
-                                if p.exists():
-                                    self._config_path = p
-                                else:
-                                    self._config_path = cwd_config
+                            self._config_path = cwd_config
                     except (ImportError, FileNotFoundError, AttributeError, TypeError):
                         # If package config doesn't exist or can't be accessed, use cwd
                         self._config_path = cwd_config
@@ -476,13 +467,14 @@ def detect_server_types(
             continue
 
         # Handle both dict (new clean config) and ServerConfig (legacy)
-        if isinstance(server_config, dict):
-            url = server_config.get("url")
-            command = server_config.get("command")
+        sc: Any = server_config
+        if isinstance(sc, dict):
+            url = sc.get("url")
+            command = sc.get("command")
         else:
             # ServerConfig model
-            url = server_config.url
-            command = server_config.command
+            url = sc.url
+            command = sc.command
 
         if url:
             # HTTP server
@@ -528,11 +520,12 @@ def validate_server_config(
         server_config = cfg.servers[server]
 
         # Handle both dict (new clean config) and ServerConfig (legacy)
-        if isinstance(server_config, dict):
-            has_url = server_config.get("url") is not None
-            has_command = server_config.get("command") is not None
-            url = server_config.get("url")
-            command = server_config.get("command")
+        sc: Any = server_config
+        if isinstance(sc, dict):
+            has_url = sc.get("url") is not None
+            has_command = sc.get("command") is not None
+            url = sc.get("url")
+            command = sc.get("command")
         else:
             # ServerConfig model
             has_url = server_config.url is not None

@@ -284,7 +284,7 @@ class TestInteractiveAdapter:
         assert kwargs == {"option": "value"}
 
         kwargs = self.adapter._parse_arguments(cmd, ["positional"])
-        assert kwargs == {"args": "positional"}
+        assert kwargs == {"args": ["positional"]}
 
         kwargs = self.adapter._parse_arguments(cmd, ["pos1", "pos2"])
         assert kwargs == {"args": ["pos1", "pos2"]}

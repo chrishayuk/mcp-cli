@@ -34,7 +34,7 @@ from mcp_cli.auth import (
 )
 from mcp_cli.config import RuntimeConfig, TimeoutType, load_runtime_config
 from mcp_cli.config.defaults import DEFAULT_MIDDLEWARE_ENABLED
-from mcp_cli.constants import ServerStatus
+from mcp_cli.config import ServerStatus
 from mcp_cli.llm.content_models import ContentBlockType
 from mcp_cli.tools.config_loader import ConfigLoader
 from mcp_cli.tools.dynamic_tools import DynamicToolProvider
@@ -218,8 +218,8 @@ class ToolManager:
                 ]
                 task = asyncio.create_task(
                     self.stream_manager.initialize_with_http_streamable(
-                        servers=http_dicts,
-                        server_names=self.server_names,
+                        servers=http_dicts,  # type: ignore[arg-type]
+                        server_names=self.server_names,  # type: ignore[arg-type]
                         initialization_timeout=self.initialization_timeout,
                         oauth_refresh_callback=oauth_callback,
                     ),
@@ -236,8 +236,8 @@ class ToolManager:
                 ]
                 task = asyncio.create_task(
                     self.stream_manager.initialize_with_sse(
-                        servers=sse_dicts,
-                        server_names=self.server_names,
+                        servers=sse_dicts,  # type: ignore[arg-type]
+                        server_names=self.server_names,  # type: ignore[arg-type]
                         initialization_timeout=self.initialization_timeout,
                         oauth_refresh_callback=oauth_callback,
                     ),
@@ -260,7 +260,7 @@ class ToolManager:
                 task = asyncio.create_task(
                     self.stream_manager.initialize_with_stdio(
                         servers=stdio_dicts,
-                        server_names=self.server_names,
+                        server_names=self.server_names,  # type: ignore[arg-type]
                         initialization_timeout=self.initialization_timeout,
                     ),
                     name="init_stdio",
@@ -537,26 +537,33 @@ class ToolManager:
                 token_manager.token_store._store_raw(
                     f"oauth:{server_name}", json.dumps(stored.model_dump())
                 )
-                logger.debug(f"Stored OAuth token for refresh callback: oauth:{server_name}")
+                logger.debug(
+                    f"Stored OAuth token for refresh callback: oauth:{server_name}"
+                )
 
                 # Update the transport's headers so the retry uses the new token
                 if self.stream_manager and hasattr(self.stream_manager, "transports"):
                     transport = self.stream_manager.transports.get(server_name)
                     if transport and hasattr(transport, "configured_headers"):
-                        transport.configured_headers["Authorization"] = f"Bearer {tokens.access_token}"
+                        transport.configured_headers["Authorization"] = (
+                            f"Bearer {tokens.access_token}"
+                        )
                         logger.debug(f"Updated transport headers for {server_name}")
 
                 output.success(f"✅ Successfully authenticated with {server_name}")
                 logger.info(f"OAuth flow completed for {server_name}")
                 return True
             else:
-                output.error(f"❌ OAuth flow did not return valid tokens for {server_name}")
+                output.error(
+                    f"❌ OAuth flow did not return valid tokens for {server_name}"
+                )
                 return False
 
         except Exception as e:
             logger.error(f"OAuth flow failed for {server_name}: {e}", exc_info=True)
             try:
                 from chuk_term.ui import output
+
                 output.error(f"❌ OAuth authentication failed: {e}")
             except ImportError:
                 pass
@@ -623,7 +630,11 @@ class ToolManager:
                             # Retry the tool call once after OAuth
                             logger.info(f"Retrying tool {tool_name} after OAuth")
                             return await self.execute_tool(
-                                tool_name, arguments, namespace, timeout, _oauth_retry=True
+                                tool_name,
+                                arguments,
+                                namespace,
+                                timeout,
+                                _oauth_retry=True,
                             )
 
             return ToolCallResult(tool_name=tool_name, success=True, result=result)
@@ -634,7 +645,9 @@ class ToolManager:
 
             # Check if this is an OAuth error and we haven't already retried
             if _is_oauth_error(error_msg) and not _oauth_retry:
-                logger.info(f"OAuth error detected for tool {tool_name}, attempting authentication")
+                logger.info(
+                    f"OAuth error detected for tool {tool_name}, attempting authentication"
+                )
 
                 # Determine server name - use namespace or look up from tool
                 server_name = namespace or await self.get_server_for_tool(tool_name)
@@ -645,7 +658,11 @@ class ToolManager:
                             # Retry the tool call once after OAuth
                             logger.info(f"Retrying tool {tool_name} after OAuth")
                             return await self.execute_tool(
-                                tool_name, arguments, namespace, timeout, _oauth_retry=True
+                                tool_name,
+                                arguments,
+                                namespace,
+                                timeout,
+                                _oauth_retry=True,
                             )
                         else:
                             return ToolCallResult(

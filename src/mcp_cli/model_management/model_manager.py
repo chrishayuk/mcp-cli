@@ -1,8 +1,4 @@
-# src/mcp_cli/model_management/model_manager.py
-"""
-from __future__ import annotations
-
-ModelManager - Clean, type-safe LLM provider and model management.
+"""mcp_cli.model_management.model_manager - Clean, type-safe LLM provider and model management.
 
 This module provides the main ModelManager class that orchestrates:
 - Provider discovery and listing (from chuk_llm configuration)
@@ -16,6 +12,8 @@ NO HARDCODED MODELS OR PROVIDERS - All defaults come from:
 3. Runtime provider configs (for custom providers)
 4. API discovery (for OpenAI-compatible providers)
 """
+
+from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING

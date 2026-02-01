@@ -135,7 +135,7 @@ class TestMCPConfig:
         config = MCPConfig()
         assert config.servers == {}
         assert config.default_provider == "openai"
-        assert config.default_model == "gpt-4"
+        assert config.default_model == "gpt-4o-mini"
         assert config.theme == "default"
         assert config.verbose is True
         assert config.confirm_tools is True

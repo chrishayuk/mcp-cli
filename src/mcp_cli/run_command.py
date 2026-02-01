@@ -1,4 +1,4 @@
-# mcp_cli/run_command.py - COMPLETE FIXED VERSION
+# mcp_cli/run_command.py
 """
 Main entry-point helpers for all CLI sub-commands.
 
@@ -23,6 +23,7 @@ import typer
 from rich.panel import Panel
 from chuk_term.ui import output
 
+from mcp_cli.config.defaults import DEFAULT_PROVIDER, DEFAULT_MODEL
 from mcp_cli.tools.manager import ToolManager, set_tool_manager
 from mcp_cli.context import initialize_context
 
@@ -179,8 +180,8 @@ async def run_command(
         context = initialize_context(
             tool_manager=tm,
             config_path=Path(config_file),
-            provider=(extra_params or {}).get("provider", "openai"),
-            model=(extra_params or {}).get("model", "gpt-4o-mini"),
+            provider=(extra_params or {}).get("provider", DEFAULT_PROVIDER),
+            model=(extra_params or {}).get("model", DEFAULT_MODEL),
             api_base=(extra_params or {}).get("api_base"),
             api_key=(extra_params or {}).get("api_key"),
         )

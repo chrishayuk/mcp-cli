@@ -3,8 +3,8 @@
 
 import pytest
 
-from mcp_cli.chat.state.bindings import BindingManager
-from mcp_cli.chat.state.models import ValueType
+from chuk_ai_session_manager.guards.bindings import BindingManager
+from chuk_ai_session_manager.guards.models import ValueType
 
 
 class TestBindingManager:
@@ -272,28 +272,28 @@ class TestClassifyValueType:
 
     def test_classify_list_type(self):
         """Test classifying list values."""
-        from mcp_cli.chat.state.bindings import classify_value_type
-        from mcp_cli.chat.state.models import ValueType
+        from chuk_ai_session_manager.guards.bindings import classify_value_type
+        from chuk_ai_session_manager.guards.models import ValueType
 
         assert classify_value_type([1, 2, 3]) == ValueType.LIST
 
     def test_classify_dict_type(self):
         """Test classifying dict values."""
-        from mcp_cli.chat.state.bindings import classify_value_type
-        from mcp_cli.chat.state.models import ValueType
+        from chuk_ai_session_manager.guards.bindings import classify_value_type
+        from chuk_ai_session_manager.guards.models import ValueType
 
         assert classify_value_type({"key": "value"}) == ValueType.OBJECT
 
     def test_classify_unknown_type(self):
         """Test classifying unknown type (None, etc)."""
-        from mcp_cli.chat.state.bindings import classify_value_type
-        from mcp_cli.chat.state.models import ValueType
+        from chuk_ai_session_manager.guards.bindings import classify_value_type
+        from chuk_ai_session_manager.guards.models import ValueType
 
         assert classify_value_type(None) == ValueType.UNKNOWN
 
     def test_classify_numeric_string(self):
         """Test classifying numeric string."""
-        from mcp_cli.chat.state.bindings import classify_value_type
-        from mcp_cli.chat.state.models import ValueType
+        from chuk_ai_session_manager.guards.bindings import classify_value_type
+        from chuk_ai_session_manager.guards.models import ValueType
 
         assert classify_value_type("123.45") == ValueType.NUMBER

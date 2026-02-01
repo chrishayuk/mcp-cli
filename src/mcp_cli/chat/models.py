@@ -158,12 +158,12 @@ class Message(BaseModel):
         # https://api-docs.deepseek.com/guides/thinking_mode#tool-calls
         # "the user needs to send the reasoning content back to the API"
 
-        return result  # type: ignore[no-any-return]
+        return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Message:
         """Create from dict."""
-        return cls.model_validate(data)  # type: ignore[no-any-return]
+        return cls.model_validate(data)
 
     def get_tool_calls_typed(self) -> list[ToolCallData]:
         """Get tool calls as typed ToolCallData objects."""
@@ -209,12 +209,12 @@ class ToolExecutionRecord(BaseModel):
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
-        return self.model_dump(exclude_none=True, mode="json")  # type: ignore[no-any-return]
+        return self.model_dump(exclude_none=True, mode="json")
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ToolExecutionRecord:
         """Create from dict."""
-        return cls.model_validate(data)  # type: ignore[no-any-return]
+        return cls.model_validate(data)
 
 
 class ToolExecutionState(BaseModel):
@@ -254,7 +254,7 @@ class ChatStatus(BaseModel):
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict."""
-        return self.model_dump(mode="json")  # type: ignore[no-any-return]
+        return self.model_dump(mode="json")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -279,6 +279,10 @@ class ToolProcessorContext(Protocol):
 
     def get_display_name_for_tool(self, tool_name: str) -> str:
         """Get display name for a tool (may be namespaced)."""
+        ...
+
+    def inject_tool_message(self, message: Message) -> None:
+        """Add a message directly to conversation history."""
         ...
 
 
