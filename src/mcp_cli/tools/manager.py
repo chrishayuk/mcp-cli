@@ -25,6 +25,13 @@ from chuk_tool_processor import ToolCall as CTPToolCall
 from chuk_tool_processor import ToolResult as CTPToolResult
 from chuk_tool_processor.mcp import MiddlewareConfig
 
+from mcp_cli.auth import (
+    OAuthHandler,
+    StoredToken,
+    TokenManager,
+    TokenStoreBackend,
+    TokenType,
+)
 from mcp_cli.config import RuntimeConfig, TimeoutType, load_runtime_config
 from mcp_cli.config.defaults import DEFAULT_MIDDLEWARE_ENABLED
 from mcp_cli.constants import ServerStatus
@@ -45,6 +52,28 @@ from mcp_cli.tools.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# OAuth Error Detection Patterns
+# ──────────────────────────────────────────────────────────────────────────────
+OAUTH_ERROR_PATTERNS = [
+    "requires OAuth authorization",
+    "requires oauth authorization",
+    "OAuth authorization required",
+    "oauth authorization required",
+    "authentication required",
+    "Authorization required",
+    "unauthorized",
+    "401",
+]
+
+
+def _is_oauth_error(error_message: str) -> bool:
+    """Check if an error message indicates OAuth authorization is needed."""
+    if not error_message:
+        return False
+    error_lower = error_message.lower()
+    return any(pattern.lower() in error_lower for pattern in OAUTH_ERROR_PATTERNS)
 
 
 class ToolManager:
@@ -138,7 +167,7 @@ class ToolManager:
 
             self._config_loader.detect_server_types(config)
 
-            # Initialize StreamManager based on detected types
+            # Initialize StreamManager based on detected type
             success = await self._initialize_stream_manager(namespace)
 
             if success and self.stream_manager:
@@ -434,12 +463,112 @@ class ToolManager:
     # Tool Execution
     # ================================================================
 
+    def _get_server_url(self, server_name: str) -> str | None:
+        """Get the URL for an HTTP/SSE server by name.
+
+        Args:
+            server_name: Name of the server
+
+        Returns:
+            Server URL or None if not found or not an HTTP server
+        """
+        # Check HTTP servers
+        for server in self._config_loader.http_servers:
+            if server.name == server_name:
+                return server.url
+
+        # Check SSE servers
+        for server in self._config_loader.sse_servers:
+            if server.name == server_name:
+                return server.url
+
+        return None
+
+    async def _handle_oauth_flow(self, server_name: str, server_url: str) -> bool:
+        """Handle OAuth authentication flow for a server.
+
+        Args:
+            server_name: Name of the server requiring OAuth
+            server_url: URL of the server
+
+        Returns:
+            True if OAuth completed successfully, False otherwise
+        """
+        try:
+            from chuk_term.ui import output
+
+            output.info(f"🔐 OAuth authorization required for server: {server_name}")
+            output.info("Opening browser for authentication...")
+
+            # Create token manager with mcp-cli service name
+            token_manager = TokenManager(
+                backend=TokenStoreBackend.AUTO,
+                service_name="mcp-cli",
+            )
+            oauth_handler = OAuthHandler(token_manager=token_manager)
+
+            # Clear any existing tokens - they're clearly invalid since the server
+            # returned an OAuth error. This forces a fresh browser-based auth flow.
+            oauth_handler.clear_tokens(server_name)
+            logger.debug(f"Cleared existing tokens for {server_name} to force re-auth")
+
+            # Perform MCP OAuth flow (discovers metadata, opens browser, gets tokens)
+            tokens = await oauth_handler.ensure_authenticated_mcp(
+                server_name=server_name,
+                server_url=server_url,
+            )
+
+            if tokens and tokens.access_token:
+                # Also store in the format expected by the oauth_refresh_callback
+                # The refresh callback looks for "oauth:{server_name}" with StoredToken format
+                import json
+
+                stored = StoredToken(
+                    token_type=TokenType.OAUTH,
+                    name=server_name,
+                    data={
+                        "access_token": tokens.access_token,
+                        "refresh_token": tokens.refresh_token,
+                        "token_type": tokens.token_type,
+                        "expires_in": tokens.expires_in,
+                        "issued_at": tokens.issued_at,
+                    },
+                )
+                token_manager.token_store._store_raw(
+                    f"oauth:{server_name}", json.dumps(stored.model_dump())
+                )
+                logger.debug(f"Stored OAuth token for refresh callback: oauth:{server_name}")
+
+                # Update the transport's headers so the retry uses the new token
+                if self.stream_manager and hasattr(self.stream_manager, "transports"):
+                    transport = self.stream_manager.transports.get(server_name)
+                    if transport and hasattr(transport, "configured_headers"):
+                        transport.configured_headers["Authorization"] = f"Bearer {tokens.access_token}"
+                        logger.debug(f"Updated transport headers for {server_name}")
+
+                output.success(f"✅ Successfully authenticated with {server_name}")
+                logger.info(f"OAuth flow completed for {server_name}")
+                return True
+            else:
+                output.error(f"❌ OAuth flow did not return valid tokens for {server_name}")
+                return False
+
+        except Exception as e:
+            logger.error(f"OAuth flow failed for {server_name}: {e}", exc_info=True)
+            try:
+                from chuk_term.ui import output
+                output.error(f"❌ OAuth authentication failed: {e}")
+            except ImportError:
+                pass
+            return False
+
     async def execute_tool(
         self,
         tool_name: str,
         arguments: dict[str, Any],
         namespace: str | None = None,
         timeout: float | None = None,
+        _oauth_retry: bool = False,
     ) -> ToolCallResult:
         """Execute tool and return ToolCallResult.
 
@@ -447,6 +576,10 @@ class ToolManager:
         - Retry with exponential backoff for transient errors
         - Circuit breaker pattern for failing servers
         - Rate limiting (if configured)
+
+        OAuth handling:
+        - If a tool fails with OAuth authorization error, automatically
+          triggers the OAuth flow and retries the tool call once.
         """
         # Check if this is a dynamic tool
         if self.dynamic_tool_provider.is_dynamic_tool(tool_name):
@@ -476,11 +609,55 @@ class ToolManager:
                 server_name=namespace,
                 timeout=timeout or self.tool_timeout,
             )
+
+            # Check if result contains an OAuth error (some servers return errors in content)
+            result_str = str(result) if result else ""
+            if _is_oauth_error(result_str) and not _oauth_retry:
+                logger.info(f"OAuth error detected in tool result for {tool_name}")
+                # Determine server name - use namespace or look up from tool
+                server_name = namespace or await self.get_server_for_tool(tool_name)
+                if server_name:
+                    server_url = self._get_server_url(server_name)
+                    if server_url:
+                        if await self._handle_oauth_flow(server_name, server_url):
+                            # Retry the tool call once after OAuth
+                            logger.info(f"Retrying tool {tool_name} after OAuth")
+                            return await self.execute_tool(
+                                tool_name, arguments, namespace, timeout, _oauth_retry=True
+                            )
+
             return ToolCallResult(tool_name=tool_name, success=True, result=result)
 
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Tool execution failed: {error_msg}")
+
+            # Check if this is an OAuth error and we haven't already retried
+            if _is_oauth_error(error_msg) and not _oauth_retry:
+                logger.info(f"OAuth error detected for tool {tool_name}, attempting authentication")
+
+                # Determine server name - use namespace or look up from tool
+                server_name = namespace or await self.get_server_for_tool(tool_name)
+                if server_name:
+                    server_url = self._get_server_url(server_name)
+                    if server_url:
+                        if await self._handle_oauth_flow(server_name, server_url):
+                            # Retry the tool call once after OAuth
+                            logger.info(f"Retrying tool {tool_name} after OAuth")
+                            return await self.execute_tool(
+                                tool_name, arguments, namespace, timeout, _oauth_retry=True
+                            )
+                        else:
+                            return ToolCallResult(
+                                tool_name=tool_name,
+                                success=False,
+                                error=f"OAuth authentication failed for {server_name}. {error_msg}",
+                            )
+                    else:
+                        logger.warning(f"Could not find URL for server {server_name}")
+                else:
+                    logger.warning(f"Could not determine server for tool {tool_name}")
+
             return ToolCallResult(tool_name=tool_name, success=False, error=error_msg)
 
     async def stream_execute_tool(
