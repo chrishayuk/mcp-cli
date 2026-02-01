@@ -123,12 +123,12 @@ class CustomProvider(BaseModel):
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary (no API key stored)."""
-        return self.model_dump()
+        return self.model_dump()  # type: ignore[no-any-return]
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "CustomProvider":
         """Create from dictionary."""
-        return cls.model_validate(data)
+        return cls.model_validate(data)  # type: ignore[no-any-return]
 
     def get_env_var_name(self) -> str:
         """Get the environment variable name for this provider's API key."""
@@ -170,13 +170,13 @@ class MCPPreferences(BaseModel):
 
     def to_dict(self) -> dict[str, Any]:
         """Convert preferences to dictionary."""
-        return self.model_dump()
+        return self.model_dump()  # type: ignore[no-any-return]
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MCPPreferences":
         """Create preferences from dictionary."""
         # Pydantic will handle nested model validation automatically
-        return cls.model_validate(data)
+        return cls.model_validate(data)  # type: ignore[no-any-return]
 
 
 class PreferenceManager:

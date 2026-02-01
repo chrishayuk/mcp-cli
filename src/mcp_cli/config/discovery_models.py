@@ -60,7 +60,7 @@ class DiscoveryConfig(BaseModel):
 
     def to_dict(self) -> dict[str, bool]:
         """Convert to dictionary for compatibility."""
-        return self.model_dump()
+        return self.model_dump()  # type: ignore[no-any-return]
 
 
 class DiscoveryStatus(BaseModel):

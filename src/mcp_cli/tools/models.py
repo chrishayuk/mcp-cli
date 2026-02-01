@@ -63,11 +63,11 @@ class ServerCapabilities(BaseModel):
             data["experimental"] = ExperimentalCapabilities.model_validate(
                 data["experimental"]
             )
-        return cls.model_validate(data)
+        return cls.model_validate(data)  # type: ignore[no-any-return]
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
-        return self.model_dump(mode="json")
+        return self.model_dump(mode="json")  # type: ignore[no-any-return]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -439,7 +439,7 @@ class TransportServerConfig(BaseModel):
 
     def to_stream_manager_config(self) -> dict[str, Any]:
         """Convert to format expected by StreamManager."""
-        return self.model_dump(exclude_none=True)
+        return self.model_dump(exclude_none=True)  # type: ignore[no-any-return]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -479,12 +479,12 @@ class ConversationMessage(BaseModel):
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary, excluding None values."""
-        return self.model_dump(exclude_none=True, mode="json")
+        return self.model_dump(exclude_none=True, mode="json")  # type: ignore[no-any-return]
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ConversationMessage":
         """Create from dictionary."""
-        return cls.model_validate(data)
+        return cls.model_validate(data)  # type: ignore[no-any-return]
 
     @classmethod
     def user_message(cls, content: str) -> "ConversationMessage":
@@ -548,7 +548,7 @@ class LLMToolDefinition(BaseModel):
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary format for LLM API calls."""
-        return self.model_dump(mode="json")
+        return self.model_dump(mode="json")  # type: ignore[no-any-return]
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -218,8 +218,8 @@ class ToolManager:
                 ]
                 task = asyncio.create_task(
                     self.stream_manager.initialize_with_http_streamable(
-                        servers=http_dicts,  # type: ignore[arg-type]
-                        server_names=self.server_names,  # type: ignore[arg-type]
+                        servers=http_dicts,
+                        server_names=self.server_names,
                         initialization_timeout=self.initialization_timeout,
                         oauth_refresh_callback=oauth_callback,
                     ),
@@ -236,8 +236,8 @@ class ToolManager:
                 ]
                 task = asyncio.create_task(
                     self.stream_manager.initialize_with_sse(
-                        servers=sse_dicts,  # type: ignore[arg-type]
-                        server_names=self.server_names,  # type: ignore[arg-type]
+                        servers=sse_dicts,
+                        server_names=self.server_names,
                         initialization_timeout=self.initialization_timeout,
                         oauth_refresh_callback=oauth_callback,
                     ),
@@ -260,7 +260,7 @@ class ToolManager:
                 task = asyncio.create_task(
                     self.stream_manager.initialize_with_stdio(
                         servers=stdio_dicts,
-                        server_names=self.server_names,  # type: ignore[arg-type]
+                        server_names=self.server_names,
                         initialization_timeout=self.initialization_timeout,
                     ),
                     name="init_stdio",
