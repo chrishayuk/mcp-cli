@@ -532,9 +532,13 @@ class ConversationProcessor:
 
         try:
             # stream_response returns dict, convert to CompletionResponse
+            messages_for_api = [
+                msg.to_dict() for msg in self.context.conversation_history
+            ]
+            messages_for_api = self._validate_tool_messages(messages_for_api)
             completion_dict = await streaming_handler.stream_response(
                 client=self.context.client,
-                messages=[msg.to_dict() for msg in self.context.conversation_history],
+                messages=messages_for_api,
                 tools=tools,
             )
 
@@ -573,6 +577,7 @@ class ConversationProcessor:
             messages_as_dicts = [
                 msg.to_dict() for msg in self.context.conversation_history
             ]
+            messages_as_dicts = self._validate_tool_messages(messages_as_dicts)
             completion_dict = await self.context.client.create_completion(
                 messages=messages_as_dicts,
                 tools=tools,
@@ -588,6 +593,7 @@ class ConversationProcessor:
                 messages_as_dicts = [
                     msg.to_dict() for msg in self.context.conversation_history
                 ]
+                messages_as_dicts = self._validate_tool_messages(messages_as_dicts)
                 completion_dict = await self.context.client.create_completion(
                     messages=messages_as_dicts
                 )
@@ -631,6 +637,58 @@ class ConversationProcessor:
             log.error(f"Error loading tools: {exc}")
             self.context.openai_tools = []
             self.context.tool_name_mapping = {}
+
+    @staticmethod
+    def _validate_tool_messages(messages: list[dict]) -> list[dict]:
+        """Ensure every assistant tool_call_id has a matching tool result.
+
+        Defense-in-depth: repairs orphaned tool_calls before sending to the API.
+        Without this, OpenAI returns a 400 error:
+        "An assistant message with 'tool_calls' must be followed by tool messages
+        responding to each 'tool_call_id'."
+
+        Args:
+            messages: List of message dicts about to be sent to the API.
+
+        Returns:
+            The message list, with placeholder tool results inserted for any
+            orphaned tool_call_ids.
+        """
+        repaired: list[dict] = []
+        i = 0
+        while i < len(messages):
+            msg = messages[i]
+            repaired.append(msg)
+
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                # Collect expected tool_call_ids from this assistant message
+                expected_ids = set()
+                for tc in msg["tool_calls"]:
+                    tc_id = tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", None)
+                    if tc_id:
+                        expected_ids.add(tc_id)
+
+                # Scan following messages for matching tool results
+                j = i + 1
+                found_ids: set[str] = set()
+                while j < len(messages) and messages[j].get("role") == "tool":
+                    tid = messages[j].get("tool_call_id")
+                    if tid:
+                        found_ids.add(tid)
+                    j += 1
+
+                # Insert placeholders for any missing tool results
+                missing = expected_ids - found_ids
+                for mid in missing:
+                    log.warning(f"Repairing orphaned tool_call_id: {mid}")
+                    repaired.append({
+                        "role": "tool",
+                        "tool_call_id": mid,
+                        "content": "Tool call did not complete.",
+                    })
+
+            i += 1
+        return repaired
 
     def _register_user_literals_from_history(self) -> int:
         """Extract and register numeric literals from recent user messages.

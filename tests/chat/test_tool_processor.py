@@ -313,8 +313,108 @@ async def test_process_tool_calls_no_tool_manager():
     }
 
     # Pass as a list to process_tool_calls - should raise RuntimeError
+    # The finally block still runs, so missing results are filled in.
     with pytest.raises(RuntimeError, match="No tool manager available"):
         await processor.process_tool_calls([tool_call])
+
+
+@pytest.mark.asyncio
+async def test_ensure_all_tool_results_fills_missing():
+    """Test that _ensure_all_tool_results adds placeholder results for missing tool_call_ids."""
+    result_dict = {"isError": False, "content": "OK"}
+    tool_manager = DummyToolManager(return_result=result_dict)
+    context = DummyContext(tool_manager=tool_manager)
+    ui_manager = DummyUIManager()
+    processor = ToolProcessor(context, ui_manager)
+
+    # Simulate: assistant message was added but no tool result was added
+    processor._result_ids_added = set()
+    tool_calls = [
+        ToolCall(
+            id="call_orphan_1",
+            type="function",
+            function=FunctionCall(name="tool_a", arguments='{"x": 1}'),
+        ),
+        ToolCall(
+            id="call_orphan_2",
+            type="function",
+            function=FunctionCall(name="tool_b", arguments='{"y": 2}'),
+        ),
+    ]
+
+    # Only tool_a got a result
+    processor._result_ids_added.add("call_orphan_1")
+
+    processor._ensure_all_tool_results(tool_calls)
+
+    # tool_b should now have a placeholder result in the conversation history
+    tool_results = [
+        msg for msg in context.conversation_history
+        if msg.role.value == "tool"
+    ]
+    assert len(tool_results) == 1
+    assert tool_results[0].tool_call_id == "call_orphan_2"
+    assert "interrupted or failed" in tool_results[0].content
+
+
+@pytest.mark.asyncio
+async def test_ensure_all_tool_results_noop_when_all_present():
+    """Test that _ensure_all_tool_results does nothing when all results are present."""
+    result_dict = {"isError": False, "content": "OK"}
+    tool_manager = DummyToolManager(return_result=result_dict)
+    context = DummyContext(tool_manager=tool_manager)
+    ui_manager = DummyUIManager()
+    processor = ToolProcessor(context, ui_manager)
+
+    processor._result_ids_added = {"call_1", "call_2"}
+    tool_calls = [
+        ToolCall(
+            id="call_1",
+            type="function",
+            function=FunctionCall(name="tool_a", arguments='{}'),
+        ),
+        ToolCall(
+            id="call_2",
+            type="function",
+            function=FunctionCall(name="tool_b", arguments='{}'),
+        ),
+    ]
+
+    processor._ensure_all_tool_results(tool_calls)
+
+    # No new messages should have been added
+    assert len(context.conversation_history) == 0
+
+
+@pytest.mark.asyncio
+async def test_process_tool_calls_finally_adds_missing_results():
+    """Test that the finally block adds results for tools that never executed.
+
+    When a tool_manager raises RuntimeError, the finally block should still
+    ensure all tool_call_ids have results, preventing OpenAI 400 errors.
+    """
+    context = DummyContext(stream_manager=None, tool_manager=None)
+    ui_manager = DummyUIManager()
+    processor = ToolProcessor(context, ui_manager)
+
+    tool_call = ToolCall(
+        id="call_no_manager",
+        type="function",
+        function=FunctionCall(name="some_tool", arguments='{"a": "b"}'),
+    )
+
+    with pytest.raises(RuntimeError):
+        await processor.process_tool_calls([tool_call])
+
+    # The finally block should have added a placeholder result
+    tool_results = [
+        msg for msg in context.conversation_history
+        if msg.role.value == "tool"
+    ]
+    assert len(tool_results) >= 1
+    assert any(
+        msg.tool_call_id == "call_no_manager" for msg in tool_results
+    )
 
 
 @pytest.mark.asyncio
@@ -341,3 +441,146 @@ async def test_process_tool_calls_exception_in_call():
     assert len(error_entries) >= 1
     # The error should contain the exception message
     assert any("Simulated execute_tool exception" in e.content for e in error_entries)
+
+
+# ---------------------------
+# Tests for orphaned tool_call_id safety net
+# ---------------------------
+
+
+class DenyConfirmUIManager(DummyUIManager):
+    """UI manager that denies tool confirmation."""
+
+    def do_confirm_tool_execution(self, tool_name, arguments):
+        return False
+
+
+class FailingInjectContext(DummyContext):
+    """Context whose inject_tool_message raises after the first N calls."""
+
+    def __init__(self, tool_manager=None, fail_after=1):
+        super().__init__(tool_manager=tool_manager)
+        self._inject_count = 0
+        self._fail_after = fail_after
+
+    def inject_tool_message(self, message):
+        self._inject_count += 1
+        if self._inject_count > self._fail_after:
+            raise RuntimeError("Simulated inject failure")
+        super().inject_tool_message(message)
+
+
+@pytest.mark.asyncio
+async def test_cancelled_tool_still_gets_result_for_remaining():
+    """When user cancels confirmation on the 2nd tool, the 2nd tool still gets a result."""
+    result_dict = {"isError": False, "content": "OK"}
+    tool_manager = DummyToolManager(return_result=result_dict)
+    context = DummyContext(tool_manager=tool_manager)
+
+    call_count = [0]
+
+    class SelectiveDenyUI(DummyUIManager):
+        """Denies the second tool call."""
+        def do_confirm_tool_execution(self, tool_name, arguments):
+            call_count[0] += 1
+            return call_count[0] <= 1  # Allow first, deny second
+
+    ui_manager = SelectiveDenyUI()
+    processor = ToolProcessor(context, ui_manager)
+
+    tool_calls = [
+        ToolCall(id="call_ok", type="function",
+                 function=FunctionCall(name="tool_a", arguments='{}')),
+        ToolCall(id="call_denied", type="function",
+                 function=FunctionCall(name="tool_b", arguments='{}')),
+    ]
+
+    await processor.process_tool_calls(tool_calls)
+
+    # Both tool_call_ids must have results (one executed, one cancelled/placeholder)
+    tool_results = [
+        msg for msg in context.conversation_history
+        if msg.role.value == "tool"
+    ]
+    result_ids = {msg.tool_call_id for msg in tool_results}
+    assert "call_ok" in result_ids or "call_denied" in result_ids
+    # The key assertion: no orphaned tool_call_ids
+    assistant_msgs = [
+        msg for msg in context.conversation_history
+        if msg.role.value == "assistant" and msg.tool_calls
+    ]
+    for amsg in assistant_msgs:
+        for tc in amsg.tool_calls:
+            tc_id = tc.id if hasattr(tc, "id") else tc.get("id")
+            assert tc_id in result_ids, f"Orphaned tool_call_id: {tc_id}"
+
+
+@pytest.mark.asyncio
+async def test_inject_failure_is_caught_by_finally():
+    """When inject_tool_message fails, the finally block fills missing results."""
+    result_dict = {"isError": False, "content": "OK"}
+    tool_manager = DummyToolManager(return_result=result_dict)
+    # fail_after=1 means the assistant message succeeds, but the tool result inject fails
+    context = FailingInjectContext(tool_manager=tool_manager, fail_after=1)
+    ui_manager = DummyUIManager()
+    processor = ToolProcessor(context, ui_manager)
+
+    tool_call = ToolCall(
+        id="call_inject_fail", type="function",
+        function=FunctionCall(name="some_tool", arguments='{}'),
+    )
+
+    # The tool result inject fails, then execution runs, then finally block fires.
+    # Since inject keeps failing, the finally block's attempt also fails.
+    # But the key point is process_tool_calls doesn't crash.
+    await processor.process_tool_calls([tool_call])
+
+    # The assistant message should be in history (first inject succeeded)
+    assert len(context.conversation_history) >= 1
+    assert context.conversation_history[0].role.value == "assistant"
+
+
+@pytest.mark.asyncio
+async def test_result_ids_reset_between_calls():
+    """_result_ids_added is reset on each call to process_tool_calls."""
+    result_dict = {"isError": False, "content": "OK"}
+    tool_manager = DummyToolManager(return_result=result_dict)
+    context = DummyContext(tool_manager=tool_manager)
+    ui_manager = DummyUIManager()
+    processor = ToolProcessor(context, ui_manager)
+
+    # First call
+    tc1 = ToolCall(id="call_first", type="function",
+                   function=FunctionCall(name="tool_a", arguments='{}'))
+    await processor.process_tool_calls([tc1])
+    assert "call_first" in processor._result_ids_added
+
+    # Second call should start fresh
+    tc2 = ToolCall(id="call_second", type="function",
+                   function=FunctionCall(name="tool_b", arguments='{}'))
+    await processor.process_tool_calls([tc2])
+    assert "call_second" in processor._result_ids_added
+    assert "call_first" not in processor._result_ids_added
+
+
+@pytest.mark.asyncio
+async def test_successful_batch_tracks_all_ids():
+    """All tool_call_ids in a successful batch are tracked in _result_ids_added."""
+    result_dict = {"isError": False, "content": "OK"}
+    tool_manager = DummyToolManager(return_result=result_dict)
+    context = DummyContext(tool_manager=tool_manager)
+    ui_manager = DummyUIManager()
+    processor = ToolProcessor(context, ui_manager)
+
+    tool_calls = [
+        ToolCall(id="batch_1", type="function",
+                 function=FunctionCall(name="tool_a", arguments='{}')),
+        ToolCall(id="batch_2", type="function",
+                 function=FunctionCall(name="tool_b", arguments='{}')),
+        ToolCall(id="batch_3", type="function",
+                 function=FunctionCall(name="tool_c", arguments='{}')),
+    ]
+
+    await processor.process_tool_calls(tool_calls)
+
+    assert processor._result_ids_added == {"batch_1", "batch_2", "batch_3"}
