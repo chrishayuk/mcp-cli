@@ -111,7 +111,7 @@ def dummy_tool_manager():
 def chat_context(dummy_tool_manager, monkeypatch):
     # Use deterministic system prompt
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
     )
 
     # Mock ModelManager to avoid model discovery issues
@@ -339,7 +339,7 @@ async def test_str(chat_context):
 async def test_context_manager(dummy_tool_manager, monkeypatch):
     """Test async context manager."""
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
     )
 
     from unittest.mock import Mock
@@ -403,7 +403,7 @@ async def test_refresh_after_model_change(chat_context):
 async def test_create_with_provider_only(dummy_tool_manager, monkeypatch):
     """Test ChatContext.create with provider only."""
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
     )
 
     from unittest.mock import Mock
@@ -430,7 +430,7 @@ async def test_create_with_provider_only(dummy_tool_manager, monkeypatch):
 async def test_create_with_model_only(dummy_tool_manager, monkeypatch):
     """Test ChatContext.create with model only."""
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
     )
 
     from unittest.mock import Mock
@@ -455,7 +455,7 @@ async def test_create_with_model_only(dummy_tool_manager, monkeypatch):
 async def test_create_with_provider_and_api_settings(dummy_tool_manager, monkeypatch):
     """Test ChatContext.create with provider and API settings."""
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
     )
 
     from unittest.mock import Mock
@@ -485,7 +485,7 @@ async def test_create_with_provider_model_and_api_settings(
 ):
     """Test ChatContext.create with all settings."""
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
     )
 
     from unittest.mock import Mock
@@ -517,7 +517,7 @@ async def test_initialize_failure(dummy_tool_manager, monkeypatch):
 
     # Patch generate_system_prompt to avoid issues
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
     )
 
     mock_manager = Mock(spec=ModelManager)
@@ -544,7 +544,7 @@ async def test_initialize_failure(dummy_tool_manager, monkeypatch):
 async def test_regenerate_system_prompt_insert(dummy_tool_manager, monkeypatch):
     """Test regenerate_system_prompt when no system message exists."""
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
     )
 
     from unittest.mock import Mock
@@ -574,7 +574,7 @@ async def test_regenerate_system_prompt_insert(dummy_tool_manager, monkeypatch):
 async def test_context_manager_failure(dummy_tool_manager, monkeypatch):
     """Test async context manager handles initialization failure."""
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
     )
 
     from unittest.mock import Mock
@@ -604,7 +604,7 @@ async def test_context_manager_failure(dummy_tool_manager, monkeypatch):
 async def test_adapt_tools_without_get_adapted_tools(dummy_tool_manager, monkeypatch):
     """Test _adapt_tools_for_provider fallback when get_adapted_tools_for_llm not available."""
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
     )
 
     from unittest.mock import Mock
@@ -650,7 +650,7 @@ async def test_adapt_tools_without_get_adapted_tools(dummy_tool_manager, monkeyp
 async def test_adapt_tools_exception_fallback(dummy_tool_manager, monkeypatch):
     """Test _adapt_tools_for_provider handles exceptions."""
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
     )
 
     from unittest.mock import Mock
@@ -699,7 +699,7 @@ async def test_adapt_tools_exception_fallback(dummy_tool_manager, monkeypatch):
 async def test_initialize_no_tools_warning(monkeypatch, capsys):
     """Test initialize prints warning when no tools available."""
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
     )
 
     from unittest.mock import Mock
@@ -743,3 +743,49 @@ async def test_find_tool_by_name_partial_match(chat_context):
     tool = chat_context.find_tool_by_name("other.tool1")
     assert tool is not None
     assert tool.name == "tool1"
+
+
+# ---------------------------------------------------------------------------
+# Server/tool grouping tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_build_server_tool_groups(chat_context):
+    """_build_server_tool_groups returns correct grouping."""
+    await chat_context.initialize()
+    groups = chat_context._build_server_tool_groups()
+
+    assert len(groups) == 2
+
+    names = {g["name"] for g in groups}
+    assert names == {"srv1", "srv2"}
+
+    for group in groups:
+        assert "name" in group
+        assert "description" in group
+        assert "tools" in group
+        assert len(group["tools"]) >= 1
+
+
+@pytest.mark.asyncio
+async def test_build_server_tool_groups_empty(dummy_tool_manager, monkeypatch):
+    """_build_server_tool_groups returns empty list when no server_info."""
+    monkeypatch.setattr(
+        "mcp_cli.chat.chat_context.generate_system_prompt",
+        lambda tools=None, **kw: "SYS_PROMPT",
+    )
+
+    from unittest.mock import Mock
+    from mcp_cli.model_management import ModelManager
+
+    mock_manager = Mock(spec=ModelManager)
+    mock_manager.get_client.return_value = None
+    mock_manager.get_active_provider.return_value = "mock"
+    mock_manager.get_active_model.return_value = "mock-model"
+
+    ctx = ChatContext.create(
+        tool_manager=dummy_tool_manager, model_manager=mock_manager
+    )
+    # Don't initialize — server_info is empty
+    assert ctx._build_server_tool_groups() == []

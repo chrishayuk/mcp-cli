@@ -1544,3 +1544,189 @@ class TestBindingExtractionWithResults:
 
         # Should have called extract_bindings_from_text
         mock_tool_state.extract_bindings_from_text.assert_called_once()
+
+
+class TestValidateToolMessages:
+    """Tests for _validate_tool_messages defense-in-depth validation."""
+
+    def test_valid_messages_unchanged(self):
+        """Messages with matching tool results are not modified."""
+        messages = [
+            {"role": "system", "content": "You are helpful."},
+            {"role": "user", "content": "Hello"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {"id": "call_1", "type": "function", "function": {"name": "echo", "arguments": "{}"}},
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_1", "content": "OK"},
+            {"role": "assistant", "content": "Done."},
+        ]
+
+        result = ConversationProcessor._validate_tool_messages(messages)
+        assert result == messages
+
+    def test_orphaned_tool_call_gets_placeholder(self):
+        """An assistant message with a tool_call_id missing a result gets a placeholder."""
+        messages = [
+            {"role": "user", "content": "Hello"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {"id": "call_missing", "type": "function", "function": {"name": "fetch", "arguments": "{}"}},
+                ],
+            },
+            # No tool result for call_missing!
+            {"role": "assistant", "content": "Something else."},
+        ]
+
+        result = ConversationProcessor._validate_tool_messages(messages)
+
+        # Should have 4 messages now: user, assistant+tool_calls, tool placeholder, assistant
+        assert len(result) == 4
+        assert result[2]["role"] == "tool"
+        assert result[2]["tool_call_id"] == "call_missing"
+        assert "did not complete" in result[2]["content"]
+
+    def test_multiple_tool_calls_partial_results(self):
+        """When an assistant message has multiple tool_calls and only some have results."""
+        messages = [
+            {"role": "user", "content": "Do two things"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {"id": "call_a", "type": "function", "function": {"name": "tool_a", "arguments": "{}"}},
+                    {"id": "call_b", "type": "function", "function": {"name": "tool_b", "arguments": "{}"}},
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_a", "content": "Result A"},
+            # call_b result is missing
+        ]
+
+        result = ConversationProcessor._validate_tool_messages(messages)
+
+        # Should have 4 messages: user, assistant+tool_calls, tool result A, placeholder for B
+        assert len(result) == 4
+        tool_results = [m for m in result if m.get("role") == "tool"]
+        assert len(tool_results) == 2
+        tool_call_ids = {m["tool_call_id"] for m in tool_results}
+        assert tool_call_ids == {"call_a", "call_b"}
+
+    def test_no_tool_calls_unchanged(self):
+        """Messages without tool_calls pass through unchanged."""
+        messages = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there!"},
+        ]
+
+        result = ConversationProcessor._validate_tool_messages(messages)
+        assert result == messages
+
+    def test_empty_messages(self):
+        """Empty message list returns empty."""
+        assert ConversationProcessor._validate_tool_messages([]) == []
+
+    def test_multiple_sequential_tool_rounds(self):
+        """Multiple assistant→tool rounds are all validated correctly."""
+        messages = [
+            {"role": "user", "content": "Do things"},
+            # Round 1: valid
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {"id": "call_r1", "type": "function", "function": {"name": "a", "arguments": "{}"}},
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_r1", "content": "Done A"},
+            # Round 2: orphaned
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {"id": "call_r2", "type": "function", "function": {"name": "b", "arguments": "{}"}},
+                ],
+            },
+            # Missing tool result for call_r2!
+            {"role": "assistant", "content": "Final answer."},
+        ]
+
+        result = ConversationProcessor._validate_tool_messages(messages)
+
+        # Should have 6 messages: user, asst+tc, tool, asst+tc, PLACEHOLDER, asst
+        assert len(result) == 6
+        assert result[4]["role"] == "tool"
+        assert result[4]["tool_call_id"] == "call_r2"
+        assert "did not complete" in result[4]["content"]
+        # Round 1 should be untouched
+        assert result[2]["tool_call_id"] == "call_r1"
+        assert result[2]["content"] == "Done A"
+
+    def test_all_results_missing(self):
+        """When ALL tool results are missing from a multi-call assistant message."""
+        messages = [
+            {"role": "user", "content": "Run both"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {"id": "call_x", "type": "function", "function": {"name": "x", "arguments": "{}"}},
+                    {"id": "call_y", "type": "function", "function": {"name": "y", "arguments": "{}"}},
+                ],
+            },
+            # No tool results at all — next message is user
+            {"role": "user", "content": "What happened?"},
+        ]
+
+        result = ConversationProcessor._validate_tool_messages(messages)
+
+        # Should have 5 messages: user, asst+tc, placeholder_x, placeholder_y, user
+        assert len(result) == 5
+        placeholders = [m for m in result if m.get("role") == "tool"]
+        assert len(placeholders) == 2
+        placeholder_ids = {m["tool_call_id"] for m in placeholders}
+        assert placeholder_ids == {"call_x", "call_y"}
+
+    def test_empty_tool_calls_list_is_noop(self):
+        """Assistant message with tool_calls=[] should not trigger repair."""
+        messages = [
+            {"role": "user", "content": "Hello"},
+            {
+                "role": "assistant",
+                "content": "Using tools...",
+                "tool_calls": [],
+            },
+            {"role": "assistant", "content": "Done."},
+        ]
+
+        result = ConversationProcessor._validate_tool_messages(messages)
+        assert result == messages
+
+    def test_tool_results_not_immediately_following(self):
+        """Tool results separated from assistant message by another message type."""
+        messages = [
+            {"role": "user", "content": "Go"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {"id": "call_gap", "type": "function", "function": {"name": "t", "arguments": "{}"}},
+                ],
+            },
+            # A user message appears before the tool result
+            {"role": "user", "content": "Hurry up"},
+            {"role": "tool", "tool_call_id": "call_gap", "content": "Late result"},
+        ]
+
+        result = ConversationProcessor._validate_tool_messages(messages)
+
+        # The tool result is not immediately following, so scanner won't find it
+        # A placeholder should be inserted right after the assistant message
+        assert len(result) == 5
+        assert result[2]["role"] == "tool"
+        assert result[2]["tool_call_id"] == "call_gap"
+        assert "did not complete" in result[2]["content"]

@@ -66,6 +66,9 @@ class ToolProcessor:
         self._call_metadata: dict[str, dict[str, Any]] = {}
         self._cancelled = False
 
+        # Track which tool_call_ids have received results (for orphan detection)
+        self._result_ids_added: set[str] = set()
+
         # Give the context a back-pointer for Ctrl-C cancellation
         # Note: This is the one place we set an attribute on context
         context.tool_processor = self
@@ -98,6 +101,7 @@ class ToolProcessor:
         # Reset state
         self._call_metadata.clear()
         self._cancelled = False
+        self._result_ids_added = set()
 
         # Add assistant message with all tool calls BEFORE executing
         self._add_assistant_message_with_tool_calls(tool_calls, reasoning_content)
@@ -105,249 +109,248 @@ class ToolProcessor:
         # Convert LLM tool calls to CTP format and check confirmations
         ctp_calls: list[CTPToolCall] = []
 
-        for idx, call in enumerate(tool_calls):
-            if getattr(self.ui_manager, "interrupt_requested", False):
-                self._cancelled = True
-                break
-
-            # Extract tool call details
-            llm_tool_name, raw_arguments, call_id = self._extract_tool_call_info(
-                call, idx
-            )
-
-            # Map to execution name
-            execution_tool_name = name_mapping.get(llm_tool_name, llm_tool_name)
-
-            # Get display name - special handling for dynamic tool call_tool
-            display_name = execution_tool_name
-            display_arguments = raw_arguments
-
-            # For dynamic tools, extract the actual tool name from call_tool
-            if execution_tool_name == "call_tool":
-                # Parse arguments to get the real tool name
-                parsed_args = self._parse_arguments(raw_arguments)
-                if "tool_name" in parsed_args:
-                    actual_tool = parsed_args["tool_name"]
-                    # Show as "call_tool → actual_tool_name"
-                    display_name = f"call_tool → {actual_tool}"
-                    # Filter out tool_name from displayed args to reduce noise
-                    display_arguments = {
-                        k: v for k, v in parsed_args.items() if k != "tool_name"
-                    }
-
-            if hasattr(self.context, "get_display_name_for_tool"):
-                # Only apply name mapping if not already a dynamic tool
-                if not execution_tool_name.startswith("call_tool"):
-                    display_name = self.context.get_display_name_for_tool(
-                        execution_tool_name
-                    )
-
-            # Show tool call in UI
-            try:
-                self.ui_manager.print_tool_call(display_name, display_arguments)
-            except Exception as ui_exc:
-                log.warning(f"UI display error (non-fatal): {ui_exc}")
-
-            # Handle user confirmation
-            if self._should_confirm_tool(execution_tool_name):
-                confirmed = self.ui_manager.do_confirm_tool_execution(
-                    tool_name=display_name, arguments=raw_arguments
-                )
-                if not confirmed:
-                    setattr(self.ui_manager, "interrupt_requested", True)
-                    self._add_cancelled_tool_to_history(
-                        llm_tool_name, call_id, raw_arguments
-                    )
+        try:
+            for idx, call in enumerate(tool_calls):
+                if getattr(self.ui_manager, "interrupt_requested", False):
                     self._cancelled = True
                     break
 
-            # Parse arguments
-            arguments = self._parse_arguments(raw_arguments)
-
-            # DEBUG: Log exactly what the model sent for this tool call
-            log.info(f"TOOL CALL FROM MODEL: {llm_tool_name} id={call_id}")
-            log.info(f"  raw_arguments: {raw_arguments}")
-            log.info(f"  parsed_arguments: {arguments}")
-
-            # Get actual tool name for checks (for call_tool, it's the inner tool)
-            actual_tool_for_checks = execution_tool_name
-            if execution_tool_name == "call_tool" and "tool_name" in arguments:
-                actual_tool_for_checks = arguments["tool_name"]
-
-            # GENERIC VALIDATION: Reject tool calls with None arguments
-            # This catches cases where the model emits placeholders or incomplete calls
-            none_args = [
-                k for k, v in arguments.items() if v is None and k != "tool_name"
-            ]
-            if none_args:
-                error_msg = (
-                    f"INVALID_ARGS: Tool '{actual_tool_for_checks}' called with None values "
-                    f"for: {', '.join(none_args)}. Please provide actual values."
+                # Extract tool call details
+                llm_tool_name, raw_arguments, call_id = self._extract_tool_call_info(
+                    call, idx
                 )
-                log.warning(error_msg)
-                output.warning(f"⚠ {error_msg}")
-                self._add_tool_result_to_history(
-                    llm_tool_name,
-                    call_id,
-                    f"**Error**: {error_msg}\n\nPlease retry with actual parameter values.",
-                )
-                continue
 
-            # Check $vN references in arguments (dataflow validation)
-            tool_state = get_tool_state()
-            ref_check = tool_state.check_references(arguments)
-            if not ref_check.valid:
-                log.warning(
-                    f"Missing references in {actual_tool_for_checks}: {ref_check.message}"
-                )
-                output.warning(f"⚠ {ref_check.message}")
-                # Add error to history instead of executing
-                self._add_tool_result_to_history(
-                    llm_tool_name,
-                    call_id,
-                    f"**Blocked**: {ref_check.message}\n\n"
-                    f"{tool_state.format_bindings_for_model()}",
-                )
-                continue
+                # Map to execution name
+                execution_tool_name = name_mapping.get(llm_tool_name, llm_tool_name)
 
-            # Check for ungrounded calls (numeric args without $vN refs)
-            # Skip discovery tools - they don't need grounded numeric inputs
-            # Skip idempotent math tools - they should be allowed to compute with any literals
-            # Use SoftBlock repair system: attempt rebind → symbolic fallback → ask user
-            is_math_tool = tool_state.is_idempotent_math_tool(actual_tool_for_checks)
-            if (
-                not tool_state.is_discovery_tool(execution_tool_name)
-                and not is_math_tool
-            ):
-                ungrounded_check = tool_state.check_ungrounded_call(
-                    actual_tool_for_checks, arguments
-                )
-                if ungrounded_check.is_ungrounded:
-                    # Log args for observability (important for debugging)
-                    log.info(
-                        f"Ungrounded call to {actual_tool_for_checks} with args: {arguments}"
-                    )
+                # Get display name - special handling for dynamic tool call_tool
+                display_name = execution_tool_name
+                display_arguments = raw_arguments
 
-                    # Check if this tool should have auto-rebound applied
-                    # Parameterized tools (normal_cdf, sqrt, etc.) should NOT be rebound
-                    # because each call with different args has different semantics
-                    if not tool_state.should_auto_rebound(actual_tool_for_checks):
-                        # For parameterized tools, check preconditions first
-                        # This blocks premature calls before any values are computed
-                        precond_ok, precond_error = tool_state.check_tool_preconditions(
-                            actual_tool_for_checks, arguments
-                        )
-                        if not precond_ok:
-                            log.warning(
-                                f"Precondition failed for {actual_tool_for_checks}"
-                            )
-                            output.warning(
-                                f"⚠ Precondition failed for {actual_tool_for_checks}"
-                            )
-                            self._add_tool_result_to_history(
-                                llm_tool_name, call_id, f"**Blocked**: {precond_error}"
-                            )
-                            continue
-
-                        # Preconditions met - log and allow execution
-                        display_args = {
-                            k: v for k, v in arguments.items() if k != "tool_name"
+                # For dynamic tools, extract the actual tool name from call_tool
+                if execution_tool_name == "call_tool":
+                    # Parse arguments to get the real tool name
+                    parsed_args = self._parse_arguments(raw_arguments)
+                    if "tool_name" in parsed_args:
+                        actual_tool = parsed_args["tool_name"]
+                        # Show as "call_tool → actual_tool_name"
+                        display_name = f"call_tool → {actual_tool}"
+                        # Filter out tool_name from displayed args to reduce noise
+                        display_arguments = {
+                            k: v for k, v in parsed_args.items() if k != "tool_name"
                         }
+
+                if hasattr(self.context, "get_display_name_for_tool"):
+                    # Only apply name mapping if not already a dynamic tool
+                    if not execution_tool_name.startswith("call_tool"):
+                        display_name = self.context.get_display_name_for_tool(
+                            execution_tool_name
+                        )
+
+                # Show tool call in UI
+                try:
+                    self.ui_manager.print_tool_call(display_name, display_arguments)
+                except Exception as ui_exc:
+                    log.warning(f"UI display error (non-fatal): {ui_exc}")
+
+                # Handle user confirmation
+                if self._should_confirm_tool(execution_tool_name):
+                    confirmed = self.ui_manager.do_confirm_tool_execution(
+                        tool_name=display_name, arguments=raw_arguments
+                    )
+                    if not confirmed:
+                        setattr(self.ui_manager, "interrupt_requested", True)
+                        self._add_cancelled_tool_to_history(
+                            llm_tool_name, call_id, raw_arguments
+                        )
+                        self._cancelled = True
+                        break
+
+                # Parse arguments
+                arguments = self._parse_arguments(raw_arguments)
+
+                # DEBUG: Log exactly what the model sent for this tool call
+                log.info(f"TOOL CALL FROM MODEL: {llm_tool_name} id={call_id}")
+                log.info(f"  raw_arguments: {raw_arguments}")
+                log.info(f"  parsed_arguments: {arguments}")
+
+                # Get actual tool name for checks (for call_tool, it's the inner tool)
+                actual_tool_for_checks = execution_tool_name
+                if execution_tool_name == "call_tool" and "tool_name" in arguments:
+                    actual_tool_for_checks = arguments["tool_name"]
+
+                # GENERIC VALIDATION: Reject tool calls with None arguments
+                # This catches cases where the model emits placeholders or incomplete calls
+                none_args = [
+                    k for k, v in arguments.items() if v is None and k != "tool_name"
+                ]
+                if none_args:
+                    error_msg = (
+                        f"INVALID_ARGS: Tool '{actual_tool_for_checks}' called with None values "
+                        f"for: {', '.join(none_args)}. Please provide actual values."
+                    )
+                    log.warning(error_msg)
+                    output.warning(f"⚠ {error_msg}")
+                    self._add_tool_result_to_history(
+                        llm_tool_name,
+                        call_id,
+                        f"**Error**: {error_msg}\n\nPlease retry with actual parameter values.",
+                    )
+                    continue
+
+                # Check $vN references in arguments (dataflow validation)
+                tool_state = get_tool_state()
+                ref_check = tool_state.check_references(arguments)
+                if not ref_check.valid:
+                    log.warning(
+                        f"Missing references in {actual_tool_for_checks}: {ref_check.message}"
+                    )
+                    output.warning(f"⚠ {ref_check.message}")
+                    # Add error to history instead of executing
+                    self._add_tool_result_to_history(
+                        llm_tool_name,
+                        call_id,
+                        f"**Blocked**: {ref_check.message}\n\n"
+                        f"{tool_state.format_bindings_for_model()}",
+                    )
+                    continue
+
+                # Check for ungrounded calls (numeric args without $vN refs)
+                # Skip discovery tools - they don't need grounded numeric inputs
+                # Skip idempotent math tools - they should be allowed to compute with any literals
+                # Use SoftBlock repair system: attempt rebind → symbolic fallback → ask user
+                is_math_tool = tool_state.is_idempotent_math_tool(actual_tool_for_checks)
+                if (
+                    not tool_state.is_discovery_tool(execution_tool_name)
+                    and not is_math_tool
+                ):
+                    ungrounded_check = tool_state.check_ungrounded_call(
+                        actual_tool_for_checks, arguments
+                    )
+                    if ungrounded_check.is_ungrounded:
+                        # Log args for observability (important for debugging)
                         log.info(
-                            f"Allowing parameterized tool {actual_tool_for_checks} with args: {display_args}"
-                        )
-                        output.info(f"→ {actual_tool_for_checks} args: {display_args}")
-                        # Fall through to execution
-                    else:
-                        # For other tools, try to repair using SoftBlock system
-                        should_proceed, repaired_args, fallback_response = (
-                            tool_state.try_soft_block_repair(
-                                actual_tool_for_checks,
-                                arguments,
-                                SoftBlockReason.UNGROUNDED_ARGS,
-                            )
+                            f"Ungrounded call to {actual_tool_for_checks} with args: {arguments}"
                         )
 
-                        if should_proceed and repaired_args:
-                            # Rebind succeeded - use repaired arguments
+                        # Check if this tool should have auto-rebound applied
+                        # Parameterized tools (normal_cdf, sqrt, etc.) should NOT be rebound
+                        # because each call with different args has different semantics
+                        if not tool_state.should_auto_rebound(actual_tool_for_checks):
+                            # For parameterized tools, check preconditions first
+                            # This blocks premature calls before any values are computed
+                            precond_ok, precond_error = tool_state.check_tool_preconditions(
+                                actual_tool_for_checks, arguments
+                            )
+                            if not precond_ok:
+                                log.warning(
+                                    f"Precondition failed for {actual_tool_for_checks}"
+                                )
+                                output.warning(
+                                    f"⚠ Precondition failed for {actual_tool_for_checks}"
+                                )
+                                self._add_tool_result_to_history(
+                                    llm_tool_name, call_id, f"**Blocked**: {precond_error}"
+                                )
+                                continue
+
+                            # Preconditions met - log and allow execution
+                            display_args = {
+                                k: v for k, v in arguments.items() if k != "tool_name"
+                            }
                             log.info(
-                                f"Auto-repaired ungrounded call to {actual_tool_for_checks}: "
-                                f"{arguments} -> {repaired_args}"
+                                f"Allowing parameterized tool {actual_tool_for_checks} with args: {display_args}"
                             )
-                            output.info(
-                                f"↻ Auto-rebound arguments for {actual_tool_for_checks}"
-                            )
-                            arguments = repaired_args
-                        elif fallback_response:
-                            # Symbolic fallback - return helpful response instead of blocking
-                            # Show visible annotation for observability
-                            log.info(f"Symbolic fallback for {actual_tool_for_checks}")
-                            output.info(
-                                f"⏸ [analysis] required_input_missing for {actual_tool_for_checks}"
-                            )
-                            self._add_tool_result_to_history(
-                                llm_tool_name, call_id, fallback_response
-                            )
-                            continue
+                            output.info(f"→ {actual_tool_for_checks} args: {display_args}")
+                            # Fall through to execution
                         else:
-                            # All repairs failed - add error to history
-                            log.warning(
-                                f"Could not repair ungrounded call to {actual_tool_for_checks}"
+                            # For other tools, try to repair using SoftBlock system
+                            should_proceed, repaired_args, fallback_response = (
+                                tool_state.try_soft_block_repair(
+                                    actual_tool_for_checks,
+                                    arguments,
+                                    SoftBlockReason.UNGROUNDED_ARGS,
+                                )
                             )
-                            self._add_tool_result_to_history(
-                                llm_tool_name,
-                                call_id,
-                                f"Cannot proceed with `{actual_tool_for_checks}`: "
-                                f"arguments require computed values.\n\n"
-                                f"{tool_state.format_bindings_for_model()}",
-                            )
-                            continue
 
-            # Check per-tool call limit using the guard (handles exemptions for math/discovery)
-            # per_tool_cap=0 means "disabled/unlimited" (see RuntimeLimits presets)
-            per_tool_result = tool_state.check_per_tool_limit(actual_tool_for_checks)
-            if tool_state.limits.per_tool_cap > 0 and per_tool_result.blocked:
-                log.warning(f"Tool {actual_tool_for_checks} blocked by per-tool limit")
-                output.warning(
-                    f"⚠ Tool {actual_tool_for_checks} - {per_tool_result.reason}"
+                            if should_proceed and repaired_args:
+                                # Rebind succeeded - use repaired arguments
+                                log.info(
+                                    f"Auto-repaired ungrounded call to {actual_tool_for_checks}: "
+                                    f"{arguments} -> {repaired_args}"
+                                )
+                                output.info(
+                                    f"↻ Auto-rebound arguments for {actual_tool_for_checks}"
+                                )
+                                arguments = repaired_args
+                            elif fallback_response:
+                                # Symbolic fallback - return helpful response instead of blocking
+                                # Show visible annotation for observability
+                                log.info(f"Symbolic fallback for {actual_tool_for_checks}")
+                                output.info(
+                                    f"⏸ [analysis] required_input_missing for {actual_tool_for_checks}"
+                                )
+                                self._add_tool_result_to_history(
+                                    llm_tool_name, call_id, fallback_response
+                                )
+                                continue
+                            else:
+                                # All repairs failed - add error to history
+                                log.warning(
+                                    f"Could not repair ungrounded call to {actual_tool_for_checks}"
+                                )
+                                self._add_tool_result_to_history(
+                                    llm_tool_name,
+                                    call_id,
+                                    f"Cannot proceed with `{actual_tool_for_checks}`: "
+                                    f"arguments require computed values.\n\n"
+                                    f"{tool_state.format_bindings_for_model()}",
+                                )
+                                continue
+
+                # Check per-tool call limit using the guard (handles exemptions for math/discovery)
+                # per_tool_cap=0 means "disabled/unlimited" (see RuntimeLimits presets)
+                per_tool_result = tool_state.check_per_tool_limit(actual_tool_for_checks)
+                if tool_state.limits.per_tool_cap > 0 and per_tool_result.blocked:
+                    log.warning(f"Tool {actual_tool_for_checks} blocked by per-tool limit")
+                    output.warning(
+                        f"⚠ Tool {actual_tool_for_checks} - {per_tool_result.reason}"
+                    )
+                    self._add_tool_result_to_history(
+                        llm_tool_name,
+                        call_id,
+                        per_tool_result.reason or "Per-tool limit reached",
+                    )
+                    continue
+
+                # Resolve $vN references in arguments (substitute actual values)
+                resolved_arguments = tool_state.resolve_references(arguments)
+
+                # Store metadata for callbacks
+                self._call_metadata[call_id] = {
+                    "llm_tool_name": llm_tool_name,
+                    "execution_tool_name": execution_tool_name,
+                    "display_name": display_name,
+                    "arguments": resolved_arguments,  # Use resolved arguments
+                    "raw_arguments": raw_arguments,
+                }
+
+                # Create CTP ToolCall with resolved arguments
+                ctp_calls.append(
+                    CTPToolCall(
+                        id=call_id,
+                        tool=execution_tool_name,
+                        arguments=resolved_arguments,
+                    )
                 )
-                self._add_tool_result_to_history(
-                    llm_tool_name,
-                    call_id,
-                    per_tool_result.reason or "Per-tool limit reached",
-                )
-                continue
 
-            # Resolve $vN references in arguments (substitute actual values)
-            resolved_arguments = tool_state.resolve_references(arguments)
+            if self._cancelled or not ctp_calls:
+                return
 
-            # Store metadata for callbacks
-            self._call_metadata[call_id] = {
-                "llm_tool_name": llm_tool_name,
-                "execution_tool_name": execution_tool_name,
-                "display_name": display_name,
-                "arguments": resolved_arguments,  # Use resolved arguments
-                "raw_arguments": raw_arguments,
-            }
+            if self.tool_manager is None:
+                raise RuntimeError("No tool manager available for tool execution")
 
-            # Create CTP ToolCall with resolved arguments
-            ctp_calls.append(
-                CTPToolCall(
-                    id=call_id,
-                    tool=execution_tool_name,
-                    arguments=resolved_arguments,
-                )
-            )
-
-        if self._cancelled or not ctp_calls:
-            await self._finish_tool_calls()
-            return
-
-        if self.tool_manager is None:
-            raise RuntimeError("No tool manager available for tool execution")
-
-        # Execute tools in parallel using ToolManager's streaming API
-        try:
+            # Execute tools in parallel using ToolManager's streaming API
             async for result in self.tool_manager.stream_execute_tools(
                 calls=ctp_calls,
                 on_tool_start=self._on_tool_start,
@@ -356,10 +359,14 @@ class ToolProcessor:
                 await self._on_tool_result(result)
                 if self._cancelled:
                     break  # type: ignore[unreachable]
+
         except asyncio.CancelledError:
             pass
-
-        await self._finish_tool_calls()
+        finally:
+            # SAFETY NET: Ensure every tool_call_id has a matching result.
+            # This prevents OpenAI 400 errors from orphaned tool_call_ids.
+            self._ensure_all_tool_results(tool_calls)
+            await self._finish_tool_calls()
 
     def cancel_running_tasks(self) -> None:
         """Cancel running tool execution."""
@@ -519,6 +526,27 @@ class ToolProcessor:
                 self._consecutive_transport_failures = 0
         else:
             self._consecutive_transport_failures = 0
+
+    def _ensure_all_tool_results(self, tool_calls: list[Any]) -> None:
+        """Ensure every tool_call_id in the assistant message has a matching result.
+
+        This is a safety net that prevents OpenAI 400 errors caused by orphaned
+        tool_call_ids. If any tool_call_id is missing a result (due to guard
+        exceptions, silent failures, or interrupted execution), a placeholder
+        error result is added.
+        """
+        for idx, call in enumerate(tool_calls):
+            llm_tool_name, _, call_id = self._extract_tool_call_info(call, idx)
+            if call_id not in self._result_ids_added:
+                log.warning(
+                    f"Missing tool result for {llm_tool_name} ({call_id}), "
+                    "adding error placeholder"
+                )
+                self._add_tool_result_to_history(
+                    llm_tool_name,
+                    call_id,
+                    "Tool execution was interrupted or failed to complete.",
+                )
 
     async def _finish_tool_calls(self) -> None:
         """Signal UI that all tool calls are complete."""
@@ -781,6 +809,7 @@ class ToolProcessor:
                 tool_call_id=call_id,
             )
             self.context.inject_tool_message(tool_msg)
+            self._result_ids_added.add(call_id)
             log.debug(f"Added tool result to conversation history: {llm_tool_name}")
         except Exception as e:
             log.error(f"Error updating conversation history: {e}")

@@ -236,7 +236,32 @@ class ChatContext:
         tools_for_prompt = [
             tool.to_llm_format().to_dict() for tool in self.internal_tools
         ]
-        self._system_prompt = generate_system_prompt(tools_for_prompt)
+        server_tool_groups = self._build_server_tool_groups()
+        self._system_prompt = generate_system_prompt(
+            tools=tools_for_prompt,
+            server_tool_groups=server_tool_groups,
+        )
+
+    def _build_server_tool_groups(self) -> list[dict[str, Any]]:
+        """Build server-to-tools grouping for the system prompt."""
+        if not self.server_info:
+            return []
+
+        # Group tools by server namespace
+        server_tools: dict[str, list[str]] = {}
+        for tool_name, namespace in self.tool_to_server_map.items():
+            server_tools.setdefault(namespace, []).append(tool_name)
+
+        groups = []
+        for server in self.server_info:
+            tools = server_tools.get(server.namespace, [])
+            if tools:
+                groups.append({
+                    "name": server.name,
+                    "description": server.display_description,
+                    "tools": sorted(tools),
+                })
+        return groups
 
     async def _initialize_tools(self) -> None:
         """Initialize tool discovery and adaptation."""

@@ -100,6 +100,95 @@ class TestGenerateDynamicToolsPrompt:
         assert "0 tools" in result
 
 
+class TestServerToolGroups:
+    """Tests for server/tool categorization in the system prompt."""
+
+    def test_no_server_groups_no_section(self):
+        """Without server_tool_groups, no server section appears."""
+        from mcp_cli.chat.system_prompt import generate_system_prompt
+
+        result = generate_system_prompt(tools=[{"name": "t"}], server_tool_groups=None)
+        assert "CONNECTED SERVERS" not in result
+
+    def test_empty_server_groups_no_section(self):
+        """Empty server_tool_groups list should not add a section."""
+        from mcp_cli.chat.system_prompt import generate_system_prompt
+
+        result = generate_system_prompt(tools=[{"name": "t"}], server_tool_groups=[])
+        assert "CONNECTED SERVERS" not in result
+
+    def test_server_groups_appear_in_prompt(self):
+        """Server groups should be listed in the system prompt."""
+        from mcp_cli.chat.system_prompt import generate_system_prompt
+
+        groups = [
+            {"name": "stac", "description": "stac MCP server", "tools": ["stac_search", "stac_describe"]},
+            {"name": "dem", "description": "dem MCP server", "tools": ["dem_fetch"]},
+            {"name": "time", "description": "time MCP server", "tools": ["get_current_time"]},
+        ]
+        result = generate_system_prompt(tools=[{"name": "t"}] * 4, server_tool_groups=groups)
+        assert "CONNECTED SERVERS & AVAILABLE TOOLS" in result
+        assert "**stac**" in result
+        assert "**dem**" in result
+        assert "**time**" in result
+        assert "stac_search" in result
+        assert "dem_fetch" in result
+        assert "get_current_time" in result
+
+    def test_server_groups_contain_all_tool_names(self):
+        """Every tool name from the groups should appear in the prompt."""
+        from mcp_cli.chat.system_prompt import generate_system_prompt
+
+        groups = [
+            {"name": "math", "description": "math server", "tools": ["add", "subtract", "multiply"]},
+        ]
+        result = generate_system_prompt(tools=[{"name": "t"}], server_tool_groups=groups)
+        assert "add, subtract, multiply" in result
+
+    def test_dynamic_mode_ignores_server_groups(self, monkeypatch):
+        """Dynamic mode should not include server groups."""
+        monkeypatch.setenv("MCP_CLI_DYNAMIC_TOOLS", "1")
+        from mcp_cli.chat.system_prompt import generate_system_prompt
+
+        groups = [
+            {"name": "time", "description": "time server", "tools": ["get_time"]},
+        ]
+        result = generate_system_prompt(tools=[], server_tool_groups=groups)
+        assert "CONNECTED SERVERS" not in result
+        assert "TOOL DISCOVERY SYSTEM" in result
+
+    def test_considers_all_servers_guidance(self):
+        """The prompt should tell the model to consider ALL servers."""
+        from mcp_cli.chat.system_prompt import generate_system_prompt
+
+        groups = [
+            {"name": "a", "description": "a server", "tools": ["tool_a"]},
+        ]
+        result = generate_system_prompt(tools=[{"name": "t"}], server_tool_groups=groups)
+        assert "ALL relevant servers" in result
+
+
+class TestBuildServerSection:
+    """Direct tests for _build_server_section."""
+
+    def test_none_returns_empty(self):
+        from mcp_cli.chat.system_prompt import _build_server_section
+
+        assert _build_server_section(None) == ""
+
+    def test_empty_list_returns_empty(self):
+        from mcp_cli.chat.system_prompt import _build_server_section
+
+        assert _build_server_section([]) == ""
+
+    def test_single_server(self):
+        from mcp_cli.chat.system_prompt import _build_server_section
+
+        groups = [{"name": "time", "description": "time MCP server", "tools": ["get_time", "convert_tz"]}]
+        result = _build_server_section(groups)
+        assert "**time** (time MCP server): get_time, convert_tz" in result
+
+
 class TestPrivateFunctionDirectly:
     """Direct calls to _generate_dynamic_tools_prompt for completeness."""
 

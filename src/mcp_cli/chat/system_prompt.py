@@ -2,7 +2,31 @@
 import os
 
 
-def generate_system_prompt(tools=None):
+def _build_server_section(server_tool_groups):
+    """Build the server/tool categorization section for the system prompt."""
+    if not server_tool_groups:
+        return ""
+
+    lines = [
+        "",
+        "**CONNECTED SERVERS & AVAILABLE TOOLS:**",
+        "",
+        "You have access to tools from the following servers. Consider using tools",
+        "from ALL relevant servers when answering a query.",
+        "",
+    ]
+    for group in server_tool_groups:
+        name = group.get("name", "unknown")
+        desc = group.get("description", "")
+        tools = group.get("tools", [])
+        tool_list = ", ".join(tools)
+        lines.append(f"- **{name}** ({desc}): {tool_list}")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def generate_system_prompt(tools=None, server_tool_groups=None):
     """Generate a concise system prompt for the assistant.
 
     Note: Tool definitions are passed via the API's tools parameter,
@@ -10,6 +34,11 @@ def generate_system_prompt(tools=None):
 
     When dynamic tools mode is enabled (MCP_CLI_DYNAMIC_TOOLS=1), generates
     a special prompt explaining the tool discovery workflow.
+
+    Args:
+        tools: List of tool definitions (dicts or ToolInfo objects).
+        server_tool_groups: Optional list of dicts with server/tool grouping,
+            each containing {"name", "description", "tools"}.
     """
     # Check if dynamic tools mode is enabled
     dynamic_mode = os.environ.get("MCP_CLI_DYNAMIC_TOOLS") == "1"
@@ -20,9 +49,13 @@ def generate_system_prompt(tools=None):
     # Count tools for the prompt (tools may be ToolInfo objects or dicts)
     tool_count = len(tools) if tools else 0
 
+    # Build server/tool categorization section
+    server_section = _build_server_section(server_tool_groups)
+
     system_prompt = f"""You are an intelligent assistant with access to {tool_count} tools to help solve user queries effectively.
 
 Use the available tools when appropriate to accomplish tasks. Tools are provided via the API and you can call them as needed.
+{server_section}
 
 **GENERAL GUIDELINES:**
 
