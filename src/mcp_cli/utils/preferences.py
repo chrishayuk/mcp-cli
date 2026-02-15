@@ -65,7 +65,7 @@ class ToolConfirmationPreferences(BaseModel):
     risk_thresholds: dict[ToolRiskLevel, bool] = Field(
         default_factory=lambda: {
             ToolRiskLevel.SAFE: False,
-            ToolRiskLevel.MODERATE: True,
+            ToolRiskLevel.MODERATE: False,
             ToolRiskLevel.HIGH: True,
         }
     )
@@ -329,7 +329,7 @@ class PreferenceManager:
                 if tool_name.endswith(suffix):
                     return risk
 
-        return ToolRiskLevel.MODERATE
+        return ToolRiskLevel.SAFE
 
     def should_confirm_tool(self, tool_name: str) -> bool:
         """Determine if a tool should be confirmed based on preferences.

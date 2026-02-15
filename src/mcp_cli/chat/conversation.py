@@ -401,8 +401,9 @@ class ConversationProcessor:
                                 break
 
                             # Inject state summary to help model use cached values
+                            tool_names_str = ", ".join(tool_names)
                             output.info(
-                                "Detected repeated tool call. Using cached results and providing state summary."
+                                f"Detected repeated tool call: {tool_names_str}. Using cached results and providing state summary."
                             )
                             state_summary = self._tool_state.format_state_for_model()
                             if state_summary:
