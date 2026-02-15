@@ -618,8 +618,13 @@ class ToolManager:
             )
 
             # Check if result contains an OAuth error (some servers return errors in content)
-            result_str = str(result) if result else ""
-            if _is_oauth_error(result_str) and not _oauth_retry:
+            # Only check results that are flagged as errors — scanning successful
+            # payloads causes false positives (e.g. the number "401" in data).
+            result_is_error = getattr(result, "isError", False) or (
+                isinstance(result, dict) and result.get("isError", False)
+            )
+            result_str = str(result) if result_is_error else ""
+            if result_str and _is_oauth_error(result_str) and not _oauth_retry:
                 logger.info(f"OAuth error detected in tool result for {tool_name}")
                 # Determine server name - use namespace or look up from tool
                 server_name = namespace or await self.get_server_for_tool(tool_name)

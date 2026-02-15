@@ -66,6 +66,20 @@
     },
     "motion": {
        "url": "https://motion.chukai.io/mcp"
+    },
+    "stac": {
+      "command": "uv",
+      "args": ["--directory", "/Users/christopherhay/chris-source/chuk-ai/mcp-servers/chuk-mcp-stac", "run", "chuk-mcp-stac", "stdio"]
+    },
+    "dem": {
+      "command": "uv",
+      "args": ["--directory", "/Users/christopherhay/chris-source/chuk-ai/mcp-servers/chuk-mcp-dem", "run", "chuk-mcp-dem", "stdio"]
+    },
+    "maritime": {
+      "url": "https://maritime-archives.chukai.io/mcp"
+    },
+    "geocoder": {
+       "url": "https://geocoder.chukai.io/mcp"
     }
   }
 }
