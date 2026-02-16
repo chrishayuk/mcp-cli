@@ -142,6 +142,20 @@ TRANSPORT_ERROR_PATTERNS = (
 
 
 # ================================================================
+# Token Tracking Defaults
+# ================================================================
+
+DEFAULT_TOKEN_TRACKING_ENABLED = True
+"""Track token usage per turn and cumulatively."""
+
+DEFAULT_CHARS_PER_TOKEN_ESTIMATE = 4
+"""Approximate characters per token for estimation fallback."""
+
+DEFAULT_AUTO_SAVE_INTERVAL = 10
+"""Auto-save session every N turns."""
+
+
+# ================================================================
 # Provider/Model Defaults
 # ================================================================
 

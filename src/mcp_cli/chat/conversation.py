@@ -23,6 +23,7 @@ from mcp_cli.chat.response_models import (
     MessageRole,
 )
 from mcp_cli.chat.tool_processor import ToolProcessor
+from mcp_cli.chat.token_tracker import TokenTracker, TurnUsage
 from mcp_cli.config.defaults import DEFAULT_MAX_CONSECUTIVE_DUPLICATES
 from chuk_ai_session_manager.guards import get_tool_state
 
@@ -87,6 +88,34 @@ class ConversationProcessor:
             if pattern in tool_lower:
                 return True
         return False
+
+    def _record_token_usage(self, completion: CompletionResponse) -> None:
+        """Record token usage from a completion into the tracker."""
+        tracker = getattr(self.context, "token_tracker", None)
+        if tracker is None:
+            return
+
+        usage = completion.usage
+        if usage:
+            turn = TurnUsage(
+                input_tokens=usage.get("prompt_tokens", usage.get("input_tokens", 0)),
+                output_tokens=usage.get(
+                    "completion_tokens", usage.get("output_tokens", 0)
+                ),
+                model=getattr(self.context, "model", ""),
+                provider=getattr(self.context, "provider", ""),
+            )
+        else:
+            # Estimate from response content
+            estimated_output = TokenTracker.estimate_tokens(completion.response or "")
+            turn = TurnUsage(
+                output_tokens=estimated_output,
+                model=getattr(self.context, "model", ""),
+                provider=getattr(self.context, "provider", ""),
+                estimated=True,
+            )
+
+        tracker.record_turn(turn)
 
     async def process_conversation(self, max_turns: int = 100):
         """Process the conversation loop, handling tool calls and responses with streaming.
@@ -224,6 +253,9 @@ class ConversationProcessor:
                             log.debug(
                                 f"Tool call {i}: {tc.function.name} args={tc.function.arguments}"
                             )
+
+                    # Record token usage
+                    self._record_token_usage(completion)
 
                     # If model requested tool calls, execute them
                     if tool_calls and len(tool_calls) > 0:
@@ -493,6 +525,11 @@ class ConversationProcessor:
                     # Add to conversation history via SessionManager
                     # Include reasoning_content if present (for DeepSeek reasoner and similar models)
                     await self.context.add_assistant_message(response_content)
+
+                    # Auto-save check
+                    if hasattr(self.context, "auto_save_check"):
+                        self.context.auto_save_check()
+
                     break
 
                 except asyncio.CancelledError:

@@ -7,7 +7,16 @@ A powerful, feature-rich command-line interface for interacting with Model Conte
 
 **Default Configuration**: MCP CLI defaults to using Ollama with the `gpt-oss` reasoning model for local, privacy-focused operation without requiring API keys.
 
-## 🆕 Recent Updates (v0.11.1)
+## 🆕 Recent Updates (v0.12.0)
+
+### Performance & Polish (Tier 3)
+- **O(1) Tool Lookups**: Indexed tool lookup replacing O(n) linear scans in both ToolManager and ChatContext
+- **Cached LLM Tool Metadata**: Per-provider caching of tool definitions with automatic invalidation
+- **Startup Progress**: Real-time progress messages during initialization instead of a single spinner
+- **Token Usage Tracking**: Per-turn and cumulative token tracking with `/usage` command (aliases: `/tokens`, `/cost`)
+- **Session Persistence**: Save/load/list conversation sessions with auto-save every 10 turns (`/sessions`)
+- **Conversation Export**: Export conversations as Markdown or JSON with metadata (`/export`)
+- **Trusted Domains**: Tools from trusted server domains (e.g. chukai.io) skip confirmation prompts
 
 ### Architecture & Performance
 - **Updated to chuk-llm v0.16+**: Dynamic model discovery with capability-based selection, llama.cpp integration (1.53x faster), 52x faster imports
@@ -48,6 +57,9 @@ The MCP CLI is built on a modular architecture with clean separation of concerns
 - **Smart Interruption**: Interrupt streaming responses or tool execution with Ctrl+C
 - **Performance Metrics**: Response timing, words/second, and execution statistics
 - **Rich Formatting**: Markdown rendering, syntax highlighting, and progress indicators
+- **Token Usage Tracking**: Per-turn and cumulative API token usage with `/usage` command
+- **Session Persistence**: Auto-save and manual save/load of conversation sessions
+- **Conversation Export**: Export to Markdown or JSON with metadata and token usage
 
 ### Comprehensive Provider Support
 

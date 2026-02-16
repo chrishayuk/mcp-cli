@@ -1,7 +1,7 @@
 """Extended coverage tests for conversation command."""
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from mcp_cli.commands.conversation.conversation import ConversationCommand
 from mcp_cli.chat.models import Message, MessageRole
@@ -106,32 +106,34 @@ async def test_conversation_table_with_all_role_types(conversation_command):
 async def test_conversation_save_with_args_filename(
     conversation_command, mock_chat_context
 ):
-    """Test save with filename from args."""
-    with patch("builtins.open", create=True) as mock_open:
-        with patch("json.dump"):
-            mock_file = MagicMock()
-            mock_open.return_value.__enter__.return_value = mock_file
+    """Test save via session persistence (no filename needed)."""
+    mock_chat_context.save_session = MagicMock(return_value="/tmp/session_abc123")
 
-            result = await conversation_command.execute(
-                chat_context=mock_chat_context,
-                action="save",
-                args=["save", "test_file.json"],
-            )
+    result = await conversation_command.execute(
+        chat_context=mock_chat_context,
+        action="save",
+    )
 
-            assert result.success is True
-            assert "saved to test_file.json" in result.output.lower()
-            mock_open.assert_called_once_with("test_file.json", "w")
+    assert result.success is True
+    assert "saved" in result.output.lower()
+    mock_chat_context.save_session.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_conversation_save_no_filename(conversation_command, mock_chat_context):
-    """Test save without filename."""
+async def test_conversation_save_no_session_support(
+    conversation_command, mock_chat_context
+):
+    """Test save when context has no save_session method."""
+    # Remove save_session so hasattr returns False
+    mock_chat_context.configure_mock(**{"save_session": None})
+    del mock_chat_context.save_session
+
     result = await conversation_command.execute(
         chat_context=mock_chat_context, action="save"
     )
 
     assert result.success is False
-    assert "Filename required" in result.error
+    assert "not available" in result.error.lower()
 
 
 @pytest.mark.asyncio
@@ -147,16 +149,15 @@ async def test_conversation_clear_no_method(conversation_command):
 
 
 @pytest.mark.asyncio
-async def test_conversation_save_no_history_attribute(conversation_command):
-    """Test save when context has no conversation_history."""
-    context = MagicMock(spec=[])
+async def test_conversation_save_returns_none(conversation_command):
+    """Test save when save_session returns None (failure)."""
+    context = MagicMock()
+    context.save_session = MagicMock(return_value=None)
 
-    result = await conversation_command.execute(
-        chat_context=context, action="save", filename="test.json"
-    )
+    result = await conversation_command.execute(chat_context=context, action="save")
 
     assert result.success is False
-    assert "Conversation history not available" in result.error
+    assert "Failed to save session" in result.error
 
 
 @pytest.mark.asyncio

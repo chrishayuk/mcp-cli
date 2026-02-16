@@ -102,6 +102,9 @@ def register_all_commands() -> None:
         ThemesPluralCommand,
     )
     from mcp_cli.commands.conversation import ConversationCommand
+    from mcp_cli.commands.usage import UsageCommand
+    from mcp_cli.commands.export import ExportCommand
+    from mcp_cli.commands.sessions import SessionsCommand
 
     # Register basic commands
     registry.register(HelpCommand())
@@ -135,6 +138,9 @@ def register_all_commands() -> None:
     registry.register(VerboseCommand())
     registry.register(InterruptCommand())
     registry.register(ToolHistoryCommand())
+    registry.register(UsageCommand())
+    registry.register(ExportCommand())
+    registry.register(SessionsCommand())
 
     # Register tool execution command for interactive mode
     registry.register(ExecuteToolCommand())

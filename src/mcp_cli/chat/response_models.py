@@ -77,6 +77,9 @@ class CompletionResponse(BaseModel):
     elapsed_time: float = Field(default=0.0, description="Response time in seconds")
     interrupted: bool = Field(default=False, description="Was streaming interrupted")
     streaming: bool = Field(default=False, description="Was this a streaming response")
+    usage: dict[str, int] | None = Field(
+        default=None, description="Token usage from provider"
+    )
 
     model_config = {"frozen": True}
 
@@ -108,6 +111,7 @@ class CompletionResponse(BaseModel):
             elapsed_time=data.get("elapsed_time", 0.0),
             interrupted=data.get("interrupted", False),
             streaming=data.get("streaming", False),
+            usage=data.get("usage"),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -120,6 +124,7 @@ class CompletionResponse(BaseModel):
             "elapsed_time": self.elapsed_time,
             "interrupted": self.interrupted,
             "streaming": self.streaming,
+            "usage": self.usage,
         }
 
     @property

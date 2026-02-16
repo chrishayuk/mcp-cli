@@ -74,7 +74,7 @@ class TestChatContext(ChatContext):
 
         return cls(stream_manager, model_manager)
 
-    async def _initialize_tools(self) -> None:
+    async def _initialize_tools(self, on_progress=None) -> None:
         """Test-specific tool initialization."""
         # Get tools from stream_manager
         if hasattr(self.stream_manager, "get_internal_tools"):

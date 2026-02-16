@@ -1,7 +1,7 @@
 """Extended tests for the conversation command definition to improve coverage."""
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from mcp_cli.commands.conversation.conversation import ConversationCommand
 from mcp_cli.commands.base import CommandMode
@@ -77,25 +77,20 @@ async def test_conversation_clear_history(conversation_command, mock_chat_contex
 
 @pytest.mark.asyncio
 async def test_conversation_save_history(conversation_command, mock_chat_context):
-    """Test saving conversation history."""
+    """Test saving conversation via session persistence."""
     mock_chat_context.conversation_history = [
         Message(role=MessageRole.USER, content="Test message")
     ]
+    mock_chat_context.save_session = MagicMock(return_value="/tmp/session_abc123")
 
-    with patch("builtins.open", create=True) as mock_open:
-        with patch("json.dump"):
-            mock_file = MagicMock()
-            mock_open.return_value.__enter__.return_value = mock_file
+    result = await conversation_command.execute(
+        chat_context=mock_chat_context,
+        action="save",
+    )
 
-            result = await conversation_command.execute(
-                chat_context=mock_chat_context,
-                action="save",
-                filename="conversation.json",
-            )
-
-            assert result.success is True
-            assert "saved" in result.output.lower()
-            mock_open.assert_called_once_with("conversation.json", "w")
+    assert result.success is True
+    assert "saved" in result.output.lower()
+    mock_chat_context.save_session.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -155,18 +150,18 @@ async def test_conversation_invalid_action(conversation_command, mock_chat_conte
 
 @pytest.mark.asyncio
 async def test_conversation_save_error(conversation_command, mock_chat_context):
-    """Test save with file error."""
+    """Test save when save_session returns None (failure)."""
     mock_chat_context.conversation_history = [
         Message(role=MessageRole.USER, content="Test")
     ]
+    mock_chat_context.save_session = MagicMock(return_value=None)
 
-    with patch("builtins.open", side_effect=IOError("Cannot write file")):
-        result = await conversation_command.execute(
-            chat_context=mock_chat_context, action="save", filename="invalid/path.json"
-        )
+    result = await conversation_command.execute(
+        chat_context=mock_chat_context, action="save"
+    )
 
-        assert result.success is False
-        assert "Failed to save conversation" in result.error
+    assert result.success is False
+    assert "Failed to save session" in result.error
 
 
 @pytest.mark.asyncio
