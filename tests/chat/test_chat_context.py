@@ -18,7 +18,7 @@ from mcp_cli.tools.models import ToolInfo, ServerInfo
 # ---------------------------------------------------------------------------
 # Dummy async ToolManager stub
 # ---------------------------------------------------------------------------
-class DummyToolManager:  # noqa: WPS110 - test helper
+class DummyToolManager:  # noqa: E501 - test helper
     """Minimal stand-in that satisfies the methods ChatContext uses."""
 
     def __init__(self) -> None:
@@ -111,7 +111,8 @@ def dummy_tool_manager():
 def chat_context(dummy_tool_manager, monkeypatch):
     # Use deterministic system prompt
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt",
+        lambda tools=None, **kw: "SYS_PROMPT",
     )
 
     # Mock ModelManager to avoid model discovery issues
@@ -339,7 +340,8 @@ async def test_str(chat_context):
 async def test_context_manager(dummy_tool_manager, monkeypatch):
     """Test async context manager."""
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt",
+        lambda tools=None, **kw: "SYS_PROMPT",
     )
 
     from unittest.mock import Mock
@@ -403,7 +405,8 @@ async def test_refresh_after_model_change(chat_context):
 async def test_create_with_provider_only(dummy_tool_manager, monkeypatch):
     """Test ChatContext.create with provider only."""
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt",
+        lambda tools=None, **kw: "SYS_PROMPT",
     )
 
     from unittest.mock import Mock
@@ -430,7 +433,8 @@ async def test_create_with_provider_only(dummy_tool_manager, monkeypatch):
 async def test_create_with_model_only(dummy_tool_manager, monkeypatch):
     """Test ChatContext.create with model only."""
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt",
+        lambda tools=None, **kw: "SYS_PROMPT",
     )
 
     from unittest.mock import Mock
@@ -455,7 +459,8 @@ async def test_create_with_model_only(dummy_tool_manager, monkeypatch):
 async def test_create_with_provider_and_api_settings(dummy_tool_manager, monkeypatch):
     """Test ChatContext.create with provider and API settings."""
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt",
+        lambda tools=None, **kw: "SYS_PROMPT",
     )
 
     from unittest.mock import Mock
@@ -485,7 +490,8 @@ async def test_create_with_provider_model_and_api_settings(
 ):
     """Test ChatContext.create with all settings."""
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt",
+        lambda tools=None, **kw: "SYS_PROMPT",
     )
 
     from unittest.mock import Mock
@@ -517,7 +523,8 @@ async def test_initialize_failure(dummy_tool_manager, monkeypatch):
 
     # Patch generate_system_prompt to avoid issues
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt",
+        lambda tools=None, **kw: "SYS_PROMPT",
     )
 
     mock_manager = Mock(spec=ModelManager)
@@ -544,7 +551,8 @@ async def test_initialize_failure(dummy_tool_manager, monkeypatch):
 async def test_regenerate_system_prompt_insert(dummy_tool_manager, monkeypatch):
     """Test regenerate_system_prompt when no system message exists."""
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt",
+        lambda tools=None, **kw: "SYS_PROMPT",
     )
 
     from unittest.mock import Mock
@@ -574,7 +582,8 @@ async def test_regenerate_system_prompt_insert(dummy_tool_manager, monkeypatch):
 async def test_context_manager_failure(dummy_tool_manager, monkeypatch):
     """Test async context manager handles initialization failure."""
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt",
+        lambda tools=None, **kw: "SYS_PROMPT",
     )
 
     from unittest.mock import Mock
@@ -604,7 +613,8 @@ async def test_context_manager_failure(dummy_tool_manager, monkeypatch):
 async def test_adapt_tools_without_get_adapted_tools(dummy_tool_manager, monkeypatch):
     """Test _adapt_tools_for_provider fallback when get_adapted_tools_for_llm not available."""
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt",
+        lambda tools=None, **kw: "SYS_PROMPT",
     )
 
     from unittest.mock import Mock
@@ -650,7 +660,8 @@ async def test_adapt_tools_without_get_adapted_tools(dummy_tool_manager, monkeyp
 async def test_adapt_tools_exception_fallback(dummy_tool_manager, monkeypatch):
     """Test _adapt_tools_for_provider handles exceptions."""
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt",
+        lambda tools=None, **kw: "SYS_PROMPT",
     )
 
     from unittest.mock import Mock
@@ -699,7 +710,8 @@ async def test_adapt_tools_exception_fallback(dummy_tool_manager, monkeypatch):
 async def test_initialize_no_tools_warning(monkeypatch, capsys):
     """Test initialize prints warning when no tools available."""
     monkeypatch.setattr(
-        "mcp_cli.chat.chat_context.generate_system_prompt", lambda tools=None, **kw: "SYS_PROMPT"
+        "mcp_cli.chat.chat_context.generate_system_prompt",
+        lambda tools=None, **kw: "SYS_PROMPT",
     )
 
     from unittest.mock import Mock
@@ -789,3 +801,395 @@ async def test_build_server_tool_groups_empty(dummy_tool_manager, monkeypatch):
     )
     # Don't initialize — server_info is empty
     assert ctx._build_server_tool_groups() == []
+
+
+# ---------------------------------------------------------------------------
+# Tests for sliding window and infinite context (Tier 1.3 + 1.4)
+# ---------------------------------------------------------------------------
+
+
+class TestSlidingWindow:
+    """Tests for conversation history sliding window."""
+
+    def _make_ctx(self, monkeypatch, max_history_messages=0, infinite_context=False):
+        """Helper to create a ChatContext with mocked model manager."""
+        monkeypatch.setattr(
+            "mcp_cli.chat.chat_context.generate_system_prompt",
+            lambda tools=None, **kw: "SYS_PROMPT",
+        )
+        from unittest.mock import Mock
+        from mcp_cli.model_management import ModelManager
+
+        mock_manager = Mock(spec=ModelManager)
+        mock_manager.get_client.return_value = None
+        mock_manager.get_active_provider.return_value = "mock"
+        mock_manager.get_active_model.return_value = "mock-model"
+
+        mock_tm = Mock()
+        mock_tm.get_unique_tools = pytest.importorskip("asyncio").coroutines
+        return ChatContext(
+            tool_manager=mock_tm,
+            model_manager=mock_manager,
+            max_history_messages=max_history_messages,
+            infinite_context=infinite_context,
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_limit_returns_all(self, dummy_tool_manager, monkeypatch):
+        """max_history_messages=0 returns all messages."""
+        monkeypatch.setattr(
+            "mcp_cli.chat.chat_context.generate_system_prompt",
+            lambda tools=None, **kw: "SYS_PROMPT",
+        )
+        from unittest.mock import Mock
+        from mcp_cli.model_management import ModelManager
+
+        mock_manager = Mock(spec=ModelManager)
+        mock_manager.get_client.return_value = None
+        mock_manager.get_active_provider.return_value = "mock"
+        mock_manager.get_active_model.return_value = "mock-model"
+
+        ctx = ChatContext(
+            tool_manager=dummy_tool_manager,
+            model_manager=mock_manager,
+            max_history_messages=0,
+        )
+        ctx._system_prompt = "SYS"
+        await ctx._initialize_session()
+
+        # Add 10 messages
+        for i in range(10):
+            await ctx.add_user_message(f"msg-{i}")
+
+        history = ctx.conversation_history
+        # 1 system + 10 user
+        assert len(history) == 11
+
+    @pytest.mark.asyncio
+    async def test_window_limits_messages(self, dummy_tool_manager, monkeypatch):
+        """Sliding window keeps only last N event messages."""
+        monkeypatch.setattr(
+            "mcp_cli.chat.chat_context.generate_system_prompt",
+            lambda tools=None, **kw: "SYS_PROMPT",
+        )
+        from unittest.mock import Mock
+        from mcp_cli.model_management import ModelManager
+
+        mock_manager = Mock(spec=ModelManager)
+        mock_manager.get_client.return_value = None
+        mock_manager.get_active_provider.return_value = "mock"
+        mock_manager.get_active_model.return_value = "mock-model"
+
+        ctx = ChatContext(
+            tool_manager=dummy_tool_manager,
+            model_manager=mock_manager,
+            max_history_messages=3,
+        )
+        ctx._system_prompt = "SYS"
+        await ctx._initialize_session()
+
+        # Add 10 messages
+        for i in range(10):
+            await ctx.add_user_message(f"msg-{i}")
+
+        history = ctx.conversation_history
+        # 1 system + 3 windowed = 4
+        assert len(history) == 4
+        # System prompt always first
+        assert history[0].role.value == "system"
+        # Last 3 messages are the most recent
+        assert history[-1].content == "msg-9"
+        assert history[-2].content == "msg-8"
+        assert history[-3].content == "msg-7"
+
+    @pytest.mark.asyncio
+    async def test_system_prompt_not_evicted(self, dummy_tool_manager, monkeypatch):
+        """System prompt is always included regardless of window size."""
+        monkeypatch.setattr(
+            "mcp_cli.chat.chat_context.generate_system_prompt",
+            lambda tools=None, **kw: "SYS_PROMPT",
+        )
+        from unittest.mock import Mock
+        from mcp_cli.model_management import ModelManager
+
+        mock_manager = Mock(spec=ModelManager)
+        mock_manager.get_client.return_value = None
+        mock_manager.get_active_provider.return_value = "mock"
+        mock_manager.get_active_model.return_value = "mock-model"
+
+        ctx = ChatContext(
+            tool_manager=dummy_tool_manager,
+            model_manager=mock_manager,
+            max_history_messages=1,
+        )
+        ctx._system_prompt = "SYSTEM"
+        await ctx._initialize_session()
+
+        await ctx.add_user_message("hello")
+        await ctx.add_user_message("world")
+
+        history = ctx.conversation_history
+        # System + 1 windowed = 2
+        assert len(history) == 2
+        assert history[0].content == "SYSTEM"
+
+    @pytest.mark.asyncio
+    async def test_under_limit_not_truncated(self, dummy_tool_manager, monkeypatch):
+        """If message count is under the limit, no eviction happens."""
+        monkeypatch.setattr(
+            "mcp_cli.chat.chat_context.generate_system_prompt",
+            lambda tools=None, **kw: "SYS_PROMPT",
+        )
+        from unittest.mock import Mock
+        from mcp_cli.model_management import ModelManager
+
+        mock_manager = Mock(spec=ModelManager)
+        mock_manager.get_client.return_value = None
+        mock_manager.get_active_provider.return_value = "mock"
+        mock_manager.get_active_model.return_value = "mock-model"
+
+        ctx = ChatContext(
+            tool_manager=dummy_tool_manager,
+            model_manager=mock_manager,
+            max_history_messages=100,
+        )
+        ctx._system_prompt = "SYS"
+        await ctx._initialize_session()
+
+        await ctx.add_user_message("hello")
+        await ctx.add_user_message("world")
+
+        history = ctx.conversation_history
+        # 1 system + 2 user = 3, under limit of 100
+        assert len(history) == 3
+
+
+class TestInfiniteContextConfig:
+    """Tests for infinite context configuration."""
+
+    @pytest.mark.asyncio
+    async def test_default_infinite_context_false(
+        self, dummy_tool_manager, monkeypatch
+    ):
+        """Default infinite_context is False."""
+        monkeypatch.setattr(
+            "mcp_cli.chat.chat_context.generate_system_prompt",
+            lambda tools=None, **kw: "SYS_PROMPT",
+        )
+        from unittest.mock import Mock
+        from mcp_cli.model_management import ModelManager
+
+        mock_manager = Mock(spec=ModelManager)
+        mock_manager.get_client.return_value = None
+        mock_manager.get_active_provider.return_value = "mock"
+        mock_manager.get_active_model.return_value = "mock-model"
+
+        ctx = ChatContext(
+            tool_manager=dummy_tool_manager,
+            model_manager=mock_manager,
+        )
+        assert ctx._infinite_context is False
+
+    @pytest.mark.asyncio
+    async def test_infinite_context_passed_to_session(
+        self, dummy_tool_manager, monkeypatch
+    ):
+        """infinite_context=True is passed to SessionManager."""
+        monkeypatch.setattr(
+            "mcp_cli.chat.chat_context.generate_system_prompt",
+            lambda tools=None, **kw: "SYS_PROMPT",
+        )
+        from unittest.mock import Mock
+        from mcp_cli.model_management import ModelManager
+
+        mock_manager = Mock(spec=ModelManager)
+        mock_manager.get_client.return_value = None
+        mock_manager.get_active_provider.return_value = "mock"
+        mock_manager.get_active_model.return_value = "mock-model"
+
+        ctx = ChatContext(
+            tool_manager=dummy_tool_manager,
+            model_manager=mock_manager,
+            infinite_context=True,
+            token_threshold=8000,
+            max_turns_per_segment=30,
+        )
+        ctx._system_prompt = "SYS"
+        await ctx._initialize_session()
+
+        # Verify session was created with correct params
+        assert ctx._infinite_context is True
+        assert ctx._token_threshold == 8000
+        assert ctx._max_turns_per_segment == 30
+
+    @pytest.mark.asyncio
+    async def test_create_factory_threads_params(self, dummy_tool_manager, monkeypatch):
+        """create() factory passes context params through."""
+        monkeypatch.setattr(
+            "mcp_cli.chat.chat_context.generate_system_prompt",
+            lambda tools=None, **kw: "SYS_PROMPT",
+        )
+        from unittest.mock import Mock
+        from mcp_cli.model_management import ModelManager
+
+        mock_manager = Mock(spec=ModelManager)
+        mock_manager.get_client.return_value = None
+        mock_manager.get_active_provider.return_value = "mock"
+        mock_manager.get_active_model.return_value = "mock-model"
+
+        ctx = ChatContext.create(
+            tool_manager=dummy_tool_manager,
+            model_manager=mock_manager,
+            max_history_messages=50,
+            infinite_context=True,
+            token_threshold=6000,
+        )
+        assert ctx._max_history_messages == 50
+        assert ctx._infinite_context is True
+        assert ctx._token_threshold == 6000
+
+
+# ---------------------------------------------------------------------------
+# Tests for system prompt caching (Tier 2)
+# ---------------------------------------------------------------------------
+
+
+class TestSystemPromptCaching:
+    """Tests for system prompt dirty-flag caching."""
+
+    @pytest.mark.asyncio
+    async def test_system_prompt_cached(self, dummy_tool_manager, monkeypatch):
+        """Second call to _generate_system_prompt doesn't rebuild when dirty=False."""
+        call_count = [0]
+
+        def counting_generate(tools=None, **kw):
+            call_count[0] += 1
+            return f"SYS_PROMPT_{call_count[0]}"
+
+        monkeypatch.setattr(
+            "mcp_cli.chat.chat_context.generate_system_prompt",
+            counting_generate,
+        )
+        from unittest.mock import Mock
+        from mcp_cli.model_management import ModelManager
+
+        mock_manager = Mock(spec=ModelManager)
+        mock_manager.get_client.return_value = None
+        mock_manager.get_active_provider.return_value = "mock"
+        mock_manager.get_active_model.return_value = "mock-model"
+
+        ctx = ChatContext(
+            tool_manager=dummy_tool_manager,
+            model_manager=mock_manager,
+        )
+        # Simulate initialized state with internal_tools set
+        ctx.internal_tools = []
+
+        # First call: dirty=True by default, should build prompt
+        ctx._generate_system_prompt()
+        first_prompt = ctx._system_prompt
+        assert call_count[0] == 1
+        assert first_prompt == "SYS_PROMPT_1"
+        assert ctx._system_prompt_dirty is False
+
+        # Second call: dirty=False, should return cached prompt
+        ctx._generate_system_prompt()
+        assert call_count[0] == 1  # Not called again
+        assert ctx._system_prompt == first_prompt
+
+    @pytest.mark.asyncio
+    async def test_dirty_flag_on_tool_change(self, dummy_tool_manager, monkeypatch):
+        """_initialize_tools sets dirty=True."""
+        monkeypatch.setattr(
+            "mcp_cli.chat.chat_context.generate_system_prompt",
+            lambda tools=None, **kw: "SYS_PROMPT",
+        )
+        from unittest.mock import Mock
+        from mcp_cli.model_management import ModelManager
+
+        mock_manager = Mock(spec=ModelManager)
+        mock_manager.get_client.return_value = None
+        mock_manager.get_active_provider.return_value = "mock"
+        mock_manager.get_active_model.return_value = "mock-model"
+
+        ctx = ChatContext(
+            tool_manager=dummy_tool_manager,
+            model_manager=mock_manager,
+        )
+
+        # Manually mark clean
+        ctx._system_prompt_dirty = False
+
+        # After _initialize_tools, dirty should be True again
+        await ctx._initialize_tools()
+        assert ctx._system_prompt_dirty is True
+
+
+class TestLargeToolSetSummary:
+    """Tests for system prompt tool summary threshold."""
+
+    def test_large_tool_set_summary(self):
+        """System prompt with >20 tools summarizes (shows '... and N more')."""
+        from mcp_cli.chat.system_prompt import _build_server_section
+
+        # Create a server group with 25 tools
+        tool_names = [f"tool_{i}" for i in range(25)]
+        server_groups = [
+            {
+                "name": "big_server",
+                "description": "A server with many tools",
+                "tools": tool_names,
+            }
+        ]
+
+        result = _build_server_section(server_groups, tool_summary_threshold=20)
+
+        # Should contain the summary text
+        assert "... and 20 more" in result
+        # Should show first 5 tools
+        assert "tool_0" in result
+        assert "tool_4" in result
+        # Should NOT show tool_5 onwards individually (they are summarized)
+        assert "tool_5," not in result
+
+    def test_small_tool_set_no_summary(self):
+        """System prompt with <= threshold tools shows all tools."""
+        from mcp_cli.chat.system_prompt import _build_server_section
+
+        tool_names = [f"tool_{i}" for i in range(5)]
+        server_groups = [
+            {
+                "name": "small_server",
+                "description": "A server with few tools",
+                "tools": tool_names,
+            }
+        ]
+
+        result = _build_server_section(server_groups, tool_summary_threshold=20)
+
+        # Should contain all tool names
+        for name in tool_names:
+            assert name in result
+        # Should NOT have the summary text
+        assert "more" not in result
+
+    def test_default_threshold_from_config(self):
+        """_build_server_section uses DEFAULT_SYSTEM_PROMPT_TOOL_SUMMARY_THRESHOLD by default."""
+        from mcp_cli.chat.system_prompt import _build_server_section
+        from mcp_cli.config.defaults import DEFAULT_SYSTEM_PROMPT_TOOL_SUMMARY_THRESHOLD
+
+        # Create tools just above the default threshold
+        count = DEFAULT_SYSTEM_PROMPT_TOOL_SUMMARY_THRESHOLD + 5
+        tool_names = [f"tool_{i}" for i in range(count)]
+        server_groups = [
+            {
+                "name": "server",
+                "description": "desc",
+                "tools": tool_names,
+            }
+        ]
+
+        result = _build_server_section(server_groups)
+
+        # Should summarize since count > threshold
+        assert "more" in result

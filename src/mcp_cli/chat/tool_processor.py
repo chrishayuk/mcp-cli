@@ -22,8 +22,12 @@ from chuk_tool_processor import ToolResult as CTPToolResult
 
 from mcp_cli.chat.response_models import Message, MessageRole, ToolCall
 from mcp_cli.chat.models import ToolProcessorContext, UIManagerProtocol
+from mcp_cli.config.defaults import (
+    DYNAMIC_TOOL_PROXY_NAME,
+    DEFAULT_MAX_CONSECUTIVE_TRANSPORT_FAILURES,
+    TRANSPORT_ERROR_PATTERNS,
+)
 from chuk_ai_session_manager.guards import get_tool_state, SoftBlockReason
-from mcp_cli.display import display_tool_call_result
 from chuk_tool_processor.discovery import get_search_engine
 from mcp_cli.llm.content_models import ContentBlockType
 from mcp_cli.utils.preferences import get_preference_manager
@@ -128,7 +132,7 @@ class ToolProcessor:
                 display_arguments = raw_arguments
 
                 # For dynamic tools, extract the actual tool name from call_tool
-                if execution_tool_name == "call_tool":
+                if execution_tool_name == DYNAMIC_TOOL_PROXY_NAME:
                     # Parse arguments to get the real tool name
                     parsed_args = self._parse_arguments(raw_arguments)
                     if "tool_name" in parsed_args:
@@ -142,7 +146,7 @@ class ToolProcessor:
 
                 if hasattr(self.context, "get_display_name_for_tool"):
                     # Only apply name mapping if not already a dynamic tool
-                    if not execution_tool_name.startswith("call_tool"):
+                    if not execution_tool_name.startswith(DYNAMIC_TOOL_PROXY_NAME):
                         display_name = self.context.get_display_name_for_tool(
                             execution_tool_name
                         )
@@ -176,7 +180,10 @@ class ToolProcessor:
 
                 # Get actual tool name for checks (for call_tool, it's the inner tool)
                 actual_tool_for_checks = execution_tool_name
-                if execution_tool_name == "call_tool" and "tool_name" in arguments:
+                if (
+                    execution_tool_name == DYNAMIC_TOOL_PROXY_NAME
+                    and "tool_name" in arguments
+                ):
                     actual_tool_for_checks = arguments["tool_name"]
 
                 # GENERIC VALIDATION: Reject tool calls with None arguments
@@ -219,7 +226,9 @@ class ToolProcessor:
                 # Skip discovery tools - they don't need grounded numeric inputs
                 # Skip idempotent math tools - they should be allowed to compute with any literals
                 # Use SoftBlock repair system: attempt rebind → symbolic fallback → ask user
-                is_math_tool = tool_state.is_idempotent_math_tool(actual_tool_for_checks)
+                is_math_tool = tool_state.is_idempotent_math_tool(
+                    actual_tool_for_checks
+                )
                 if (
                     not tool_state.is_discovery_tool(execution_tool_name)
                     and not is_math_tool
@@ -239,8 +248,10 @@ class ToolProcessor:
                         if not tool_state.should_auto_rebound(actual_tool_for_checks):
                             # For parameterized tools, check preconditions first
                             # This blocks premature calls before any values are computed
-                            precond_ok, precond_error = tool_state.check_tool_preconditions(
-                                actual_tool_for_checks, arguments
+                            precond_ok, precond_error = (
+                                tool_state.check_tool_preconditions(
+                                    actual_tool_for_checks, arguments
+                                )
                             )
                             if not precond_ok:
                                 log.warning(
@@ -250,7 +261,9 @@ class ToolProcessor:
                                     f"⚠ Precondition failed for {actual_tool_for_checks}"
                                 )
                                 self._add_tool_result_to_history(
-                                    llm_tool_name, call_id, f"**Blocked**: {precond_error}"
+                                    llm_tool_name,
+                                    call_id,
+                                    f"**Blocked**: {precond_error}",
                                 )
                                 continue
 
@@ -261,7 +274,9 @@ class ToolProcessor:
                             log.info(
                                 f"Allowing parameterized tool {actual_tool_for_checks} with args: {display_args}"
                             )
-                            output.info(f"→ {actual_tool_for_checks} args: {display_args}")
+                            output.info(
+                                f"→ {actual_tool_for_checks} args: {display_args}"
+                            )
                             # Fall through to execution
                         else:
                             # For other tools, try to repair using SoftBlock system
@@ -286,7 +301,9 @@ class ToolProcessor:
                             elif fallback_response:
                                 # Symbolic fallback - return helpful response instead of blocking
                                 # Show visible annotation for observability
-                                log.info(f"Symbolic fallback for {actual_tool_for_checks}")
+                                log.info(
+                                    f"Symbolic fallback for {actual_tool_for_checks}"
+                                )
                                 output.info(
                                     f"⏸ [analysis] required_input_missing for {actual_tool_for_checks}"
                                 )
@@ -310,9 +327,13 @@ class ToolProcessor:
 
                 # Check per-tool call limit using the guard (handles exemptions for math/discovery)
                 # per_tool_cap=0 means "disabled/unlimited" (see RuntimeLimits presets)
-                per_tool_result = tool_state.check_per_tool_limit(actual_tool_for_checks)
+                per_tool_result = tool_state.check_per_tool_limit(
+                    actual_tool_for_checks
+                )
                 if tool_state.limits.per_tool_cap > 0 and per_tool_result.blocked:
-                    log.warning(f"Tool {actual_tool_for_checks} blocked by per-tool limit")
+                    log.warning(
+                        f"Tool {actual_tool_for_checks} blocked by per-tool limit"
+                    )
                     output.warning(
                         f"⚠ Tool {actual_tool_for_checks} - {per_tool_result.reason}"
                     )
@@ -379,7 +400,7 @@ class ToolProcessor:
         arguments = metadata.get("arguments", call.arguments)
 
         # For dynamic tools, enhance the display
-        if call.tool == "call_tool" and "tool_name" in arguments:
+        if call.tool == DYNAMIC_TOOL_PROXY_NAME and "tool_name" in arguments:
             actual_tool = arguments["tool_name"]
             display_name = f"{actual_tool}"  # Just show the actual tool name
             # Show only the tool's arguments, not tool_name
@@ -404,7 +425,7 @@ class ToolProcessor:
         # For dynamic tools, extract the actual tool name for better logging/caching
         actual_tool_name = execution_tool_name
         actual_arguments = arguments
-        if execution_tool_name == "call_tool" and "tool_name" in arguments:
+        if execution_tool_name == DYNAMIC_TOOL_PROXY_NAME and "tool_name" in arguments:
             actual_tool_name = arguments["tool_name"]
             actual_arguments = {k: v for k, v in arguments.items() if k != "tool_name"}
 
@@ -478,26 +499,13 @@ class ToolProcessor:
         # Add to conversation history
         self._add_tool_result_to_history(llm_tool_name, result.id, content)
 
-        # Add to tool history for /toolhistory command (use Pydantic model, not raw dict)
-        if hasattr(self.context, "tool_history"):
-            from mcp_cli.chat.models import ToolExecutionRecord
-
-            self.context.tool_history.append(
-                ToolExecutionRecord(
-                    tool_name=execution_tool_name,
-                    arguments=arguments,
-                    result=result.result if success else None,
-                    error=result.error if not success else None,
-                )
-            )
-
         # Finish UI display
         await self.ui_manager.finish_tool_execution(result=content, success=success)
 
-        # Verbose mode display
+        # Verbose mode display (lazy import to keep Core/UI separation)
         if hasattr(self.ui_manager, "verbose_mode") and self.ui_manager.verbose_mode:
-            # Create a compatible result object for display
             from mcp_cli.tools.models import ToolCallResult
+            from mcp_cli.display import display_tool_call_result
 
             display_result = ToolCallResult(
                 tool_name=result.tool,
@@ -510,11 +518,15 @@ class ToolProcessor:
     def _track_transport_failures(self, success: bool, error: str | None) -> None:
         """Track transport failures for recovery detection."""
         if not success and error:
-            if "Transport not initialized" in error or "transport" in error.lower():
+            error_lower = error.lower()
+            if any(pat in error_lower for pat in TRANSPORT_ERROR_PATTERNS):
                 self._transport_failures += 1
                 self._consecutive_transport_failures += 1
 
-                if self._consecutive_transport_failures >= 3:
+                if (
+                    self._consecutive_transport_failures
+                    >= DEFAULT_MAX_CONSECUTIVE_TRANSPORT_FAILURES
+                ):
                     log.warning(
                         f"Detected {self._consecutive_transport_failures} consecutive transport failures."
                     )
@@ -779,6 +791,28 @@ class ToolProcessor:
                 return str(result)
         return str(result)
 
+    def _truncate_tool_result(self, content: str, max_chars: int) -> str:
+        """Truncate tool result if it exceeds max_chars.
+
+        Keeps head + tail with a truncation notice in the middle.
+        max_chars <= 0 disables truncation.
+        """
+        if max_chars <= 0 or len(content) <= max_chars:
+            return content
+
+        head = max_chars * 2 // 3
+        tail = max_chars // 6
+        omitted = len(content) - head - tail
+        notice = (
+            f"\n\n--- TRUNCATED: {omitted:,} chars omitted "
+            f"({len(content):,} total) ---\n\n"
+        )
+        truncated = content[:head] + notice + content[-tail:]
+        log.info(
+            f"Truncated tool result from {len(content):,} to {len(truncated):,} chars"
+        )
+        return truncated
+
     def _add_assistant_message_with_tool_calls(
         self, tool_calls: list[Any], reasoning_content: str | None = None
     ) -> None:
@@ -802,6 +836,26 @@ class ToolProcessor:
     ) -> None:
         """Add tool result to conversation history."""
         try:
+            from mcp_cli.config.defaults import (
+                DEFAULT_MAX_TOOL_RESULT_CHARS,
+                DEFAULT_CONTEXT_NOTICES_ENABLED,
+            )
+
+            original_len = len(content)
+            content = self._truncate_tool_result(content, DEFAULT_MAX_TOOL_RESULT_CHARS)
+
+            # Notify LLM about truncation
+            if (
+                len(content) < original_len
+                and DEFAULT_CONTEXT_NOTICES_ENABLED
+                and hasattr(self.context, "add_context_notice")
+            ):
+                self.context.add_context_notice(
+                    f"Tool result from '{llm_tool_name}' was truncated from "
+                    f"{original_len:,} to {DEFAULT_MAX_TOOL_RESULT_CHARS:,} chars. "
+                    "Consider requesting less data (smaller range, fewer fields, pagination)."
+                )
+
             tool_msg = Message(
                 role=MessageRole.TOOL,
                 name=llm_tool_name,

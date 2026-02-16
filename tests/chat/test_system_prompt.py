@@ -122,11 +122,21 @@ class TestServerToolGroups:
         from mcp_cli.chat.system_prompt import generate_system_prompt
 
         groups = [
-            {"name": "stac", "description": "stac MCP server", "tools": ["stac_search", "stac_describe"]},
+            {
+                "name": "stac",
+                "description": "stac MCP server",
+                "tools": ["stac_search", "stac_describe"],
+            },
             {"name": "dem", "description": "dem MCP server", "tools": ["dem_fetch"]},
-            {"name": "time", "description": "time MCP server", "tools": ["get_current_time"]},
+            {
+                "name": "time",
+                "description": "time MCP server",
+                "tools": ["get_current_time"],
+            },
         ]
-        result = generate_system_prompt(tools=[{"name": "t"}] * 4, server_tool_groups=groups)
+        result = generate_system_prompt(
+            tools=[{"name": "t"}] * 4, server_tool_groups=groups
+        )
         assert "CONNECTED SERVERS & AVAILABLE TOOLS" in result
         assert "**stac**" in result
         assert "**dem**" in result
@@ -140,9 +150,15 @@ class TestServerToolGroups:
         from mcp_cli.chat.system_prompt import generate_system_prompt
 
         groups = [
-            {"name": "math", "description": "math server", "tools": ["add", "subtract", "multiply"]},
+            {
+                "name": "math",
+                "description": "math server",
+                "tools": ["add", "subtract", "multiply"],
+            },
         ]
-        result = generate_system_prompt(tools=[{"name": "t"}], server_tool_groups=groups)
+        result = generate_system_prompt(
+            tools=[{"name": "t"}], server_tool_groups=groups
+        )
         assert "add, subtract, multiply" in result
 
     def test_dynamic_mode_ignores_server_groups(self, monkeypatch):
@@ -164,7 +180,9 @@ class TestServerToolGroups:
         groups = [
             {"name": "a", "description": "a server", "tools": ["tool_a"]},
         ]
-        result = generate_system_prompt(tools=[{"name": "t"}], server_tool_groups=groups)
+        result = generate_system_prompt(
+            tools=[{"name": "t"}], server_tool_groups=groups
+        )
         assert "ALL relevant servers" in result
 
 
@@ -184,7 +202,13 @@ class TestBuildServerSection:
     def test_single_server(self):
         from mcp_cli.chat.system_prompt import _build_server_section
 
-        groups = [{"name": "time", "description": "time MCP server", "tools": ["get_time", "convert_tz"]}]
+        groups = [
+            {
+                "name": "time",
+                "description": "time MCP server",
+                "tools": ["get_time", "convert_tz"],
+            }
+        ]
         result = _build_server_section(groups)
         assert "**time** (time MCP server): get_time, convert_tz" in result
 

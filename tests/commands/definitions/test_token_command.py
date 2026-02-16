@@ -1185,8 +1185,8 @@ class TestTokenCommand:
                     "mcp_cli.commands.tokens.token.TokenStoreBackend"
                 ) as mock_backend:
                     mock_backend.return_value = TokenStoreBackend.ENCRYPTED_FILE
-                    mock_backend.side_effect = (
-                        lambda x: TokenStoreBackend.ENCRYPTED_FILE
+                    mock_backend.side_effect = lambda x: (
+                        TokenStoreBackend.ENCRYPTED_FILE
                         if x == "encrypted"
                         else TokenStoreBackend.KEYCHAIN
                     )

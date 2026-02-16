@@ -54,10 +54,10 @@ async def real_llm_streaming_demo():
     print("=" * 60)
 
     # Use the fixed MCP-CLI with our streaming improvements
-    Path(__file__).parent.parent / "src" / "mcp_cli"
+    Path(__file__).parent.parent.parent / "src" / "mcp_cli"
 
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(Path(__file__).parent.parent / "src")
+    env["PYTHONPATH"] = str(Path(__file__).parent.parent.parent / "src")
 
     try:
         # Create temp script to send commands to MCP-CLI
@@ -136,7 +136,7 @@ async def simple_integration_test():
     print("This simulates the exact flow MCP-CLI uses:")
 
     # Import our actual components
-    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
     from mcp_cli.ui.chat_display_manager import ChatDisplayManager
     from rich.console import Console

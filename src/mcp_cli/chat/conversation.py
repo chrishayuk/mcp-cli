@@ -23,6 +23,7 @@ from mcp_cli.chat.response_models import (
     MessageRole,
 )
 from mcp_cli.chat.tool_processor import ToolProcessor
+from mcp_cli.config.defaults import DEFAULT_MAX_CONSECUTIVE_DUPLICATES
 from chuk_ai_session_manager.guards import get_tool_state
 
 log = logging.getLogger(__name__)
@@ -70,7 +71,7 @@ class ConversationProcessor:
         self._tool_state = get_tool_state()
         # Counter for consecutive duplicate detections (for escalation)
         self._consecutive_duplicate_count = 0
-        self._max_consecutive_duplicates = 5  # Abort after this many
+        self._max_consecutive_duplicates = DEFAULT_MAX_CONSECUTIVE_DUPLICATES
         # Runtime uses adaptive policy: strict core with smooth wrapper
         # No mode selection needed - always enforces grounding with auto-repair
 
@@ -96,6 +97,7 @@ class ConversationProcessor:
         turn_count = 0
         last_tool_signature = None  # Track last tool call to detect true duplicates
         tools_for_completion = None  # Will be set based on context
+        after_tool_calls = False  # True when resuming after tool execution
 
         # Reset tool state for this new prompt
         self._tool_state.reset_for_new_prompt()
@@ -180,7 +182,8 @@ class ConversationProcessor:
                         # Use streaming response handler
                         try:
                             completion = await self._handle_streaming_completion(
-                                tools=tools_for_completion
+                                tools=tools_for_completion,
+                                after_tool_calls=after_tool_calls,
                             )
                         except Exception as e:
                             log.warning(
@@ -440,9 +443,11 @@ class ConversationProcessor:
                             name_mapping,
                             reasoning_content=reasoning_content,
                         )
+                        after_tool_calls = True
                         continue
 
-                    # Reset duplicate tracking on text response
+                    # Reset tracking on text response
+                    after_tool_calls = False
                     last_tool_signature = None
 
                     # Display assistant response (if not already displayed by streaming)
@@ -492,11 +497,43 @@ class ConversationProcessor:
 
                 except asyncio.CancelledError:
                     raise
+                except asyncio.TimeoutError as exc:
+                    log.warning(f"Timeout during conversation processing: {exc}")
+                    output.error(
+                        "Request timed out. The tool or API call took too long."
+                    )
+                    self.context.inject_assistant_message(
+                        "The previous request timed out. "
+                        "Please try again or simplify the query."
+                    )
+                    if self.ui_manager.is_streaming_response:
+                        await self.ui_manager.stop_streaming_response()
+                    if hasattr(self.ui_manager, "streaming_handler"):
+                        self.ui_manager.streaming_handler = None
+                    break
+                except (ConnectionError, OSError) as exc:
+                    log.error(f"Connection error: {exc}")
+                    output.error(f"Connection error: {exc}")
+                    self.context.inject_assistant_message(
+                        "Lost connection to a service. "
+                        "Please check connectivity and try again."
+                    )
+                    if self.ui_manager.is_streaming_response:
+                        await self.ui_manager.stop_streaming_response()
+                    if hasattr(self.ui_manager, "streaming_handler"):
+                        self.ui_manager.streaming_handler = None
+                    break
+                except (ValueError, TypeError) as exc:
+                    log.error(f"Configuration/validation error: {exc}", exc_info=True)
+                    output.error(f"Configuration error: {exc}")
+                    if self.ui_manager.is_streaming_response:
+                        await self.ui_manager.stop_streaming_response()
+                    if hasattr(self.ui_manager, "streaming_handler"):
+                        self.ui_manager.streaming_handler = None
+                    break
                 except Exception as exc:
+                    log.exception("Unexpected error during conversation processing")
                     output.error(f"Error during conversation processing: {exc}")
-                    import traceback
-
-                    traceback.print_exc()
                     self.context.inject_assistant_message(
                         f"I encountered an error: {exc}"
                     )
@@ -510,12 +547,16 @@ class ConversationProcessor:
             raise
 
     async def _handle_streaming_completion(
-        self, tools: list | None = None
+        self,
+        tools: list | None = None,
+        after_tool_calls: bool = False,
     ) -> CompletionResponse:
         """Handle streaming completion with UI integration.
 
         Args:
             tools: Tool definitions to pass to the LLM, or None to disable tools
+            after_tool_calls: True when resuming after tool execution
+                (extends first-chunk timeout for thinking models)
 
         Returns:
             CompletionResponse with streaming metadata
@@ -533,14 +574,14 @@ class ConversationProcessor:
 
         try:
             # stream_response returns dict, convert to CompletionResponse
-            messages_for_api = [
-                msg.to_dict() for msg in self.context.conversation_history
-            ]
-            messages_for_api = self._validate_tool_messages(messages_for_api)
+            messages_for_api = self._prepare_messages_for_api(
+                self.context.conversation_history, context=self.context
+            )
             completion_dict = await streaming_handler.stream_response(
                 client=self.context.client,
                 messages=messages_for_api,
                 tools=tools,
+                after_tool_calls=after_tool_calls,
             )
 
             # Convert dict to CompletionResponse Pydantic model
@@ -575,10 +616,9 @@ class ConversationProcessor:
         start_time = time.time()
 
         try:
-            messages_as_dicts = [
-                msg.to_dict() for msg in self.context.conversation_history
-            ]
-            messages_as_dicts = self._validate_tool_messages(messages_as_dicts)
+            messages_as_dicts = self._prepare_messages_for_api(
+                self.context.conversation_history, context=self.context
+            )
             completion_dict = await self.context.client.create_completion(
                 messages=messages_as_dicts,
                 tools=tools,
@@ -591,10 +631,9 @@ class ConversationProcessor:
                 output.warning(
                     "Tool definitions rejected by model, retrying without tools..."
                 )
-                messages_as_dicts = [
-                    msg.to_dict() for msg in self.context.conversation_history
-                ]
-                messages_as_dicts = self._validate_tool_messages(messages_as_dicts)
+                messages_as_dicts = self._prepare_messages_for_api(
+                    self.context.conversation_history, context=self.context
+                )
                 completion_dict = await self.context.client.create_completion(
                     messages=messages_as_dicts
                 )
@@ -640,6 +679,75 @@ class ConversationProcessor:
             self.context.tool_name_mapping = {}
 
     @staticmethod
+    def _prepare_messages_for_api(messages: list, context=None) -> list[dict]:
+        """Serialize conversation history for API, with cleanup.
+
+        Replaces inline ``[msg.to_dict() for msg in ...]`` + validate pattern.
+        Strips old reasoning content and repairs orphaned tool_call_ids.
+        Injects ephemeral context management notices when available.
+
+        Args:
+            messages: Conversation history (Message objects).
+            context: Optional ChatContext for draining context notices.
+
+        Returns:
+            List of message dicts ready for the LLM API.
+        """
+        dicts = [msg.to_dict() for msg in messages]
+        dicts = ConversationProcessor._strip_old_reasoning_content(dicts)
+        dicts = ConversationProcessor._validate_tool_messages(dicts)
+
+        # Inject ephemeral context management notices
+        if context and hasattr(context, "drain_context_notices"):
+            from mcp_cli.config.defaults import DEFAULT_CONTEXT_NOTICES_ENABLED
+
+            if DEFAULT_CONTEXT_NOTICES_ENABLED:
+                notices = context.drain_context_notices()
+                if notices:
+                    notice_text = "\n".join(f"- {n}" for n in notices)
+                    notice_msg = {
+                        "role": "system",
+                        "content": ("[Context Management]\n" + notice_text),
+                    }
+                    # Insert after system prompt but before conversation
+                    insert_idx = 1 if dicts and dicts[0].get("role") == "system" else 0
+                    dicts.insert(insert_idx, notice_msg)
+
+        return dicts
+
+    @staticmethod
+    def _strip_old_reasoning_content(messages: list[dict]) -> list[dict]:
+        """Keep reasoning_content only on the most recent assistant message.
+
+        Thinking models (DeepSeek, Kimi) produce 100K+ chars of reasoning per
+        turn. Sending all historical reasoning back to the API bloats the
+        payload enormously. Only the latest reasoning is needed.
+
+        Args:
+            messages: List of message dicts.
+
+        Returns:
+            Same list with old reasoning_content removed in-place.
+        """
+        last_reasoning_idx = -1
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].get("role") == "assistant" and messages[i].get(
+                "reasoning_content"
+            ):
+                last_reasoning_idx = i
+                break
+
+        for i, msg in enumerate(messages):
+            if (
+                i != last_reasoning_idx
+                and msg.get("role") == "assistant"
+                and "reasoning_content" in msg
+            ):
+                del msg["reasoning_content"]
+
+        return messages
+
+    @staticmethod
     def _validate_tool_messages(messages: list[dict]) -> list[dict]:
         """Ensure every assistant tool_call_id has a matching tool result.
 
@@ -665,7 +773,11 @@ class ConversationProcessor:
                 # Collect expected tool_call_ids from this assistant message
                 expected_ids = set()
                 for tc in msg["tool_calls"]:
-                    tc_id = tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", None)
+                    tc_id = (
+                        tc.get("id")
+                        if isinstance(tc, dict)
+                        else getattr(tc, "id", None)
+                    )
                     if tc_id:
                         expected_ids.add(tc_id)
 
@@ -682,11 +794,13 @@ class ConversationProcessor:
                 missing = expected_ids - found_ids
                 for mid in missing:
                     log.warning(f"Repairing orphaned tool_call_id: {mid}")
-                    repaired.append({
-                        "role": "tool",
-                        "tool_call_id": mid,
-                        "content": "Tool call did not complete.",
-                    })
+                    repaired.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": mid,
+                            "content": "Tool call did not complete.",
+                        }
+                    )
 
             i += 1
         return repaired

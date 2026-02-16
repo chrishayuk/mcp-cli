@@ -18,6 +18,11 @@ from typing import TYPE_CHECKING
 from chuk_tool_processor import ToolCall as CTPToolCall
 from chuk_tool_processor import ToolResult as CTPToolResult
 
+from mcp_cli.config.defaults import (
+    DEFAULT_BATCH_TIMEOUT_FLOOR,
+    DEFAULT_BATCH_TIMEOUT_MULTIPLIER,
+)
+
 if TYPE_CHECKING:
     from mcp_cli.tools.manager import ToolManager
 
@@ -31,6 +36,7 @@ async def execute_tools_parallel(
     on_tool_start: Callable[[CTPToolCall], Awaitable[None]] | None = None,
     on_tool_result: Callable[[CTPToolResult], Awaitable[None]] | None = None,
     max_concurrency: int = 4,
+    batch_timeout: float | None = None,
 ) -> list[CTPToolResult]:
     """
     Execute multiple tool calls in parallel with optional callbacks.
@@ -45,6 +51,7 @@ async def execute_tools_parallel(
         on_tool_start: Async callback invoked when each tool starts
         on_tool_result: Async callback invoked when each tool completes
         max_concurrency: Maximum concurrent executions (default: 4)
+        batch_timeout: Global timeout for entire batch (auto-computed if None)
 
     Returns:
         List of CTPToolResult objects in completion order
@@ -106,10 +113,32 @@ async def execute_tools_parallel(
     # Create all tasks and execute in parallel
     tasks = [asyncio.create_task(execute_single(call)) for call in calls]
 
-    # Use as_completed to get results in completion order
-    for completed_task in asyncio.as_completed(tasks):
-        result = await completed_task
-        results.append(result)
+    # Compute effective batch timeout
+    if batch_timeout is None:
+        batch_timeout = max(
+            effective_timeout * DEFAULT_BATCH_TIMEOUT_MULTIPLIER,
+            DEFAULT_BATCH_TIMEOUT_FLOOR,
+        )
+
+    async def _collect_results() -> None:
+        """Collect results as they complete."""
+        for completed_task in asyncio.as_completed(tasks):
+            result = await completed_task
+            results.append(result)
+
+    try:
+        await asyncio.wait_for(_collect_results(), timeout=batch_timeout)
+    except asyncio.TimeoutError:
+        logger.error(
+            f"Batch timeout after {batch_timeout}s — cancelling remaining tools"
+        )
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        # Await cancelled tasks to avoid "task was destroyed" warnings
+        await asyncio.gather(
+            *[t for t in tasks if not t.done()], return_exceptions=True
+        )
 
     return results
 
@@ -120,6 +149,7 @@ async def stream_execute_tools(
     timeout: float | None = None,
     on_tool_start: Callable[[CTPToolCall], Awaitable[None]] | None = None,
     max_concurrency: int = 4,
+    batch_timeout: float | None = None,
 ) -> AsyncIterator[CTPToolResult]:
     """
     Execute multiple tool calls in parallel, yielding results as they complete.
@@ -133,6 +163,7 @@ async def stream_execute_tools(
         timeout: Timeout per tool execution (uses default if not specified)
         on_tool_start: Async callback invoked when each tool starts
         max_concurrency: Maximum concurrent executions (default: 4)
+        batch_timeout: Global timeout for entire batch (auto-computed if None)
 
     Yields:
         CTPToolResult objects as each tool completes (in completion order)
@@ -185,13 +216,38 @@ async def stream_execute_tools(
     # Start all tasks
     tasks = {asyncio.create_task(execute_single(call)) for call in calls}
 
-    # Yield results as they complete
+    # Compute effective batch timeout
+    if batch_timeout is None:
+        batch_timeout = max(
+            effective_timeout * DEFAULT_BATCH_TIMEOUT_MULTIPLIER,
+            DEFAULT_BATCH_TIMEOUT_FLOOR,
+        )
+
+    # Yield results as they complete, with batch timeout
     results_received = 0
+    deadline = asyncio.get_event_loop().time() + batch_timeout
     while results_received < len(calls):
+        remaining = deadline - asyncio.get_event_loop().time()
+        if remaining <= 0:
+            logger.error(
+                f"Batch timeout after {batch_timeout}s — cancelling remaining tools"
+            )
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            break
         try:
-            result = await queue.get()
+            result = await asyncio.wait_for(queue.get(), timeout=remaining)
             yield result
             results_received += 1
+        except asyncio.TimeoutError:
+            logger.error(
+                f"Batch timeout after {batch_timeout}s — cancelling remaining tools"
+            )
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            break
         except asyncio.CancelledError:
             # Cancel remaining tasks on cancellation
             for task in tasks:
@@ -203,3 +259,5 @@ async def stream_execute_tools(
     done, pending = await asyncio.wait(tasks, timeout=0)
     for task in pending:
         task.cancel()
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)

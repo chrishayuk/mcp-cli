@@ -232,7 +232,6 @@ class DummyContext:
         self.conversation_history = []
         self.tool_manager = tool_manager
         self.tool_processor = None
-        self.tool_history = []
 
     def inject_tool_message(self, message):
         self.conversation_history.append(message)
@@ -1183,9 +1182,9 @@ class TestOnToolResult:
         )
         await tp._on_tool_result(result)
 
-        # Should have added to tool history
-        assert len(ctx.tool_history) == 1
-        assert ctx.tool_history[0].tool_name == "echo"
+        # Should have added tool result to conversation history
+        tool_msgs = [m for m in ctx.conversation_history if m.role.value == "tool"]
+        assert len(tool_msgs) >= 1
 
     @pytest.mark.asyncio
     async def test_failed_result(self):
@@ -1245,9 +1244,7 @@ class TestOnToolResult:
             machine=platform.node(),
             pid=os.getpid(),
         )
-        with patch(
-            "mcp_cli.chat.tool_processor.display_tool_call_result"
-        ) as mock_display:
+        with patch("mcp_cli.display.display_tool_call_result") as mock_display:
             await tp._on_tool_result(result)
             mock_display.assert_called_once()
 
@@ -1302,8 +1299,9 @@ class TestOnToolResult:
         )
         await tp._on_tool_result(result)
 
-        # Tool history should record call_tool as the execution tool
-        assert len(ctx.tool_history) == 1
+        # Should have added tool result to conversation history
+        tool_msgs = [m for m in ctx.conversation_history if m.role.value == "tool"]
+        assert len(tool_msgs) >= 1
 
 
 # ---------------------------------------------------------------------------

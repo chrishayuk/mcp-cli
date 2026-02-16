@@ -329,7 +329,7 @@ class PreferenceManager:
                 if tool_name.endswith(suffix):
                     return risk
 
-        return ToolRiskLevel.SAFE
+        return ToolRiskLevel.MODERATE
 
     def should_confirm_tool(self, tool_name: str) -> bool:
         """Determine if a tool should be confirmed based on preferences.
@@ -346,7 +346,8 @@ class PreferenceManager:
             return True
         elif tool_setting == "never":
             return False
-        # "ask" falls through to global mode
+        elif tool_setting == "ask":
+            return True
 
         # Check global mode
         mode = self.preferences.ui.tool_confirmation.mode

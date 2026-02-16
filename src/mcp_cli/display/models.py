@@ -174,6 +174,19 @@ class StreamingState(BaseModel):
     finish_reason: str | None = Field(default=None, description="Why streaming ended")
     interrupted: bool = Field(default=False, description="Whether user interrupted")
 
+    # Buffer caps
+    max_accumulated_chars: int = Field(
+        default=1_048_576,
+        description="Max accumulated content chars (0=unlimited)",
+    )
+    max_chunks: int = Field(
+        default=50_000,
+        description="Max chunks before stall detection (0=unlimited)",
+    )
+    content_capped: bool = Field(
+        default=False, description="Whether content hit the buffer cap"
+    )
+
     model_config = {"frozen": False}
 
     @property
@@ -211,23 +224,45 @@ class StreamingState(BaseModel):
         self.last_chunk_time = time.time()
 
         if chunk.content:
-            self.accumulated_content += chunk.content
-            self._update_content_type(chunk.content)
+            if not self.content_capped:
+                new_len = len(self.accumulated_content) + len(chunk.content)
+                if (
+                    self.max_accumulated_chars > 0
+                    and new_len > self.max_accumulated_chars
+                ):
+                    self.content_capped = True
+                    self.accumulated_content += (
+                        "\n\n[Content truncated — buffer limit reached]"
+                    )
+                else:
+                    self.accumulated_content += chunk.content
+                    self._update_content_type(chunk.content)
 
         if chunk.reasoning_content:
-            # Accumulate reasoning content (DeepSeek streams it in chunks)
-            # Add space if we're appending to existing content to avoid word concatenation
-            if self.reasoning_content and not self.reasoning_content.endswith(" "):
-                # Check if the new chunk starts with punctuation or space
-                if (
-                    chunk.reasoning_content
-                    and chunk.reasoning_content[0] not in " .,!?;:"
-                ):
-                    self.reasoning_content += " "
-            self.reasoning_content += chunk.reasoning_content
+            reasoning_len = len(self.reasoning_content) + len(chunk.reasoning_content)
+            if (
+                self.max_accumulated_chars <= 0
+                or reasoning_len <= self.max_accumulated_chars
+            ):
+                # Add space to avoid word concatenation
+                if self.reasoning_content and not self.reasoning_content.endswith(" "):
+                    if (
+                        chunk.reasoning_content
+                        and chunk.reasoning_content[0] not in " .,!?;:"
+                    ):
+                        self.reasoning_content += " "
+                self.reasoning_content += chunk.reasoning_content
 
         if chunk.finish_reason:
             self.finish_reason = chunk.finish_reason
+
+        # Stall detection
+        if (
+            self.max_chunks > 0
+            and self.chunks_received >= self.max_chunks
+            and not self.finish_reason
+        ):
+            self.finish_reason = "max_chunks_reached"
 
         # Update phase if receiving
         if self.phase == StreamingPhase.INITIALIZING:

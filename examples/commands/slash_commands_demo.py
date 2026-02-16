@@ -29,7 +29,7 @@ from chuk_term.ui.terminal import clear_screen
 import sys
 import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from mcp_cli.ui.color_converter import create_transparent_completion_style
 from mcp_cli.commands.base import CommandMode

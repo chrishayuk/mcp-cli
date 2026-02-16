@@ -16,7 +16,7 @@ from typing import List
 import subprocess
 
 # Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from chuk_term.ui import output, format_table
 

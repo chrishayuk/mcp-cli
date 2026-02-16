@@ -98,7 +98,7 @@ class TestTestChatContextInit:
         assert ctx.tool_name_mapping == {}
         assert ctx.tool_processor is None
         assert isinstance(ctx.conversation_history, list)
-        assert isinstance(ctx.tool_history, list)
+        assert isinstance(ctx._pending_context_notices, list)
 
     def test_init_uses_model_manager_properties(self):
         """The debug log line accesses self.provider / self.model."""

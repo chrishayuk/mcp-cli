@@ -1,11 +1,62 @@
-"""Tests for the tool history command definition."""
+"""Tests for the tool history command definition.
+
+Tests use procedural memory (ToolMemoryManager.tool_log) as the data source,
+matching the command's actual implementation.
+"""
+
+import json
+from datetime import datetime, UTC
+from enum import Enum
+from types import SimpleNamespace
 
 import pytest
-import json
 from unittest.mock import MagicMock, patch
 
 from mcp_cli.commands.tools.tool_history import ToolHistoryCommand
 from mcp_cli.commands.base import CommandMode
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+class _Outcome(Enum):
+    SUCCESS = "SUCCESS"
+    FAILURE = "FAILURE"
+
+
+def _make_entry(
+    tool_name: str = "test_tool",
+    arguments: dict | None = None,
+    outcome: str = "SUCCESS",
+    result_summary: str = "OK",
+    timestamp: datetime | None = None,
+    compact_prefix: str = "[OK]",
+):
+    """Build a fake ToolLogEntry-like object."""
+    return SimpleNamespace(
+        tool_name=tool_name,
+        arguments=arguments or {},
+        outcome=_Outcome(outcome),
+        result_summary=result_summary,
+        timestamp=timestamp or datetime.now(UTC),
+        format_compact=lambda _pfx=compact_prefix, _tn=tool_name: f"{_pfx} {_tn}",
+    )
+
+
+def _make_context(entries=None):
+    """Build a mock chat_context with tool_memory.memory.tool_log."""
+    ctx = MagicMock()
+    memory = MagicMock()
+    memory.tool_log = entries if entries is not None else []
+    ctx.tool_memory.memory = memory
+    return ctx
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -16,29 +67,37 @@ def tool_history_command():
 
 @pytest.fixture
 def mock_chat_context():
-    """Create a mock chat context with tool history."""
-    context = MagicMock()
-    context.tool_history = [
-        {
-            "tool": "test_tool_1",
-            "arguments": {"arg1": "value1"},
-            "result": "Success",
-            "success": True,
-        },
-        {
-            "tool": "test_tool_2",
-            "arguments": {"arg2": "value2", "arg3": "value3"},
-            "result": "Another result",
-            "success": True,
-        },
-        {
-            "tool": "test_tool_3",
-            "arguments": {"error": "test"},
-            "result": "Failed",
-            "success": False,
-        },
-    ]
-    return context
+    """Create a mock chat context with 3 tool log entries."""
+    return _make_context(
+        [
+            _make_entry(
+                "test_tool_1",
+                {"arg1": "value1"},
+                "SUCCESS",
+                "Success",
+                compact_prefix="[OK]",
+            ),
+            _make_entry(
+                "test_tool_2",
+                {"arg2": "value2", "arg3": "value3"},
+                "SUCCESS",
+                "Another result",
+                compact_prefix="[OK]",
+            ),
+            _make_entry(
+                "test_tool_3",
+                {"error": "test"},
+                "FAILURE",
+                "Failed",
+                compact_prefix="[FAIL]",
+            ),
+        ]
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
 
 
 def test_tool_history_command_properties(tool_history_command):
@@ -63,9 +122,9 @@ async def test_tool_history_without_context(tool_history_command):
 
 
 @pytest.mark.asyncio
-async def test_tool_history_no_history_attribute(tool_history_command):
-    """Test when chat context has no tool_history attribute."""
-    mock_context = MagicMock(spec=[])  # No tool_history attribute
+async def test_tool_history_no_tool_memory(tool_history_command):
+    """Test when chat context has no tool_memory attribute."""
+    mock_context = MagicMock(spec=[])  # No tool_memory attribute
 
     result = await tool_history_command.execute(chat_context=mock_context)
 
@@ -75,9 +134,8 @@ async def test_tool_history_no_history_attribute(tool_history_command):
 
 @pytest.mark.asyncio
 async def test_tool_history_empty_history(tool_history_command):
-    """Test when tool history is empty."""
-    mock_context = MagicMock()
-    mock_context.tool_history = []
+    """Test when tool log is empty."""
+    mock_context = _make_context([])
 
     result = await tool_history_command.execute(chat_context=mock_context)
 
@@ -102,7 +160,6 @@ async def test_tool_history_table_view(tool_history_command, mock_chat_context):
             table_data = mock_format_table.call_args[0][0]
             assert len(table_data) == 3
             assert table_data[0]["Tool"] == "test_tool_1"
-            assert table_data[2]["Status"] == "✗"  # Failed tool
 
             mock_output.print_table.assert_called_once_with("formatted_table")
 
@@ -143,6 +200,8 @@ async def test_tool_history_json_output(tool_history_command, mock_chat_context)
     output_data = json.loads(result.output)
     assert len(output_data) == 3
     assert output_data[0]["tool"] == "test_tool_1"
+    assert output_data[0]["outcome"] == "SUCCESS"
+    assert output_data[2]["outcome"] == "FAILURE"
 
 
 @pytest.mark.asyncio
@@ -219,15 +278,16 @@ async def test_tool_history_invalid_args(tool_history_command, mock_chat_context
 @pytest.mark.asyncio
 async def test_tool_history_truncate_long_arguments(tool_history_command):
     """Test that long arguments are truncated in table view."""
-    mock_context = MagicMock()
-    mock_context.tool_history = [
-        {
-            "tool": "test_tool",
-            "arguments": {"very_long_argument_name": "x" * 100},
-            "result": "Success",
-            "success": True,
-        }
-    ]
+    mock_context = _make_context(
+        [
+            _make_entry(
+                "test_tool",
+                {"very_long_argument_name": "x" * 100},
+                "SUCCESS",
+                "Success",
+            ),
+        ]
+    )
 
     with patch("mcp_cli.commands.tools.tool_history.output"):
         with patch(
@@ -246,10 +306,9 @@ async def test_tool_history_truncate_long_arguments(tool_history_command):
 
 
 @pytest.mark.asyncio
-async def test_tool_history_none_tool_history(tool_history_command):
-    """Test when tool_history is None."""
-    mock_context = MagicMock()
-    mock_context.tool_history = None
+async def test_tool_history_none_tool_log(tool_history_command):
+    """Test when tool_log is an empty list (no calls made)."""
+    mock_context = _make_context([])
 
     result = await tool_history_command.execute(chat_context=mock_context)
 

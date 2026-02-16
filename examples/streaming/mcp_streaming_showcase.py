@@ -19,7 +19,7 @@ import asyncio
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from mcp_cli.ui.chat_display_manager import ChatDisplayManager
 from rich.console import Console

@@ -362,3 +362,99 @@ class TestContentTypeDetection:
         state.add_chunk(StreamingChunk(content="Just some regular text."))
 
         assert state.detected_type == ContentType.TEXT
+
+
+class TestStreamingBufferCaps:
+    """Tests for StreamingState buffer caps and stall detection."""
+
+    def test_content_cap_enforced(self):
+        """Content stops accumulating when cap is reached."""
+        state = StreamingState(max_accumulated_chars=100)
+
+        # Add content up to the cap
+        state.add_chunk(StreamingChunk(content="A" * 80))
+        assert len(state.accumulated_content) == 80
+        assert not state.content_capped
+
+        # This chunk would exceed the cap
+        state.add_chunk(StreamingChunk(content="B" * 30))
+        assert state.content_capped
+        assert "buffer limit reached" in state.accumulated_content
+        # Content should NOT have the B's appended
+        assert "B" * 30 not in state.accumulated_content
+
+    def test_content_after_cap_ignored(self):
+        """Chunks after cap are silently dropped."""
+        state = StreamingState(max_accumulated_chars=50)
+        state.add_chunk(StreamingChunk(content="A" * 60))
+        assert state.content_capped
+
+        # More content should be ignored
+        state.add_chunk(StreamingChunk(content="SHOULD_NOT_APPEAR"))
+        assert "SHOULD_NOT_APPEAR" not in state.accumulated_content
+
+    def test_content_cap_zero_disables(self):
+        """max_accumulated_chars=0 means unlimited."""
+        state = StreamingState(max_accumulated_chars=0)
+        big_content = "X" * 10_000_000
+        state.add_chunk(StreamingChunk(content=big_content))
+        assert len(state.accumulated_content) == 10_000_000
+        assert not state.content_capped
+
+    def test_reasoning_cap_enforced(self):
+        """Reasoning content respects the cap."""
+        state = StreamingState(max_accumulated_chars=100)
+        state.add_chunk(StreamingChunk(reasoning_content="R" * 80))
+        assert len(state.reasoning_content) == 80
+
+        # This would exceed cap
+        state.add_chunk(StreamingChunk(reasoning_content="S" * 30))
+        # Reasoning should NOT have grown
+        assert "S" * 30 not in state.reasoning_content
+
+    def test_reasoning_cap_zero_disables(self):
+        """max_accumulated_chars=0 means unlimited for reasoning too."""
+        state = StreamingState(max_accumulated_chars=0)
+        state.add_chunk(StreamingChunk(reasoning_content="R" * 100_000))
+        assert len(state.reasoning_content) == 100_000
+
+    def test_stall_detection_max_chunks(self):
+        """finish_reason set when max_chunks reached."""
+        state = StreamingState(max_chunks=3)
+        state.add_chunk(StreamingChunk(content="a"))
+        state.add_chunk(StreamingChunk(content="b"))
+        assert state.finish_reason is None
+
+        state.add_chunk(StreamingChunk(content="c"))
+        assert state.finish_reason == "max_chunks_reached"
+
+    def test_stall_detection_does_not_override_finish_reason(self):
+        """If finish_reason already set, stall detection preserves it."""
+        state = StreamingState(max_chunks=2)
+        state.add_chunk(StreamingChunk(content="a", finish_reason="stop"))
+        state.add_chunk(StreamingChunk(content="b"))
+        # finish_reason should remain "stop", not overwritten
+        assert state.finish_reason == "stop"
+
+    def test_stall_detection_zero_disables(self):
+        """max_chunks=0 means no stall detection."""
+        state = StreamingState(max_chunks=0)
+        for _ in range(1000):
+            state.add_chunk(StreamingChunk(content="x"))
+        assert state.finish_reason is None
+
+    def test_default_caps(self):
+        """Default values match expected constants."""
+        state = StreamingState()
+        assert state.max_accumulated_chars == 1_048_576
+        assert state.max_chunks == 50_000
+        assert not state.content_capped
+
+    def test_chunks_still_counted_when_capped(self):
+        """chunks_received keeps incrementing even after cap."""
+        state = StreamingState(max_accumulated_chars=10)
+        state.add_chunk(StreamingChunk(content="A" * 20))
+        assert state.content_capped
+        state.add_chunk(StreamingChunk(content="B"))
+        state.add_chunk(StreamingChunk(content="C"))
+        assert state.chunks_received == 3
