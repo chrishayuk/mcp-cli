@@ -1,11 +1,25 @@
 # mcp_cli/chat/system_prompt.py
 import os
 
+from mcp_cli.config.defaults import (
+    DEFAULT_SYSTEM_PROMPT_TOOL_PREVIEW_COUNT,
+    DEFAULT_SYSTEM_PROMPT_TOOL_SUMMARY_THRESHOLD,
+)
 
-def _build_server_section(server_tool_groups):
-    """Build the server/tool categorization section for the system prompt."""
+
+def _build_server_section(server_tool_groups, tool_summary_threshold=None):
+    """Build the server/tool categorization section for the system prompt.
+
+    Args:
+        server_tool_groups: List of dicts with server/tool grouping.
+        tool_summary_threshold: When a server has more tools than this,
+            show only the first few and a summary count. Default from config.
+    """
     if not server_tool_groups:
         return ""
+
+    if tool_summary_threshold is None:
+        tool_summary_threshold = DEFAULT_SYSTEM_PROMPT_TOOL_SUMMARY_THRESHOLD
 
     lines = [
         "",
@@ -19,7 +33,12 @@ def _build_server_section(server_tool_groups):
         name = group.get("name", "unknown")
         desc = group.get("description", "")
         tools = group.get("tools", [])
-        tool_list = ", ".join(tools)
+        if len(tools) > tool_summary_threshold:
+            preview = DEFAULT_SYSTEM_PROMPT_TOOL_PREVIEW_COUNT
+            shown = tools[:preview]
+            tool_list = ", ".join(shown) + f" ... and {len(tools) - preview} more"
+        else:
+            tool_list = ", ".join(tools)
         lines.append(f"- **{name}** ({desc}): {tool_list}")
 
     lines.append("")

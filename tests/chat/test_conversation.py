@@ -740,9 +740,11 @@ class TestConversationErrorHandling:
 
         processor = ConversationProcessor(context, ui_manager)
 
-        # Mock client to raise an error
+        # Mock client to raise an error (RuntimeError hits the general Exception handler
+        # which injects an assistant error message — ValueError is caught by the specific
+        # config/validation handler that does not inject one)
         context.client.create_completion = AsyncMock(
-            side_effect=ValueError("Some unexpected error")
+            side_effect=RuntimeError("Some unexpected error")
         )
 
         await processor.process_conversation(max_turns=1)
@@ -1558,7 +1560,11 @@ class TestValidateToolMessages:
                 "role": "assistant",
                 "content": None,
                 "tool_calls": [
-                    {"id": "call_1", "type": "function", "function": {"name": "echo", "arguments": "{}"}},
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "echo", "arguments": "{}"},
+                    },
                 ],
             },
             {"role": "tool", "tool_call_id": "call_1", "content": "OK"},
@@ -1576,7 +1582,11 @@ class TestValidateToolMessages:
                 "role": "assistant",
                 "content": None,
                 "tool_calls": [
-                    {"id": "call_missing", "type": "function", "function": {"name": "fetch", "arguments": "{}"}},
+                    {
+                        "id": "call_missing",
+                        "type": "function",
+                        "function": {"name": "fetch", "arguments": "{}"},
+                    },
                 ],
             },
             # No tool result for call_missing!
@@ -1599,8 +1609,16 @@ class TestValidateToolMessages:
                 "role": "assistant",
                 "content": None,
                 "tool_calls": [
-                    {"id": "call_a", "type": "function", "function": {"name": "tool_a", "arguments": "{}"}},
-                    {"id": "call_b", "type": "function", "function": {"name": "tool_b", "arguments": "{}"}},
+                    {
+                        "id": "call_a",
+                        "type": "function",
+                        "function": {"name": "tool_a", "arguments": "{}"},
+                    },
+                    {
+                        "id": "call_b",
+                        "type": "function",
+                        "function": {"name": "tool_b", "arguments": "{}"},
+                    },
                 ],
             },
             {"role": "tool", "tool_call_id": "call_a", "content": "Result A"},
@@ -1639,7 +1657,11 @@ class TestValidateToolMessages:
                 "role": "assistant",
                 "content": None,
                 "tool_calls": [
-                    {"id": "call_r1", "type": "function", "function": {"name": "a", "arguments": "{}"}},
+                    {
+                        "id": "call_r1",
+                        "type": "function",
+                        "function": {"name": "a", "arguments": "{}"},
+                    },
                 ],
             },
             {"role": "tool", "tool_call_id": "call_r1", "content": "Done A"},
@@ -1648,7 +1670,11 @@ class TestValidateToolMessages:
                 "role": "assistant",
                 "content": None,
                 "tool_calls": [
-                    {"id": "call_r2", "type": "function", "function": {"name": "b", "arguments": "{}"}},
+                    {
+                        "id": "call_r2",
+                        "type": "function",
+                        "function": {"name": "b", "arguments": "{}"},
+                    },
                 ],
             },
             # Missing tool result for call_r2!
@@ -1674,8 +1700,16 @@ class TestValidateToolMessages:
                 "role": "assistant",
                 "content": None,
                 "tool_calls": [
-                    {"id": "call_x", "type": "function", "function": {"name": "x", "arguments": "{}"}},
-                    {"id": "call_y", "type": "function", "function": {"name": "y", "arguments": "{}"}},
+                    {
+                        "id": "call_x",
+                        "type": "function",
+                        "function": {"name": "x", "arguments": "{}"},
+                    },
+                    {
+                        "id": "call_y",
+                        "type": "function",
+                        "function": {"name": "y", "arguments": "{}"},
+                    },
                 ],
             },
             # No tool results at all — next message is user
@@ -1714,7 +1748,11 @@ class TestValidateToolMessages:
                 "role": "assistant",
                 "content": None,
                 "tool_calls": [
-                    {"id": "call_gap", "type": "function", "function": {"name": "t", "arguments": "{}"}},
+                    {
+                        "id": "call_gap",
+                        "type": "function",
+                        "function": {"name": "t", "arguments": "{}"},
+                    },
                 ],
             },
             # A user message appears before the tool result
@@ -1730,3 +1768,283 @@ class TestValidateToolMessages:
         assert result[2]["role"] == "tool"
         assert result[2]["tool_call_id"] == "call_gap"
         assert "did not complete" in result[2]["content"]
+
+
+# ----------------------------------------------------------
+# Tests for _strip_old_reasoning_content
+# ----------------------------------------------------------
+
+
+class TestStripOldReasoningContent:
+    """Tests for ConversationProcessor._strip_old_reasoning_content()."""
+
+    def test_keeps_latest_reasoning(self):
+        """Most recent assistant reasoning is preserved."""
+        messages = [
+            {
+                "role": "assistant",
+                "content": "old",
+                "reasoning_content": "old thinking",
+            },
+            {"role": "user", "content": "hello"},
+            {
+                "role": "assistant",
+                "content": "new",
+                "reasoning_content": "new thinking",
+            },
+        ]
+        result = ConversationProcessor._strip_old_reasoning_content(messages)
+        assert "reasoning_content" not in result[0]
+        assert result[2]["reasoning_content"] == "new thinking"
+
+    def test_removes_all_but_latest(self):
+        """Multiple old reasoning blocks are all removed."""
+        messages = [
+            {"role": "assistant", "content": "a", "reasoning_content": "think1"},
+            {"role": "assistant", "content": "b", "reasoning_content": "think2"},
+            {"role": "assistant", "content": "c", "reasoning_content": "think3"},
+        ]
+        result = ConversationProcessor._strip_old_reasoning_content(messages)
+        assert "reasoning_content" not in result[0]
+        assert "reasoning_content" not in result[1]
+        assert result[2]["reasoning_content"] == "think3"
+
+    def test_no_reasoning_is_noop(self):
+        """Messages without reasoning_content are unchanged."""
+        messages = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "hello"},
+        ]
+        result = ConversationProcessor._strip_old_reasoning_content(messages)
+        assert result == messages
+
+    def test_single_reasoning_preserved(self):
+        """If only one assistant has reasoning, it stays."""
+        messages = [
+            {"role": "assistant", "content": "a"},
+            {"role": "assistant", "content": "b", "reasoning_content": "only one"},
+        ]
+        result = ConversationProcessor._strip_old_reasoning_content(messages)
+        assert result[1]["reasoning_content"] == "only one"
+
+    def test_non_assistant_reasoning_untouched(self):
+        """Only assistant messages have reasoning stripped."""
+        messages = [
+            {
+                "role": "system",
+                "content": "sys",
+                "reasoning_content": "system reasoning",
+            },
+            {"role": "assistant", "content": "a", "reasoning_content": "latest"},
+        ]
+        result = ConversationProcessor._strip_old_reasoning_content(messages)
+        # System message reasoning is not touched (not role=assistant)
+        assert result[0].get("reasoning_content") == "system reasoning"
+        assert result[1]["reasoning_content"] == "latest"
+
+    def test_empty_list(self):
+        """Empty message list returns empty."""
+        assert ConversationProcessor._strip_old_reasoning_content([]) == []
+
+
+# ----------------------------------------------------------
+# Tests for _prepare_messages_for_api
+# ----------------------------------------------------------
+
+
+class TestPrepareMessagesForApi:
+    """Tests for ConversationProcessor._prepare_messages_for_api()."""
+
+    def test_combines_strip_and_validate(self):
+        """prepare_messages_for_api strips reasoning AND validates tool messages."""
+        messages = [
+            Message(
+                role=MessageRole.ASSISTANT, content="old", reasoning_content="old think"
+            ),
+            Message(role=MessageRole.USER, content="hi"),
+            Message(
+                role=MessageRole.ASSISTANT,
+                content=None,
+                reasoning_content="new think",
+                tool_calls=[
+                    ToolCall(
+                        id="call_1",
+                        type="function",
+                        function=FunctionCall(name="test", arguments="{}"),
+                    )
+                ],
+            ),
+            # Missing tool result for call_1 — should get placeholder
+        ]
+        result = ConversationProcessor._prepare_messages_for_api(messages)
+
+        # Old reasoning stripped
+        assert "reasoning_content" not in result[0]
+        # Latest reasoning preserved
+        assert result[2].get("reasoning_content") == "new think"
+        # Orphaned tool_call_id repaired with placeholder
+        assert len(result) == 4
+        assert result[3]["role"] == "tool"
+        assert result[3]["tool_call_id"] == "call_1"
+
+    def test_serializes_message_objects(self):
+        """Input Message objects become dicts."""
+        messages = [
+            Message(role=MessageRole.USER, content="hello"),
+        ]
+        result = ConversationProcessor._prepare_messages_for_api(messages)
+        assert isinstance(result[0], dict)
+        assert result[0]["role"] == "user"
+        assert result[0]["content"] == "hello"
+
+
+# ----------------------------------------------------------
+# Tests for context notices injection (Tier 2)
+# ----------------------------------------------------------
+
+
+class TestContextNoticesInjection:
+    """Tests for ephemeral context notices in _prepare_messages_for_api."""
+
+    def _make_context_with_notices(self, notices: list[str]):
+        """Create a MockContext with pending context notices."""
+        ctx = MockContext()
+        ctx._pending_context_notices = list(notices)
+
+        def drain_context_notices():
+            result = ctx._pending_context_notices[:]
+            ctx._pending_context_notices.clear()
+            return result
+
+        ctx.drain_context_notices = drain_context_notices
+        return ctx
+
+    def test_context_notices_injected(self):
+        """Notices from context.drain_context_notices() appear in prepared messages."""
+        ctx = self._make_context_with_notices(
+            [
+                "5 older messages were evicted from context.",
+                "Tool result was truncated to 100K chars.",
+            ]
+        )
+
+        messages = [
+            Message(role=MessageRole.SYSTEM, content="You are helpful."),
+            Message(role=MessageRole.USER, content="Hello"),
+        ]
+
+        result = ConversationProcessor._prepare_messages_for_api(messages, context=ctx)
+
+        # Should have 3 messages: system, context notice, user
+        assert len(result) == 3
+        notice_msg = result[1]
+        assert notice_msg["role"] == "system"
+        assert "[Context Management]" in notice_msg["content"]
+        assert "5 older messages were evicted" in notice_msg["content"]
+        assert "Tool result was truncated" in notice_msg["content"]
+
+    def test_notices_drained_after_use(self):
+        """After injection, notices list is empty."""
+        ctx = self._make_context_with_notices(
+            [
+                "Context was trimmed.",
+            ]
+        )
+
+        messages = [
+            Message(role=MessageRole.USER, content="Hello"),
+        ]
+
+        ConversationProcessor._prepare_messages_for_api(messages, context=ctx)
+
+        # Notices should be drained (empty after use)
+        assert ctx._pending_context_notices == []
+        # A second call should not inject anything
+        result2 = ConversationProcessor._prepare_messages_for_api(messages, context=ctx)
+        # No notice message should be inserted (just the user message)
+        assert len(result2) == 1
+        assert result2[0]["role"] == "user"
+
+    def test_notices_disabled(self, monkeypatch):
+        """When DEFAULT_CONTEXT_NOTICES_ENABLED is False, notices are not injected."""
+        monkeypatch.setattr(
+            "mcp_cli.config.defaults.DEFAULT_CONTEXT_NOTICES_ENABLED",
+            False,
+        )
+
+        ctx = self._make_context_with_notices(
+            [
+                "This notice should not appear.",
+            ]
+        )
+
+        messages = [
+            Message(role=MessageRole.SYSTEM, content="System prompt."),
+            Message(role=MessageRole.USER, content="Hello"),
+        ]
+
+        result = ConversationProcessor._prepare_messages_for_api(messages, context=ctx)
+
+        # Should have 2 messages: system, user (no notice injected)
+        assert len(result) == 2
+        assert result[0]["role"] == "system"
+        assert result[1]["role"] == "user"
+        # No message should contain "[Context Management]"
+        for msg in result:
+            assert "[Context Management]" not in msg.get("content", "")
+
+    def test_notices_inserted_after_system_prompt(self):
+        """When first message is system, notice is inserted at index 1."""
+        ctx = self._make_context_with_notices(["Notice text."])
+
+        messages = [
+            Message(role=MessageRole.SYSTEM, content="System."),
+            Message(role=MessageRole.USER, content="Hi"),
+        ]
+
+        result = ConversationProcessor._prepare_messages_for_api(messages, context=ctx)
+
+        assert result[0]["role"] == "system"
+        assert result[0]["content"] == "System."
+        assert result[1]["role"] == "system"
+        assert "[Context Management]" in result[1]["content"]
+        assert result[2]["role"] == "user"
+
+    def test_notices_inserted_at_start_when_no_system_prompt(self):
+        """When no system prompt is first, notice is inserted at index 0."""
+        ctx = self._make_context_with_notices(["Notice text."])
+
+        messages = [
+            Message(role=MessageRole.USER, content="Hi"),
+        ]
+
+        result = ConversationProcessor._prepare_messages_for_api(messages, context=ctx)
+
+        assert result[0]["role"] == "system"
+        assert "[Context Management]" in result[0]["content"]
+        assert result[1]["role"] == "user"
+
+    def test_no_notices_no_injection(self):
+        """When no notices are pending, no extra message is injected."""
+        ctx = self._make_context_with_notices([])
+
+        messages = [
+            Message(role=MessageRole.SYSTEM, content="System."),
+            Message(role=MessageRole.USER, content="Hi"),
+        ]
+
+        result = ConversationProcessor._prepare_messages_for_api(messages, context=ctx)
+
+        # Should have exactly 2 messages (no injection)
+        assert len(result) == 2
+
+    def test_no_context_no_injection(self):
+        """When context is None, no notices are injected."""
+        messages = [
+            Message(role=MessageRole.USER, content="Hello"),
+        ]
+
+        result = ConversationProcessor._prepare_messages_for_api(messages, context=None)
+
+        assert len(result) == 1
+        assert result[0]["role"] == "user"

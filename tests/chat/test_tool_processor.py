@@ -349,8 +349,7 @@ async def test_ensure_all_tool_results_fills_missing():
 
     # tool_b should now have a placeholder result in the conversation history
     tool_results = [
-        msg for msg in context.conversation_history
-        if msg.role.value == "tool"
+        msg for msg in context.conversation_history if msg.role.value == "tool"
     ]
     assert len(tool_results) == 1
     assert tool_results[0].tool_call_id == "call_orphan_2"
@@ -371,12 +370,12 @@ async def test_ensure_all_tool_results_noop_when_all_present():
         ToolCall(
             id="call_1",
             type="function",
-            function=FunctionCall(name="tool_a", arguments='{}'),
+            function=FunctionCall(name="tool_a", arguments="{}"),
         ),
         ToolCall(
             id="call_2",
             type="function",
-            function=FunctionCall(name="tool_b", arguments='{}'),
+            function=FunctionCall(name="tool_b", arguments="{}"),
         ),
     ]
 
@@ -408,13 +407,10 @@ async def test_process_tool_calls_finally_adds_missing_results():
 
     # The finally block should have added a placeholder result
     tool_results = [
-        msg for msg in context.conversation_history
-        if msg.role.value == "tool"
+        msg for msg in context.conversation_history if msg.role.value == "tool"
     ]
     assert len(tool_results) >= 1
-    assert any(
-        msg.tool_call_id == "call_no_manager" for msg in tool_results
-    )
+    assert any(msg.tool_call_id == "call_no_manager" for msg in tool_results)
 
 
 @pytest.mark.asyncio
@@ -481,6 +477,7 @@ async def test_cancelled_tool_still_gets_result_for_remaining():
 
     class SelectiveDenyUI(DummyUIManager):
         """Denies the second tool call."""
+
         def do_confirm_tool_execution(self, tool_name, arguments):
             call_count[0] += 1
             return call_count[0] <= 1  # Allow first, deny second
@@ -489,24 +486,30 @@ async def test_cancelled_tool_still_gets_result_for_remaining():
     processor = ToolProcessor(context, ui_manager)
 
     tool_calls = [
-        ToolCall(id="call_ok", type="function",
-                 function=FunctionCall(name="tool_a", arguments='{}')),
-        ToolCall(id="call_denied", type="function",
-                 function=FunctionCall(name="tool_b", arguments='{}')),
+        ToolCall(
+            id="call_ok",
+            type="function",
+            function=FunctionCall(name="tool_a", arguments="{}"),
+        ),
+        ToolCall(
+            id="call_denied",
+            type="function",
+            function=FunctionCall(name="tool_b", arguments="{}"),
+        ),
     ]
 
     await processor.process_tool_calls(tool_calls)
 
     # Both tool_call_ids must have results (one executed, one cancelled/placeholder)
     tool_results = [
-        msg for msg in context.conversation_history
-        if msg.role.value == "tool"
+        msg for msg in context.conversation_history if msg.role.value == "tool"
     ]
     result_ids = {msg.tool_call_id for msg in tool_results}
     assert "call_ok" in result_ids or "call_denied" in result_ids
     # The key assertion: no orphaned tool_call_ids
     assistant_msgs = [
-        msg for msg in context.conversation_history
+        msg
+        for msg in context.conversation_history
         if msg.role.value == "assistant" and msg.tool_calls
     ]
     for amsg in assistant_msgs:
@@ -526,8 +529,9 @@ async def test_inject_failure_is_caught_by_finally():
     processor = ToolProcessor(context, ui_manager)
 
     tool_call = ToolCall(
-        id="call_inject_fail", type="function",
-        function=FunctionCall(name="some_tool", arguments='{}'),
+        id="call_inject_fail",
+        type="function",
+        function=FunctionCall(name="some_tool", arguments="{}"),
     )
 
     # The tool result inject fails, then execution runs, then finally block fires.
@@ -550,14 +554,20 @@ async def test_result_ids_reset_between_calls():
     processor = ToolProcessor(context, ui_manager)
 
     # First call
-    tc1 = ToolCall(id="call_first", type="function",
-                   function=FunctionCall(name="tool_a", arguments='{}'))
+    tc1 = ToolCall(
+        id="call_first",
+        type="function",
+        function=FunctionCall(name="tool_a", arguments="{}"),
+    )
     await processor.process_tool_calls([tc1])
     assert "call_first" in processor._result_ids_added
 
     # Second call should start fresh
-    tc2 = ToolCall(id="call_second", type="function",
-                   function=FunctionCall(name="tool_b", arguments='{}'))
+    tc2 = ToolCall(
+        id="call_second",
+        type="function",
+        function=FunctionCall(name="tool_b", arguments="{}"),
+    )
     await processor.process_tool_calls([tc2])
     assert "call_second" in processor._result_ids_added
     assert "call_first" not in processor._result_ids_added
@@ -573,14 +583,93 @@ async def test_successful_batch_tracks_all_ids():
     processor = ToolProcessor(context, ui_manager)
 
     tool_calls = [
-        ToolCall(id="batch_1", type="function",
-                 function=FunctionCall(name="tool_a", arguments='{}')),
-        ToolCall(id="batch_2", type="function",
-                 function=FunctionCall(name="tool_b", arguments='{}')),
-        ToolCall(id="batch_3", type="function",
-                 function=FunctionCall(name="tool_c", arguments='{}')),
+        ToolCall(
+            id="batch_1",
+            type="function",
+            function=FunctionCall(name="tool_a", arguments="{}"),
+        ),
+        ToolCall(
+            id="batch_2",
+            type="function",
+            function=FunctionCall(name="tool_b", arguments="{}"),
+        ),
+        ToolCall(
+            id="batch_3",
+            type="function",
+            function=FunctionCall(name="tool_c", arguments="{}"),
+        ),
     ]
 
     await processor.process_tool_calls(tool_calls)
 
     assert processor._result_ids_added == {"batch_1", "batch_2", "batch_3"}
+
+
+# ---------------------------
+# Tests for _truncate_tool_result
+# ---------------------------
+
+
+class TestTruncateToolResult:
+    """Tests for ToolProcessor._truncate_tool_result()."""
+
+    def _make_processor(self):
+        tool_manager = DummyToolManager()
+        context = DummyContext(tool_manager=tool_manager)
+        ui_manager = DummyUIManager()
+        return ToolProcessor(context, ui_manager)
+
+    def test_under_limit_unchanged(self):
+        processor = self._make_processor()
+        content = "short content"
+        result = processor._truncate_tool_result(content, max_chars=1000)
+        assert result == content
+
+    def test_exactly_at_limit_unchanged(self):
+        processor = self._make_processor()
+        content = "x" * 1000
+        result = processor._truncate_tool_result(content, max_chars=1000)
+        assert result == content
+
+    def test_over_limit_truncated(self):
+        processor = self._make_processor()
+        content = "A" * 10_000
+        result = processor._truncate_tool_result(content, max_chars=1000)
+        assert len(result) < len(content)
+        assert "TRUNCATED" in result
+        assert "chars omitted" in result
+
+    def test_preserves_head_and_tail(self):
+        processor = self._make_processor()
+        head = "HEAD_MARKER_" + "x" * 5000
+        tail = "y" * 5000 + "_TAIL_MARKER"
+        content = head + "z" * 90_000 + tail
+        result = processor._truncate_tool_result(content, max_chars=10_000)
+        assert result.startswith("HEAD_MARKER_")
+        assert result.endswith("_TAIL_MARKER")
+
+    def test_disabled_with_zero(self):
+        processor = self._make_processor()
+        content = "A" * 200_000
+        result = processor._truncate_tool_result(content, max_chars=0)
+        assert result == content
+
+    def test_disabled_with_negative(self):
+        processor = self._make_processor()
+        content = "A" * 200_000
+        result = processor._truncate_tool_result(content, max_chars=-1)
+        assert result == content
+
+    def test_empty_content(self):
+        processor = self._make_processor()
+        result = processor._truncate_tool_result("", max_chars=100)
+        assert result == ""
+
+    def test_value_binding_in_tail_preserved(self):
+        """Value binding appended at end should survive truncation."""
+        processor = self._make_processor()
+        body = "A" * 200_000
+        binding = "\n\n**RESULT: $v0 = 42.0**"
+        content = body + binding
+        result = processor._truncate_tool_result(content, max_chars=100_000)
+        assert "**RESULT: $v0 = 42.0**" in result

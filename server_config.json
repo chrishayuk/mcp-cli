@@ -80,6 +80,9 @@
     },
     "geocoder": {
        "url": "https://geocoder.chukai.io/mcp"
+    },
+    "her": {
+       "url": "https://her.chukai.io/mcp"
     }
   }
 }

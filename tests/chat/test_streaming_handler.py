@@ -758,3 +758,166 @@ class TestMergeJsonStringsEdgeCases:
         result = acc._merge_json_strings('"x": 1', "")
         # Current + new is '"x": 1', then tries to add braces
         assert result == '"x": 1'  # second empty, returns first
+
+
+# ---------------------------------------------------------------------------
+# First-chunk timeout tests
+# ---------------------------------------------------------------------------
+
+
+class TestFirstChunkTimeout:
+    """Tests for differentiated first-chunk vs subsequent-chunk timeouts."""
+
+    def _make_rc(self, chunk=45.0, first_chunk=60.0, global_t=300.0):
+        """Build a RuntimeConfig mock with distinct timeout values."""
+        from mcp_cli.config.enums import TimeoutType
+
+        def get_timeout(t):
+            if t == TimeoutType.STREAMING_FIRST_CHUNK:
+                return first_chunk
+            elif t == TimeoutType.STREAMING_CHUNK:
+                return chunk
+            elif t == TimeoutType.STREAMING_GLOBAL:
+                return global_t
+            return 30.0
+
+        rc = MagicMock()
+        rc.get_timeout = MagicMock(side_effect=get_timeout)
+        return rc
+
+    @pytest.mark.asyncio
+    async def test_first_chunk_uses_longer_timeout(self):
+        """First chunk should use first_chunk_timeout, not chunk_timeout."""
+        display = _make_display()
+        # Set first_chunk=0.01 so it times out quickly on first chunk
+        # but chunk=300 so it wouldn't time out on subsequent chunks
+        rc = self._make_rc(chunk=300.0, first_chunk=0.01, global_t=300.0)
+        handler = StreamingResponseHandler(display, runtime_config=rc)
+
+        async def mock_aiter():
+            await asyncio.sleep(10)  # Exceeds first_chunk timeout (0.01s)
+            yield {"content": "never reached"}  # pragma: no cover
+
+        client = MagicMock()
+        client.create_completion = MagicMock(return_value=mock_aiter())
+
+        with patch("chuk_term.ui.output"):
+            result = await handler.stream_response(client, messages=[])
+
+        # Should complete (timeout handled internally), content from display mock
+        assert StreamingResponseField.RESPONSE in result
+
+    @pytest.mark.asyncio
+    async def test_subsequent_chunks_use_chunk_timeout(self):
+        """After first chunk, subsequent chunks use the regular chunk_timeout."""
+        display = _make_display()
+        # first_chunk=300 (won't time out), chunk=0.01 (will time out on 2nd chunk)
+        rc = self._make_rc(chunk=0.01, first_chunk=300.0, global_t=300.0)
+        handler = StreamingResponseHandler(display, runtime_config=rc)
+
+        async def mock_aiter():
+            yield {"content": "first"}  # Arrives quickly
+            await asyncio.sleep(10)  # Exceeds chunk timeout (0.01s)
+            yield {"content": "never reached"}  # pragma: no cover
+
+        client = MagicMock()
+        client.create_completion = MagicMock(return_value=mock_aiter())
+
+        with patch("chuk_term.ui.output"):
+            result = await handler.stream_response(client, messages=[])
+
+        assert StreamingResponseField.RESPONSE in result
+
+    @pytest.mark.asyncio
+    async def test_after_tool_calls_extends_first_chunk_timeout(self):
+        """after_tool_calls=True uses the longer after-tools timeout."""
+        display = _make_display()
+        # first_chunk=60, chunk=45 — but after_tool_calls bumps to 180
+        rc = self._make_rc(chunk=45.0, first_chunk=60.0, global_t=300.0)
+        handler = StreamingResponseHandler(display, runtime_config=rc)
+
+        timeouts_used = []
+
+        original_wait_for = asyncio.wait_for
+
+        async def tracking_wait_for(coro, timeout):
+            timeouts_used.append(timeout)
+            return await original_wait_for(coro, timeout=timeout)
+
+        async def mock_aiter():
+            yield {"content": "response after tools"}
+
+        client = MagicMock()
+        client.create_completion = MagicMock(return_value=mock_aiter())
+
+        with patch("asyncio.wait_for", side_effect=tracking_wait_for):
+            result = await handler.stream_response(
+                client, messages=[], after_tool_calls=True
+            )
+
+        assert StreamingResponseField.RESPONSE in result
+        # The first wait_for call in stream_chunks should use 180.0 (after-tools timeout)
+        # The global timeout uses 300.0
+        # Find the 180.0 timeout (first chunk after tools)
+        assert 180.0 in timeouts_used, f"Expected 180.0 in {timeouts_used}"
+
+    @pytest.mark.asyncio
+    async def test_after_tool_calls_false_uses_normal_first_chunk(self):
+        """after_tool_calls=False uses the standard first_chunk_timeout."""
+        display = _make_display()
+        rc = self._make_rc(chunk=45.0, first_chunk=60.0, global_t=300.0)
+        handler = StreamingResponseHandler(display, runtime_config=rc)
+
+        timeouts_used = []
+
+        original_wait_for = asyncio.wait_for
+
+        async def tracking_wait_for(coro, timeout):
+            timeouts_used.append(timeout)
+            return await original_wait_for(coro, timeout=timeout)
+
+        async def mock_aiter():
+            yield {"content": "normal response"}
+
+        client = MagicMock()
+        client.create_completion = MagicMock(return_value=mock_aiter())
+
+        with patch("asyncio.wait_for", side_effect=tracking_wait_for):
+            result = await handler.stream_response(
+                client, messages=[], after_tool_calls=False
+            )
+
+        assert StreamingResponseField.RESPONSE in result
+        # Should see 60.0 (first chunk) and NOT 180.0
+        assert 60.0 in timeouts_used, f"Expected 60.0 in {timeouts_used}"
+        assert 180.0 not in timeouts_used, f"Did not expect 180.0 in {timeouts_used}"
+
+    @pytest.mark.asyncio
+    async def test_after_tool_calls_timeout_message_mentions_tool_results(self):
+        """Timeout message after tool calls mentions tool result processing."""
+        display = _make_display()
+        # Use very short first_chunk to trigger timeout
+        rc = self._make_rc(chunk=0.01, first_chunk=0.01, global_t=300.0)
+        handler = StreamingResponseHandler(display, runtime_config=rc)
+
+        async def mock_aiter():
+            await asyncio.sleep(10)  # Will timeout
+            yield {"content": "never"}  # pragma: no cover
+
+        client = MagicMock()
+        client.create_completion = MagicMock(return_value=mock_aiter())
+
+        # Patch the after-tools default to a tiny value so timeout fires
+        with (
+            patch("chuk_term.ui.output") as mock_output,
+            patch(
+                "mcp_cli.config.defaults.DEFAULT_STREAMING_FIRST_CHUNK_AFTER_TOOLS_TIMEOUT",
+                0.01,
+            ),
+        ):
+            await handler.stream_response(client, messages=[], after_tool_calls=True)
+
+        # Check that the error message mentions tool results
+        mock_output.error.assert_called_once()
+        error_msg = mock_output.error.call_args[0][0]
+        assert "tool" in error_msg.lower()

@@ -31,7 +31,7 @@ The missing piece: a **portable capability layer between prompts and tools**. If
 
 ---
 
-## Tier 1: Foundation (Fix What Breaks Today)
+## Tier 1: Foundation (Fix What Breaks Today) ✅ COMPLETE
 
 ### 1.1 Truncate Large Tool Results
 
@@ -89,7 +89,7 @@ The missing piece: a **portable capability layer between prompts and tools**. If
 
 ---
 
-## Tier 2: Efficiency & Resilience
+## Tier 2: Efficiency & Resilience ✅ COMPLETE
 
 ### 2.1 Eliminate Triple Tool Result Storage
 
@@ -154,6 +154,19 @@ The missing piece: a **portable capability layer between prompts and tools**. If
 
 - Quick auth validation in `ChatContext.initialize()`
 - Optional connection test on `add_runtime_provider()`
+
+### 2.8 LLM-Visible Context Management Notices
+
+**Problem:** Tier 1 truncation, sliding window eviction, and reasoning stripping happen silently. The LLM sees truncated results but doesn't know data was removed, so it can't adjust its strategy (e.g., request smaller date ranges, fewer fields, or paginated results).
+
+**Files:** `src/mcp_cli/chat/tool_processor.py`, `src/mcp_cli/chat/conversation.py`, `src/mcp_cli/chat/chat_context.py`
+
+- **Tool result truncation notice:** When `_truncate_tool_result` fires, inject a system-level hint into the conversation: `"The previous tool result was truncated from {N} to {M} chars. Consider requesting less data (smaller date range, fewer fields, pagination)."`
+- **Sliding window eviction notice:** When messages are evicted, inject: `"Context window: {N} older messages were evicted. Key context may need to be re-established."`
+- **Reasoning stripping notice:** When old reasoning is stripped, inject a compact note so the model knows it lost its earlier chain of thought
+- **Context compaction notice:** When SessionManager compacts/summarizes, surface the summary to the model so it knows what was compressed
+- Design as injectable system messages placed just before the next API call, not permanently stored in history
+- Configurable: `--context-notices / --no-context-notices` flag (default on)
 
 ---
 

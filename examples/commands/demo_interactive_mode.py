@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from mcp_cli.adapters.interactive import InteractiveCommandAdapter
 from mcp_cli.commands import register_all_commands

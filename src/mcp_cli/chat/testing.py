@@ -36,7 +36,9 @@ class TestChatContext(ChatContext):
         # Conversation state
         self.exit_requested = False
         self.conversation_history: list = []
-        self.tool_history: list = []
+
+        # Context management notices
+        self._pending_context_notices: list[str] = []
 
         # ToolProcessor back-reference
         self.tool_processor: Any = None
@@ -115,3 +117,13 @@ class TestChatContext(ChatContext):
     async def get_server_for_tool(self, tool_name: str) -> str:
         """Get server for tool from stream_manager."""
         return self.stream_manager.get_server_for_tool(tool_name) or "Unknown"
+
+    def add_context_notice(self, notice: str) -> None:
+        """Queue a context management notice for the next API call."""
+        self._pending_context_notices.append(notice)
+
+    def drain_context_notices(self) -> list[str]:
+        """Return and clear pending context notices."""
+        notices = self._pending_context_notices[:]
+        self._pending_context_notices.clear()
+        return notices

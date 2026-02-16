@@ -12,7 +12,7 @@ from typing import Any, AsyncIterator
 from chuk_term.ui import output
 
 from mcp_cli.chat.system_prompt import generate_system_prompt
-from mcp_cli.chat.models import Message, MessageRole, ToolExecutionRecord, ChatStatus
+from mcp_cli.chat.models import Message, MessageRole, ChatStatus
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.tools.models import ToolInfo, ServerInfo
 from mcp_cli.model_management import ModelManager
@@ -51,6 +51,10 @@ class ChatContext:
         tool_manager: ToolManager,
         model_manager: ModelManager,
         session_id: str | None = None,
+        max_history_messages: int = 0,
+        infinite_context: bool = False,
+        token_threshold: int = 4000,
+        max_turns_per_segment: int = 20,
     ):
         """
         Create chat context with required managers.
@@ -59,10 +63,20 @@ class ChatContext:
             tool_manager: Tool management interface
             model_manager: Model configuration and LLM client manager
             session_id: Optional session ID for conversation tracking
+            max_history_messages: Sliding window size (0 = unlimited)
+            infinite_context: Enable infinite context mode in SessionManager
+            token_threshold: Token threshold for infinite context segmentation
+            max_turns_per_segment: Max turns per segment before context packing
         """
         self.tool_manager = tool_manager
         self.model_manager = model_manager
         self.session_id = session_id or self._generate_session_id()
+
+        # Context management
+        self._max_history_messages = max_history_messages
+        self._infinite_context = infinite_context
+        self._token_threshold = token_threshold
+        self._max_turns_per_segment = max_turns_per_segment
 
         # Core session manager - always required
         self.session: SessionManager = SessionManager(session_id=self.session_id)
@@ -81,7 +95,10 @@ class ChatContext:
 
         # Session state
         self.exit_requested = False
-        self.tool_history: list[ToolExecutionRecord] = []
+
+        # Context management notices (ephemeral, drained before each API call)
+        self._pending_context_notices: list[str] = []
+        self._system_prompt_dirty: bool = True
 
         # ToolProcessor back-reference (set by ToolProcessor.__init__)
         self.tool_processor: Any = None
@@ -111,6 +128,10 @@ class ChatContext:
         api_key: str | None = None,
         model_manager: ModelManager | None = None,
         session_id: str | None = None,
+        max_history_messages: int = 0,
+        infinite_context: bool = False,
+        token_threshold: int = 4000,
+        max_turns_per_segment: int = 20,
     ) -> "ChatContext":
         """
         Factory method for convenient creation.
@@ -123,6 +144,10 @@ class ChatContext:
             api_key: API key override (optional)
             model_manager: Pre-configured ModelManager (optional, creates new if None)
             session_id: Session ID for conversation tracking (optional)
+            max_history_messages: Sliding window size (0 = unlimited)
+            infinite_context: Enable infinite context mode in SessionManager
+            token_threshold: Token threshold for infinite context segmentation
+            max_turns_per_segment: Max turns per segment before context packing
 
         Returns:
             Configured ChatContext instance
@@ -143,7 +168,15 @@ class ChatContext:
                 current_provider = model_manager.get_active_provider()
                 model_manager.switch_model(current_provider, model)
 
-        return cls(tool_manager, model_manager, session_id)
+        return cls(
+            tool_manager,
+            model_manager,
+            session_id,
+            max_history_messages=max_history_messages,
+            infinite_context=infinite_context,
+            token_threshold=token_threshold,
+            max_turns_per_segment=max_turns_per_segment,
+        )
 
     # ── Properties ────────────────────────────────────────────────────────
     @property
@@ -168,25 +201,29 @@ class ChatContext:
 
         Provides backwards compatibility while using SessionManager internally.
         Handles both regular messages and tool-related messages.
+
+        System prompt is always included. If max_history_messages > 0,
+        only the most recent N event-based messages are returned (sliding window).
         """
         messages = []
 
-        # System prompt first
+        # System prompt always included (outside the window)
         if self._system_prompt:
             messages.append(
                 Message(role=MessageRole.SYSTEM, content=self._system_prompt)
             )
 
-        # Get events from session
+        # Build event-based messages
+        event_messages: list[Message] = []
         if self.session._session:
             for event in self.session._session.events:
                 if event.type == EventType.MESSAGE:
                     if event.source == EventSource.USER:
-                        messages.append(
+                        event_messages.append(
                             Message(role=MessageRole.USER, content=str(event.message))
                         )
                     elif event.source in (EventSource.LLM, EventSource.SYSTEM):
-                        messages.append(
+                        event_messages.append(
                             Message(
                                 role=MessageRole.ASSISTANT, content=str(event.message)
                             )
@@ -194,8 +231,25 @@ class ChatContext:
                 elif event.type == EventType.TOOL_CALL:
                     # Tool messages stored as dict - reconstruct Message
                     if isinstance(event.message, dict):
-                        messages.append(Message.from_dict(event.message))
+                        event_messages.append(Message.from_dict(event.message))
 
+        # Apply sliding window if configured
+        if (
+            self._max_history_messages > 0
+            and len(event_messages) > self._max_history_messages
+        ):
+            evicted = len(event_messages) - self._max_history_messages
+            logger.info(
+                f"Sliding window: keeping {self._max_history_messages} of "
+                f"{len(event_messages)} messages (evicted {evicted})"
+            )
+            event_messages = event_messages[-self._max_history_messages :]
+            self.add_context_notice(
+                f"{evicted} older messages were evicted from context. "
+                "Key context may need to be re-established."
+            )
+
+        messages.extend(event_messages)
         return messages
 
     # ── Initialization ────────────────────────────────────────────────────
@@ -205,6 +259,14 @@ class ChatContext:
             await self._initialize_tools()
             self._generate_system_prompt()
             await self._initialize_session()
+
+            # Quick provider validation (non-blocking)
+            try:
+                _client = self.client  # noqa: F841 — fails fast if no API key
+                logger.info(f"Provider {self.provider} client created successfully")
+            except Exception as e:
+                output.print(f"[yellow]Provider validation warning: {e}[/yellow]")
+                output.print("[yellow]Chat may fail when making API calls.[/yellow]")
 
             if not self.tools:
                 output.print(
@@ -222,17 +284,25 @@ class ChatContext:
             return False
 
     async def _initialize_session(self) -> None:
-        """Initialize the session with system prompt."""
+        """Initialize the session with system prompt and context management."""
         self.session = SessionManager(
             session_id=self.session_id,
             system_prompt=self._system_prompt,
-            infinite_context=False,
+            infinite_context=self._infinite_context,
+            token_threshold=self._token_threshold,
+            max_turns_per_segment=self._max_turns_per_segment,
         )
         await self.session._ensure_initialized()
-        logger.debug(f"Session initialized: {self.session_id}")
+        logger.debug(
+            f"Session initialized: {self.session_id} "
+            f"(infinite_context={self._infinite_context})"
+        )
 
     def _generate_system_prompt(self) -> None:
-        """Generate system prompt from available tools."""
+        """Generate system prompt from available tools (cached with dirty flag)."""
+        if not self._system_prompt_dirty and self._system_prompt:
+            return
+
         tools_for_prompt = [
             tool.to_llm_format().to_dict() for tool in self.internal_tools
         ]
@@ -241,6 +311,7 @@ class ChatContext:
             tools=tools_for_prompt,
             server_tool_groups=server_tool_groups,
         )
+        self._system_prompt_dirty = False
 
     def _build_server_tool_groups(self) -> list[dict[str, Any]]:
         """Build server-to-tools grouping for the system prompt."""
@@ -256,11 +327,13 @@ class ChatContext:
         for server in self.server_info:
             tools = server_tools.get(server.namespace, [])
             if tools:
-                groups.append({
-                    "name": server.name,
-                    "description": server.display_description,
-                    "tools": sorted(tools),
-                })
+                groups.append(
+                    {
+                        "name": server.name,
+                        "description": server.display_description,
+                        "tools": sorted(tools),
+                    }
+                )
         return groups
 
     async def _initialize_tools(self) -> None:
@@ -273,6 +346,7 @@ class ChatContext:
 
         await self._adapt_tools_for_provider()
         self.internal_tools = list(self.tools)
+        self._system_prompt_dirty = True
 
     def find_tool_by_name(self, name: str) -> ToolInfo | None:
         """Find a tool by its name (handles both simple and namespaced names)."""
@@ -318,6 +392,7 @@ class ChatContext:
     async def refresh_after_model_change(self) -> None:
         """Refresh context after ModelManager changes the model."""
         await self._adapt_tools_for_provider()
+        self._system_prompt_dirty = True
         logger.debug(f"ChatContext refreshed for {self.provider}/{self.model}")
 
     # ── Tool execution (delegate to ToolManager) ──────────────────────────
@@ -425,6 +500,9 @@ class ChatContext:
             error_message=str(error) if error else None,
         )
 
+        # Enforce pattern limits (upstream doesn't enforce max_patterns_per_tool)
+        self._enforce_memory_limits()
+
         logger.debug(f"Tool call recorded: {tool_name} (success={success})")
 
     async def get_messages_for_llm(self) -> list[dict[str, str]]:
@@ -451,6 +529,7 @@ class ChatContext:
 
     async def regenerate_system_prompt(self) -> None:
         """Regenerate system prompt with current tools."""
+        self._system_prompt_dirty = True
         self._generate_system_prompt()
         await self.session.update_system_prompt(self._system_prompt)
 
@@ -479,6 +558,28 @@ class ChatContext:
             }
             for entry in self.tool_memory.memory.tool_log[-limit:]
         ]
+
+    # ── Context management notices ────────────────────────────────────────
+    def add_context_notice(self, notice: str) -> None:
+        """Queue a context management notice for the next API call."""
+        self._pending_context_notices.append(notice)
+        logger.debug(f"Context notice queued: {notice[:80]}")
+
+    def drain_context_notices(self) -> list[str]:
+        """Return and clear pending context notices."""
+        notices = self._pending_context_notices[:]
+        self._pending_context_notices.clear()
+        return notices
+
+    # ── Memory limits enforcement ─────────────────────────────────────────
+    def _enforce_memory_limits(self) -> None:
+        """Trim procedural memory patterns to stay within configured limits."""
+        max_patterns = self.tool_memory.max_patterns_per_tool
+        for _tool_name, pattern in self.tool_memory.memory.tool_patterns.items():
+            if len(pattern.error_patterns) > max_patterns:
+                pattern.error_patterns = pattern.error_patterns[-max_patterns:]
+            if len(pattern.success_patterns) > max_patterns:
+                pattern.success_patterns = pattern.success_patterns[-max_patterns:]
 
     # ── Simple getters ────────────────────────────────────────────────────
     def get_tool_count(self) -> int:
@@ -556,7 +657,7 @@ class ChatContext:
             internal_tool_count=len(self.internal_tools),
             server_count=len(self.server_info),
             message_count=self.get_conversation_length(),
-            tool_execution_count=len(self.tool_history),
+            tool_execution_count=len(self.tool_memory.memory.tool_log),
         )
 
     async def get_session_stats(self) -> dict[str, Any]:

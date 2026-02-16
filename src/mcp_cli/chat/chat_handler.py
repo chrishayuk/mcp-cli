@@ -41,6 +41,7 @@ async def handle_chat_mode(
     max_turns: int = 100,
     model_manager=None,  # FIXED: Accept model_manager from caller
     runtime_config=None,  # RuntimeConfig | None
+    max_history_messages: int = 0,
 ) -> bool:
     """
     Launch the interactive chat loop with streaming support.
@@ -92,6 +93,7 @@ async def handle_chat_mode(
                 api_base=api_base,
                 api_key=api_key,
                 model_manager=app_context.model_manager,  # Use the same instance
+                max_history_messages=max_history_messages,
             )
 
             if not await ctx.initialize():

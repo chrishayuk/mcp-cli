@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 # Module imports must come after path manipulation
 from chuk_term.ui import output  # noqa: E402

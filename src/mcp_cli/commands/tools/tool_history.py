@@ -1,6 +1,9 @@
-# src/mcp_cli/commands/definitions/tool_history.py
+# src/mcp_cli/commands/tools/tool_history.py
 """
 Unified tool history command implementation (chat mode only).
+
+Reads from procedural memory (ToolMemoryManager.tool_log) instead of
+maintaining a redundant in-memory list.
 """
 
 from __future__ import annotations
@@ -41,7 +44,7 @@ Usage:
   /toolhistory <row>        - Show detailed view of specific call
   /toolhistory -n 10        - Show last 10 calls only
   /toolhistory --json       - Export as JSON
-  
+
 Options:
   <row>         - Row number for detailed view (e.g., 1, 2, 3)
   -n <count>    - Limit to last N entries
@@ -95,15 +98,15 @@ Note: This command is only available in chat mode.
                 error="Tool history command requires chat context.",
             )
 
-        # Get tool history
-        if not hasattr(chat_context, "tool_history"):
+        # Get tool log from procedural memory
+        if not hasattr(chat_context, "tool_memory"):
             return CommandResult(
                 success=True,
                 output="No tool history available.",
             )
 
-        tool_history = chat_context.tool_history or []
-        if not tool_history:
+        tool_log = chat_context.tool_memory.memory.tool_log
+        if not tool_log:
             return CommandResult(
                 success=True,
                 output="No tool calls have been made yet.",
@@ -129,13 +132,23 @@ Note: This command is only available in chat mode.
                     pass
 
         # Apply limit if specified
-        display_history = tool_history
+        display_log = tool_log
         if limit and limit > 0:
-            display_history = tool_history[-limit:]
+            display_log = tool_log[-limit:]
 
         # Handle JSON output
         if show_json:
-            json_output = json.dumps(display_history, indent=2, default=str)
+            json_data = [
+                {
+                    "tool": entry.tool_name,
+                    "arguments": entry.arguments,
+                    "outcome": entry.outcome.value,
+                    "result_summary": entry.result_summary,
+                    "timestamp": entry.timestamp.isoformat(),
+                }
+                for entry in display_log
+            ]
+            json_output = json.dumps(json_data, indent=2, default=str)
             return CommandResult(
                 success=True,
                 output=json_output,
@@ -143,12 +156,13 @@ Note: This command is only available in chat mode.
 
         # Handle row detail view
         if row_num is not None:
-            if 1 <= row_num <= len(tool_history):
-                call = tool_history[row_num - 1]
+            if 1 <= row_num <= len(tool_log):
+                entry = tool_log[row_num - 1]
                 output.panel(
-                    f"Tool: {call.get('tool', 'unknown')}\n"
-                    f"Arguments:\n{json.dumps(call.get('arguments', {}), indent=2)}\n"
-                    f"Result:\n{json.dumps(call.get('result', 'N/A'), indent=2, default=str)}",
+                    f"Tool: {entry.tool_name}\n"
+                    f"Outcome: {entry.outcome.value}\n"
+                    f"Arguments:\n{json.dumps(entry.arguments, indent=2)}\n"
+                    f"Result: {entry.result_summary}",
                     title=f"Tool Call #{row_num}",
                     style="cyan",
                 )
@@ -156,23 +170,23 @@ Note: This command is only available in chat mode.
             else:
                 return CommandResult(
                     success=False,
-                    error=f"Invalid row number: {row_num}. Valid range: 1-{len(tool_history)}",
+                    error=f"Invalid row number: {row_num}. Valid range: 1-{len(tool_log)}",
                 )
 
         # Default table view
         table_data = []
-        for i, call in enumerate(display_history, 1):
+        for i, entry in enumerate(display_log, 1):
             # Truncate arguments for display
-            args_str = json.dumps(call.get("arguments", {}))
+            args_str = json.dumps(entry.arguments)
             if len(args_str) > 50:
                 args_str = args_str[:47] + "..."
 
             table_data.append(
                 {
                     "#": str(i),
-                    "Tool": call.get("tool", "unknown"),
+                    "Tool": entry.tool_name,
                     "Arguments": args_str,
-                    "Status": "✓" if call.get("success", True) else "✗",
+                    "Status": entry.format_compact().split("]")[0] + "]",
                 }
             )
 
@@ -183,7 +197,7 @@ Note: This command is only available in chat mode.
         )
         output.print_table(table)
 
-        if limit and limit < len(tool_history):
-            output.hint(f"Showing last {limit} of {len(tool_history)} total calls")
+        if limit and limit < len(tool_log):
+            output.hint(f"Showing last {limit} of {len(tool_log)} total calls")
 
         return CommandResult(success=True)

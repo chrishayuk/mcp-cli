@@ -620,8 +620,10 @@ class ToolManager:
             # Check if result contains an OAuth error (some servers return errors in content)
             # Only check results that are flagged as errors — scanning successful
             # payloads causes false positives (e.g. the number "401" in data).
-            result_is_error = getattr(result, "isError", False) or (
-                isinstance(result, dict) and result.get("isError", False)
+            result_is_error = (
+                getattr(result, "isError", False)
+                or (isinstance(result, dict) and result.get("isError", False))
+                or (isinstance(result, dict) and "error" in result)
             )
             result_str = str(result) if result_is_error else ""
             if result_str and _is_oauth_error(result_str) and not _oauth_retry:
@@ -647,6 +649,14 @@ class ToolManager:
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Tool execution failed: {error_msg}")
+
+            # Classify error for better diagnostics
+            if self._is_connection_error(error_msg):
+                logger.warning(
+                    f"Connection error for tool {tool_name} "
+                    f"(server: {namespace or 'unknown'}). "
+                    "Server may be down or unresponsive."
+                )
 
             # Check if this is an OAuth error and we haven't already retried
             if _is_oauth_error(error_msg) and not _oauth_retry:
@@ -681,6 +691,21 @@ class ToolManager:
                     logger.warning(f"Could not determine server for tool {tool_name}")
 
             return ToolCallResult(tool_name=tool_name, success=False, error=error_msg)
+
+    _CONNECTION_ERROR_PATTERNS = (
+        "connection",
+        "transport",
+        "broken pipe",
+        "eof",
+        "reset by peer",
+        "timed out",
+        "refused",
+    )
+
+    def _is_connection_error(self, error: str) -> bool:
+        """Check if an error message indicates a connection problem."""
+        error_lower = error.lower()
+        return any(pat in error_lower for pat in self._CONNECTION_ERROR_PATTERNS)
 
     async def stream_execute_tool(
         self,

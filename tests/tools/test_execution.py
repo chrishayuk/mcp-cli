@@ -493,3 +493,168 @@ async def test_stream_execute_tools_max_concurrency():
     assert len(results) == 5
     # Max concurrent should not exceed 2 (with some slack for async timing)
     assert max_concurrent <= 3
+
+
+# ----------------------------------------------------------------------------
+# Batch timeout tests (Tier 2)
+# ----------------------------------------------------------------------------
+
+
+class SlowMockToolManager:
+    """Mock ToolManager with configurable per-tool delays for batch timeout tests."""
+
+    def __init__(
+        self, delays: dict[str, float] | None = None, default_delay: float = 0.0
+    ):
+        self.tool_timeout = 30.0
+        self.delays = delays or {}
+        self.default_delay = default_delay
+        self.executed_tools: list[str] = []
+
+    async def execute_tool(
+        self,
+        tool_name: str,
+        arguments: dict,
+        namespace: str | None = None,
+        timeout: float | None = None,
+    ) -> ToolCallResult:
+        delay = self.delays.get(tool_name, self.default_delay)
+        await asyncio.sleep(delay)
+        self.executed_tools.append(tool_name)
+        return ToolCallResult(
+            tool_name=tool_name,
+            success=True,
+            result={"output": f"result from {tool_name}"},
+        )
+
+
+@pytest.mark.asyncio
+async def test_batch_timeout_cancels_remaining():
+    """When batch timeout fires, remaining tasks are cancelled."""
+    # fast_tool completes quickly, slow_tool takes much longer than the batch timeout
+    manager = SlowMockToolManager(delays={"fast_tool": 0.01, "slow_tool": 10.0})
+    calls = [
+        CTPToolCall(id="call_1", tool="fast_tool", arguments={}),
+        CTPToolCall(id="call_2", tool="slow_tool", arguments={}),
+    ]
+
+    results = await execute_tools_parallel(manager, calls, batch_timeout=0.5)
+
+    # fast_tool should have completed; slow_tool should have been cancelled
+    completed_tools = {r.tool for r in results}
+    assert "fast_tool" in completed_tools
+    # slow_tool should NOT have completed (it sleeps for 10s, batch timeout is 0.5s)
+    assert "slow_tool" not in completed_tools
+    assert len(results) < len(calls)
+
+
+@pytest.mark.asyncio
+async def test_batch_timeout_returns_partial():
+    """Partial results are returned before the batch timeout expires."""
+    # 3 tools: 2 fast, 1 very slow
+    manager = SlowMockToolManager(
+        delays={"tool_a": 0.01, "tool_b": 0.01, "tool_c": 10.0}
+    )
+    calls = [
+        CTPToolCall(id="call_1", tool="tool_a", arguments={}),
+        CTPToolCall(id="call_2", tool="tool_b", arguments={}),
+        CTPToolCall(id="call_3", tool="tool_c", arguments={}),
+    ]
+
+    results = await execute_tools_parallel(manager, calls, batch_timeout=0.5)
+
+    # The 2 fast tools should have completed
+    completed_tools = {r.tool for r in results}
+    assert "tool_a" in completed_tools
+    assert "tool_b" in completed_tools
+    # tool_c should be cancelled
+    assert "tool_c" not in completed_tools
+    assert len(results) == 2
+
+
+@pytest.mark.asyncio
+async def test_no_timeout_when_fast():
+    """Fast tools complete normally without triggering the batch timeout."""
+    manager = SlowMockToolManager(default_delay=0.01)
+    calls = [
+        CTPToolCall(id="call_1", tool="tool_a", arguments={}),
+        CTPToolCall(id="call_2", tool="tool_b", arguments={}),
+        CTPToolCall(id="call_3", tool="tool_c", arguments={}),
+    ]
+
+    results = await execute_tools_parallel(manager, calls, batch_timeout=5.0)
+
+    # All tools should complete successfully
+    assert len(results) == 3
+    completed_tools = {r.tool for r in results}
+    assert completed_tools == {"tool_a", "tool_b", "tool_c"}
+    for r in results:
+        assert r.is_success
+
+
+# ----------------------------------------------------------------------------
+# Streaming batch timeout tests (Tier 2)
+# ----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_stream_batch_timeout_cancels_remaining():
+    """Streaming: when batch timeout fires, remaining tasks are cancelled."""
+    manager = SlowMockToolManager(delays={"fast_tool": 0.01, "slow_tool": 10.0})
+    calls = [
+        CTPToolCall(id="call_1", tool="fast_tool", arguments={}),
+        CTPToolCall(id="call_2", tool="slow_tool", arguments={}),
+    ]
+
+    results = []
+    async for result in stream_execute_tools(manager, calls, batch_timeout=0.5):
+        results.append(result)
+
+    # fast_tool should have been yielded; slow_tool should have been cancelled
+    completed_tools = {r.tool for r in results}
+    assert "fast_tool" in completed_tools
+    assert "slow_tool" not in completed_tools
+
+
+@pytest.mark.asyncio
+async def test_stream_batch_timeout_returns_partial():
+    """Streaming: partial results are yielded before batch timeout."""
+    manager = SlowMockToolManager(
+        delays={"tool_a": 0.01, "tool_b": 0.01, "tool_c": 10.0}
+    )
+    calls = [
+        CTPToolCall(id="call_1", tool="tool_a", arguments={}),
+        CTPToolCall(id="call_2", tool="tool_b", arguments={}),
+        CTPToolCall(id="call_3", tool="tool_c", arguments={}),
+    ]
+
+    results = []
+    async for result in stream_execute_tools(manager, calls, batch_timeout=0.5):
+        results.append(result)
+
+    completed_tools = {r.tool for r in results}
+    assert "tool_a" in completed_tools
+    assert "tool_b" in completed_tools
+    assert "tool_c" not in completed_tools
+    assert len(results) == 2
+
+
+@pytest.mark.asyncio
+async def test_stream_no_timeout_when_fast():
+    """Streaming: fast tools complete without triggering batch timeout."""
+    manager = SlowMockToolManager(default_delay=0.01)
+    calls = [
+        CTPToolCall(id="call_1", tool="tool_a", arguments={}),
+        CTPToolCall(id="call_2", tool="tool_b", arguments={}),
+        CTPToolCall(id="call_3", tool="tool_c", arguments={}),
+    ]
+
+    results = []
+    async for result in stream_execute_tools(manager, calls, batch_timeout=5.0):
+        results.append(result)
+
+    assert len(results) == 3
+    completed_tools = {r.tool for r in results}
+    assert completed_tools == {"tool_a", "tool_b", "tool_c"}
+    for r in results:
+        assert r.is_success

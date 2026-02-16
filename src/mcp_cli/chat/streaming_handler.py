@@ -237,6 +237,7 @@ class StreamingResponseHandler:
         client,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
+        after_tool_calls: bool = False,
         **kwargs,
     ) -> dict[str, Any]:
         """Stream response from LLM client.
@@ -245,6 +246,8 @@ class StreamingResponseHandler:
             client: LLM client with streaming support
             messages: Conversation messages
             tools: Available tools for function calling
+            after_tool_calls: True when this is a follow-up after tool execution
+                (thinking models need extra time to process tool results)
             **kwargs: Additional arguments for client
 
         Returns:
@@ -267,7 +270,9 @@ class StreamingResponseHandler:
                 )
 
             # Stream with chunk timeout protection
-            await self._stream_with_timeout(client, messages, tools, **kwargs)
+            await self._stream_with_timeout(
+                client, messages, tools, after_tool_calls=after_tool_calls, **kwargs
+            )
 
             # Finalize tool calls
             tool_calls = self.tool_accumulator.finalize()
@@ -317,6 +322,7 @@ class StreamingResponseHandler:
         client,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None,
+        after_tool_calls: bool = False,
         **kwargs,
     ) -> None:
         """Stream with per-chunk timeout protection.
@@ -325,14 +331,36 @@ class StreamingResponseHandler:
         1. CLI arguments (--tool-timeout)
         2. Environment variables (MCP_STREAMING_CHUNK_TIMEOUT, etc.)
         3. Config file (server_config.json -> timeouts.streamingChunkTimeout)
-        4. Defaults (45s chunk, 300s global)
+        4. Defaults (45s chunk, 60s first chunk, 180s first chunk after tools, 300s global)
+
+        The first chunk uses a longer timeout because the model needs time to
+        begin generating. After tool calls, thinking models (e.g. kimi-k2.5,
+        DeepSeek-R1) may need significantly more time to process tool results
+        before emitting their first token.
         """
+        from mcp_cli.config.defaults import (
+            DEFAULT_STREAMING_FIRST_CHUNK_AFTER_TOOLS_TIMEOUT,
+        )
+
         # Get timeouts from runtime config (type-safe with enums!)
         chunk_timeout = self.runtime_config.get_timeout(TimeoutType.STREAMING_CHUNK)
+        first_chunk_timeout = self.runtime_config.get_timeout(
+            TimeoutType.STREAMING_FIRST_CHUNK
+        )
         global_timeout = self.runtime_config.get_timeout(TimeoutType.STREAMING_GLOBAL)
 
+        # After tool calls, thinking models need extended time for the first chunk
+        if after_tool_calls:
+            first_chunk_timeout = max(
+                first_chunk_timeout,
+                DEFAULT_STREAMING_FIRST_CHUNK_AFTER_TOOLS_TIMEOUT,
+            )
+
         logger.debug(
-            f"Streaming timeouts: chunk={chunk_timeout}s, global={global_timeout}s"
+            f"Streaming timeouts: chunk={chunk_timeout}s, "
+            f"first_chunk={first_chunk_timeout}s "
+            f"(after_tools={after_tool_calls}), "
+            f"global={global_timeout}s"
         )
 
         async def stream_chunks():
@@ -345,14 +373,21 @@ class StreamingResponseHandler:
             )
 
             stream_iter = stream.__aiter__()
+            first_chunk_received = False
 
             while True:
                 try:
+                    # Use longer timeout for first chunk
+                    effective_timeout = (
+                        chunk_timeout if first_chunk_received else first_chunk_timeout
+                    )
+
                     # Wait for next chunk with timeout
                     chunk = await asyncio.wait_for(
                         stream_iter.__anext__(),
-                        timeout=chunk_timeout,
+                        timeout=effective_timeout,
                     )
+                    first_chunk_received = True
 
                     # Check for interrupt
                     if self._interrupted:
@@ -373,16 +408,31 @@ class StreamingResponseHandler:
                     logger.debug("Stream completed normally")
                     break
                 except asyncio.TimeoutError:
-                    logger.warning(f"Chunk timeout after {chunk_timeout}s")
+                    effective_timeout = (
+                        chunk_timeout if first_chunk_received else first_chunk_timeout
+                    )
+                    logger.warning(
+                        f"Chunk timeout after {effective_timeout}s "
+                        f"(first_chunk={not first_chunk_received}, "
+                        f"after_tools={after_tool_calls})"
+                    )
                     # Display user-friendly error message
                     from chuk_term.ui import output
 
-                    output.error(
-                        f"\n⏱️  Streaming timeout after {chunk_timeout:.0f}s waiting for response.\n"
-                        f"The model may be taking longer than expected to respond.\n"
-                        f"You can increase this timeout with: --tool-timeout {chunk_timeout * 2:.0f}\n"
-                        f"Or set in config file: timeouts.streamingChunkTimeout = {chunk_timeout * 2:.0f}"
-                    )
+                    if not first_chunk_received and after_tool_calls:
+                        output.error(
+                            f"\n⏱️  Streaming timeout after {effective_timeout:.0f}s waiting for first response after tool calls.\n"
+                            "The model may need more time to process tool results.\n"
+                            f"You can increase this with: MCP_STREAMING_FIRST_CHUNK_TIMEOUT={effective_timeout * 2:.0f}\n"
+                            f"Or set in config: timeouts.streamingFirstChunk = {effective_timeout * 2:.0f}"
+                        )
+                    else:
+                        output.error(
+                            f"\n⏱️  Streaming timeout after {effective_timeout:.0f}s waiting for response.\n"
+                            "The model may be taking longer than expected to respond.\n"
+                            f"You can increase this timeout with: --tool-timeout {effective_timeout * 2:.0f}\n"
+                            f"Or set in config file: timeouts.streamingChunkTimeout = {effective_timeout * 2:.0f}"
+                        )
                     break
 
         # Run with global timeout
