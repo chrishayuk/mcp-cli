@@ -5,7 +5,6 @@ Unified conversation command implementation (chat mode only).
 
 from __future__ import annotations
 
-import json
 
 from mcp_cli.commands.base import (
     UnifiedCommand,
@@ -281,72 +280,51 @@ Examples:
                 )
 
         elif action == ConversationAction.SAVE.value:
-            # Save conversation
-            filename = kwargs.get("filename")
-            if not filename and "args" in kwargs:
-                args_val = kwargs["args"]
-                if isinstance(args_val, list) and len(args_val) > 1:
-                    filename = args_val[1]
-
-            if not filename:
-                return CommandResult(
-                    success=False,
-                    error="Filename required for save. Usage: /conversation save <filename>",
-                )
-
-            try:
-                if hasattr(chat_context, "conversation_history"):
-                    with open(filename, "w") as f:
-                        json.dump(chat_context.conversation_history, f, indent=2)
+            # Save conversation via session persistence
+            if hasattr(chat_context, "save_session"):
+                path = chat_context.save_session()
+                if path:
                     return CommandResult(
                         success=True,
-                        output=f"Conversation saved to {filename}",
+                        output=f"Session saved to {path}",
                     )
-                else:
-                    return CommandResult(
-                        success=False,
-                        error="Conversation history not available.",
-                    )
-            except Exception as e:
                 return CommandResult(
                     success=False,
-                    error=f"Failed to save conversation: {str(e)}",
+                    error="Failed to save session.",
                 )
+            return CommandResult(
+                success=False,
+                error="Session persistence not available.",
+            )
 
         elif action == ConversationAction.LOAD.value:
-            # Load conversation
-            filename = kwargs.get("filename")
-            if not filename and "args" in kwargs:
+            # Load conversation via session persistence
+            session_id = kwargs.get("filename")
+            if not session_id and "args" in kwargs:
                 args_val = kwargs["args"]
                 if isinstance(args_val, list) and len(args_val) > 1:
-                    filename = args_val[1]
+                    session_id = args_val[1]
 
-            if not filename:
+            if not session_id:
                 return CommandResult(
                     success=False,
-                    error="Filename required for load. Usage: /conversation load <filename>",
+                    error="Session ID required. Usage: /conversation load <session_id>",
                 )
 
-            try:
-                with open(filename, "r") as f:
-                    history = json.load(f)
-
-                if hasattr(chat_context, "set_conversation_history"):
-                    chat_context.set_conversation_history(history)
+            if hasattr(chat_context, "load_session"):
+                if chat_context.load_session(session_id):
                     return CommandResult(
                         success=True,
-                        output=f"Conversation loaded from {filename} ({len(history)} messages)",
+                        output=f"Session loaded: {session_id}",
                     )
-                else:
-                    return CommandResult(
-                        success=False,
-                        error="Cannot set conversation history.",
-                    )
-            except Exception as e:
                 return CommandResult(
                     success=False,
-                    error=f"Failed to load conversation: {str(e)}",
+                    error=f"Failed to load session: {session_id}",
                 )
+            return CommandResult(
+                success=False,
+                error="Session persistence not available.",
+            )
 
         else:
             # Check if action looks like it might be a number that failed to parse

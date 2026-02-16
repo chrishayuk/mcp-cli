@@ -150,14 +150,33 @@ class ToolManager:
         # Setup dynamic tool provider for on-demand tool discovery
         self.dynamic_tool_provider = DynamicToolProvider(self)
 
+        # O(1) tool lookup index (lazy-built, invalidated on tool changes)
+        self._tool_index: dict[str, ToolInfo] | None = None
+        # Per-provider LLM tools cache (invalidated on tool changes)
+        self._llm_tools_cache: dict[str, list[dict[str, Any]]] = {}
+        # Progress callback (set during initialize)
+        self._on_progress: Callable[[str], None] | None = None
+
     # ================================================================
     # Initialization
     # ================================================================
 
-    async def initialize(self, namespace: str = "stdio") -> bool:
-        """Initialize by parsing config, setting up OAuth, and creating StreamManager."""
+    async def initialize(
+        self,
+        namespace: str = "stdio",
+        on_progress: Callable[[str], None] | None = None,
+    ) -> bool:
+        """Initialize by parsing config, setting up OAuth, and creating StreamManager.
+
+        Args:
+            namespace: Default namespace for tools
+            on_progress: Optional callback for progress updates during startup
+        """
+        self._on_progress = on_progress
         try:
             from chuk_term.ui import output
+
+            self._report_progress("Loading server configuration...")
 
             # Load config and detect server types
             config = self._config_loader.load()
@@ -177,6 +196,9 @@ class ToolManager:
                 if hasattr(self.stream_manager, "processor"):
                     self.processor = self.stream_manager.processor
 
+                # Build tool index for O(1) lookups
+                await self._build_tool_index()
+
                 logger.info("ToolManager initialized successfully")
 
             return success
@@ -184,6 +206,12 @@ class ToolManager:
         except Exception as e:
             logger.error(f"Failed to initialize ToolManager: {e}", exc_info=True)
             return False
+
+    def _report_progress(self, message: str) -> None:
+        """Report progress via callback if set."""
+        if self._on_progress:
+            self._on_progress(message)
+        logger.debug(f"Progress: {message}")
 
     async def _initialize_stream_manager(self, namespace: str) -> bool:
         """Initialize StreamManager with detected transport type.
@@ -211,6 +239,9 @@ class ToolManager:
             )
 
             if http_servers:
+                self._report_progress(
+                    f"Connecting to {len(http_servers)} HTTP server(s)..."
+                )
                 logger.info(f"Preparing {len(http_servers)} HTTP servers for init")
                 http_dicts = [
                     {"name": s.name, "url": s.url, "headers": s.headers or {}}
@@ -229,6 +260,9 @@ class ToolManager:
                 task_names.append("HTTP")
 
             if sse_servers:
+                self._report_progress(
+                    f"Connecting to {len(sse_servers)} SSE server(s)..."
+                )
                 logger.info(f"Preparing {len(sse_servers)} SSE servers for init")
                 sse_dicts = [
                     {"name": s.name, "url": s.url, "headers": s.headers or {}}
@@ -247,6 +281,9 @@ class ToolManager:
                 task_names.append("SSE")
 
             if stdio_servers:
+                self._report_progress(
+                    f"Connecting to {len(stdio_servers)} STDIO server(s)..."
+                )
                 logger.info(f"Preparing {len(stdio_servers)} STDIO servers for init")
                 stdio_dicts = [
                     {
@@ -289,6 +326,17 @@ class ToolManager:
                     )
 
                 logger.info("Parallel server initialization complete")
+
+                # Report how many tools were loaded
+                try:
+                    all_tools = self.stream_manager.get_all_tools()
+                    tool_count = len(all_tools) if all_tools else 0
+                    server_count = len(task_names) - len(errors)
+                    self._report_progress(
+                        f"Initialized {tool_count} tools from {server_count} server(s)"
+                    )
+                except Exception:
+                    pass  # Non-critical
 
             # Enable middleware if configured (retry, circuit breaker, rate limiting)
             if self._middleware_enabled and self.stream_manager:
@@ -397,19 +445,54 @@ class ToolManager:
     async def get_tool_by_name(
         self, tool_name: str, namespace: str | None = None
     ) -> ToolInfo | None:
-        """Get a tool by name, optionally filtering by namespace."""
-        all_tools = await self.get_all_tools()
+        """Get a tool by name, optionally filtering by namespace.
+
+        Uses O(1) index lookup instead of scanning all tools.
+        """
+        if self._tool_index is None:
+            await self._build_tool_index()
+
+        assert self._tool_index is not None  # for type checker
 
         if namespace:
-            for tool in all_tools:
-                if tool.name == tool_name and tool.namespace == namespace:
-                    return tool
-        else:
-            for tool in all_tools:
-                if tool.name == tool_name:
-                    return tool
+            # Prefer fully-qualified lookup
+            fqn = f"{namespace}.{tool_name}"
+            tool = self._tool_index.get(fqn)
+            if tool:
+                return tool
+            # Fall back to name-only if namespace matches
+            tool = self._tool_index.get(tool_name)
+            if tool and tool.namespace == namespace:
+                return tool
+            return None
 
-        return None
+        return self._tool_index.get(tool_name)
+
+    async def _build_tool_index(self) -> None:
+        """Build the O(1) tool lookup index from all tools.
+
+        Index keys:
+        - tool.name → tool (prefers non-default namespaces)
+        - tool.fully_qualified_name → tool (always, for namespaced lookups)
+        """
+        all_tools = await self.get_all_tools()
+        index: dict[str, ToolInfo] = {}
+
+        for tool in all_tools:
+            # Always index by fully qualified name
+            index[tool.fully_qualified_name] = tool
+
+            # Index by simple name, preferring non-default namespaces
+            if tool.name not in index or tool.namespace != "default":
+                index[tool.name] = tool
+
+        self._tool_index = index
+        logger.debug(f"Built tool index with {len(index)} entries")
+
+    def _invalidate_caches(self) -> None:
+        """Invalidate tool index and LLM tools cache, forcing rebuild on next access."""
+        self._tool_index = None
+        self._llm_tools_cache.clear()
 
     @staticmethod
     def format_tool_response(response: Any) -> str:
@@ -775,9 +858,13 @@ class ToolManager:
     # ================================================================
 
     async def get_tools_for_llm(self, provider: str = "openai") -> list[dict[str, Any]]:
-        """Get tools filtered and validated for LLM."""
+        """Get tools filtered and validated for LLM.
+
+        Results are cached per provider. Cache is invalidated on tool changes
+        (disable/enable). Dynamic tools mode bypasses the cache.
+        """
         try:
-            # Check if dynamic tools mode is enabled
+            # Check if dynamic tools mode is enabled (bypasses cache)
             dynamic_mode = os.environ.get("MCP_CLI_DYNAMIC_TOOLS") == "1"
 
             if dynamic_mode:
@@ -788,6 +875,12 @@ class ToolManager:
                     f"Dynamic tools mode: Returning {len(dynamic_tools)} dynamic tools only"
                 )
                 return dynamic_tools
+
+            # Check cache first
+            if provider in self._llm_tools_cache:
+                cached = self._llm_tools_cache[provider]
+                logger.debug(f"Returning {len(cached)} cached tools for {provider}")
+                return cached
 
             # Static mode: load all tools upfront
             all_tools = await self.get_all_tools()
@@ -841,6 +934,9 @@ class ToolManager:
                 for tool in valid_tools:
                     logger.info(f"  - {tool['function']['name']}")
 
+            # Cache the result for this provider
+            self._llm_tools_cache[provider] = valid_tools
+
             return valid_tools
 
         except Exception as e:
@@ -873,10 +969,12 @@ class ToolManager:
     ) -> None:
         """Disable a tool."""
         self.tool_filter.disable_tool(tool_name, reason)
+        self._invalidate_caches()
 
     def enable_tool(self, tool_name: str) -> None:
         """Enable a previously disabled tool."""
         self.tool_filter.enable_tool(tool_name)
+        self._invalidate_caches()
 
     def is_tool_enabled(self, tool_name: str) -> bool:
         """Check if a tool is enabled."""

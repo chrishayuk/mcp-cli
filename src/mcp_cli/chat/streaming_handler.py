@@ -35,6 +35,7 @@ class StreamingResponseField(str, Enum):
     STREAMING = "streaming"
     INTERRUPTED = "interrupted"
     REASONING_CONTENT = "reasoning_content"
+    USAGE = "usage"
 
 
 class StreamingResponse(BaseModel):
@@ -58,6 +59,10 @@ class StreamingResponse(BaseModel):
     streaming: bool = Field(
         default=True, description="Whether this was a streaming response"
     )
+    usage: dict[str, int] | None = Field(
+        default=None,
+        description="Token usage from provider (input_tokens, output_tokens)",
+    )
 
     model_config = {"frozen": False}
 
@@ -71,6 +76,7 @@ class StreamingResponse(BaseModel):
             StreamingResponseField.STREAMING: self.streaming,
             StreamingResponseField.INTERRUPTED: self.interrupted,
             StreamingResponseField.REASONING_CONTENT: self.reasoning_content,
+            StreamingResponseField.USAGE: self.usage,
         }
 
 
@@ -230,6 +236,7 @@ class StreamingResponseHandler:
         self.display = display
         self.tool_accumulator = ToolCallAccumulator()
         self._interrupted = False
+        self._usage: dict[str, int] | None = None
         self.runtime_config = runtime_config or load_runtime_config()
 
     async def stream_response(
@@ -255,6 +262,7 @@ class StreamingResponseHandler:
         """
         # Reset state
         self._interrupted = False
+        self._usage = None
         self.tool_accumulator = ToolCallAccumulator()
 
         # Start display
@@ -303,6 +311,7 @@ class StreamingResponseHandler:
                 elapsed_time=elapsed,
                 interrupted=self._interrupted,
                 reasoning_content=reasoning_content,
+                usage=self._usage,
             )
 
             logger.info(
@@ -463,6 +472,10 @@ class StreamingResponseHandler:
         # Extract tool calls if present
         if "tool_calls" in raw_chunk and raw_chunk["tool_calls"]:
             self.tool_accumulator.process_chunk_tool_calls(raw_chunk["tool_calls"])
+
+        # Capture usage data (providers send it with the final chunk)
+        if "usage" in raw_chunk and raw_chunk["usage"]:
+            self._usage = raw_chunk["usage"]
 
     async def _handle_non_streaming(
         self,

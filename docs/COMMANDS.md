@@ -292,11 +292,49 @@ See [TOKEN_MANAGEMENT.md](./TOKEN_MANAGEMENT.md) for comprehensive token documen
 
 **Save & Clear:**
 ```bash
-/save conversation.json             # Save conversation to file
+/save                              # Save session (auto-generates filename)
 /compact                           # Summarize conversation
 /clear                             # Clear conversation history
 /cls                               # Clear screen only
 ```
+
+### Token Usage
+
+Track API token consumption across your conversation:
+
+```bash
+/usage                             # Show token usage summary
+/tokens                            # Alias for /usage
+/cost                              # Alias for /usage
+```
+
+Displays per-turn and cumulative input/output token counts. When provider usage data is unavailable, tokens are estimated using a chars/4 heuristic (marked as "estimated").
+
+### Session Persistence
+
+Save and restore conversation sessions:
+
+```bash
+/sessions list                     # List all saved sessions
+/sessions save                     # Save current session
+/sessions load <id>                # Load a saved session
+/sessions delete <id>              # Delete a saved session
+```
+
+Sessions are stored as JSON in `~/.mcp-cli/sessions/`. Auto-save triggers every 10 turns by default.
+
+### Conversation Export
+
+Export conversations in structured formats:
+
+```bash
+/export markdown                   # Export as formatted Markdown
+/export markdown chat.md           # Export to specific file
+/export json                       # Export as structured JSON
+/export json chat.json             # Export to specific file
+```
+
+Markdown exports include tool calls as code blocks. JSON exports include metadata and token usage.
 
 ### UI Customization
 
@@ -548,6 +586,7 @@ Available Commands:
   clear ▸      - Clear conversation or screen
   conversation - Show conversation history
   exit         - Exit the application
+  export ▸     - Export conversation (markdown/json)
   help         - Show help information
   model ▸      - Show current model or switch models
   models       - List all available models
@@ -555,10 +594,12 @@ Available Commands:
   providers    - List all available providers
   server ▸     - Manage MCP servers
   servers      - List all connected servers
+  sessions ▸   - Save/load/list sessions
   theme ▸      - Show or change UI theme
   themes       - List all available themes
   token ▸      - Manage authentication tokens
   tools ▸      - List and manage tools
+  usage        - Show token usage stats
 ```
 
 **Indicators:**

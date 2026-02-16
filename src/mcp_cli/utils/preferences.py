@@ -62,6 +62,10 @@ class ToolConfirmationPreferences(BaseModel):
     patterns: list[ToolPatternRule] = Field(
         default_factory=list, description="Pattern-based rules"
     )
+    trusted_domains: list[str] = Field(
+        default_factory=lambda: ["chukai.io"],
+        description="Server domains that skip tool confirmation",
+    )
     risk_thresholds: dict[ToolRiskLevel, bool] = Field(
         default_factory=lambda: {
             ToolRiskLevel.SAFE: False,
@@ -362,6 +366,63 @@ class PreferenceManager:
             )
 
         return True  # type: ignore[unreachable]  # safety fallback
+
+    def is_trusted_domain(self, server_url: str | None) -> bool:
+        """Check if a server URL belongs to a trusted domain.
+
+        Args:
+            server_url: The server URL to check (may be None for STDIO servers)
+
+        Returns:
+            True if the server's domain matches a trusted domain
+        """
+        if not server_url:
+            return False
+
+        from urllib.parse import urlparse
+
+        try:
+            parsed = urlparse(server_url)
+            hostname = parsed.hostname or ""
+        except Exception:
+            return False
+
+        trusted = self.preferences.ui.tool_confirmation.trusted_domains
+        for domain in trusted:
+            if hostname == domain or hostname.endswith(f".{domain}"):
+                return True
+        return False
+
+    def get_trusted_domains(self) -> list[str]:
+        """Get the list of trusted domains."""
+        return list(self.preferences.ui.tool_confirmation.trusted_domains)
+
+    def add_trusted_domain(self, domain: str) -> None:
+        """Add a trusted domain.
+
+        Args:
+            domain: Domain to trust (e.g. 'example.com')
+        """
+        domains = self.preferences.ui.tool_confirmation.trusted_domains
+        if domain not in domains:
+            domains.append(domain)
+            self.save_preferences()
+
+    def remove_trusted_domain(self, domain: str) -> bool:
+        """Remove a trusted domain.
+
+        Args:
+            domain: Domain to remove
+
+        Returns:
+            True if removed, False if not found
+        """
+        domains = self.preferences.ui.tool_confirmation.trusted_domains
+        if domain in domains:
+            domains.remove(domain)
+            self.save_preferences()
+            return True
+        return False
 
     def add_tool_pattern(self, pattern: str, action: str) -> None:
         """Add a pattern-based rule for tool confirmations.

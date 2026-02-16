@@ -83,25 +83,27 @@ async def handle_chat_mode(
             model_manager=model_manager,  # FIXED: Pass model_manager with runtime providers
         )
 
-        # Create chat context using clean factory
-        with output.loading("Initializing chat context..."):
-            # FIXED: Use the model_manager from app_context to ensure consistency
-            ctx = ChatContext.create(
-                tool_manager=tool_manager,
-                provider=provider,
-                model=model,
-                api_base=api_base,
-                api_key=api_key,
-                model_manager=app_context.model_manager,  # Use the same instance
-                max_history_messages=max_history_messages,
-            )
+        # Create chat context with progress reporting
+        def on_progress(msg: str) -> None:
+            output.info(msg)
 
-            if not await ctx.initialize():
-                output.error("Failed to initialize chat context.")
-                return False
+        # FIXED: Use the model_manager from app_context to ensure consistency
+        ctx = ChatContext.create(
+            tool_manager=tool_manager,
+            provider=provider,
+            model=model,
+            api_base=api_base,
+            api_key=api_key,
+            model_manager=app_context.model_manager,  # Use the same instance
+            max_history_messages=max_history_messages,
+        )
 
-            # Update global context with initialized data
-            await app_context.initialize()
+        if not await ctx.initialize(on_progress=on_progress):
+            output.error("Failed to initialize chat context.")
+            return False
+
+        # Update global context with initialized data
+        await app_context.initialize()
 
         # Welcome banner
         # Clear screen unless in debug mode

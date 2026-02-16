@@ -1,7 +1,7 @@
 """Tests for the conversation command."""
 
 import pytest
-from unittest.mock import patch, Mock
+from unittest.mock import Mock
 from mcp_cli.commands.conversation.conversation import ConversationCommand
 from mcp_cli.commands.base import CommandMode
 from mcp_cli.chat.models import Message, MessageRole
@@ -64,49 +64,38 @@ class TestConversationCommand:
 
     @pytest.mark.asyncio
     async def test_execute_save(self, command):
-        """Test saving conversation to file."""
+        """Test saving conversation via session persistence."""
         mock_context = Mock()
         mock_context.conversation_history = [
             Message(role=MessageRole.USER, content="Hello"),
             Message(role=MessageRole.ASSISTANT, content="Hi there!"),
         ]
+        mock_context.save_session = Mock(return_value="/tmp/session_abc123")
 
-        with patch("builtins.open", create=True) as mock_open:
-            with patch("json.dump") as mock_json_dump:
-                result = await command.execute(
-                    chat_context=mock_context,
-                    action="save",
-                    filename="conversation.json",
-                )
+        result = await command.execute(
+            chat_context=mock_context,
+            action="save",
+        )
 
-                assert result.success is True
-                mock_open.assert_called_once()
-                mock_json_dump.assert_called_once()
-                assert "saved" in result.output.lower()
+        assert result.success is True
+        mock_context.save_session.assert_called_once()
+        assert "saved" in result.output.lower()
 
     @pytest.mark.asyncio
     async def test_execute_load(self, command):
-        """Test loading conversation from file."""
+        """Test loading conversation via session persistence."""
         mock_context = Mock()
+        mock_context.load_session = Mock(return_value=True)
 
-        conversation_data = [
-            {"role": "user", "content": "Previous message"},
-            {"role": "assistant", "content": "Previous response"},
-        ]
+        result = await command.execute(
+            chat_context=mock_context,
+            action="load",
+            filename="session_abc123",
+        )
 
-        with patch("builtins.open", create=True):
-            with patch("json.load", return_value=conversation_data):
-                result = await command.execute(
-                    chat_context=mock_context,
-                    action="load",
-                    filename="conversation.json",
-                )
-
-                assert result.success is True
-                mock_context.set_conversation_history.assert_called_once_with(
-                    conversation_data
-                )
-                assert "loaded" in result.output.lower()
+        assert result.success is True
+        mock_context.load_session.assert_called_once_with("session_abc123")
+        assert "loaded" in result.output.lower()
 
     @pytest.mark.asyncio
     async def test_execute_empty_history(self, command):

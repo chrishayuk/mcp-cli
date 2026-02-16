@@ -7,12 +7,15 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Callable
 from typing import Any, AsyncIterator
 
 from chuk_term.ui import output
 
 from mcp_cli.chat.system_prompt import generate_system_prompt
 from mcp_cli.chat.models import Message, MessageRole, ChatStatus
+from mcp_cli.chat.token_tracker import TokenTracker
+from mcp_cli.chat.session_store import SessionStore, SessionData, SessionMetadata
 from mcp_cli.tools.manager import ToolManager
 from mcp_cli.tools.models import ToolInfo, ServerInfo
 from mcp_cli.model_management import ModelManager
@@ -100,6 +103,13 @@ class ChatContext:
         self._pending_context_notices: list[str] = []
         self._system_prompt_dirty: bool = True
 
+        # Token usage tracking
+        self.token_tracker = TokenTracker()
+
+        # Session persistence
+        self._session_store = SessionStore()
+        self._auto_save_counter = 0
+
         # ToolProcessor back-reference (set by ToolProcessor.__init__)
         self.tool_processor: Any = None
 
@@ -110,6 +120,7 @@ class ChatContext:
         self.tool_to_server_map: dict[str, str] = {}
         self.openai_tools: list[dict[str, Any]] = []
         self.tool_name_mapping: dict[str, str] = {}
+        self._tool_index: dict[str, ToolInfo] = {}
 
         logger.debug(f"ChatContext created with {self.provider}/{self.model}")
 
@@ -253,10 +264,17 @@ class ChatContext:
         return messages
 
     # ── Initialization ────────────────────────────────────────────────────
-    async def initialize(self) -> bool:
-        """Initialize tools, session, and procedural memory."""
+    async def initialize(
+        self,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> bool:
+        """Initialize tools, session, and procedural memory.
+
+        Args:
+            on_progress: Optional callback for progress updates during startup
+        """
         try:
-            await self._initialize_tools()
+            await self._initialize_tools(on_progress=on_progress)
             self._generate_system_prompt()
             await self._initialize_session()
 
@@ -336,28 +354,48 @@ class ChatContext:
                 )
         return groups
 
-    async def _initialize_tools(self) -> None:
+    async def _initialize_tools(
+        self,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> None:
         """Initialize tool discovery and adaptation."""
+        if on_progress:
+            on_progress("Discovering tools...")
+
         self.tools = await self.tool_manager.get_unique_tools()
         logger.debug(f"ChatContext: Initialized with {len(self.tools)} tools")
 
         self.server_info = await self.tool_manager.get_server_info()
         self.tool_to_server_map = {t.name: t.namespace for t in self.tools}
 
+        if on_progress:
+            on_progress(f"Adapting {len(self.tools)} tools for {self.provider}...")
+
         await self._adapt_tools_for_provider()
         self.internal_tools = list(self.tools)
         self._system_prompt_dirty = True
 
-    def find_tool_by_name(self, name: str) -> ToolInfo | None:
-        """Find a tool by its name (handles both simple and namespaced names)."""
+        # Build O(1) tool lookup index
+        self._tool_index = {}
         for tool in self.tools:
-            if tool.name == name or tool.fully_qualified_name == name:
-                return tool
+            self._tool_index[tool.name] = tool
+            if tool.namespace:
+                self._tool_index[tool.fully_qualified_name] = tool
 
-        simple_name = name.split(".")[-1] if "." in name else name
-        for tool in self.tools:
-            if tool.name == simple_name:
-                return tool
+    def find_tool_by_name(self, name: str) -> ToolInfo | None:
+        """Find a tool by its name (handles both simple and namespaced names).
+
+        Uses O(1) dict lookup instead of linear scanning.
+        """
+        # Direct lookup by name or fully qualified name
+        tool = self._tool_index.get(name)
+        if tool:
+            return tool
+
+        # Fallback: try extracting simple name from dotted notation
+        if "." in name:
+            simple_name = name.rsplit(".", 1)[-1]
+            return self._tool_index.get(simple_name)
 
         return None
 
@@ -580,6 +618,108 @@ class ChatContext:
                 pattern.error_patterns = pattern.error_patterns[-max_patterns:]
             if len(pattern.success_patterns) > max_patterns:
                 pattern.success_patterns = pattern.success_patterns[-max_patterns:]
+
+    # ── Session persistence ──────────────────────────────────────────────
+    def save_session(self) -> str | None:
+        """Save current session to disk.
+
+        Returns:
+            Path to saved file, or None on failure.
+        """
+        try:
+            messages = self.conversation_history
+            message_dicts = [
+                m.to_dict() if hasattr(m, "to_dict") else m for m in messages
+            ]
+
+            token_usage = None
+            if self.token_tracker.turn_count > 0:
+                token_usage = {
+                    "total_input": self.token_tracker.total_input,
+                    "total_output": self.token_tracker.total_output,
+                    "total_tokens": self.token_tracker.total_tokens,
+                    "turn_count": self.token_tracker.turn_count,
+                }
+
+            data = SessionData(
+                metadata=SessionMetadata(
+                    session_id=self.session_id,
+                    provider=self.provider,
+                    model=self.model,
+                    message_count=len(message_dicts),
+                ),
+                messages=message_dicts,
+                token_usage=token_usage,
+            )
+
+            path = self._session_store.save(data)
+            return str(path)
+        except Exception as e:
+            logger.error(f"Failed to save session: {e}")
+            return None
+
+    def load_session(self, session_id: str) -> bool:
+        """Load a saved session into the current context.
+
+        Args:
+            session_id: Session ID to load
+
+        Returns:
+            True if loaded successfully
+        """
+        data = self._session_store.load(session_id)
+        if data is None:
+            return False
+
+        try:
+            # Inject messages into the session manager
+            for msg_dict in data.messages:
+                role = msg_dict.get("role", "")
+                content = msg_dict.get("content", "")
+
+                if role == "system":
+                    continue  # System prompt is regenerated
+                elif role == "user":
+                    event = SessionEvent(
+                        event_type=EventType.USER_MESSAGE,
+                        source=EventSource.USER,
+                        content=content,
+                    )
+                elif role == "assistant":
+                    event = SessionEvent(
+                        event_type=EventType.ASSISTANT_MESSAGE,
+                        source=EventSource.ASSISTANT,
+                        content=content,
+                    )
+                elif role == "tool":
+                    event = SessionEvent(
+                        event_type=EventType.TOOL_RESULT,
+                        source=EventSource.TOOL,
+                        content=content,
+                        metadata={"tool_call_id": msg_dict.get("tool_call_id", "")},
+                    )
+                else:
+                    continue
+
+                self.session.add_event(event)
+
+            logger.info(
+                f"Loaded session {session_id} with {len(data.messages)} messages"
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to load session {session_id}: {e}")
+            return False
+
+    def auto_save_check(self) -> None:
+        """Increment auto-save counter and save when threshold is reached."""
+        from mcp_cli.config.defaults import DEFAULT_AUTO_SAVE_INTERVAL
+
+        self._auto_save_counter += 1
+        if self._auto_save_counter >= DEFAULT_AUTO_SAVE_INTERVAL:
+            self._auto_save_counter = 0
+            self.save_session()
+            logger.debug("Auto-save triggered")
 
     # ── Simple getters ────────────────────────────────────────────────────
     def get_tool_count(self) -> int:

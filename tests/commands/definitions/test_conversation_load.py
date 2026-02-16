@@ -1,7 +1,7 @@
 """Tests for conversation load action to improve coverage."""
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from mcp_cli.commands.conversation.conversation import ConversationCommand
 from mcp_cli.chat.models import Message, MessageRole
@@ -23,84 +23,73 @@ def mock_chat_context():
 
 @pytest.mark.asyncio
 async def test_conversation_load_success(conversation_command, mock_chat_context):
-    """Test successful conversation load."""
-    test_history = [
-        {"role": "user", "content": "Hello"},
-        {"role": "assistant", "content": "Hi there!"},
-    ]
+    """Test successful conversation load via session persistence."""
+    mock_chat_context.load_session = MagicMock(return_value=True)
 
-    mock_chat_context.set_conversation_history = MagicMock()
+    result = await conversation_command.execute(
+        chat_context=mock_chat_context,
+        action="load",
+        filename="session_abc123",
+    )
 
-    with patch("builtins.open"):
-        with patch("json.load", return_value=test_history):
-            result = await conversation_command.execute(
-                chat_context=mock_chat_context,
-                action="load",
-                filename="conversation.json",
-            )
-
-            assert result.success is True
-            assert "loaded" in result.output.lower()
-            mock_chat_context.set_conversation_history.assert_called_once_with(
-                test_history
-            )
+    assert result.success is True
+    assert "loaded" in result.output.lower()
+    mock_chat_context.load_session.assert_called_once_with("session_abc123")
 
 
 @pytest.mark.asyncio
 async def test_conversation_load_from_args(conversation_command, mock_chat_context):
-    """Test load with filename from args."""
-    test_history = [{"role": "user", "content": "Test"}]
-    mock_chat_context.set_conversation_history = MagicMock()
+    """Test load with session_id from args."""
+    mock_chat_context.load_session = MagicMock(return_value=True)
 
-    with patch("builtins.open"):
-        with patch("json.load", return_value=test_history):
-            result = await conversation_command.execute(
-                chat_context=mock_chat_context, args=["load", "test.json"]
-            )
+    result = await conversation_command.execute(
+        chat_context=mock_chat_context, args=["load", "session_xyz"]
+    )
 
-            assert result.success is True
-            assert "loaded" in result.output.lower()
+    assert result.success is True
+    assert "loaded" in result.output.lower()
+    mock_chat_context.load_session.assert_called_once_with("session_xyz")
 
 
 @pytest.mark.asyncio
 async def test_conversation_load_no_filename(conversation_command, mock_chat_context):
-    """Test load without filename."""
+    """Test load without session ID."""
     result = await conversation_command.execute(
         chat_context=mock_chat_context, action="load"
     )
 
     assert result.success is False
-    assert "Filename required for load" in result.error
+    assert "Session ID required" in result.error
 
 
 @pytest.mark.asyncio
-async def test_conversation_load_file_error(conversation_command, mock_chat_context):
-    """Test load with file read error."""
-    with patch("builtins.open", side_effect=FileNotFoundError("File not found")):
-        result = await conversation_command.execute(
-            chat_context=mock_chat_context, action="load", filename="missing.json"
-        )
+async def test_conversation_load_failure(conversation_command, mock_chat_context):
+    """Test load when load_session returns False."""
+    mock_chat_context.load_session = MagicMock(return_value=False)
 
-        assert result.success is False
-        assert "Failed to load conversation" in result.error
+    result = await conversation_command.execute(
+        chat_context=mock_chat_context, action="load", filename="bad_session"
+    )
+
+    assert result.success is False
+    assert "Failed to load session" in result.error
 
 
 @pytest.mark.asyncio
-async def test_conversation_load_no_set_method(conversation_command, mock_chat_context):
-    """Test load when context has no set_conversation_history method."""
-    test_history = [{"role": "user", "content": "Test"}]
+async def test_conversation_load_no_session_support(
+    conversation_command, mock_chat_context
+):
+    """Test load when context has no load_session method."""
+    # Remove load_session so hasattr returns False
+    mock_chat_context.configure_mock(**{"load_session": None})
+    del mock_chat_context.load_session
 
-    # Remove the set_conversation_history method
-    del mock_chat_context.set_conversation_history
+    result = await conversation_command.execute(
+        chat_context=mock_chat_context, action="load", filename="session_123"
+    )
 
-    with patch("builtins.open"):
-        with patch("json.load", return_value=test_history):
-            result = await conversation_command.execute(
-                chat_context=mock_chat_context, action="load", filename="test.json"
-            )
-
-            assert result.success is False
-            assert "Cannot set conversation history" in result.error
+    assert result.success is False
+    assert "not available" in result.error.lower()
 
 
 @pytest.mark.asyncio

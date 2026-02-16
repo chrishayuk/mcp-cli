@@ -158,7 +158,8 @@ class ToolProcessor:
                     log.warning(f"UI display error (non-fatal): {ui_exc}")
 
                 # Handle user confirmation
-                if self._should_confirm_tool(execution_tool_name):
+                server_url = self._get_server_url_for_tool(execution_tool_name)
+                if self._should_confirm_tool(execution_tool_name, server_url):
                     confirmed = self.ui_manager.do_confirm_tool_execution(
                         tool_name=display_name, arguments=raw_arguments
                     )
@@ -917,10 +918,37 @@ class ToolProcessor:
         except Exception as e:
             log.error(f"Error adding cancelled tool to history: {e}")
 
-    def _should_confirm_tool(self, tool_name: str) -> bool:
+    def _get_server_url_for_tool(self, tool_name: str) -> str | None:
+        """Look up the server URL for a tool using cached context data."""
+        try:
+            # Get server namespace from tool_to_server_map
+            tool_map = getattr(self.context, "tool_to_server_map", None)
+            server_info_list = getattr(self.context, "server_info", None)
+            if not tool_map or not server_info_list:
+                return None
+
+            namespace = tool_map.get(tool_name)
+            if not namespace:
+                return None
+
+            # Find matching ServerInfo by namespace
+            for server in server_info_list:
+                if server.namespace == namespace or server.name == namespace:
+                    url: str | None = server.url
+                    return url
+        except Exception as e:
+            log.debug(f"Could not resolve server URL for {tool_name}: {e}")
+        return None
+
+    def _should_confirm_tool(
+        self, tool_name: str, server_url: str | None = None
+    ) -> bool:
         """Check if tool requires user confirmation."""
         try:
             prefs = get_preference_manager()
+            # Trusted domain bypass — skip confirmation entirely
+            if server_url and prefs.is_trusted_domain(server_url):
+                return False
             return prefs.should_confirm_tool(tool_name)
         except Exception as e:
             log.warning(f"Error checking tool confirmation preference: {e}")
