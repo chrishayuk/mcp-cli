@@ -37,6 +37,9 @@ dependencies = [
 vault = [
   "hvac>=2.0.0"
 ]
+apps = [
+  "websockets>=13.0"
+]
 wasm = []
 dev = [
   "numpy>=2.2.3",

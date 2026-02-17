@@ -71,6 +71,44 @@ class ServerCapabilities(BaseModel):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# MCP Apps metadata models (SEP-1865)
+# ──────────────────────────────────────────────────────────────────────────────
+class ToolUIMeta(BaseModel):
+    """UI metadata for MCP Apps (SEP-1865).
+
+    Indicates that a tool has an interactive HTML UI that can be
+    rendered in a browser. The resourceUri points to a ui:// resource
+    containing the HTML content.
+    """
+
+    resourceUri: str = Field(description="URI of the UI resource (ui:// scheme)")
+    visibility: list[str] = Field(
+        default_factory=lambda: ["model", "app"],
+        description="Who can see/call this tool: 'model' and/or 'app'",
+    )
+    csp: dict[str, Any] | None = Field(
+        default=None, description="Content Security Policy domains"
+    )
+    permissions: dict[str, Any] | None = Field(
+        default=None, description="Requested iframe permissions (camera, microphone, etc.)"
+    )
+
+    model_config = {"frozen": False, "extra": "allow"}
+
+
+class ToolMeta(BaseModel):
+    """Tool _meta field from MCP spec.
+
+    Contains optional metadata about the tool including UI information
+    for MCP Apps support.
+    """
+
+    ui: ToolUIMeta | None = None
+
+    model_config = {"frozen": False, "extra": "allow"}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Tool-related models (converted to Pydantic)
 # ──────────────────────────────────────────────────────────────────────────────
 class ToolInfo(BaseModel):
@@ -87,8 +125,21 @@ class ToolInfo(BaseModel):
     is_async: bool = False
     tags: list[str] = Field(default_factory=list)
     supports_streaming: bool = False
+    meta: ToolMeta | None = None
 
     model_config = {"frozen": False, "arbitrary_types_allowed": True}
+
+    @property
+    def has_app_ui(self) -> bool:
+        """Check if this tool has an MCP Apps interactive UI."""
+        return self.meta is not None and self.meta.ui is not None
+
+    @property
+    def app_resource_uri(self) -> str | None:
+        """Get the UI resource URI if available."""
+        if self.meta and self.meta.ui:
+            return self.meta.ui.resourceUri
+        return None
 
     @property
     def fully_qualified_name(self) -> str:
@@ -577,5 +628,6 @@ class ToolDefinitionInput(BaseModel):
     inputSchema: dict[str, Any] = Field(default_factory=dict)
     is_async: bool = False
     tags: list[str] = Field(default_factory=list)
+    meta: ToolMeta | None = Field(default=None, alias="_meta")
 
-    model_config = {"frozen": False, "extra": "ignore"}
+    model_config = {"frozen": False, "extra": "ignore", "populate_by_name": True}

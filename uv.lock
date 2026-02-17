@@ -1427,6 +1427,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+apps = [
+    { name = "websockets" },
+]
 dev = [
     { name = "asyncio" },
     { name = "numpy" },
@@ -1467,8 +1470,9 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "rich", specifier = ">=13.9.4" },
     { name = "typer", specifier = ">=0.15.2" },
+    { name = "websockets", marker = "extra == 'apps'", specifier = ">=13.0" },
 ]
-provides-extras = ["vault", "wasm", "dev"]
+provides-extras = ["vault", "apps", "wasm", "dev"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -340,6 +340,11 @@ Examples:
             # Default to namespace
             return tool.namespace
 
+        # Check if any tools have MCP App UIs
+        has_any_apps = any(
+            getattr(tool, "has_app_ui", False) for tool in tools
+        )
+
         table_data = []
         for tool in tools:
             desc = tool.description or "No description"
@@ -351,19 +356,24 @@ Examples:
             # Get the actual server name
             server_name = get_server_name(tool)
 
-            table_data.append(
-                {
-                    "Server": server_name,
-                    "Tool": tool.name,
-                    "Description": desc,
-                }
-            )
+            row = {
+                "Server": server_name,
+                "Tool": tool.name,
+                "Description": desc,
+            }
+            if has_any_apps:
+                row["UI"] = "APP" if getattr(tool, "has_app_ui", False) else ""
+            table_data.append(row)
 
         # Display table
+        columns = ["Server", "Tool", "Description"]
+        if has_any_apps:
+            columns.append("UI")
+
         table = format_table(
             table_data,
             title=f"{len(tools)} {title}",
-            columns=["Server", "Tool", "Description"],
+            columns=columns,
         )
         output.print_table(table)
         output.success(f"Total tools available: {len(tools)}")

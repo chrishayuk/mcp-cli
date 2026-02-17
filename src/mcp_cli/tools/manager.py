@@ -156,6 +156,8 @@ class ToolManager:
         self._llm_tools_cache: dict[str, list[dict[str, Any]]] = {}
         # Progress callback (set during initialize)
         self._on_progress: Callable[[str], None] | None = None
+        # MCP Apps host server (lazy-initialized)
+        self._app_host: Any = None
 
     # ================================================================
     # Initialization
@@ -359,8 +361,23 @@ class ToolManager:
         self.processor = None
         return True
 
+    @property
+    def app_host(self) -> Any:
+        """Get or create the MCP Apps host server (lazy-initialized)."""
+        if self._app_host is None:
+            from mcp_cli.apps.host import AppHostServer
+
+            self._app_host = AppHostServer(self)
+        return self._app_host
+
     async def close(self) -> None:
         """Close StreamManager and cleanup."""
+        if self._app_host is not None:
+            try:
+                await self._app_host.close_all()
+            except Exception as e:
+                logger.warning(f"Error closing app host: {e}")
+
         if self.stream_manager:
             try:
                 await self.stream_manager.close()
@@ -423,6 +440,7 @@ class ToolManager:
                         is_async=tool_info.is_async,
                         tags=tool_info.tags,
                         supports_streaming=tool_info.supports_streaming,
+                        meta=tool_info.meta,
                     )
                 tools.append(tool_info)
             return tools
@@ -540,6 +558,7 @@ class ToolManager:
             parameters=tool_input.inputSchema,
             is_async=tool_input.is_async,
             tags=tool_input.tags,
+            meta=tool_input.meta,
         )
 
     # ================================================================
@@ -1178,6 +1197,55 @@ class ToolManager:
         except Exception as e:
             logger.error(f"Error listing resources: {e}")
             return []
+
+    async def read_resource(
+        self, uri: str, server_name: str | None = None
+    ) -> dict[str, Any]:
+        """Read a resource by URI.
+
+        Args:
+            uri: Resource URI to read (e.g. ui://tool-name/app.html)
+            server_name: Optional server name to target
+
+        Returns:
+            Resource content dict from the server.
+        """
+        if not self.stream_manager:
+            return {}
+
+        # If StreamManager exposes read_resource, use it directly
+        if hasattr(self.stream_manager, "read_resource"):
+            try:
+                return await self.stream_manager.read_resource(uri, server_name)
+            except Exception as e:
+                logger.error("Error reading resource %s via StreamManager: %s", uri, e)
+                return {}
+
+        # Fallback: direct transport access
+        transports = getattr(self.stream_manager, "transports", {})
+        if not transports:
+            return {}
+
+        # Try targeted transport first
+        if server_name and server_name in transports:
+            transport = transports[server_name]
+            if hasattr(transport, "read_resource"):
+                try:
+                    return await transport.read_resource(uri)
+                except Exception as e:
+                    logger.error("Error reading resource %s from %s: %s", uri, server_name, e)
+                    return {}
+
+        # Try all transports
+        for name, transport in transports.items():
+            if hasattr(transport, "read_resource"):
+                try:
+                    result = await transport.read_resource(uri)
+                    if result:
+                        return result
+                except Exception:
+                    continue
+        return {}
 
     def list_prompts(self):
         """List available prompts from servers."""

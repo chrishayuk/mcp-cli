@@ -281,3 +281,17 @@ JSON_TYPES = [
 # for configuration options.
 DEFAULT_MIDDLEWARE_ENABLED = True
 """Enable CTP middleware by default."""
+
+
+# ================================================================
+# MCP Apps Defaults (SEP-1865)
+# ================================================================
+
+DEFAULT_APP_HOST_PORT_START = 9470
+"""Starting port for local MCP App host servers."""
+
+DEFAULT_APP_AUTO_OPEN_BROWSER = True
+"""Automatically open browser when an MCP App is launched."""
+
+DEFAULT_APP_MAX_CONCURRENT = 5
+"""Maximum number of concurrent MCP Apps."""

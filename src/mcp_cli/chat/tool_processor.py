@@ -516,6 +516,45 @@ class ToolProcessor:
             )
             display_tool_call_result(display_result, self.ui_manager.console)
 
+        # Check for MCP App UI — launch in browser if available
+        if success and self.tool_manager:
+            await self._check_and_launch_app(actual_tool_name, result.result)
+
+    async def _check_and_launch_app(
+        self, tool_name: str, result: Any
+    ) -> None:
+        """Check if a tool has an MCP Apps UI and launch it if so."""
+        if not self.tool_manager:
+            return
+
+        try:
+            tool_info = await self.tool_manager.get_tool_by_name(tool_name)
+            if not tool_info or not tool_info.has_app_ui:
+                return
+
+            resource_uri = tool_info.app_resource_uri
+            server_name = tool_info.namespace
+            log.info(
+                "Tool %s has MCP App UI at %s", tool_name, resource_uri
+            )
+            output.info(f"Launching MCP App for {tool_name}...")
+
+            app_info = await self.tool_manager.app_host.launch_app(
+                tool_name=tool_name,
+                resource_uri=resource_uri,
+                server_name=server_name,
+                tool_result=result,
+            )
+            output.success(f"MCP App opened at {app_info.url}")
+
+        except ImportError:
+            output.warning(
+                "MCP Apps requires websockets. Install with: pip install mcp-cli[apps]"
+            )
+        except Exception as e:
+            log.error("Failed to launch MCP App for %s: %s", tool_name, e)
+            output.warning(f"Could not launch MCP App: {e}")
+
     def _track_transport_failures(self, success: bool, error: str | None) -> None:
         """Track transport failures for recovery detection."""
         if not success and error:
