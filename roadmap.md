@@ -194,7 +194,7 @@ Interactive HTML UIs served by MCP servers, rendered in sandboxed browser iframe
 
 ---
 
-## Tier 3: Performance & Polish
+## Tier 3: Performance & Polish ✅ COMPLETE
 
 ### 3.1 Tool Lookup Index
 
@@ -202,8 +202,9 @@ Interactive HTML UIs served by MCP servers, rendered in sandboxed browser iframe
 
 **File:** `src/mcp_cli/tools/manager.py`
 
-- Build `_tool_index: dict[str, ToolInfo]` on init → O(1) lookups
-- Invalidate on tool register/unregister
+- `_tool_index: dict[str, ToolInfo]` with lazy build on first access → O(1) lookups
+- Dual-key indexing: fully qualified name + simple name
+- Invalidated via `_invalidate_caches()` when tools change
 
 ### 3.2 Cache Tool Metadata Per Provider
 
@@ -211,41 +212,49 @@ Interactive HTML UIs served by MCP servers, rendered in sandboxed browser iframe
 
 **File:** `src/mcp_cli/tools/manager.py`
 
-- Cache adapted tool sets per provider
-- Invalidate on tool change
+- `_llm_tools_cache: dict[str, list[dict]]` keyed by provider name
+- Returns cached tools on hit, rebuilds on miss
+- Invalidated alongside tool index on tool state changes
+- Bypassed when `MCP_CLI_DYNAMIC_TOOLS=1`
 
 ### 3.3 Startup Progress
 
 **Problem:** No feedback during server init. Blank screen if >2s.
 
-**Files:** `src/mcp_cli/main.py`, `src/mcp_cli/tools/manager.py`
+**Files:** `src/mcp_cli/tools/manager.py`, `src/mcp_cli/chat/chat_handler.py`, `src/mcp_cli/chat/chat_context.py`
 
-- Progress callback showing which servers are initializing
-- Reduce default init timeout from 120s to 30s with per-server overrides
+- `on_progress` callback passed through initialization chain
+- Reports: "Loading server configuration...", "Connecting to N server(s)...", "Discovering tools...", "Adapting N tools for {provider}..."
+- Chat handler wires callback to `output.info()` for real-time display
 
 ### 3.4 Token & Cost Tracking
 
 **Problem:** Zero visibility into token usage or API costs.
 
-**New file:** `src/mcp_cli/chat/token_counter.py`
+**Files:** `src/mcp_cli/chat/token_tracker.py`, `src/mcp_cli/commands/usage/usage.py`
 
-- Chars/4 heuristic (no external dependency)
-- Per-turn input/output tracking
-- Cumulative usage in chat status bar
+- `TokenTracker` with `TurnUsage` Pydantic models
+- Per-turn input/output tracking with chars/4 estimation fallback
+- `/usage` command (aliases: `/tokens`, `/cost`) for cumulative display
+- Integrated with conversation export
 
 ### 3.5 Session Persistence & Resume
 
 **Problem:** Conversations lost on exit. No way to resume.
 
-- Auto-save every N turns to `~/.mcp-cli/sessions/`
-- `--resume` / `--session-id` CLI flags
-- `mcp-cli sessions list` to browse history
+**Files:** `src/mcp_cli/chat/session_store.py`, `src/mcp_cli/commands/sessions/sessions.py`
+
+- File-based persistence at `~/.mcp-cli/sessions/`
+- `/sessions list`, `/sessions save`, `/sessions load <id>`, `/sessions delete <id>`
+- Auto-save every 10 turns via `auto_save_check()` in ChatContext
 
 ### 3.6 Conversation Export
 
-- `/export markdown` and `/export json`
-- Include tool calls, results, timing metadata
-- Filter by turn range
+**Files:** `src/mcp_cli/commands/export/export.py`, `src/mcp_cli/chat/exporters.py`
+
+- `/export markdown [filename]` and `/export json [filename]`
+- Includes tool calls with arguments, tool results (truncated), token usage metadata
+- Markdown: formatted sections by role; JSON: structured with version and timestamps
 
 ---
 
@@ -265,7 +274,7 @@ Mixed `logging.error()` / `output.error()` → library code uses `logging`, CLI 
 
 ### 4.4 Integration Tests
 
-All ~2,889 tests are unit mocks → add end-to-end tests with a test MCP server.
+All ~3,164 tests are unit mocks → add end-to-end tests with a test MCP server.
 
 ### 4.5 Coverage Reporting
 
@@ -743,11 +752,12 @@ mcp remote logs --follow
 
 ## Priority Summary
 
-| Tier | Focus | What Changes | Effort |
+| Tier | Focus | What Changes | Status |
 |------|-------|-------------|--------|
-| **1** | Memory & context | Stops crashing on large payloads | Medium |
-| **2** | Efficiency & resilience | Reliable under real workloads | Medium |
-| **3** | Performance & polish | Feels fast, saves work | Medium |
+| **1** | Memory & context | Stops crashing on large payloads | ✅ Complete |
+| **2** | Efficiency & resilience | Reliable under real workloads | ✅ Complete |
+| **Apps** | MCP Apps (SEP-1865) | Interactive browser UIs from MCP servers | ✅ Complete |
+| **3** | Performance & polish | Feels fast, saves work | ✅ Complete |
 | **4** | Code quality | Maintainable, testable | Medium |
 | **5** | Production hardening | Observable, auditable | Medium |
 | **6** | Plans & execution graphs | Reproducible workflows | High |
