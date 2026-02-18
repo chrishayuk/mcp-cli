@@ -166,11 +166,38 @@ Browser                    Python Backend                MCP Server
 
 ---
 
-## Known Violations (Tier 4 Backlog)
+## Two Message Classes
 
-Architecture review performed after Tier 2. These are tracked for remediation in Tier 4 (Code Quality).
+The codebase has two classes that represent messages, serving different purposes:
+
+- **`chuk_llm.core.models.Message`** (re-exported via `chat/response_models.py`) — canonical LLM message with typed `ToolCall` objects. Used by `tool_processor.py` and `conversation.py`.
+- **`mcp_cli.chat.models.HistoryMessage`** (aliased as `Message` for backward compat) — SessionManager-compatible message with `tool_calls: list[dict]`. Used by `chat_context.py`.
+
+The roundtrip: chuk_llm Message → `to_dict()` → SessionEvent → `from_dict()` → HistoryMessage → `to_dict()` → API.
+
+## Secret Redaction
+
+`SecretRedactingFilter` in `config/logging.py` is always active on all log handlers (console and file). It redacts:
+
+- Bearer tokens (`Authorization: Bearer eyJ...`)
+- API keys (`sk-proj-...`, `sk-...`)
+- Generic `api_key=...` / `api-key: ...` values
+- OAuth access tokens in JSON (`"access_token": "..."`)
+- Authorization headers (`Authorization: Basic ...`)
+
+The filter is a module-level singleton (`secret_filter`) that can be added to custom handlers.
+
+---
+
+## Known Violations (Remaining)
+
+Architecture review performed after Tier 2. Tier 4 (Code Quality) resolved the most impactful issues. Remaining items are tracked here.
 
 ### Core/UI Separation (#5)
+
+**Resolved in Tier 4.3:** `chat/conversation.py`, `chat/tool_processor.py`, and `chat/chat_context.py` no longer import `chuk_term.ui.output`. All core logging goes through the `logging` module.
+
+**Remaining:**
 
 | File | Issue | Severity |
 |------|-------|----------|
@@ -184,15 +211,17 @@ Architecture review performed after Tier 2. These are tracked for remediation in
 | File | Issue | Severity |
 |------|-------|----------|
 | `chat/chat_context.py` | `openai_tools: list[dict]` instead of typed model | MEDIUM |
-| `chat/models.py` | `Message.tool_calls: list[dict]` instead of `list[ToolCallData]` | MEDIUM |
+| `chat/models.py` | `HistoryMessage.tool_calls: list[dict]` instead of `list[ToolCallData]` | MEDIUM — by design for SessionManager compat |
 | `chat/conversation.py` | `_validate_tool_messages()` works on raw dicts | MEDIUM — by design at serialization boundary |
 
 ### Explicit Dependencies (#7)
 
+**Resolved in Tier 4.1:** `_GLOBAL_TOOL_MANAGER` singleton removed. ToolManager is constructor-injected everywhere.
+
+**Remaining (deferred — low impact):**
+
 | File | Issue | Severity |
 |------|-------|----------|
-| `chat/tool_processor.py` | Uses `get_tool_state()`, `get_search_engine()` globals | MEDIUM |
-| `chat/conversation.py` | Uses `get_tool_state()` global | MEDIUM |
-| `chat/tool_processor.py` | Uses `get_preference_manager()` global | LOW |
-
-These are deferred to **Tier 4.1 (Replace Global Singletons)** and **Tier 4.2 (Consolidate Message Classes)**.
+| `chat/tool_processor.py` | Uses `get_tool_state()`, `get_search_engine()` globals | MEDIUM — external library singletons |
+| `chat/conversation.py` | Uses `get_tool_state()` global | MEDIUM — external library singleton |
+| `chat/tool_processor.py` | Uses `get_preference_manager()` global | LOW — 15 call sites, marginal payoff |

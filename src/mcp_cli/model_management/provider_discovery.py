@@ -23,7 +23,7 @@ class ProviderDiscovery:
     """
 
     @staticmethod
-    def discover_models_from_api(
+    async def discover_models_from_api(
         api_base: str, api_key: str, provider_name: str = "unknown"
     ) -> DiscoveryResult:
         """
@@ -55,8 +55,8 @@ class ProviderDiscovery:
 
             from mcp_cli.config import DISCOVERY_TIMEOUT
 
-            with httpx.Client(timeout=DISCOVERY_TIMEOUT) as client:
-                response = client.get(models_url, headers=headers)
+            async with httpx.AsyncClient(timeout=DISCOVERY_TIMEOUT) as client:
+                response = await client.get(models_url, headers=headers)
                 response.raise_for_status()
 
                 data = response.json()
@@ -88,7 +88,7 @@ class ProviderDiscovery:
             )
 
     @staticmethod
-    def refresh_provider_models(config: RuntimeProviderConfig) -> int | None:
+    async def refresh_provider_models(config: RuntimeProviderConfig) -> int | None:
         """
         Refresh models for a runtime provider by querying the API.
 
@@ -105,7 +105,7 @@ class ProviderDiscovery:
             return None
 
         try:
-            discovery_result = ProviderDiscovery.discover_models_from_api(
+            discovery_result = await ProviderDiscovery.discover_models_from_api(
                 config.api_base, api_key, config.name
             )
 

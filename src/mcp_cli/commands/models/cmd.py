@@ -7,21 +7,13 @@ These models provide type safety for LLM messages, tool calls, and command param
 
 from __future__ import annotations
 
-from enum import Enum
 from typing import Any
 
 from pydantic import Field
 
+from mcp_cli.chat.models import MessageRole
+
 from .base_model import CommandBaseModel
-
-
-class MessageRole(str, Enum):
-    """Message role enumeration for LLM conversations."""
-
-    SYSTEM = "system"
-    USER = "user"
-    ASSISTANT = "assistant"
-    TOOL = "tool"
 
 
 class ToolCallFunction(CommandBaseModel):

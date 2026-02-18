@@ -113,6 +113,15 @@ class TokenNamespace(str, Enum):
     OAUTH = "oauth"
 
 
+class SessionAction(str, Enum):
+    """Actions for /sessions command."""
+
+    LIST = "list"
+    SAVE = "save"
+    LOAD = "load"
+    DELETE = "delete"
+
+
 class ServerAction(str, Enum):
     """Actions for /server command."""
 
@@ -149,6 +158,7 @@ __all__ = [
     "ServerStatus",
     # Command action enums
     "ConversationAction",
+    "SessionAction",
     "TokenAction",
     "ServerAction",
     "ToolAction",

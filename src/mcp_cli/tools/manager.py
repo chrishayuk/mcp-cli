@@ -158,6 +158,8 @@ class ToolManager:
         self._on_progress: Callable[[str], None] | None = None
         # MCP Apps host server (lazy-initialized)
         self._app_host: Any = None
+        # Lock for OAuth flows (prevents concurrent browser-open races)
+        self._oauth_lock = asyncio.Lock()
 
     # ================================================================
     # Initialization
@@ -180,8 +182,8 @@ class ToolManager:
 
             self._report_progress("Loading server configuration...")
 
-            # Load config and detect server types
-            config = self._config_loader.load()
+            # Load config and detect server types (file I/O → off event loop)
+            config = await asyncio.to_thread(self._config_loader.load)
             if not config:
                 output.warning("No config found, initializing with empty toolset")
                 return await self._setup_empty_toolset()
@@ -586,8 +588,30 @@ class ToolManager:
 
         return None
 
+    def _get_server_timeout(self, server_name: str | None) -> float:
+        """Resolve tool timeout for a server: per-server → global → default.
+
+        Args:
+            server_name: Server namespace/name, or None for global default.
+
+        Returns:
+            Timeout in seconds.
+        """
+        if server_name:
+            for server in (
+                self._config_loader.http_servers
+                + self._config_loader.sse_servers
+                + self._config_loader.stdio_servers
+            ):
+                if server.name == server_name and server.tool_timeout is not None:
+                    return server.tool_timeout
+        return self.tool_timeout
+
     async def _handle_oauth_flow(self, server_name: str, server_url: str) -> bool:
         """Handle OAuth authentication flow for a server.
+
+        Uses _oauth_lock to prevent concurrent flows from racing
+        (e.g. multiple parallel tool calls all detecting OAuth errors).
 
         Args:
             server_name: Name of the server requiring OAuth
@@ -596,80 +620,90 @@ class ToolManager:
         Returns:
             True if OAuth completed successfully, False otherwise
         """
-        try:
-            from chuk_term.ui import output
-
-            output.info(f"🔐 OAuth authorization required for server: {server_name}")
-            output.info("Opening browser for authentication...")
-
-            # Create token manager with mcp-cli service name
-            token_manager = TokenManager(
-                backend=TokenStoreBackend.AUTO,
-                service_name="mcp-cli",
-            )
-            oauth_handler = OAuthHandler(token_manager=token_manager)
-
-            # Clear any existing tokens - they're clearly invalid since the server
-            # returned an OAuth error. This forces a fresh browser-based auth flow.
-            oauth_handler.clear_tokens(server_name)
-            logger.debug(f"Cleared existing tokens for {server_name} to force re-auth")
-
-            # Perform MCP OAuth flow (discovers metadata, opens browser, gets tokens)
-            tokens = await oauth_handler.ensure_authenticated_mcp(
-                server_name=server_name,
-                server_url=server_url,
-            )
-
-            if tokens and tokens.access_token:
-                # Also store in the format expected by the oauth_refresh_callback
-                # The refresh callback looks for "oauth:{server_name}" with StoredToken format
-                import json
-
-                stored = StoredToken(
-                    token_type=TokenType.OAUTH,
-                    name=server_name,
-                    data={
-                        "access_token": tokens.access_token,
-                        "refresh_token": tokens.refresh_token,
-                        "token_type": tokens.token_type,
-                        "expires_in": tokens.expires_in,
-                        "issued_at": tokens.issued_at,
-                    },
-                )
-                token_manager.token_store._store_raw(
-                    f"oauth:{server_name}", json.dumps(stored.model_dump())
-                )
-                logger.debug(
-                    f"Stored OAuth token for refresh callback: oauth:{server_name}"
-                )
-
-                # Update the transport's headers so the retry uses the new token
-                if self.stream_manager and hasattr(self.stream_manager, "transports"):
-                    transport = self.stream_manager.transports.get(server_name)
-                    if transport and hasattr(transport, "configured_headers"):
-                        transport.configured_headers["Authorization"] = (
-                            f"Bearer {tokens.access_token}"
-                        )
-                        logger.debug(f"Updated transport headers for {server_name}")
-
-                output.success(f"✅ Successfully authenticated with {server_name}")
-                logger.info(f"OAuth flow completed for {server_name}")
-                return True
-            else:
-                output.error(
-                    f"❌ OAuth flow did not return valid tokens for {server_name}"
-                )
-                return False
-
-        except Exception as e:
-            logger.error(f"OAuth flow failed for {server_name}: {e}", exc_info=True)
+        async with self._oauth_lock:
             try:
                 from chuk_term.ui import output
 
-                output.error(f"❌ OAuth authentication failed: {e}")
-            except ImportError:
-                pass
-            return False
+                output.info(
+                    f"🔐 OAuth authorization required for server: {server_name}"
+                )
+                output.info("Opening browser for authentication...")
+
+                # Create token manager with mcp-cli service name
+                token_manager = TokenManager(
+                    backend=TokenStoreBackend.AUTO,
+                    service_name="mcp-cli",
+                )
+                oauth_handler = OAuthHandler(token_manager=token_manager)
+
+                # Clear any existing tokens - they're clearly invalid since the server
+                # returned an OAuth error. This forces a fresh browser-based auth flow.
+                oauth_handler.clear_tokens(server_name)
+                logger.debug(
+                    f"Cleared existing tokens for {server_name} to force re-auth"
+                )
+
+                # Perform MCP OAuth flow (discovers metadata, opens browser, gets tokens)
+                tokens = await oauth_handler.ensure_authenticated_mcp(
+                    server_name=server_name,
+                    server_url=server_url,
+                )
+
+                if tokens and tokens.access_token:
+                    # Also store in the format expected by the oauth_refresh_callback
+                    # The refresh callback looks for "oauth:{server_name}" with StoredToken format
+                    import json
+
+                    stored = StoredToken(
+                        token_type=TokenType.OAUTH,
+                        name=server_name,
+                        data={
+                            "access_token": tokens.access_token,
+                            "refresh_token": tokens.refresh_token,
+                            "token_type": tokens.token_type,
+                            "expires_in": tokens.expires_in,
+                            "issued_at": tokens.issued_at,
+                        },
+                    )
+                    token_manager.token_store._store_raw(
+                        f"oauth:{server_name}", json.dumps(stored.model_dump())
+                    )
+                    logger.debug(
+                        f"Stored OAuth token for refresh callback: oauth:{server_name}"
+                    )
+
+                    # Update transport headers with copy-on-write to avoid races
+                    # with concurrent tool calls reading the headers dict.
+                    if self.stream_manager and hasattr(
+                        self.stream_manager, "transports"
+                    ):
+                        transport = self.stream_manager.transports.get(server_name)
+                        if transport and hasattr(transport, "configured_headers"):
+                            new_headers = dict(transport.configured_headers)
+                            new_headers["Authorization"] = (
+                                f"Bearer {tokens.access_token}"
+                            )
+                            transport.configured_headers = new_headers
+                            logger.debug(f"Updated transport headers for {server_name}")
+
+                    output.success(f"✅ Successfully authenticated with {server_name}")
+                    logger.info(f"OAuth flow completed for {server_name}")
+                    return True
+                else:
+                    output.error(
+                        f"❌ OAuth flow did not return valid tokens for {server_name}"
+                    )
+                    return False
+
+            except Exception as e:
+                logger.error(f"OAuth flow failed for {server_name}: {e}", exc_info=True)
+                try:
+                    from chuk_term.ui import output
+
+                    output.error(f"❌ OAuth authentication failed: {e}")
+                except ImportError:
+                    pass
+                return False
 
     async def execute_tool(
         self,
@@ -716,7 +750,7 @@ class ToolManager:
                 tool_name=tool_name,
                 arguments=arguments,
                 server_name=namespace,
-                timeout=timeout or self.tool_timeout,
+                timeout=timeout or self._get_server_timeout(namespace),
             )
 
             # Check if result contains an OAuth error (some servers return errors in content)
@@ -1234,21 +1268,3 @@ class ToolManager:
         except Exception as e:
             logger.error(f"Error listing prompts: {e}")
             return []
-
-
-# ====================================================================
-# Global instance management
-# ====================================================================
-
-_GLOBAL_TOOL_MANAGER: ToolManager | None = None
-
-
-def get_tool_manager() -> ToolManager | None:
-    """Get the global tool manager instance."""
-    return _GLOBAL_TOOL_MANAGER
-
-
-def set_tool_manager(manager: ToolManager) -> None:
-    """Set the global tool manager instance."""
-    global _GLOBAL_TOOL_MANAGER
-    _GLOBAL_TOOL_MANAGER = manager

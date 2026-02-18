@@ -120,11 +120,16 @@ def main_callback(
         "--dynamic-tools",
         help="Enable dynamic tool discovery mode (uses meta-tools for on-demand loading)",
     ),
+    log_file: str | None = typer.Option(
+        None,
+        "--log-file",
+        help="Write debug logs to a rotating file (expands ~, creates dirs)",
+    ),
 ) -> None:
     """MCP CLI - If no subcommand is given, start chat mode."""
 
     # Re-configure logging based on user options (this overrides the default ERROR level)
-    setup_logging(level=log_level, quiet=quiet, verbose=verbose)
+    setup_logging(level=log_level, quiet=quiet, verbose=verbose, log_file=log_file)
 
     # Store tool timeout if specified (type-safe!)
     from mcp_cli.config import EnvVar, set_env
@@ -470,12 +475,23 @@ def _chat_command(
             models = [m.strip() for m in model.split(",")]
             model = models[0]  # Use first as default
 
-        model_manager.add_runtime_provider(
-            name=provider,
-            api_base=api_base,
-            api_key=api_key,  # Will be kept in memory only
-            models=models,
-        )
+        if models:
+            # Models provided explicitly — no discovery needed
+            model_manager.add_runtime_provider(
+                name=provider,
+                api_base=api_base,
+                api_key=api_key,
+                models=models,
+            )
+        else:
+            # No models specified — discover from API (async)
+            asyncio.run(
+                model_manager.discover_runtime_provider(
+                    name=provider,
+                    api_base=api_base,
+                    api_key=api_key,
+                )
+            )
 
         output.info(f"Using runtime provider: {provider}")
         if api_key:

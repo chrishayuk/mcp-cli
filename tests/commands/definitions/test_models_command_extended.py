@@ -1,7 +1,7 @@
 """Extended tests for the models command definition to improve coverage."""
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import AsyncMock, patch, MagicMock
 
 from mcp_cli.commands.providers.models import (
     ModelCommand,
@@ -365,7 +365,10 @@ class TestModelListCommandExtended:
             mock_ctx.model_manager.get_active_model.return_value = "llama2"
 
             with patch.object(
-                command, "_get_ollama_models", return_value=["llama2", "codellama"]
+                command,
+                "_get_ollama_models",
+                new_callable=AsyncMock,
+                return_value=["llama2", "codellama"],
             ):
                 with patch("chuk_term.ui.output"):
                     with patch("chuk_term.ui.format_table"):
@@ -381,79 +384,92 @@ class TestModelListCommandExtended:
             mock_ctx.model_manager.get_active_provider.return_value = "openai"
             mock_ctx.model_manager.get_active_model.return_value = "gpt-4"
 
-            with patch.object(command, "_get_provider_models", return_value=[]):
+            with patch.object(
+                command, "_get_provider_models", new_callable=AsyncMock, return_value=[]
+            ):
                 with patch("chuk_term.ui.output"):
                     result = await command.execute()
 
             assert result.success is True
 
-    def test_get_ollama_models_success(self, command):
+    @pytest.mark.asyncio
+    async def test_get_ollama_models_success(self, command):
         """Test _get_ollama_models with successful ollama list."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value.returncode = 0
-            mock_run.return_value.stdout = "NAME\nllama2\ncodellama\nmistral"
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate.return_value = (b"NAME\nllama2\ncodellama\nmistral", b"")
 
-            models = command._get_ollama_models()
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            models = await command._get_ollama_models()
 
             assert models == ["llama2", "codellama", "mistral"]
 
-    def test_get_ollama_models_failure(self, command):
+    @pytest.mark.asyncio
+    async def test_get_ollama_models_failure(self, command):
         """Test _get_ollama_models when ollama list fails."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value.returncode = 1
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 1
+        mock_proc.communicate.return_value = (b"", b"")
 
-            models = command._get_ollama_models()
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            models = await command._get_ollama_models()
 
             assert models == []
 
-    def test_get_ollama_models_exception(self, command):
+    @pytest.mark.asyncio
+    async def test_get_ollama_models_exception(self, command):
         """Test _get_ollama_models when exception occurs."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = Exception("Command not found")
-
-            models = command._get_ollama_models()
+        with patch(
+            "asyncio.create_subprocess_exec", side_effect=Exception("Command not found")
+        ):
+            models = await command._get_ollama_models()
 
             assert models == []
 
-    def test_get_provider_models_success(self, command):
+    @pytest.mark.asyncio
+    async def test_get_provider_models_success(self, command):
         """Test _get_provider_models with successful discovery."""
         with patch("chuk_llm.llm.client.list_available_providers") as mock_list:
             mock_list.return_value = {"openai": {"models": ["gpt-4", "gpt-3.5-turbo"]}}
 
-            models = command._get_provider_models("openai")
+            models = await command._get_provider_models("openai")
 
             assert models == ["gpt-4", "gpt-3.5-turbo"]
 
-    def test_get_provider_models_available_models_key(self, command):
+    @pytest.mark.asyncio
+    async def test_get_provider_models_available_models_key(self, command):
         """Test _get_provider_models with available_models key."""
         with patch("chuk_llm.llm.client.list_available_providers") as mock_list:
             mock_list.return_value = {
                 "openai": {"available_models": ["gpt-4", "gpt-3.5-turbo"]}
             }
 
-            models = command._get_provider_models("openai")
+            models = await command._get_provider_models("openai")
 
             assert models == ["gpt-4", "gpt-3.5-turbo"]
 
-    def test_get_provider_models_exception(self, command):
+    @pytest.mark.asyncio
+    async def test_get_provider_models_exception(self, command):
         """Test _get_provider_models when exception occurs."""
         with patch("chuk_llm.llm.client.list_available_providers") as mock_list:
             mock_list.side_effect = Exception("Import error")
 
-            models = command._get_provider_models("openai")
+            models = await command._get_provider_models("openai")
 
             assert models == []
 
-    def test_get_provider_models_unknown_provider(self, command):
+    @pytest.mark.asyncio
+    async def test_get_provider_models_unknown_provider(self, command):
         """Test _get_provider_models with unknown provider."""
         with patch("chuk_llm.llm.client.list_available_providers") as mock_list:
             mock_list.return_value = {"openai": {"models": ["gpt-4"]}}
 
-            models = command._get_provider_models("unknown")
+            models = await command._get_provider_models("unknown")
 
             assert models == []
 
-    def test_get_provider_models_placeholder_with_default(self, command):
+    @pytest.mark.asyncio
+    async def test_get_provider_models_placeholder_with_default(self, command):
         """Test _get_provider_models when models is ['*'] but default_model exists."""
         with patch("chuk_llm.llm.client.list_available_providers") as mock_list:
             # No API key, so API won't be called - falls back to default_model
@@ -465,20 +481,22 @@ class TestModelListCommandExtended:
                 }
             }
 
-            models = command._get_provider_models("deepseek")
+            models = await command._get_provider_models("deepseek")
 
             assert models == ["deepseek-chat"]
 
-    def test_get_provider_models_placeholder_no_default(self, command):
+    @pytest.mark.asyncio
+    async def test_get_provider_models_placeholder_no_default(self, command):
         """Test _get_provider_models when models is ['*'] and no default_model."""
         with patch("chuk_llm.llm.client.list_available_providers") as mock_list:
             mock_list.return_value = {"unknown": {"models": ["*"]}}
 
-            models = command._get_provider_models("unknown")
+            models = await command._get_provider_models("unknown")
 
             assert models == []
 
-    def test_get_provider_models_calls_api_on_placeholder(self, command):
+    @pytest.mark.asyncio
+    async def test_get_provider_models_calls_api_on_placeholder(self, command):
         """Test _get_provider_models calls API when models is ['*'] and has API key."""
         with patch("chuk_llm.llm.client.list_available_providers") as mock_list:
             mock_list.return_value = {
@@ -489,39 +507,47 @@ class TestModelListCommandExtended:
                     "api_base": "https://api.deepseek.com/v1",
                 }
             }
-            # Mock the API call
+            # Mock the API call (now async)
             with patch.object(
                 command,
                 "_fetch_models_from_api",
+                new_callable=AsyncMock,
                 return_value=["deepseek-chat", "deepseek-reasoner"],
             ):
-                models = command._get_provider_models("deepseek")
+                models = await command._get_provider_models("deepseek")
 
             assert models == ["deepseek-chat", "deepseek-reasoner"]
 
-    def test_fetch_models_from_api_success(self, command):
+    @pytest.mark.asyncio
+    async def test_fetch_models_from_api_success(self, command):
         """Test _fetch_models_from_api with successful API response."""
         import os
 
-        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "test-key"}):
-            with patch("httpx.get") as mock_get:
-                mock_response = MagicMock()
-                mock_response.status_code = 200
-                mock_response.json.return_value = {
-                    "data": [
-                        {"id": "deepseek-chat"},
-                        {"id": "deepseek-reasoner"},
-                    ]
-                }
-                mock_get.return_value = mock_response
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [
+                {"id": "deepseek-chat"},
+                {"id": "deepseek-reasoner"},
+            ]
+        }
 
-                models = command._fetch_models_from_api(
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_response
+
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "test-key"}):
+            with patch("httpx.AsyncClient") as mock_cls:
+                mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+                models = await command._fetch_models_from_api(
                     "deepseek", "https://api.deepseek.com/v1"
                 )
 
             assert models == ["deepseek-chat", "deepseek-reasoner"]
 
-    def test_fetch_models_from_api_no_api_key(self, command):
+    @pytest.mark.asyncio
+    async def test_fetch_models_from_api_no_api_key(self, command):
         """Test _fetch_models_from_api returns empty when no API key."""
         import os
 
@@ -530,37 +556,47 @@ class TestModelListCommandExtended:
             if "DEEPSEEK_API_KEY" in os.environ:
                 del os.environ["DEEPSEEK_API_KEY"]
 
-            models = command._fetch_models_from_api(
+            models = await command._fetch_models_from_api(
                 "deepseek", "https://api.deepseek.com/v1"
             )
 
         assert models == []
 
-    def test_fetch_models_from_api_error(self, command):
+    @pytest.mark.asyncio
+    async def test_fetch_models_from_api_error(self, command):
         """Test _fetch_models_from_api handles errors gracefully."""
         import os
 
         with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "test-key"}):
-            with patch("httpx.get") as mock_get:
-                mock_get.side_effect = Exception("Network error")
+            with patch("httpx.AsyncClient") as mock_cls:
+                mock_cls.return_value.__aenter__ = AsyncMock(
+                    side_effect=Exception("Network error")
+                )
+                mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
-                models = command._fetch_models_from_api(
+                models = await command._fetch_models_from_api(
                     "deepseek", "https://api.deepseek.com/v1"
                 )
 
             assert models == []
 
-    def test_fetch_models_from_api_non_200(self, command):
+    @pytest.mark.asyncio
+    async def test_fetch_models_from_api_non_200(self, command):
         """Test _fetch_models_from_api handles non-200 status."""
         import os
 
-        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "test-key"}):
-            with patch("httpx.get") as mock_get:
-                mock_response = MagicMock()
-                mock_response.status_code = 401
-                mock_get.return_value = mock_response
+        mock_response = MagicMock()
+        mock_response.status_code = 401
 
-                models = command._fetch_models_from_api(
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_response
+
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "test-key"}):
+            with patch("httpx.AsyncClient") as mock_cls:
+                mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+                models = await command._fetch_models_from_api(
                     "deepseek", "https://api.deepseek.com/v1"
                 )
 

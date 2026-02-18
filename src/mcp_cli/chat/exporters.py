@@ -10,6 +10,8 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
+from mcp_cli.chat.models import MessageRole
+
 
 class MarkdownExporter:
     """Export conversation as formatted Markdown."""
@@ -48,17 +50,17 @@ class MarkdownExporter:
             role = msg.get("role", "unknown")
             content = msg.get("content", "")
 
-            if role == "system":
+            if role == MessageRole.SYSTEM:
                 lines.append("### System")
                 lines.append("")
                 lines.append(f"> {content}")
                 lines.append("")
-            elif role == "user":
+            elif role == MessageRole.USER:
                 lines.append("### User")
                 lines.append("")
                 lines.append(content)
                 lines.append("")
-            elif role == "assistant":
+            elif role == MessageRole.ASSISTANT:
                 lines.append("### Assistant")
                 lines.append("")
                 if content:
@@ -83,7 +85,7 @@ class MarkdownExporter:
                             lines.append(str(args))
                         lines.append("```")
                         lines.append("")
-            elif role == "tool":
+            elif role == MessageRole.TOOL:
                 tool_call_id = msg.get("tool_call_id", "")
                 lines.append(f"### Tool Result (`{tool_call_id}`)")
                 lines.append("")

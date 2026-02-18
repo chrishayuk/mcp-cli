@@ -1,11 +1,73 @@
 # mcp_cli/config/logging.py
 """
 Centralized logging configuration for MCP CLI.
+
+Includes secret redaction (always active) and optional file logging
+with rotation.
 """
+
+from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
+
+# ── Secret redaction ─────────────────────────────────────────────────────────
+
+# Patterns that match sensitive values in log messages
+_SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    # Bearer tokens: "Bearer eyJ..." or "Bearer sk-..."
+    (re.compile(r"(Bearer\s+)\S+", re.IGNORECASE), r"\1[REDACTED]"),
+    # API keys: sk-... (OpenAI style)
+    (re.compile(r"\bsk-[A-Za-z0-9_-]{10,}\b"), "[REDACTED_API_KEY]"),
+    # Generic "api_key=..." or "api-key:..." values
+    (
+        re.compile(r"(api[_-]?key\s*[=:]\s*)['\"]?\S+['\"]?", re.IGNORECASE),
+        r"\1[REDACTED]",
+    ),
+    # OAuth access tokens in JSON-ish contexts: "access_token": "..."
+    (
+        re.compile(r'("access_token"\s*:\s*")[^"]+(")', re.IGNORECASE),
+        r"\1[REDACTED]\2",
+    ),
+    # Authorization headers: "Authorization: Basic xyz" or "Authorization=token"
+    (
+        re.compile(r"(Authorization\s*[=:]\s*)\S+(?:\s+\S+)?", re.IGNORECASE),
+        r"\1[REDACTED]",
+    ),
+]
+
+
+class SecretRedactingFilter(logging.Filter):
+    """Logging filter that redacts secrets from log messages.
+
+    Catches Bearer tokens, API keys (sk-...), OAuth access tokens,
+    and Authorization header values. Always active on all handlers.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str):
+            for pattern, replacement in _SECRET_PATTERNS:
+                record.msg = pattern.sub(replacement, record.msg)
+        # Also redact formatted args if they've been interpolated
+        if record.args:
+            formatted = record.getMessage()
+            for pattern, replacement in _SECRET_PATTERNS:
+                formatted = pattern.sub(replacement, formatted)
+            record.msg = formatted
+            record.args = None
+        return True
+
+
+# Module-level singleton so callers can add it to custom handlers
+secret_filter = SecretRedactingFilter()
+
+
+# ── Core setup ───────────────────────────────────────────────────────────────
 
 
 def setup_logging(
@@ -13,6 +75,7 @@ def setup_logging(
     quiet: bool = False,
     verbose: bool = False,
     format_style: str = "simple",
+    log_file: str | None = None,
 ) -> None:
     """
     Configure centralized logging for MCP CLI and all dependencies.
@@ -22,6 +85,8 @@ def setup_logging(
         quiet: If True, suppress most output except errors
         verbose: If True, enable debug logging
         format_style: "simple", "detailed", or "json"
+        log_file: Optional file path for rotating file log (DEBUG level).
+                  Expands ~ and creates parent directories automatically.
     """
     # Determine effective log level
     if quiet:
@@ -56,10 +121,11 @@ def setup_logging(
     else:  # simple
         formatter = logging.Formatter("%(levelname)-8s %(message)s")
 
-    # Create console handler
+    # Create console handler (with redaction)
     console_handler = logging.StreamHandler(sys.stderr)
     console_handler.setFormatter(formatter)
     console_handler.setLevel(log_level)
+    console_handler.addFilter(secret_filter)
 
     # Configure root logger
     root_logger.setLevel(log_level)
@@ -69,6 +135,10 @@ def setup_logging(
     # This ensures that even if child loggers have their own handlers,
     # they won't emit logs below this level
     logging.root.setLevel(log_level)
+
+    # Optional file logging
+    if log_file:
+        _add_file_handler(root_logger, log_file)
 
     # Silence noisy third-party loggers unless in debug mode
     if log_level > logging.DEBUG:
@@ -106,6 +176,35 @@ def setup_logging(
 
     # Set mcp_cli loggers to appropriate level
     logging.getLogger("mcp_cli").setLevel(log_level)
+
+
+def _add_file_handler(root_logger: logging.Logger, log_file: str) -> None:
+    """Add a rotating file handler with JSON format and secret redaction."""
+    from mcp_cli.config.defaults import DEFAULT_LOG_MAX_BYTES, DEFAULT_LOG_BACKUP_COUNT
+
+    path = Path(log_file).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    file_formatter = logging.Formatter(
+        '{"timestamp": "%(asctime)s", "level": "%(levelname)s", '
+        '"logger": "%(name)s", "line": %(lineno)d, "message": "%(message)s"}'
+    )
+
+    file_handler = RotatingFileHandler(
+        str(path),
+        maxBytes=DEFAULT_LOG_MAX_BYTES,
+        backupCount=DEFAULT_LOG_BACKUP_COUNT,
+        encoding="utf-8",
+    )
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(file_formatter)
+    file_handler.addFilter(secret_filter)
+
+    # File handler always logs at DEBUG so root must accept DEBUG too
+    if root_logger.level > logging.DEBUG:
+        root_logger.setLevel(logging.DEBUG)
+
+    root_logger.addHandler(file_handler)
 
 
 def get_logger(name: str) -> logging.Logger:

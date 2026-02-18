@@ -15,6 +15,8 @@ import platform
 from datetime import datetime, UTC
 from unittest.mock import MagicMock, patch
 
+from mcp_cli.chat.models import ToolCallMetadata
+
 import pytest
 from chuk_tool_processor import ToolCall as CTPToolCall
 from chuk_tool_processor import ToolResult as CTPToolResult
@@ -1118,10 +1120,12 @@ class TestDynamicTools:
             tool="call_tool",
             arguments={"tool_name": "real_tool", "x": 1},
         )
-        tp._call_metadata["c1"] = {
-            "display_name": "call_tool",
-            "arguments": {"tool_name": "real_tool", "x": 1},
-        }
+        tp._call_metadata["c1"] = ToolCallMetadata(
+            llm_tool_name="call_tool",
+            execution_tool_name="call_tool",
+            display_name="call_tool",
+            arguments={"tool_name": "real_tool", "x": 1},
+        )
         await tp._on_tool_start(call)
         assert any("real_tool" in str(s) for s in ui._start_calls)
 
@@ -1161,13 +1165,13 @@ class TestOnToolResult:
         ui = DummyUIManager()
         tp = ToolProcessor(ctx, ui)
 
-        tp._call_metadata["c1"] = {
-            "llm_tool_name": "echo",
-            "execution_tool_name": "echo",
-            "display_name": "echo",
-            "arguments": {"msg": "hi"},
-            "raw_arguments": '{"msg": "hi"}',
-        }
+        tp._call_metadata["c1"] = ToolCallMetadata(
+            llm_tool_name="echo",
+            execution_tool_name="echo",
+            display_name="echo",
+            arguments={"msg": "hi"},
+            raw_arguments='{"msg": "hi"}',
+        )
 
         now = datetime.now(UTC)
         result = CTPToolResult(
@@ -1193,13 +1197,13 @@ class TestOnToolResult:
         ui = DummyUIManager()
         tp = ToolProcessor(ctx, ui)
 
-        tp._call_metadata["c1"] = {
-            "llm_tool_name": "echo",
-            "execution_tool_name": "echo",
-            "display_name": "echo",
-            "arguments": {},
-            "raw_arguments": "{}",
-        }
+        tp._call_metadata["c1"] = ToolCallMetadata(
+            llm_tool_name="echo",
+            execution_tool_name="echo",
+            display_name="echo",
+            arguments={},
+            raw_arguments="{}",
+        )
 
         now = datetime.now(UTC)
         result = CTPToolResult(
@@ -1225,13 +1229,13 @@ class TestOnToolResult:
         ui.verbose_mode = True
         tp = ToolProcessor(ctx, ui)
 
-        tp._call_metadata["c1"] = {
-            "llm_tool_name": "echo",
-            "execution_tool_name": "echo",
-            "display_name": "echo",
-            "arguments": {},
-            "raw_arguments": "{}",
-        }
+        tp._call_metadata["c1"] = ToolCallMetadata(
+            llm_tool_name="echo",
+            execution_tool_name="echo",
+            display_name="echo",
+            arguments={},
+            raw_arguments="{}",
+        )
 
         now = datetime.now(UTC)
         result = CTPToolResult(
@@ -1278,13 +1282,13 @@ class TestOnToolResult:
         ui = DummyUIManager()
         tp = ToolProcessor(ctx, ui)
 
-        tp._call_metadata["c1"] = {
-            "llm_tool_name": "call_tool",
-            "execution_tool_name": "call_tool",
-            "display_name": "call_tool",
-            "arguments": {"tool_name": "real_tool", "x": 1},
-            "raw_arguments": '{"tool_name": "real_tool", "x": 1}',
-        }
+        tp._call_metadata["c1"] = ToolCallMetadata(
+            llm_tool_name="call_tool",
+            execution_tool_name="call_tool",
+            display_name="call_tool",
+            arguments={"tool_name": "real_tool", "x": 1},
+            raw_arguments='{"tool_name": "real_tool", "x": 1}',
+        )
 
         now = datetime.now(UTC)
         result = CTPToolResult(
@@ -1406,10 +1410,12 @@ class TestOnToolStart:
         ui = DummyUIManager()
         tp = ToolProcessor(ctx, ui)
 
-        tp._call_metadata["c1"] = {
-            "display_name": "my_tool",
-            "arguments": {"key": "val"},
-        }
+        tp._call_metadata["c1"] = ToolCallMetadata(
+            llm_tool_name="my_tool",
+            execution_tool_name="my_tool",
+            display_name="my_tool",
+            arguments={"key": "val"},
+        )
 
         call = CTPToolCall(id="c1", tool="echo", arguments={"key": "val"})
         await tp._on_tool_start(call)
@@ -1756,13 +1762,13 @@ class TestRequiresJustification:
         ui = DummyUIManager()
         tp = ToolProcessor(ctx, ui)
 
-        tp._call_metadata["c1"] = {
-            "llm_tool_name": "heavy_tool",
-            "execution_tool_name": "heavy_tool",
-            "display_name": "heavy_tool",
-            "arguments": {"msg": "hi"},
-            "raw_arguments": '{"msg": "hi"}',
-        }
+        tp._call_metadata["c1"] = ToolCallMetadata(
+            llm_tool_name="heavy_tool",
+            execution_tool_name="heavy_tool",
+            display_name="heavy_tool",
+            arguments={"msg": "hi"},
+            raw_arguments='{"msg": "hi"}',
+        )
 
         now = datetime.now(UTC)
 
@@ -1820,13 +1826,13 @@ class TestDiscoveryToolResult:
         ui = DummyUIManager()
         tp = ToolProcessor(ctx, ui)
 
-        tp._call_metadata["c1"] = {
-            "llm_tool_name": "search_tools",
-            "execution_tool_name": "search_tools",
-            "display_name": "search_tools",
-            "arguments": {"query": "math"},
-            "raw_arguments": '{"query": "math"}',
-        }
+        tp._call_metadata["c1"] = ToolCallMetadata(
+            llm_tool_name="search_tools",
+            execution_tool_name="search_tools",
+            display_name="search_tools",
+            arguments={"query": "math"},
+            raw_arguments='{"query": "math"}',
+        )
 
         now = datetime.now(UTC)
         discovery_result = [{"name": "sqrt_tool"}, {"name": "add_tool"}]

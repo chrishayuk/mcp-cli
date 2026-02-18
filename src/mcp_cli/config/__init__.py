@@ -231,9 +231,9 @@ __all__ = [
     # Legacy (will be removed)
     "ServerConfig",
     "ConfigManager",
+    "detect_server_types",
     "get_config",
     "initialize_config",
-    "detect_server_types",
     "validate_server_config",
     # Discovery
     "setup_chuk_llm_environment",

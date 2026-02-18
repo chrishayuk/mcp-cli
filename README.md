@@ -7,16 +7,29 @@ A powerful, feature-rich command-line interface for interacting with Model Conte
 
 **Default Configuration**: MCP CLI defaults to using Ollama with the `gpt-oss` reasoning model for local, privacy-focused operation without requiring API keys.
 
-## 🆕 Recent Updates (v0.13.0)
+## 🆕 Recent Updates (v0.14.0)
 
-### MCP Apps (SEP-1865)
+### Production Hardening (Tier 5)
+- **Secret Redaction**: All log output (console and file) is automatically redacted for Bearer tokens, API keys, OAuth tokens, and Authorization headers
+- **Structured File Logging**: Optional `--log-file` flag enables rotating JSON log files (10MB, 3 backups) at DEBUG level with secret redaction
+- **Per-Server Timeouts**: Server configs now support `tool_timeout` and `init_timeout` overrides, resolved per-server → global → default
+- **Thread-Safe OAuth**: Concurrent OAuth flows are serialized with `asyncio.Lock` and copy-on-write header mutation
+
+### Code Quality (Tier 4)
+- **Core/UI Separation**: Core modules (`chat/conversation.py`, `chat/tool_processor.py`, `chat/chat_context.py`) no longer import `chuk_term.ui.output` — all logging goes through `logging` module
+- **Message Class Clarity**: Local `Message` renamed to `HistoryMessage` (backward-compat alias preserved) to distinguish from `chuk_llm.core.models.Message`
+- **Removed Global Singletons**: `_GLOBAL_TOOL_MANAGER` and associated getter/setter functions deleted
+- **Integration Test Framework**: Real MCP server tests with `@pytest.mark.integration` marker (SQLite server)
+- **Coverage Reporting**: Branch coverage enabled with `fail_under = 60` threshold in pyproject.toml
+
+### Previous: MCP Apps (SEP-1865)
 - **Interactive HTML UIs**: MCP servers can now serve interactive HTML applications (charts, tables, maps, markdown viewers) that render in your browser
 - **Sandboxed iframes**: Apps run in secure sandboxed iframes with CSP protection
 - **WebSocket bridge**: Real-time bidirectional communication between browser apps and MCP servers
 - **Automatic launch**: Tools with `_meta.ui` annotations automatically open in the browser when called
 - **Session reliability**: Message queuing, reconnection with exponential backoff, deferred tool result delivery
 
-### Performance & Polish (Tier 3)
+### Previous: Performance & Polish (Tier 3)
 - **O(1) Tool Lookups**: Indexed tool lookup replacing O(n) linear scans in both ToolManager and ChatContext
 - **Cached LLM Tool Metadata**: Per-provider caching of tool definitions with automatic invalidation
 - **Startup Progress**: Real-time progress messages during initialization instead of a single spinner
@@ -24,21 +37,6 @@ A powerful, feature-rich command-line interface for interacting with Model Conte
 - **Session Persistence**: Save/load/list conversation sessions with auto-save every 10 turns (`/sessions`)
 - **Conversation Export**: Export conversations as Markdown or JSON with metadata (`/export`)
 - **Trusted Domains**: Tools from trusted server domains (e.g. chukai.io) skip confirmation prompts
-
-### Architecture & Performance
-- **Updated to chuk-llm v0.16+**: Dynamic model discovery with capability-based selection, llama.cpp integration (1.53x faster), 52x faster imports
-- **Updated to chuk-tool-processor v0.13+**: Now using CTP's production-grade middleware (retry, circuit breaker, rate limiting)
-- **Slimmed ToolManager**: Reduced from 2000+ lines to ~800 lines by delegating to StreamManager while keeping OAuth, filtering, and LLM adaptation
-
-### Reliability Improvements
-- **Transport Failure Detection**: Automatic tracking of consecutive transport failures with warnings and recovery suggestions
-- **Enhanced Tool Processing**: Improved MCP SDK ToolResult handling with proper content extraction from nested structures
-- **Connection Monitoring**: Built-in health checks with automatic detection of unhealthy connections
-
-### Bug Fixes
-- **Fixed cmd mode**: `--provider` and `--model` flags now work correctly in command mode (PR #188)
-- **OAuth Improvements**: Enhanced OAuth token handling and storage
-- **Pydantic Migration**: Clean migration to Pydantic for better validation and type safety
 
 ## 🔄 Architecture Overview
 
@@ -252,6 +250,7 @@ Global options available for all modes and commands:
 - `--token-backend`: Override token storage backend (`auto`, `keychain`, `windows`, `secretservice`, `encrypted`, `vault`)
 - `--verbose`: Enable detailed logging
 - `--quiet`: Suppress non-essential output
+- `--log-file`: Write debug logs to a rotating file (secrets auto-redacted)
 
 ### Environment Variables
 
@@ -1198,6 +1197,9 @@ Enable verbose logging for troubleshooting:
 ```bash
 mcp-cli --verbose chat --server sqlite
 mcp-cli --log-level DEBUG interactive --server sqlite
+
+# Write debug logs to a rotating file (secrets are automatically redacted)
+mcp-cli --log-file ~/.mcp-cli/logs/debug.log --server sqlite
 ```
 
 ## 🔒 Security Considerations
@@ -1211,6 +1213,10 @@ mcp-cli --log-level DEBUG interactive --server sqlite
 - **Multiple Storage Backends**: Choose between keychain, encrypted files, or HashiCorp Vault based on security requirements
 - **API Keys**: Only needed for cloud providers (OpenAI, Anthropic, etc.), stored securely using token management system
 - **OAuth 2.0 Support**: Secure authentication for MCP servers using PKCE and resource indicators (RFC 7636, RFC 8707)
+
+### Log Security
+- **Secret Redaction**: All log output (console and file) is automatically redacted for Bearer tokens, API keys (sk-*), OAuth access tokens, and Authorization headers
+- **Rotating File Logs**: Optional `--log-file` with JSON format, 10MB rotation, and 3 backup files
 
 ### Execution Security
 - **Tool Validation**: All tool calls are validated before execution

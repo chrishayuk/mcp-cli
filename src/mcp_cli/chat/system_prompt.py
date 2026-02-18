@@ -1,17 +1,23 @@
 # mcp_cli/chat/system_prompt.py
+from __future__ import annotations
+
 import os
 
+from mcp_cli.chat.models import ServerToolGroup
 from mcp_cli.config.defaults import (
     DEFAULT_SYSTEM_PROMPT_TOOL_PREVIEW_COUNT,
     DEFAULT_SYSTEM_PROMPT_TOOL_SUMMARY_THRESHOLD,
 )
 
 
-def _build_server_section(server_tool_groups, tool_summary_threshold=None):
+def _build_server_section(
+    server_tool_groups: list[ServerToolGroup] | None,
+    tool_summary_threshold: int | None = None,
+) -> str:
     """Build the server/tool categorization section for the system prompt.
 
     Args:
-        server_tool_groups: List of dicts with server/tool grouping.
+        server_tool_groups: Typed list of server-to-tools groupings.
         tool_summary_threshold: When a server has more tools than this,
             show only the first few and a summary count. Default from config.
     """
@@ -30,22 +36,22 @@ def _build_server_section(server_tool_groups, tool_summary_threshold=None):
         "",
     ]
     for group in server_tool_groups:
-        name = group.get("name", "unknown")
-        desc = group.get("description", "")
-        tools = group.get("tools", [])
-        if len(tools) > tool_summary_threshold:
+        if len(group.tools) > tool_summary_threshold:
             preview = DEFAULT_SYSTEM_PROMPT_TOOL_PREVIEW_COUNT
-            shown = tools[:preview]
-            tool_list = ", ".join(shown) + f" ... and {len(tools) - preview} more"
+            shown = group.tools[:preview]
+            tool_list = ", ".join(shown) + f" ... and {len(group.tools) - preview} more"
         else:
-            tool_list = ", ".join(tools)
-        lines.append(f"- **{name}** ({desc}): {tool_list}")
+            tool_list = ", ".join(group.tools)
+        lines.append(f"- **{group.name}** ({group.description}): {tool_list}")
 
     lines.append("")
     return "\n".join(lines)
 
 
-def generate_system_prompt(tools=None, server_tool_groups=None):
+def generate_system_prompt(
+    tools: list | None = None,
+    server_tool_groups: list[ServerToolGroup] | None = None,
+) -> str:
     """Generate a concise system prompt for the assistant.
 
     Note: Tool definitions are passed via the API's tools parameter,
@@ -56,8 +62,7 @@ def generate_system_prompt(tools=None, server_tool_groups=None):
 
     Args:
         tools: List of tool definitions (dicts or ToolInfo objects).
-        server_tool_groups: Optional list of dicts with server/tool grouping,
-            each containing {"name", "description", "tools"}.
+        server_tool_groups: Typed list of server-to-tools groupings.
     """
     # Check if dynamic tools mode is enabled
     dynamic_mode = os.environ.get("MCP_CLI_DYNAMIC_TOOLS") == "1"
@@ -129,7 +134,7 @@ EXAMPLES OF ASSUMPTIONS:
     return system_prompt
 
 
-def _generate_dynamic_tools_prompt(tools=None):
+def _generate_dynamic_tools_prompt(tools: list | None = None) -> str:
     """Generate system prompt for dynamic tools mode.
 
     In dynamic tools mode, the LLM has access to a tool discovery system

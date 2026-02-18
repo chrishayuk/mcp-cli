@@ -770,14 +770,13 @@ async def test_build_server_tool_groups(chat_context):
 
     assert len(groups) == 2
 
-    names = {g["name"] for g in groups}
+    names = {g.name for g in groups}
     assert names == {"srv1", "srv2"}
 
     for group in groups:
-        assert "name" in group
-        assert "description" in group
-        assert "tools" in group
-        assert len(group["tools"]) >= 1
+        assert group.name
+        assert isinstance(group.tools, list)
+        assert len(group.tools) >= 1
 
 
 @pytest.mark.asyncio
@@ -1131,15 +1130,16 @@ class TestLargeToolSetSummary:
     def test_large_tool_set_summary(self):
         """System prompt with >20 tools summarizes (shows '... and N more')."""
         from mcp_cli.chat.system_prompt import _build_server_section
+        from mcp_cli.chat.models import ServerToolGroup
 
         # Create a server group with 25 tools
         tool_names = [f"tool_{i}" for i in range(25)]
         server_groups = [
-            {
-                "name": "big_server",
-                "description": "A server with many tools",
-                "tools": tool_names,
-            }
+            ServerToolGroup(
+                name="big_server",
+                description="A server with many tools",
+                tools=tool_names,
+            )
         ]
 
         result = _build_server_section(server_groups, tool_summary_threshold=20)
@@ -1155,14 +1155,15 @@ class TestLargeToolSetSummary:
     def test_small_tool_set_no_summary(self):
         """System prompt with <= threshold tools shows all tools."""
         from mcp_cli.chat.system_prompt import _build_server_section
+        from mcp_cli.chat.models import ServerToolGroup
 
         tool_names = [f"tool_{i}" for i in range(5)]
         server_groups = [
-            {
-                "name": "small_server",
-                "description": "A server with few tools",
-                "tools": tool_names,
-            }
+            ServerToolGroup(
+                name="small_server",
+                description="A server with few tools",
+                tools=tool_names,
+            )
         ]
 
         result = _build_server_section(server_groups, tool_summary_threshold=20)
@@ -1176,17 +1177,18 @@ class TestLargeToolSetSummary:
     def test_default_threshold_from_config(self):
         """_build_server_section uses DEFAULT_SYSTEM_PROMPT_TOOL_SUMMARY_THRESHOLD by default."""
         from mcp_cli.chat.system_prompt import _build_server_section
+        from mcp_cli.chat.models import ServerToolGroup
         from mcp_cli.config.defaults import DEFAULT_SYSTEM_PROMPT_TOOL_SUMMARY_THRESHOLD
 
         # Create tools just above the default threshold
         count = DEFAULT_SYSTEM_PROMPT_TOOL_SUMMARY_THRESHOLD + 5
         tool_names = [f"tool_{i}" for i in range(count)]
         server_groups = [
-            {
-                "name": "server",
-                "description": "desc",
-                "tools": tool_names,
-            }
+            ServerToolGroup(
+                name="server",
+                description="desc",
+                tools=tool_names,
+            )
         ]
 
         result = _build_server_section(server_groups)

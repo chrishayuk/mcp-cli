@@ -154,7 +154,7 @@ wheels = [
 
 [[package]]
 name = "anthropic"
-version = "0.80.0"
+version = "0.82.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -166,9 +166,9 @@ dependencies = [
     { name = "sniffio" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7f/63/791e14ef5a8ecb485cef5b5d058c7ca3ad6c50a2f94cf4cea5231c6b7c16/anthropic-0.80.0.tar.gz", hash = "sha256:ef042586673fdcab2a6ffd381aa5f9a1bcce38ffe73c07fe70bd56d12b8124ba", size = 533291, upload-time = "2026-02-17T19:26:26.717Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6f/94/3766b5414d9e35687d518943a5b2ffb2696cd5c53248eec13fa1e8a5c73d/anthropic-0.82.0.tar.gz", hash = "sha256:e217340ba40cb9e24c88aacccc365334a6c3f46778855eca5000a6aa83d73dde", size = 533270, upload-time = "2026-02-18T20:25:16.844Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b2/4b/665f29338f51d0c2f9e04b276ea54cc1e957ae5c521a0ad868aa80abc608/anthropic-0.80.0-py3-none-any.whl", hash = "sha256:dad0e40ec371ee686e9ffb2e0cb461a0ed51447fa100927fb5d39b174c286d6f", size = 453667, upload-time = "2026-02-17T19:26:29.96Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/49/b570250e36471effbc146d22ffb111e775f11ff2d8b503b32526f25a8f23/anthropic-0.82.0-py3-none-any.whl", hash = "sha256:2525828b6798635a7a691c4c62d49bd10bbd288ab83fa4ba55851264dfa5377d", size = 456304, upload-time = "2026-02-18T20:25:18.788Z" },
 ]
 
 [[package]]
@@ -374,21 +374,21 @@ wheels = [
 
 [[package]]
 name = "chuk-ai-session-manager"
-version = "0.8.1"
+version = "0.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "chuk-sessions" },
     { name = "chuk-tool-processor" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/be/6b/7ad0b4942f576abddf1335c12657ce085aa75a5a85317e74b25d86abb98e/chuk_ai_session_manager-0.8.1.tar.gz", hash = "sha256:f8ed884613381bfd0eac2a00c506bd71c1b2fc8c29136707eee97582a1a571f9", size = 197180, upload-time = "2026-02-06T00:30:21.478Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/77/9e/034aab94d12185bf09a7f5084e444953f2f66b9093d1ea3f49a157131a0f/chuk_ai_session_manager-0.9.tar.gz", hash = "sha256:ca40967f5232a0422d141e86599ab5586d46c65d886186df95d45b253367f9cc", size = 218871, upload-time = "2026-02-18T23:25:15.586Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/16/43/c45d412ed31835b054a3daa5ac64c8058de1201264405638cbbc236c847e/chuk_ai_session_manager-0.8.1-py3-none-any.whl", hash = "sha256:984bd22cccf6b9d9165cb05f0ae31520cbb4e847d7049d38f901beebe17e1b25", size = 120031, upload-time = "2026-02-06T00:30:20.318Z" },
+    { url = "https://files.pythonhosted.org/packages/c0/c5/310126d34740ff0575c19294e0047f51c0f1b82822058288fe4fefebb162/chuk_ai_session_manager-0.9-py3-none-any.whl", hash = "sha256:666954d2cd9ca95bf1867f74ee5965c0f2ed14d75ed56791fbcfa517d25f347b", size = 132849, upload-time = "2026-02-18T23:25:14.412Z" },
 ]
 
 [[package]]
 name = "chuk-llm"
-version = "0.17.1"
+version = "0.18"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -409,9 +409,9 @@ dependencies = [
     { name = "transformers" },
     { name = "ujson" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/06/82/b547c0317e895a42d9fdc13e0e1364492d757f434b0b2195eb6daea77ea9/chuk_llm-0.17.1.tar.gz", hash = "sha256:892a8f192d409827c8155796a89de84c09101a0f828cb6bed4afac95599107af", size = 301700, upload-time = "2025-12-14T15:29:05.973Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ba/f7/0689d2c59684a9d2ff97c270cdd2cbedff17678eb02a664942753fc289e9/chuk_llm-0.18.tar.gz", hash = "sha256:2f7d3ff5a2d81896fc5685f37ea930df1ce2a20c08ad4c9c56fc86fb9ce28282", size = 304430, upload-time = "2026-02-18T16:56:58.524Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9a/cc/16bea0206c3d446a7b4c7b3e28266fa4ba5663e0e912623c188be18b3909/chuk_llm-0.17.1-py3-none-any.whl", hash = "sha256:bda7a050206f5708a27d2d7d0d24e98833d2fce029584fe29c876ea611d501f3", size = 324791, upload-time = "2025-12-14T15:29:03.493Z" },
+    { url = "https://files.pythonhosted.org/packages/77/3a/c8e0038019eca57a70c2e4a6c9486567f166701a4953a49fa9dbc5d5dfe4/chuk_llm-0.18-py3-none-any.whl", hash = "sha256:1455c84d7666c08ce65e7dec4b97a857d2943764bd30c77adce9548da7d4b3fe", size = 327986, upload-time = "2026-02-18T16:56:56.776Z" },
 ]
 
 [[package]]
@@ -430,7 +430,7 @@ wheels = [
 
 [[package]]
 name = "chuk-mcp-client-oauth"
-version = "0.3.5"
+version = "0.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
@@ -438,36 +438,36 @@ dependencies = [
     { name = "keyring", marker = "sys_platform == 'darwin' or sys_platform == 'win32'" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0f/b6/9f6a0a2dc188a8d79bbf6cf2e18e213ddef1e396c8a780888e88152af0ca/chuk_mcp_client_oauth-0.3.5.tar.gz", hash = "sha256:593f9f1110b06462d37efdf928814d0d0a860cad2ef86aae74a36e740d9f8fb1", size = 197623, upload-time = "2025-11-02T18:09:11.64Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/19/d1/beb96248f06600ab649aaa9cf160ae746f12b8668bb371b64a01978618b2/chuk_mcp_client_oauth-0.4.tar.gz", hash = "sha256:5ab1d9384d2ed802d6c4e24e755c34914046aef696a7346730756342a83b1974", size = 214738, upload-time = "2026-02-18T17:21:50.965Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/62/90/2107ba5d3528fc56b841d140e0f524e726b6a1e5936c7a8092fc6dc0a01b/chuk_mcp_client_oauth-0.3.5-py3-none-any.whl", hash = "sha256:809f90afecdc811f846e651da6c3156a7c3ac19cd881895949ecccc1a9a516f2", size = 61582, upload-time = "2025-11-02T18:09:09.936Z" },
+    { url = "https://files.pythonhosted.org/packages/92/93/b316332cb2461fcb375394f0cf4ffd8ed489ddad5fe0bb4dc04a4b07414e/chuk_mcp_client_oauth-0.4-py3-none-any.whl", hash = "sha256:aa4fe95bdb232b268c063936edd5eae5d83531261b0947cc46db613dcc5c032d", size = 65743, upload-time = "2026-02-18T17:21:49.755Z" },
 ]
 
 [[package]]
 name = "chuk-sessions"
-version = "0.6"
+version = "0.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "csrf" },
     { name = "pydantic" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e6/07/9d69646dc235b1dc11fe4583b6af2a0a85c497e1297749689cbc6322bc48/chuk_sessions-0.6.tar.gz", hash = "sha256:4c6b3893295f8748de7b4a869ea25806cd48bc3749135a292a980ccb2e5d20af", size = 40222, upload-time = "2026-01-07T16:34:49.427Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e3/88/e38bdcfe321ff5b4f2188b365a2a41e81ac4d93ecf9a656af1f7c5a8173c/chuk_sessions-0.6.1.tar.gz", hash = "sha256:38b60da2ef34df653967645c4507d1769bd5ba932daab1b019f51ff6baf65d4d", size = 43593, upload-time = "2026-02-18T12:39:16.45Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cc/0c/f39bd7906d0e12856930ecb52593931681894d961ee4859fe674113d86d5/chuk_sessions-0.6-py3-none-any.whl", hash = "sha256:5578ade0981eb795e62416fab22082bdeaa3dea0631a577239278f1b851c5ad0", size = 33040, upload-time = "2026-01-07T16:34:48.17Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/de/dd150968d5f0a410b30ccad092c646c1b2897a9e75f7f1d3844b4e0691b5/chuk_sessions-0.6.1-py3-none-any.whl", hash = "sha256:a12c5f989458c8516272f05055a77705a27f3d935d3ea3a9224c68b3da71ad7a", size = 36575, upload-time = "2026-02-18T12:39:14.966Z" },
 ]
 
 [[package]]
 name = "chuk-term"
-version = "0.3"
+version = "0.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
     { name = "rich" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/60/9d/b764eb12cee770051f232f4a72421c233b7ffcfe21d8cc45ff176a46d10e/chuk_term-0.3.tar.gz", hash = "sha256:067aa20a95aea20992cea4dcbcd94e5b04b9daa728d484aca0aa25b1f6f3b05e", size = 195821, upload-time = "2025-12-12T02:01:14.745Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/63/1b/bc7382a4280ee18c8fe8654c9d9e3622f1d8e429813c8c84740ee926d728/chuk_term-0.4.tar.gz", hash = "sha256:15e3050ec96d0fd7181571893c1567ba40b6c2d12a1a560dde2591af309d7587", size = 199469, upload-time = "2026-02-18T17:01:55.481Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e8/e7/15f3f5cfa6587f422151b92d29b9adaa560681d10f84bb66ba17ee19ab1e/chuk_term-0.3-py3-none-any.whl", hash = "sha256:1ca06b2e5f7d1cbeb27fce3ff6a1d448a8cbaa02aa6757dbc56a40eb2938f712", size = 45775, upload-time = "2025-12-12T02:01:13.492Z" },
+    { url = "https://files.pythonhosted.org/packages/54/4b/0d57297ca96dc85f123520bbd08b244b7c38e49cff2386bf6835f8a736e6/chuk_term-0.4-py3-none-any.whl", hash = "sha256:c7d1d08cf8b3609dd2075e632be4e4d7bbc363dbf91f808ab7430ed40d55ef40", size = 49872, upload-time = "2026-02-18T17:01:53.331Z" },
 ]
 
 [[package]]
@@ -1405,7 +1405,7 @@ wheels = [
 
 [[package]]
 name = "mcp-cli"
-version = "0.14"
+version = "0.15"
 source = { editable = "." }
 dependencies = [
     { name = "asyncio" },
@@ -1452,7 +1452,7 @@ dev = [
 requires-dist = [
     { name = "asyncio", specifier = ">=3.4.3" },
     { name = "asyncio", marker = "extra == 'dev'", specifier = ">=3.4.3" },
-    { name = "chuk-ai-session-manager", specifier = ">=0.8" },
+    { name = "chuk-ai-session-manager", specifier = ">=0.9" },
     { name = "chuk-llm", specifier = ">=0.17.1" },
     { name = "chuk-mcp-client-oauth", specifier = ">=0.3.5" },
     { name = "chuk-term", specifier = ">=0.3" },

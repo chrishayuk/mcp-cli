@@ -15,6 +15,13 @@ from mcp_cli.commands.base import (
     CommandResult,
     UnifiedCommand,
 )
+from mcp_cli.config.defaults import (
+    JSON_TYPE_ARRAY,
+    JSON_TYPE_BOOLEAN,
+    JSON_TYPE_NUMBER,
+    JSON_TYPE_OBJECT,
+    JSON_TYPE_STRING,
+)
 from mcp_cli.tools.manager import ToolManager
 from chuk_term.ui import output
 
@@ -505,15 +512,15 @@ Tips:
                 for prop_name, prop_info in schema["properties"].items():
                     if prop_name in schema.get("required", []):
                         prop_type = prop_info.get("type", "string")
-                        if prop_type == "string":
+                        if prop_type == JSON_TYPE_STRING:
                             example_params[prop_name] = f"<{prop_name}>"
-                        elif prop_type == "number":
+                        elif prop_type == JSON_TYPE_NUMBER:
                             example_params[prop_name] = 0
-                        elif prop_type == "boolean":
+                        elif prop_type == JSON_TYPE_BOOLEAN:
                             example_params[prop_name] = True
-                        elif prop_type == "array":
+                        elif prop_type == JSON_TYPE_ARRAY:
                             example_params[prop_name] = []
-                        elif prop_type == "object":
+                        elif prop_type == JSON_TYPE_OBJECT:
                             example_params[prop_name] = {}
 
             if example_params:

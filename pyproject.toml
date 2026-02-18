@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcp-cli"
-version = "0.14"
+version = "0.15"
 description = "A cli for the Model Context Provider"
 requires-python = ">=3.11"
 readme = "README.md"
@@ -15,7 +15,7 @@ keywords = ["llm", "openai", "claude", "mcp", "cli"]
 license = {text = "MIT"}
 dependencies = [
   "asyncio>=3.4.3",
-  "chuk-ai-session-manager>=0.8",
+  "chuk-ai-session-manager>=0.9",
   "chuk-llm>=0.17.1",
   "chuk-mcp-client-oauth>=0.3.5",
   "chuk-term>=0.3",
@@ -73,6 +73,9 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: end-to-end tests requiring external MCP servers",
+]
 
 [tool.mypy]
 python_version = "3.12"
@@ -97,6 +100,17 @@ module = [
 ignore_errors = true
 
 [tool.coverage.run]
+branch = true
 omit = [
     "src/mcp_cli/chat/__main__.py",  # legacy dead code – imports non-existent module
+]
+
+[tool.coverage.report]
+fail_under = 60
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ ==",
+    "@overload",
 ]

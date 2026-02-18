@@ -274,6 +274,8 @@ class ConfigLoader:
                     url=server_cfg["url"],
                     headers=server_cfg.get("headers", {}),
                     disabled=server_cfg.get("disabled", False),
+                    tool_timeout=server_cfg.get("tool_timeout"),
+                    init_timeout=server_cfg.get("init_timeout"),
                 )
 
                 # Use TransportType enum for comparison - no magic strings!
@@ -289,6 +291,8 @@ class ConfigLoader:
                     args=server_cfg.get("args", []),
                     env=server_cfg.get("env", {}),
                     disabled=server_cfg.get("disabled", False),
+                    tool_timeout=server_cfg.get("tool_timeout"),
+                    init_timeout=server_cfg.get("init_timeout"),
                 )
                 self.stdio_servers.append(stdio_config)
 

@@ -200,7 +200,7 @@ class ProviderListCommand(UnifiedCommand):
             table_data = []
             for provider in providers:
                 is_current = "✓" if provider.name == current_provider else ""
-                status = self._get_provider_status(provider)
+                status = await self._get_provider_status(provider)
 
                 # Get default model for display
                 default_model = provider.default_model or "-"
@@ -232,24 +232,25 @@ class ProviderListCommand(UnifiedCommand):
                 error=f"Failed to list providers: {str(e)}",
             )
 
-    def _get_provider_status(self, provider) -> "ProviderStatus":
+    async def _get_provider_status(self, provider) -> "ProviderStatus":
         """Get the status for a provider."""
+        import asyncio
+
         from mcp_cli.commands.models.provider import ProviderStatus
         from mcp_cli.config import PROVIDER_OLLAMA
 
         # Special handling for Ollama (no API key needed)
         if provider.name.lower() == PROVIDER_OLLAMA:
             try:
-                import subprocess
-
-                result = subprocess.run(
-                    ["ollama", "list"],
-                    capture_output=True,
-                    text=True,
-                    timeout=2,
+                proc = await asyncio.create_subprocess_exec(
+                    "ollama",
+                    "list",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
                 )
-                if result.returncode == 0:
-                    lines = result.stdout.strip().split("\n")
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=2)
+                if proc.returncode == 0:
+                    lines = stdout.decode().strip().split("\n")
                     model_count = len([line for line in lines[1:] if line.strip()])
                     return ProviderStatus(
                         icon="✅",

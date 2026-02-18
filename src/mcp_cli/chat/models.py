@@ -42,8 +42,13 @@ class ToolCallField(str, Enum):
     ARGUMENTS = "arguments"
 
 
-class FunctionCall(BaseModel):
-    """Function call within a tool call (OpenAI format)."""
+class FunctionCallData(BaseModel):
+    """Function call within a tool call (OpenAI format).
+
+    Mutable counterpart to chuk_llm.core.models.FunctionCall (frozen).
+    Must remain mutable because ToolCallData.merge_chunk() accumulates
+    streaming chunks by mutating name/arguments in place.
+    """
 
     name: str = Field(description="Function/tool name")
     arguments: str = Field(description="JSON string of arguments")
@@ -59,8 +64,8 @@ class FunctionCall(BaseModel):
             return {}
 
     @classmethod
-    def from_dict_args(cls, name: str, arguments: dict[str, Any]) -> "FunctionCall":
-        """Create FunctionCall from dict arguments."""
+    def from_dict_args(cls, name: str, arguments: dict[str, Any]) -> "FunctionCallData":
+        """Create FunctionCallData from dict arguments."""
         return cls(name=name, arguments=json.dumps(arguments))
 
 
@@ -69,7 +74,7 @@ class ToolCallData(BaseModel):
 
     id: str = Field(description="Tool call ID")
     type: str = Field(default="function", description="Type of tool call")
-    function: FunctionCall = Field(description="Function call data")
+    function: FunctionCallData = Field(description="Function call data")
     index: int = Field(default=0, description="Tool call index in batch")
 
     model_config = {"frozen": False}
@@ -92,7 +97,7 @@ class ToolCallData(BaseModel):
             id=data.get(ToolCallField.ID, ""),
             type=data.get(ToolCallField.TYPE, "function"),
             index=data.get(ToolCallField.INDEX, 0),
-            function=FunctionCall(
+            function=FunctionCallData(
                 name=data.get(ToolCallField.FUNCTION, {}).get(ToolCallField.NAME, ""),
                 arguments=data.get(ToolCallField.FUNCTION, {}).get(
                     ToolCallField.ARGUMENTS, ""
@@ -115,8 +120,13 @@ class ToolCallData(BaseModel):
             self.function.arguments += chunk.function.arguments
 
 
-class Message(BaseModel):
-    """A message in the conversation history."""
+class HistoryMessage(BaseModel):
+    """A message in the conversation history (dict-based tool_calls for SessionManager compat).
+
+    This is the LOCAL message model used by ChatContext/SessionManager.
+    For chuk_llm's canonical Message with typed ToolCall objects,
+    use mcp_cli.chat.response_models.Message instead.
+    """
 
     role: MessageRole = Field(
         description="Message role (user, assistant, system, tool)"
@@ -161,7 +171,7 @@ class Message(BaseModel):
         return result  # type: ignore[no-any-return]
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> Message:
+    def from_dict(cls, data: dict[str, Any]) -> "HistoryMessage":
         """Create from dict."""
         return cls.model_validate(data)  # type: ignore[no-any-return]
 
@@ -177,13 +187,17 @@ class Message(BaseModel):
         role: MessageRole,
         tool_calls: list[ToolCallData],
         content: str | None = None,
-    ) -> "Message":
+    ) -> "HistoryMessage":
         """Create a message with typed tool calls."""
         return cls(
             role=role,
             content=content,
             tool_calls=[tc.to_dict() for tc in tool_calls],
         )
+
+
+# Backward-compat alias — existing `from mcp_cli.chat.models import Message` still works
+Message = HistoryMessage
 
 
 class ToolExecutionRecord(BaseModel):
@@ -257,6 +271,30 @@ class ChatStatus(BaseModel):
         return self.model_dump(mode="json")  # type: ignore[no-any-return]
 
 
+class ServerToolGroup(BaseModel):
+    """Server-to-tools grouping for system prompt generation."""
+
+    name: str = Field(description="Server name")
+    description: str = Field(default="", description="Server description")
+    tools: list[str] = Field(default_factory=list, description="Sorted tool names")
+
+    model_config = {"frozen": True}
+
+
+class ToolCallMetadata(BaseModel):
+    """Metadata tracked per in-flight tool call during execution."""
+
+    llm_tool_name: str = Field(description="Tool name as the LLM sees it")
+    execution_tool_name: str = Field(description="Actual tool name for execution")
+    display_name: str = Field(description="Display name for UI")
+    arguments: dict[str, Any] = Field(
+        default_factory=dict, description="Resolved arguments"
+    )
+    raw_arguments: str = Field(default="", description="Raw arguments string from LLM")
+
+    model_config = {"frozen": True}
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Protocols - formalize interfaces for type safety
 # ──────────────────────────────────────────────────────────────────────────────
@@ -272,7 +310,7 @@ class ToolProcessorContext(Protocol):
 
     # Required attributes
     tool_manager: "ToolManager"
-    conversation_history: list[Message]
+    conversation_history: list[HistoryMessage]
 
     # Optional processor back-reference (set by ToolProcessor)
     tool_processor: Any  # Will be set to ToolProcessor instance
@@ -281,7 +319,7 @@ class ToolProcessorContext(Protocol):
         """Get display name for a tool (may be namespaced)."""
         ...
 
-    def inject_tool_message(self, message: Message) -> None:
+    def inject_tool_message(self, message: HistoryMessage) -> None:
         """Add a message directly to conversation history."""
         ...
 

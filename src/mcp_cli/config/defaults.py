@@ -301,3 +301,17 @@ DEFAULT_APP_TOOL_TIMEOUT = 120.0
 
 DEFAULT_APP_INIT_TIMEOUT = 30
 """Seconds before showing 'initialization timed out' in host page."""
+
+
+# ================================================================
+# Logging Defaults
+# ================================================================
+
+DEFAULT_LOG_DIR = "~/.mcp-cli/logs"
+"""Default directory for log files."""
+
+DEFAULT_LOG_MAX_BYTES = 10_485_760
+"""Max size per log file (10 MB) before rotation."""
+
+DEFAULT_LOG_BACKUP_COUNT = 3
+"""Number of rotated log files to keep."""
