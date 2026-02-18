@@ -154,7 +154,7 @@ wheels = [
 
 [[package]]
 name = "anthropic"
-version = "0.79.0"
+version = "0.80.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -166,9 +166,9 @@ dependencies = [
     { name = "sniffio" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/15/b1/91aea3f8fd180d01d133d931a167a78a3737b3fd39ccef2ae8d6619c24fd/anthropic-0.79.0.tar.gz", hash = "sha256:8707aafb3b1176ed6c13e2b1c9fb3efddce90d17aee5d8b83a86c70dcdcca871", size = 509825, upload-time = "2026-02-07T18:06:18.388Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7f/63/791e14ef5a8ecb485cef5b5d058c7ca3ad6c50a2f94cf4cea5231c6b7c16/anthropic-0.80.0.tar.gz", hash = "sha256:ef042586673fdcab2a6ffd381aa5f9a1bcce38ffe73c07fe70bd56d12b8124ba", size = 533291, upload-time = "2026-02-17T19:26:26.717Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/95/b2/cc0b8e874a18d7da50b0fda8c99e4ac123f23bf47b471827c5f6f3e4a767/anthropic-0.79.0-py3-none-any.whl", hash = "sha256:04cbd473b6bbda4ca2e41dd670fe2f829a911530f01697d0a1e37321eb75f3cf", size = 405918, upload-time = "2026-02-07T18:06:20.246Z" },
+    { url = "https://files.pythonhosted.org/packages/b2/4b/665f29338f51d0c2f9e04b276ea54cc1e957ae5c521a0ad868aa80abc608/anthropic-0.80.0-py3-none-any.whl", hash = "sha256:dad0e40ec371ee686e9ffb2e0cb461a0ed51447fa100927fb5d39b174c286d6f", size = 453667, upload-time = "2026-02-17T19:26:29.96Z" },
 ]
 
 [[package]]
@@ -728,11 +728,11 @@ sdist = { url = "https://files.pythonhosted.org/packages/0f/1e/eafcfca27a76a7674
 
 [[package]]
 name = "filelock"
-version = "3.24.1"
+version = "3.24.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/4f/8a/b24ff2c2d7f20ce930b5efe91e7260247d185d8939707721168ad204e465/filelock-3.24.1.tar.gz", hash = "sha256:3440181dd03f8904c108c8e9f5b11d1663e9fc960f1c837586a11f1c5c041e54", size = 37452, upload-time = "2026-02-15T22:03:16.564Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/02/a8/dae62680be63cbb3ff87cfa2f51cf766269514ea5488479d42fec5aa6f3a/filelock-3.24.2.tar.gz", hash = "sha256:c22803117490f156e59fafce621f0550a7a853e2bbf4f87f112b11d469b6c81b", size = 37601, upload-time = "2026-02-16T02:50:45.614Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/97/64/3613e89811e79aca8d0d4f2c984fc66336bc9d83529c1cbe02f5df010d0a/filelock-3.24.1-py3-none-any.whl", hash = "sha256:7c59f595e3cf4887dc95b403a896849da49ed183d7c9d7ee855646ca99f10698", size = 24153, upload-time = "2026-02-15T22:03:15.262Z" },
+    { url = "https://files.pythonhosted.org/packages/e7/04/a94ebfb4eaaa08db56725a40de2887e95de4e8641b9e902c311bfa00aa39/filelock-3.24.2-py3-none-any.whl", hash = "sha256:667d7dc0b7d1e1064dd5f8f8e80bdac157a6482e8d2e02cd16fd3b6b33bd6556", size = 24152, upload-time = "2026-02-16T02:50:44Z" },
 ]
 
 [[package]]
@@ -1405,7 +1405,7 @@ wheels = [
 
 [[package]]
 name = "mcp-cli"
-version = "0.13"
+version = "0.14"
 source = { editable = "." }
 dependencies = [
     { name = "asyncio" },
@@ -1494,7 +1494,7 @@ wheels = [
 
 [[package]]
 name = "mistralai"
-version = "1.12.2"
+version = "1.12.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "eval-type-backport" },
@@ -1508,9 +1508,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "typing-inspection" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/81/87/f3c4451c51462a00b09f65c5064a0baa91e4c20837dda9d9cd5e5a53d2be/mistralai-1.12.2.tar.gz", hash = "sha256:2ef7c584052e0a62ec7fefdb9a49f58f4a68c78b4f8694f67d1f2b1153c6fd39", size = 242479, upload-time = "2026-02-13T10:05:46.764Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/46/ad/3d3b17a768f641ab428bbe7c4a75283db029737778d4f56cb4a9145ba54f/mistralai-1.12.3.tar.gz", hash = "sha256:d59a788e82c16fd7d340f9f2e722ed0897fe15ccce797278b836d65fa671ef6e", size = 242961, upload-time = "2026-02-17T15:41:29Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2c/75/e19d300c515fece9b3e469d4f7ad00e4092ba688f0afb4aea73be677920a/mistralai-1.12.2-py3-none-any.whl", hash = "sha256:d5b2aea764d2e8065f166c1e10dccd3d9063ba1d8f57a1ece292b1a39b2c9099", size = 500576, upload-time = "2026-02-13T10:05:45.611Z" },
+    { url = "https://files.pythonhosted.org/packages/b5/3c/d17250578195b90b0a7f2500c4d587996c9b79470dbcfe7fb9d24feb9d1b/mistralai-1.12.3-py3-none-any.whl", hash = "sha256:e164e070011dd7759ad5d969c44359939d7d73f7fec787667317b7e81ffc5a8b", size = 502976, upload-time = "2026-02-17T15:41:30.648Z" },
 ]
 
 [[package]]
@@ -2933,7 +2933,7 @@ wheels = [
 
 [[package]]
 name = "transformers"
-version = "5.1.0"
+version = "5.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "huggingface-hub" },
@@ -2946,14 +2946,14 @@ dependencies = [
     { name = "tqdm" },
     { name = "typer-slim" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c9/1d/a7d91500a6c02ec76058bc9e65fcdec1bdb8882854dec8e4adf12d0aa8b0/transformers-5.1.0.tar.gz", hash = "sha256:c60d6180e5845ea1b4eed38d7d1b06fcc4cc341c6b7fa5c1dc767d7e25fe0139", size = 8531810, upload-time = "2026-02-05T15:41:42.932Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bd/7e/8a0c57d562015e5b16c97c1f0b8e0e92ead2c7c20513225dc12c2043ba9f/transformers-5.2.0.tar.gz", hash = "sha256:0088b8b46ccc9eff1a1dca72b5d618a5ee3b1befc3e418c9512b35dea9f9a650", size = 8618176, upload-time = "2026-02-16T18:54:02.867Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b7/66/57042d4b0f1ede8046d7ae6409bf3640df996e9cbc3fe20467aa29badc54/transformers-5.1.0-py3-none-any.whl", hash = "sha256:de534b50c9b2ce6217fc56421075a1734241fb40704fdc90f50f6a08fc533d59", size = 10276537, upload-time = "2026-02-05T15:41:40.358Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/93/79754b0ca486e556c2b95d4f5afc66aaf4b260694f3d6e1b51da2d036691/transformers-5.2.0-py3-none-any.whl", hash = "sha256:9ecaf243dc45bee11a7d93f8caf03746accc0cb069181bbf4ad8566c53e854b4", size = 10403304, upload-time = "2026-02-16T18:53:59.699Z" },
 ]
 
 [[package]]
 name = "typer"
-version = "0.23.1"
+version = "0.24.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
@@ -2961,21 +2961,21 @@ dependencies = [
     { name = "rich" },
     { name = "shellingham" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fd/07/b822e1b307d40e263e8253d2384cf98c51aa2368cc7ba9a07e523a1d964b/typer-0.23.1.tar.gz", hash = "sha256:2070374e4d31c83e7b61362fd859aa683576432fd5b026b060ad6b4cd3b86134", size = 120047, upload-time = "2026-02-13T10:04:30.984Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5a/b6/3e681d3b6bb22647509bdbfdd18055d5adc0dce5c5585359fa46ff805fdc/typer-0.24.0.tar.gz", hash = "sha256:f9373dc4eff901350694f519f783c29b6d7a110fc0dcc11b1d7e353b85ca6504", size = 118380, upload-time = "2026-02-16T22:08:48.496Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d5/91/9b286ab899c008c2cb05e8be99814807e7fbbd33f0c0c960470826e5ac82/typer-0.23.1-py3-none-any.whl", hash = "sha256:3291ad0d3c701cbf522012faccfbb29352ff16ad262db2139e6b01f15781f14e", size = 56813, upload-time = "2026-02-13T10:04:32.008Z" },
+    { url = "https://files.pythonhosted.org/packages/85/d0/4da85c2a45054bb661993c93524138ace4956cb075a7ae0c9d1deadc331b/typer-0.24.0-py3-none-any.whl", hash = "sha256:5fc435a9c8356f6160ed6e85a6301fdd6e3d8b2851da502050d1f92c5e9eddc8", size = 56441, upload-time = "2026-02-16T22:08:47.535Z" },
 ]
 
 [[package]]
 name = "typer-slim"
-version = "0.23.1"
+version = "0.24.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/da/22/b9c47b8655937b6877d40791b937931702ba9c5f9d28753199266aa96f50/typer_slim-0.23.1.tar.gz", hash = "sha256:dfe92a6317030ee2380f65bf92e540d7c77fefcc689e10d585b4925b45b5e06a", size = 4762, upload-time = "2026-02-13T10:04:26.416Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a7/a7/e6aecc4b4eb59598829a3b5076a93aff291b4fdaa2ded25efc4e1f4d219c/typer_slim-0.24.0.tar.gz", hash = "sha256:f0ed36127183f52ae6ced2ecb2521789995992c521a46083bfcdbb652d22ad34", size = 4776, upload-time = "2026-02-16T22:08:51.2Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ad/8a/5764b851659345f34787f1b6eb30b9d308bbd6c294825cbe38b6b869c97a/typer_slim-0.23.1-py3-none-any.whl", hash = "sha256:8146d5df1eb89f628191c4c604c8464fa841885d0733c58e6e700ff0228adac5", size = 3397, upload-time = "2026-02-13T10:04:27.132Z" },
+    { url = "https://files.pythonhosted.org/packages/a7/24/5480c20380dfd18cf33d14784096dca45a24eae6102e91d49a718d3b6855/typer_slim-0.24.0-py3-none-any.whl", hash = "sha256:d5d7ee1ee2834d5020c7c616ed5e0d0f29b9a4b1dd283bdebae198ec09778d0e", size = 3394, upload-time = "2026-02-16T22:08:49.92Z" },
 ]
 
 [[package]]
