@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -174,8 +174,11 @@ class TestProviderManagement:
         assert config.is_runtime is True
         assert "my-runtime" in manager._custom_providers
 
-    def test_add_runtime_provider_discovers_models(self, manager: ModelManager) -> None:
-        """Test adding a runtime provider triggers model discovery."""
+    @pytest.mark.asyncio
+    async def test_discover_runtime_provider_discovers_models(
+        self, manager: ModelManager
+    ) -> None:
+        """Test discover_runtime_provider triggers model discovery."""
         mock_result = DiscoveryResult(
             provider="my-runtime",
             api_base="http://localhost:8080",
@@ -186,9 +189,10 @@ class TestProviderManagement:
         with patch.object(
             ProviderDiscovery,
             "discover_models_from_api",
+            new_callable=AsyncMock,
             return_value=mock_result,
         ):
-            config = manager.add_runtime_provider(
+            config = await manager.discover_runtime_provider(
                 name="my-runtime",
                 api_base="http://localhost:8080",
                 api_key="test-key",
@@ -197,8 +201,11 @@ class TestProviderManagement:
         assert config.is_runtime is True
         assert "discovered-model1" in config.models
 
-    def test_add_runtime_provider_discovery_fails(self, manager: ModelManager) -> None:
-        """Test adding provider when discovery fails."""
+    @pytest.mark.asyncio
+    async def test_discover_runtime_provider_discovery_fails(
+        self, manager: ModelManager
+    ) -> None:
+        """Test discover_runtime_provider when discovery fails."""
         mock_result = DiscoveryResult(
             provider="my-runtime",
             api_base="http://localhost:8080",
@@ -208,9 +215,10 @@ class TestProviderManagement:
 
         with patch(
             "mcp_cli.model_management.model_manager.ProviderDiscovery.discover_models_from_api",
+            new_callable=AsyncMock,
             return_value=mock_result,
         ):
-            config = manager.add_runtime_provider(
+            config = await manager.discover_runtime_provider(
                 name="my-runtime",
                 api_base="http://localhost:8080",
                 api_key="test-key",
@@ -425,7 +433,8 @@ class TestRefreshModels:
                 mgr._custom_providers = {}
         return mgr
 
-    def test_refresh_models_custom_provider(self, manager: ModelManager) -> None:
+    @pytest.mark.asyncio
+    async def test_refresh_models_custom_provider(self, manager: ModelManager) -> None:
         """Test refreshing models for custom provider."""
         config = RuntimeProviderConfig(
             name="custom",
@@ -437,13 +446,15 @@ class TestRefreshModels:
 
         with patch(
             "mcp_cli.model_management.model_manager.ProviderDiscovery.refresh_provider_models",
+            new_callable=AsyncMock,
             return_value=2,
         ):
-            count = manager.refresh_models("custom")
+            count = await manager.refresh_models("custom")
 
         assert count == 2
 
-    def test_refresh_models_custom_provider_failure(
+    @pytest.mark.asyncio
+    async def test_refresh_models_custom_provider_failure(
         self, manager: ModelManager
     ) -> None:
         """Test refreshing models for custom provider when it fails."""
@@ -456,13 +467,17 @@ class TestRefreshModels:
 
         with patch(
             "mcp_cli.model_management.model_manager.ProviderDiscovery.refresh_provider_models",
+            new_callable=AsyncMock,
             return_value=None,
         ):
-            count = manager.refresh_models("custom")
+            count = await manager.refresh_models("custom")
 
         assert count == 0
 
-    def test_refresh_models_specific_provider(self, manager: ModelManager) -> None:
+    @pytest.mark.asyncio
+    async def test_refresh_models_specific_provider(
+        self, manager: ModelManager
+    ) -> None:
         """Test refreshing models for a specific provider."""
         mock_refresh = MagicMock(return_value=["func1", "func2", "func3"])
 
@@ -470,12 +485,15 @@ class TestRefreshModels:
             "chuk_llm.api.providers.refresh_provider_functions",
             mock_refresh,
         ):
-            count = manager.refresh_models("ollama")
+            count = await manager.refresh_models("ollama")
 
         assert count == 3
         mock_refresh.assert_called_once_with("ollama")
 
-    def test_refresh_models_uses_active_provider(self, manager: ModelManager) -> None:
+    @pytest.mark.asyncio
+    async def test_refresh_models_uses_active_provider(
+        self, manager: ModelManager
+    ) -> None:
         """Test refreshing models uses active provider when None."""
         manager._active_provider = "anthropic"
         mock_refresh = MagicMock(return_value=["func1", "func2"])
@@ -484,12 +502,13 @@ class TestRefreshModels:
             "chuk_llm.api.providers.refresh_provider_functions",
             mock_refresh,
         ):
-            count = manager.refresh_models(None)
+            count = await manager.refresh_models(None)
 
         assert count == 2
         mock_refresh.assert_called_once_with("anthropic")
 
-    def test_refresh_models_openai_provider(self, manager: ModelManager) -> None:
+    @pytest.mark.asyncio
+    async def test_refresh_models_openai_provider(self, manager: ModelManager) -> None:
         """Test refreshing models for openai provider."""
         mock_refresh = MagicMock(return_value=["func1"])
 
@@ -497,18 +516,19 @@ class TestRefreshModels:
             "chuk_llm.api.providers.refresh_provider_functions",
             mock_refresh,
         ):
-            count = manager.refresh_models("openai")
+            count = await manager.refresh_models("openai")
 
         assert count == 1
         mock_refresh.assert_called_once_with("openai")
 
-    def test_refresh_models_exception(self, manager: ModelManager) -> None:
+    @pytest.mark.asyncio
+    async def test_refresh_models_exception(self, manager: ModelManager) -> None:
         """Test refreshing models handles exceptions."""
         with patch(
             "chuk_llm.api.providers.refresh_provider_functions",
             side_effect=Exception("Refresh error"),
         ):
-            count = manager.refresh_models("ollama")
+            count = await manager.refresh_models("ollama")
 
         assert count == 0
 

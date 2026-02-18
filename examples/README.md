@@ -11,6 +11,7 @@ examples/
   tools/                 Tool execution and round-trip demos
   commands/              Command system and slash commands
   servers/               Server management and custom providers
+  apps/                  MCP Apps (SEP-1865) interactive UI demos
   safety/                Context safety mechanisms (Tier 1)
   sample_tools/          Reusable tool classes for demos
 ```
@@ -94,6 +95,33 @@ python examples/servers/server_management_e2e.py
 # Custom provider integration
 python examples/servers/custom_provider_working_demo.py
 ```
+
+## Apps (MCP Apps — SEP-1865)
+
+MCP Apps allow tools to declare interactive HTML UIs that render in the browser.
+The host fetches a `ui://` resource, serves it in a sandboxed iframe, and bridges
+JSON-RPC between the app and the MCP server.
+
+```bash
+# Full end-to-end demo — launches a browser with a working MCP App
+# (requires: pip install mcp-cli[apps])
+python examples/apps/apps_demo.py
+
+# _meta.ui pipeline — shows how metadata survives the tool pipeline
+# (no extra dependencies)
+python examples/apps/meta_pipeline_demo.py
+
+# Bridge protocol — demonstrates JSON-RPC message routing
+# (no extra dependencies)
+python examples/apps/bridge_protocol_demo.py
+```
+
+Demonstrates:
+1. `_meta.ui` preservation through `ToolDefinitionInput` → `ToolInfo`
+2. `AppHostServer` launching a local HTTP + WebSocket server
+3. `AppBridge` routing `tools/call`, `ui/message`, `ui/update-model-context`
+4. Host page serving a sandboxed iframe with WebSocket communication
+5. Full `ui/initialize` handshake and tool call round-trip
 
 ## Safety
 

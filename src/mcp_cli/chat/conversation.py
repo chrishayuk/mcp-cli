@@ -14,7 +14,6 @@ from __future__ import annotations
 import time
 import asyncio
 import logging
-from chuk_term.ui import output
 
 # mcp cli imports - using chuk_llm canonical models
 from mcp_cli.chat.response_models import (
@@ -130,6 +129,7 @@ class ConversationProcessor:
 
         # Reset tool state for this new prompt
         self._tool_state.reset_for_new_prompt()
+        self._consecutive_duplicate_count = 0
 
         # Advance search engine turn for session boosting
         # Tools used recently get boosted in search results
@@ -218,9 +218,6 @@ class ConversationProcessor:
                             log.warning(
                                 f"Streaming failed, falling back to regular completion: {e}"
                             )
-                            output.warning(
-                                f"Streaming failed, falling back to regular completion: {e}"
-                            )
                             completion = await self._handle_regular_completion(
                                 tools=tools_for_completion
                             )
@@ -290,9 +287,6 @@ class ConversationProcessor:
                                 log.warning(
                                     f"Discovery budget exhausted: {disc_status.reason}"
                                 )
-                                output.warning(
-                                    "⚠ Discovery budget exhausted - no more searching"
-                                )
 
                                 stop_msg = self._tool_state.format_discovery_exhausted_message()
                                 self.context.inject_assistant_message(stop_msg)
@@ -314,9 +308,6 @@ class ConversationProcessor:
                                 log.warning(
                                     f"Execution budget exhausted: {exec_status.reason}"
                                 )
-                                output.warning(
-                                    "⚠ Execution budget exhausted - no more tool calls"
-                                )
 
                                 stop_msg = self._tool_state.format_execution_exhausted_message()
                                 self.context.inject_assistant_message(stop_msg)
@@ -331,7 +322,6 @@ class ConversationProcessor:
                         runaway_status = self._tool_state.check_runaway()
                         if runaway_status.should_stop:
                             log.warning(f"Runaway detected: {runaway_status.reason}")
-                            output.warning(f"⚠ {runaway_status.message}")
 
                             # Generate appropriate stop message
                             if runaway_status.budget_exhausted:
@@ -369,8 +359,8 @@ class ConversationProcessor:
 
                         # Check if we're at max turns
                         if turn_count >= max_turns:
-                            output.warning(
-                                f"Maximum conversation turns ({max_turns}) reached. Stopping to prevent infinite loop."
+                            log.warning(
+                                f"Maximum conversation turns ({max_turns}) reached. Stopping."
                             )
                             self.context.inject_assistant_message(
                                 "I've reached the maximum number of conversation turns. The tool results have been provided above."
@@ -415,7 +405,7 @@ class ConversationProcessor:
                         if is_true_duplicate:
                             # True duplicate: same tool with same args
                             self._consecutive_duplicate_count += 1
-                            log.warning(
+                            log.debug(
                                 f"Duplicate tool call detected ({self._consecutive_duplicate_count}x): {current_sig_str[:100]}"
                             )
 
@@ -424,9 +414,9 @@ class ConversationProcessor:
                                 self._consecutive_duplicate_count
                                 >= self._max_consecutive_duplicates
                             ):
-                                output.warning(
-                                    f"Model called exact same tool {self._consecutive_duplicate_count} times in a row.\n"
-                                    "This indicates the model is stuck. Returning to prompt."
+                                log.warning(
+                                    f"Model called exact same tool {self._consecutive_duplicate_count} times in a row. "
+                                    "Returning to prompt."
                                 )
                                 # CRITICAL: Stop streaming UI before breaking
                                 if self.ui_manager.is_streaming_response:
@@ -435,11 +425,15 @@ class ConversationProcessor:
                                     self.ui_manager.streaming_handler = None
                                 break
 
+                            # First duplicate is common (model retrying) — handle
+                            # silently.  Only show info on 2nd+ consecutive duplicate.
+                            if self._consecutive_duplicate_count >= 2:
+                                tool_names_str = ", ".join(tool_names)
+                                log.info(
+                                    f"Repeated tool call: {tool_names_str}. Using cached results."
+                                )
+
                             # Inject state summary to help model use cached values
-                            tool_names_str = ", ".join(tool_names)
-                            output.info(
-                                f"Detected repeated tool call: {tool_names_str}. Using cached results and providing state summary."
-                            )
                             state_summary = self._tool_state.format_state_for_model()
                             if state_summary:
                                 state_msg = (
@@ -536,9 +530,6 @@ class ConversationProcessor:
                     raise
                 except asyncio.TimeoutError as exc:
                     log.warning(f"Timeout during conversation processing: {exc}")
-                    output.error(
-                        "Request timed out. The tool or API call took too long."
-                    )
                     self.context.inject_assistant_message(
                         "The previous request timed out. "
                         "Please try again or simplify the query."
@@ -550,7 +541,6 @@ class ConversationProcessor:
                     break
                 except (ConnectionError, OSError) as exc:
                     log.error(f"Connection error: {exc}")
-                    output.error(f"Connection error: {exc}")
                     self.context.inject_assistant_message(
                         "Lost connection to a service. "
                         "Please check connectivity and try again."
@@ -562,7 +552,6 @@ class ConversationProcessor:
                     break
                 except (ValueError, TypeError) as exc:
                     log.error(f"Configuration/validation error: {exc}", exc_info=True)
-                    output.error(f"Configuration error: {exc}")
                     if self.ui_manager.is_streaming_response:
                         await self.ui_manager.stop_streaming_response()
                     if hasattr(self.ui_manager, "streaming_handler"):
@@ -570,7 +559,6 @@ class ConversationProcessor:
                     break
                 except Exception as exc:
                     log.exception("Unexpected error during conversation processing")
-                    output.error(f"Error during conversation processing: {exc}")
                     self.context.inject_assistant_message(
                         f"I encountered an error: {exc}"
                     )
@@ -665,9 +653,6 @@ class ConversationProcessor:
             err = str(e)
             if "Invalid 'tools" in err:
                 log.error(f"Tool definition error: {err}")
-                output.warning(
-                    "Tool definitions rejected by model, retrying without tools..."
-                )
                 messages_as_dicts = self._prepare_messages_for_api(
                     self.context.conversation_history, context=self.context
                 )
@@ -743,11 +728,15 @@ class ConversationProcessor:
                 if notices:
                     notice_text = "\n".join(f"- {n}" for n in notices)
                     notice_msg = {
-                        "role": "system",
+                        "role": MessageRole.SYSTEM.value,
                         "content": ("[Context Management]\n" + notice_text),
                     }
                     # Insert after system prompt but before conversation
-                    insert_idx = 1 if dicts and dicts[0].get("role") == "system" else 0
+                    insert_idx = (
+                        1
+                        if dicts and dicts[0].get("role") == MessageRole.SYSTEM.value
+                        else 0
+                    )
                     dicts.insert(insert_idx, notice_msg)
 
         return dicts
@@ -768,16 +757,16 @@ class ConversationProcessor:
         """
         last_reasoning_idx = -1
         for i in range(len(messages) - 1, -1, -1):
-            if messages[i].get("role") == "assistant" and messages[i].get(
-                "reasoning_content"
-            ):
+            if messages[i].get("role") == MessageRole.ASSISTANT.value and messages[
+                i
+            ].get("reasoning_content"):
                 last_reasoning_idx = i
                 break
 
         for i, msg in enumerate(messages):
             if (
                 i != last_reasoning_idx
-                and msg.get("role") == "assistant"
+                and msg.get("role") == MessageRole.ASSISTANT.value
                 and "reasoning_content" in msg
             ):
                 del msg["reasoning_content"]
@@ -806,7 +795,7 @@ class ConversationProcessor:
             msg = messages[i]
             repaired.append(msg)
 
-            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+            if msg.get("role") == MessageRole.ASSISTANT.value and msg.get("tool_calls"):
                 # Collect expected tool_call_ids from this assistant message
                 expected_ids = set()
                 for tc in msg["tool_calls"]:
@@ -821,7 +810,10 @@ class ConversationProcessor:
                 # Scan following messages for matching tool results
                 j = i + 1
                 found_ids: set[str] = set()
-                while j < len(messages) and messages[j].get("role") == "tool":
+                while (
+                    j < len(messages)
+                    and messages[j].get("role") == MessageRole.TOOL.value
+                ):
                     tid = messages[j].get("tool_call_id")
                     if tid:
                         found_ids.add(tid)
@@ -833,7 +825,7 @@ class ConversationProcessor:
                     log.warning(f"Repairing orphaned tool_call_id: {mid}")
                     repaired.append(
                         {
-                            "role": "tool",
+                            "role": MessageRole.TOOL.value,
                             "tool_call_id": mid,
                             "content": "Tool call did not complete.",
                         }

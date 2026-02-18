@@ -10,10 +10,8 @@ import uuid
 from collections.abc import Callable
 from typing import Any, AsyncIterator
 
-from chuk_term.ui import output
-
 from mcp_cli.chat.system_prompt import generate_system_prompt
-from mcp_cli.chat.models import Message, MessageRole, ChatStatus
+from mcp_cli.chat.models import HistoryMessage, MessageRole, ChatStatus, ServerToolGroup
 from mcp_cli.chat.token_tracker import TokenTracker
 from mcp_cli.chat.session_store import SessionStore, SessionData, SessionMetadata
 from mcp_cli.tools.manager import ToolManager
@@ -206,9 +204,9 @@ class ChatContext:
         return self.model_manager.get_active_model()
 
     @property
-    def conversation_history(self) -> list[Message]:
+    def conversation_history(self) -> list[HistoryMessage]:
         """
-        Get conversation history as list of Message objects.
+        Get conversation history as list of HistoryMessage objects.
 
         Provides backwards compatibility while using SessionManager internally.
         Handles both regular messages and tool-related messages.
@@ -221,28 +219,30 @@ class ChatContext:
         # System prompt always included (outside the window)
         if self._system_prompt:
             messages.append(
-                Message(role=MessageRole.SYSTEM, content=self._system_prompt)
+                HistoryMessage(role=MessageRole.SYSTEM, content=self._system_prompt)
             )
 
         # Build event-based messages
-        event_messages: list[Message] = []
+        event_messages: list[HistoryMessage] = []
         if self.session._session:
             for event in self.session._session.events:
                 if event.type == EventType.MESSAGE:
                     if event.source == EventSource.USER:
                         event_messages.append(
-                            Message(role=MessageRole.USER, content=str(event.message))
+                            HistoryMessage(
+                                role=MessageRole.USER, content=str(event.message)
+                            )
                         )
                     elif event.source in (EventSource.LLM, EventSource.SYSTEM):
                         event_messages.append(
-                            Message(
+                            HistoryMessage(
                                 role=MessageRole.ASSISTANT, content=str(event.message)
                             )
                         )
                 elif event.type == EventType.TOOL_CALL:
-                    # Tool messages stored as dict - reconstruct Message
+                    # Tool messages stored as dict - reconstruct HistoryMessage
                     if isinstance(event.message, dict):
-                        event_messages.append(Message.from_dict(event.message))
+                        event_messages.append(HistoryMessage.from_dict(event.message))
 
         # Apply sliding window if configured
         if (
@@ -283,22 +283,19 @@ class ChatContext:
                 _client = self.client  # noqa: F841 — fails fast if no API key
                 logger.info(f"Provider {self.provider} client created successfully")
             except Exception as e:
-                output.print(f"[yellow]Provider validation warning: {e}[/yellow]")
-                output.print("[yellow]Chat may fail when making API calls.[/yellow]")
+                logger.warning(f"Provider validation warning: {e}")
+                logger.warning("Chat may fail when making API calls.")
 
             if not self.tools:
-                output.print(
-                    "[yellow]No tools available. Chat functionality may be limited.[/yellow]"
-                )
+                logger.warning("No tools available. Chat functionality may be limited.")
 
             logger.info(
                 f"ChatContext ready: {len(self.tools)} tools, {self.provider}/{self.model}"
             )
             return True
 
-        except Exception as exc:
+        except Exception:
             logger.exception("Error initializing chat context")
-            output.print(f"[red]Error initializing chat context: {exc}[/red]")
             return False
 
     async def _initialize_session(self) -> None:
@@ -331,7 +328,7 @@ class ChatContext:
         )
         self._system_prompt_dirty = False
 
-    def _build_server_tool_groups(self) -> list[dict[str, Any]]:
+    def _build_server_tool_groups(self) -> list[ServerToolGroup]:
         """Build server-to-tools grouping for the system prompt."""
         if not self.server_info:
             return []
@@ -346,11 +343,11 @@ class ChatContext:
             tools = server_tools.get(server.namespace, [])
             if tools:
                 groups.append(
-                    {
-                        "name": server.name,
-                        "description": server.display_description,
-                        "tools": sorted(tools),
-                    }
+                    ServerToolGroup(
+                        name=server.name,
+                        description=server.display_description,
+                        tools=sorted(tools),
+                    )
                 )
         return groups
 
@@ -477,7 +474,7 @@ class ChatContext:
         self.session._session.events.append(event)
         logger.debug(f"Injected assistant message: {content[:50]}...")
 
-    def inject_tool_message(self, message: Message) -> None:
+    def inject_tool_message(self, message: HistoryMessage) -> None:
         """
         Inject a tool-related message into conversation history.
 
@@ -677,21 +674,21 @@ class ChatContext:
                 role = msg_dict.get("role", "")
                 content = msg_dict.get("content", "")
 
-                if role == "system":
+                if role == MessageRole.SYSTEM:
                     continue  # System prompt is regenerated
-                elif role == "user":
+                elif role == MessageRole.USER:
                     event = SessionEvent(
                         event_type=EventType.USER_MESSAGE,
                         source=EventSource.USER,
                         content=content,
                     )
-                elif role == "assistant":
+                elif role == MessageRole.ASSISTANT:
                     event = SessionEvent(
                         event_type=EventType.ASSISTANT_MESSAGE,
                         source=EventSource.ASSISTANT,
                         content=content,
                     )
-                elif role == "tool":
+                elif role == MessageRole.TOOL:
                     event = SessionEvent(
                         event_type=EventType.TOOL_RESULT,
                         source=EventSource.TOOL,

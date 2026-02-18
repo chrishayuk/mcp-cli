@@ -158,7 +158,7 @@ class ModelListCommand(UnifiedCommand):
             current_model = context.model_manager.get_active_model()
 
             # Discover models for the current provider
-            model_infos = self._discover_models(current_provider, current_model)
+            model_infos = await self._discover_models(current_provider, current_model)
 
             if not model_infos:
                 output.warning(
@@ -193,17 +193,19 @@ class ModelListCommand(UnifiedCommand):
                 error=f"Failed to list models: {str(e)}",
             )
 
-    def _discover_models(self, provider: str, current_model: str) -> list["ModelInfo"]:
+    async def _discover_models(
+        self, provider: str, current_model: str
+    ) -> list["ModelInfo"]:
         """Discover available models for a provider."""
         from mcp_cli.commands.models.model import ModelInfo
         from mcp_cli.config import PROVIDER_OLLAMA
 
         # For Ollama, get actual running models from CLI
         if provider.lower() == PROVIDER_OLLAMA:
-            model_names = self._get_ollama_models()
+            model_names = await self._get_ollama_models()
         else:
             # Get models from chuk_llm (already filters out placeholders)
-            model_names = self._get_provider_models(provider)
+            model_names = await self._get_provider_models(provider)
 
         # Convert to Pydantic ModelInfo objects
         return [
@@ -215,19 +217,20 @@ class ModelListCommand(UnifiedCommand):
             for name in model_names
         ]
 
-    def _get_ollama_models(self) -> list[str]:
+    async def _get_ollama_models(self) -> list[str]:
         """Get models from Ollama CLI."""
-        import subprocess
+        import asyncio
 
         try:
-            result = subprocess.run(
-                ["ollama", "list"],
-                capture_output=True,
-                text=True,
-                timeout=5,
+            proc = await asyncio.create_subprocess_exec(
+                "ollama",
+                "list",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
-            if result.returncode == 0:
-                lines = result.stdout.strip().split("\n")
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
+            if proc.returncode == 0:
+                lines = stdout.decode().strip().split("\n")
                 models = []
                 for line in lines[1:]:  # Skip header
                     if line.strip():
@@ -239,7 +242,7 @@ class ModelListCommand(UnifiedCommand):
             pass
         return []
 
-    def _get_provider_models(self, provider: str) -> list[str]:
+    async def _get_provider_models(self, provider: str) -> list[str]:
         """Get models from chuk_llm for a provider.
 
         Tries multiple strategies:
@@ -266,7 +269,9 @@ class ModelListCommand(UnifiedCommand):
                 if not model_list and provider_info.get("has_api_key"):
                     api_base = provider_info.get("api_base")
                     if api_base:
-                        model_list = self._fetch_models_from_api(provider, api_base)
+                        model_list = await self._fetch_models_from_api(
+                            provider, api_base
+                        )
 
                 # Fall back to default_model if still empty
                 if not model_list:
@@ -279,7 +284,7 @@ class ModelListCommand(UnifiedCommand):
             pass
         return []
 
-    def _fetch_models_from_api(self, provider: str, api_base: str) -> list[str]:
+    async def _fetch_models_from_api(self, provider: str, api_base: str) -> list[str]:
         """Fetch models from provider's /models API endpoint.
 
         Works for OpenAI-compatible APIs (deepseek, openai, etc.)
@@ -297,11 +302,11 @@ class ModelListCommand(UnifiedCommand):
             # Ensure api_base ends properly for /models endpoint
             models_url = f"{api_base.rstrip('/')}/models"
 
-            resp = httpx.get(
-                models_url,
-                headers={"Authorization": f"Bearer {api_key}"},
-                timeout=5.0,
-            )
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(
+                    models_url,
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
 
             if resp.status_code == 200:
                 data = resp.json()

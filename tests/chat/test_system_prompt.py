@@ -120,19 +120,22 @@ class TestServerToolGroups:
     def test_server_groups_appear_in_prompt(self):
         """Server groups should be listed in the system prompt."""
         from mcp_cli.chat.system_prompt import generate_system_prompt
+        from mcp_cli.chat.models import ServerToolGroup
 
         groups = [
-            {
-                "name": "stac",
-                "description": "stac MCP server",
-                "tools": ["stac_search", "stac_describe"],
-            },
-            {"name": "dem", "description": "dem MCP server", "tools": ["dem_fetch"]},
-            {
-                "name": "time",
-                "description": "time MCP server",
-                "tools": ["get_current_time"],
-            },
+            ServerToolGroup(
+                name="stac",
+                description="stac MCP server",
+                tools=["stac_search", "stac_describe"],
+            ),
+            ServerToolGroup(
+                name="dem", description="dem MCP server", tools=["dem_fetch"]
+            ),
+            ServerToolGroup(
+                name="time",
+                description="time MCP server",
+                tools=["get_current_time"],
+            ),
         ]
         result = generate_system_prompt(
             tools=[{"name": "t"}] * 4, server_tool_groups=groups
@@ -148,13 +151,14 @@ class TestServerToolGroups:
     def test_server_groups_contain_all_tool_names(self):
         """Every tool name from the groups should appear in the prompt."""
         from mcp_cli.chat.system_prompt import generate_system_prompt
+        from mcp_cli.chat.models import ServerToolGroup
 
         groups = [
-            {
-                "name": "math",
-                "description": "math server",
-                "tools": ["add", "subtract", "multiply"],
-            },
+            ServerToolGroup(
+                name="math",
+                description="math server",
+                tools=["add", "subtract", "multiply"],
+            ),
         ]
         result = generate_system_prompt(
             tools=[{"name": "t"}], server_tool_groups=groups
@@ -165,9 +169,10 @@ class TestServerToolGroups:
         """Dynamic mode should not include server groups."""
         monkeypatch.setenv("MCP_CLI_DYNAMIC_TOOLS", "1")
         from mcp_cli.chat.system_prompt import generate_system_prompt
+        from mcp_cli.chat.models import ServerToolGroup
 
         groups = [
-            {"name": "time", "description": "time server", "tools": ["get_time"]},
+            ServerToolGroup(name="time", description="time server", tools=["get_time"]),
         ]
         result = generate_system_prompt(tools=[], server_tool_groups=groups)
         assert "CONNECTED SERVERS" not in result
@@ -176,9 +181,10 @@ class TestServerToolGroups:
     def test_considers_all_servers_guidance(self):
         """The prompt should tell the model to consider ALL servers."""
         from mcp_cli.chat.system_prompt import generate_system_prompt
+        from mcp_cli.chat.models import ServerToolGroup
 
         groups = [
-            {"name": "a", "description": "a server", "tools": ["tool_a"]},
+            ServerToolGroup(name="a", description="a server", tools=["tool_a"]),
         ]
         result = generate_system_prompt(
             tools=[{"name": "t"}], server_tool_groups=groups
@@ -201,13 +207,14 @@ class TestBuildServerSection:
 
     def test_single_server(self):
         from mcp_cli.chat.system_prompt import _build_server_section
+        from mcp_cli.chat.models import ServerToolGroup
 
         groups = [
-            {
-                "name": "time",
-                "description": "time MCP server",
-                "tools": ["get_time", "convert_tz"],
-            }
+            ServerToolGroup(
+                name="time",
+                description="time MCP server",
+                tools=["get_time", "convert_tz"],
+            )
         ]
         result = _build_server_section(groups)
         assert "**time** (time MCP server): get_time, convert_tz" in result

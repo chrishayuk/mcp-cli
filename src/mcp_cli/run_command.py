@@ -24,7 +24,7 @@ from rich.panel import Panel
 from chuk_term.ui import output
 
 from mcp_cli.config.defaults import DEFAULT_PROVIDER, DEFAULT_MODEL
-from mcp_cli.tools.manager import ToolManager, set_tool_manager
+from mcp_cli.tools.manager import ToolManager
 from mcp_cli.context import initialize_context
 
 if TYPE_CHECKING:
@@ -121,7 +121,7 @@ async def _init_tool_manager(
         if not servers:
             logger.info("No servers configured - continuing with empty tool manager")
             # Still record and return the manager for chat without tools
-            set_tool_manager(tm)
+
             _ALL_TM.append(tm)
             return tm
 
@@ -133,7 +133,6 @@ async def _init_tool_manager(
         finally:
             raise RuntimeError("Failed to initialise ToolManager")
 
-    set_tool_manager(tm)
     _ALL_TM.append(tm)
     return tm
 

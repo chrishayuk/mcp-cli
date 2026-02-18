@@ -5,7 +5,7 @@ import json
 
 from mcp_cli.chat.models import (
     ChatStatus,
-    FunctionCall,
+    FunctionCallData,
     Message,
     MessageField,
     MessageRole,
@@ -49,36 +49,36 @@ class TestToolCallField:
         assert ToolCallField.ARGUMENTS == "arguments"
 
 
-class TestFunctionCall:
-    """Tests for FunctionCall model."""
+class TestFunctionCallData:
+    """Tests for FunctionCallData model."""
 
     def test_create(self):
-        """Test creating a FunctionCall."""
-        fc = FunctionCall(name="sqrt", arguments='{"x": 18}')
+        """Test creating a FunctionCallData."""
+        fc = FunctionCallData(name="sqrt", arguments='{"x": 18}')
         assert fc.name == "sqrt"
         assert fc.arguments == '{"x": 18}'
 
     def test_get_arguments_dict(self):
         """Test parsing arguments to dict."""
-        fc = FunctionCall(name="sqrt", arguments='{"x": 18}')
+        fc = FunctionCallData(name="sqrt", arguments='{"x": 18}')
         args = fc.get_arguments_dict()
         assert args == {"x": 18}
 
     def test_get_arguments_dict_invalid_json(self):
         """Test get_arguments_dict with invalid JSON."""
-        fc = FunctionCall(name="sqrt", arguments="not-json")
+        fc = FunctionCallData(name="sqrt", arguments="not-json")
         args = fc.get_arguments_dict()
         assert args == {}
 
     def test_get_arguments_dict_non_dict(self):
         """Test get_arguments_dict with non-dict JSON."""
-        fc = FunctionCall(name="sqrt", arguments="[1, 2, 3]")
+        fc = FunctionCallData(name="sqrt", arguments="[1, 2, 3]")
         args = fc.get_arguments_dict()
         assert args == {}
 
     def test_from_dict_args(self):
         """Test creating from dict arguments."""
-        fc = FunctionCall.from_dict_args("sqrt", {"x": 18})
+        fc = FunctionCallData.from_dict_args("sqrt", {"x": 18})
         assert fc.name == "sqrt"
         assert json.loads(fc.arguments) == {"x": 18}
 
@@ -88,7 +88,7 @@ class TestToolCallData:
 
     def test_create(self):
         """Test creating ToolCallData."""
-        fc = FunctionCall(name="sqrt", arguments='{"x": 18}')
+        fc = FunctionCallData(name="sqrt", arguments='{"x": 18}')
         tc = ToolCallData(id="call_123", type="function", function=fc)
         assert tc.id == "call_123"
         assert tc.type == "function"
@@ -96,7 +96,7 @@ class TestToolCallData:
 
     def test_to_dict(self):
         """Test converting to dict."""
-        fc = FunctionCall(name="sqrt", arguments='{"x": 18}')
+        fc = FunctionCallData(name="sqrt", arguments='{"x": 18}')
         tc = ToolCallData(id="call_123", type="function", function=fc)
         d = tc.to_dict()
         assert d["id"] == "call_123"
@@ -128,10 +128,10 @@ class TestToolCallData:
 
     def test_merge_chunk_name(self):
         """Test merging chunk with name."""
-        fc1 = FunctionCall(name="", arguments="")
+        fc1 = FunctionCallData(name="", arguments="")
         tc1 = ToolCallData(id="call_123", function=fc1)
 
-        fc2 = FunctionCall(name="sqrt", arguments="")
+        fc2 = FunctionCallData(name="sqrt", arguments="")
         tc2 = ToolCallData(id="call_123", function=fc2)
 
         tc1.merge_chunk(tc2)
@@ -139,10 +139,10 @@ class TestToolCallData:
 
     def test_merge_chunk_arguments(self):
         """Test merging chunk with arguments."""
-        fc1 = FunctionCall(name="sqrt", arguments='{"x":')
+        fc1 = FunctionCallData(name="sqrt", arguments='{"x":')
         tc1 = ToolCallData(id="call_123", function=fc1)
 
-        fc2 = FunctionCall(name="", arguments=" 18}")
+        fc2 = FunctionCallData(name="", arguments=" 18}")
         tc2 = ToolCallData(id="call_123", function=fc2)
 
         tc1.merge_chunk(tc2)
@@ -218,7 +218,7 @@ class TestMessage:
 
     def test_with_tool_calls(self):
         """Test creating message with typed tool calls."""
-        fc = FunctionCall(name="sqrt", arguments='{"x": 18}')
+        fc = FunctionCallData(name="sqrt", arguments='{"x": 18}')
         tc = ToolCallData(id="call_1", function=fc)
 
         msg = Message.with_tool_calls(

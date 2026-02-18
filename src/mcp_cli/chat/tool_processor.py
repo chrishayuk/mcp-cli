@@ -16,12 +16,15 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
-from chuk_term.ui import output
 from chuk_tool_processor import ToolCall as CTPToolCall
 from chuk_tool_processor import ToolResult as CTPToolResult
 
 from mcp_cli.chat.response_models import Message, MessageRole, ToolCall
-from mcp_cli.chat.models import ToolProcessorContext, UIManagerProtocol
+from mcp_cli.chat.models import (
+    ToolCallMetadata,
+    ToolProcessorContext,
+    UIManagerProtocol,
+)
 from mcp_cli.config.defaults import (
     DYNAMIC_TOOL_PROXY_NAME,
     DEFAULT_MAX_CONSECUTIVE_TRANSPORT_FAILURES,
@@ -67,7 +70,7 @@ class ToolProcessor:
         self._consecutive_transport_failures = 0
 
         # Track state for callbacks
-        self._call_metadata: dict[str, dict[str, Any]] = {}
+        self._call_metadata: dict[str, ToolCallMetadata] = {}
         self._cancelled = False
 
         # Track which tool_call_ids have received results (for orphan detection)
@@ -92,7 +95,7 @@ class ToolProcessor:
             reasoning_content: Optional reasoning content from the LLM
         """
         if not tool_calls:
-            output.warning("Empty tool_calls list received.")
+            log.warning("Empty tool_calls list received.")
             return
 
         if name_mapping is None:
@@ -198,7 +201,6 @@ class ToolProcessor:
                         f"for: {', '.join(none_args)}. Please provide actual values."
                     )
                     log.warning(error_msg)
-                    output.warning(f"⚠ {error_msg}")
                     self._add_tool_result_to_history(
                         llm_tool_name,
                         call_id,
@@ -213,7 +215,6 @@ class ToolProcessor:
                     log.warning(
                         f"Missing references in {actual_tool_for_checks}: {ref_check.message}"
                     )
-                    output.warning(f"⚠ {ref_check.message}")
                     # Add error to history instead of executing
                     self._add_tool_result_to_history(
                         llm_tool_name,
@@ -258,9 +259,6 @@ class ToolProcessor:
                                 log.warning(
                                     f"Precondition failed for {actual_tool_for_checks}"
                                 )
-                                output.warning(
-                                    f"⚠ Precondition failed for {actual_tool_for_checks}"
-                                )
                                 self._add_tool_result_to_history(
                                     llm_tool_name,
                                     call_id,
@@ -274,9 +272,6 @@ class ToolProcessor:
                             }
                             log.info(
                                 f"Allowing parameterized tool {actual_tool_for_checks} with args: {display_args}"
-                            )
-                            output.info(
-                                f"→ {actual_tool_for_checks} args: {display_args}"
                             )
                             # Fall through to execution
                         else:
@@ -295,18 +290,12 @@ class ToolProcessor:
                                     f"Auto-repaired ungrounded call to {actual_tool_for_checks}: "
                                     f"{arguments} -> {repaired_args}"
                                 )
-                                output.info(
-                                    f"↻ Auto-rebound arguments for {actual_tool_for_checks}"
-                                )
                                 arguments = repaired_args
                             elif fallback_response:
                                 # Symbolic fallback - return helpful response instead of blocking
                                 # Show visible annotation for observability
                                 log.info(
                                     f"Symbolic fallback for {actual_tool_for_checks}"
-                                )
-                                output.info(
-                                    f"⏸ [analysis] required_input_missing for {actual_tool_for_checks}"
                                 )
                                 self._add_tool_result_to_history(
                                     llm_tool_name, call_id, fallback_response
@@ -333,10 +322,7 @@ class ToolProcessor:
                 )
                 if tool_state.limits.per_tool_cap > 0 and per_tool_result.blocked:
                     log.warning(
-                        f"Tool {actual_tool_for_checks} blocked by per-tool limit"
-                    )
-                    output.warning(
-                        f"⚠ Tool {actual_tool_for_checks} - {per_tool_result.reason}"
+                        f"Tool {actual_tool_for_checks} blocked by per-tool limit: {per_tool_result.reason}"
                     )
                     self._add_tool_result_to_history(
                         llm_tool_name,
@@ -349,13 +335,13 @@ class ToolProcessor:
                 resolved_arguments = tool_state.resolve_references(arguments)
 
                 # Store metadata for callbacks
-                self._call_metadata[call_id] = {
-                    "llm_tool_name": llm_tool_name,
-                    "execution_tool_name": execution_tool_name,
-                    "display_name": display_name,
-                    "arguments": resolved_arguments,  # Use resolved arguments
-                    "raw_arguments": raw_arguments,
-                }
+                self._call_metadata[call_id] = ToolCallMetadata(
+                    llm_tool_name=llm_tool_name,
+                    execution_tool_name=execution_tool_name,
+                    display_name=display_name,
+                    arguments=resolved_arguments,
+                    raw_arguments=raw_arguments,
+                )
 
                 # Create CTP ToolCall with resolved arguments
                 ctp_calls.append(
@@ -396,9 +382,9 @@ class ToolProcessor:
 
     async def _on_tool_start(self, call: CTPToolCall) -> None:
         """Callback when a tool starts execution."""
-        metadata = self._call_metadata.get(call.id, {})
-        display_name = metadata.get("display_name", call.tool)
-        arguments = metadata.get("arguments", call.arguments)
+        meta = self._call_metadata.get(call.id)
+        display_name = meta.display_name if meta else call.tool
+        arguments = meta.arguments if meta else call.arguments
 
         # For dynamic tools, enhance the display
         if call.tool == DYNAMIC_TOOL_PROXY_NAME and "tool_name" in arguments:
@@ -418,10 +404,10 @@ class ToolProcessor:
         - Tracks per-tool call counts for anti-thrash
         - Caches results for state tracking
         """
-        metadata = self._call_metadata.get(result.id, {})
-        llm_tool_name = metadata.get("llm_tool_name", result.tool)
-        execution_tool_name = metadata.get("execution_tool_name", result.tool)
-        arguments = metadata.get("arguments", {})
+        meta = self._call_metadata.get(result.id)
+        llm_tool_name = meta.llm_tool_name if meta else result.tool
+        execution_tool_name = meta.execution_tool_name if meta else result.tool
+        arguments = meta.arguments if meta else {}
 
         # For dynamic tools, extract the actual tool name for better logging/caching
         actual_tool_name = execution_tool_name
@@ -516,6 +502,49 @@ class ToolProcessor:
             )
             display_tool_call_result(display_result, self.ui_manager.console)
 
+        # Check for MCP App UI — launch in browser if available
+        if success and self.tool_manager:
+            await self._check_and_launch_app(actual_tool_name, result.result)
+
+    async def _check_and_launch_app(self, tool_name: str, result: Any) -> None:
+        """Check if a tool has an MCP Apps UI and launch it if so."""
+        if not self.tool_manager:
+            return
+
+        try:
+            tool_info = await self.tool_manager.get_tool_by_name(tool_name)
+            if not tool_info or not tool_info.has_app_ui:
+                return
+
+            resource_uri = tool_info.app_resource_uri
+            server_name = tool_info.namespace
+
+            # If app is already running, push the new result instead of re-launching
+            app_host = self.tool_manager.app_host
+            bridge = app_host.get_bridge(tool_name)
+            if bridge is not None:
+                log.info("Pushing new result to existing app %s", tool_name)
+                await bridge.push_tool_result(result)
+                log.info("Updated running MCP App for %s", tool_name)
+                return
+
+            log.info("Tool %s has MCP App UI at %s", tool_name, resource_uri)
+
+            app_info = await app_host.launch_app(
+                tool_name=tool_name,
+                resource_uri=resource_uri,
+                server_name=server_name,
+                tool_result=result,
+            )
+            log.info("MCP App opened at %s", app_info.url)
+
+        except ImportError:
+            log.warning(
+                "MCP Apps requires websockets. Install with: pip install mcp-cli[apps]"
+            )
+        except Exception as e:
+            log.error("Failed to launch MCP App for %s: %s", tool_name, e)
+
     def _track_transport_failures(self, success: bool, error: str | None) -> None:
         """Track transport failures for recovery detection."""
         if not success and error:
@@ -529,10 +558,7 @@ class ToolProcessor:
                     >= DEFAULT_MAX_CONSECUTIVE_TRANSPORT_FAILURES
                 ):
                     log.warning(
-                        f"Detected {self._consecutive_transport_failures} consecutive transport failures."
-                    )
-                    output.warning(
-                        f"Multiple transport errors detected ({self._consecutive_transport_failures}). "
+                        f"Detected {self._consecutive_transport_failures} consecutive transport failures. "
                         "The connection may need to be restarted."
                     )
             else:

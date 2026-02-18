@@ -14,6 +14,12 @@ class HTTPServerConfig(BaseModel):
     url: str
     headers: dict[str, str] = Field(default_factory=dict)
     disabled: bool = False
+    tool_timeout: float | None = Field(
+        default=None, description="Per-server tool timeout"
+    )
+    init_timeout: float | None = Field(
+        default=None, description="Per-server init timeout"
+    )
 
     model_config = {"frozen": True}
 
@@ -34,6 +40,12 @@ class STDIOServerConfig(BaseModel):
     args: list[str] = Field(default_factory=list)
     env: dict[str, str] = Field(default_factory=dict)
     disabled: bool = False
+    tool_timeout: float | None = Field(
+        default=None, description="Per-server tool timeout"
+    )
+    init_timeout: float | None = Field(
+        default=None, description="Per-server init timeout"
+    )
 
     model_config = {"frozen": True}
 
@@ -79,6 +91,12 @@ class UnifiedServerConfig(BaseModel):
 
     # Common
     disabled: bool = False
+    tool_timeout: float | None = Field(
+        default=None, description="Per-server tool timeout"
+    )
+    init_timeout: float | None = Field(
+        default=None, description="Per-server init timeout"
+    )
 
     model_config = {"frozen": True}
 
@@ -129,6 +147,8 @@ class UnifiedServerConfig(BaseModel):
             url=self.url,
             headers=self.headers or {},
             disabled=self.disabled,
+            tool_timeout=self.tool_timeout,
+            init_timeout=self.init_timeout,
         )
 
     def to_stdio_config(self) -> STDIOServerConfig:
@@ -141,6 +161,8 @@ class UnifiedServerConfig(BaseModel):
             args=self.args,
             env=self.env,
             disabled=self.disabled,
+            tool_timeout=self.tool_timeout,
+            init_timeout=self.init_timeout,
         )
 
     @property
@@ -168,6 +190,8 @@ class ServerConfigInput(BaseModel):
     headers: dict[str, str] | None = None
     oauth: dict[str, Any] | OAuthConfig | None = None
     disabled: bool = False
+    tool_timeout: float | None = None
+    init_timeout: float | None = None
 
     model_config = {"frozen": False, "extra": "ignore"}
 
@@ -190,6 +214,8 @@ class ServerConfigInput(BaseModel):
             args=self.args,
             env=self.env,
             disabled=self.disabled,
+            tool_timeout=self.tool_timeout,
+            init_timeout=self.init_timeout,
         )
 
 

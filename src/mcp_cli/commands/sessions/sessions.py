@@ -9,6 +9,7 @@ from mcp_cli.commands.base import (
     CommandParameter,
     CommandResult,
 )
+from mcp_cli.config.enums import SessionAction
 from chuk_term.ui import output, format_table
 
 
@@ -69,12 +70,12 @@ Usage:
 
         # Parse args
         args = kwargs.get("args", "").strip().split()
-        action = args[0] if args else "list"
+        action = args[0] if args else SessionAction.LIST
         session_id = args[1] if len(args) > 1 else None
 
         store = SessionStore()
 
-        if action == "list":
+        if action == SessionAction.LIST:
             sessions = store.list_sessions()
             if not sessions:
                 output.info("No saved sessions.")
@@ -99,7 +100,7 @@ Usage:
             output.print_table(table)
             return CommandResult(success=True, data=table_data)
 
-        elif action == "save":
+        elif action == SessionAction.SAVE:
             if not chat_context:
                 return CommandResult(success=False, message="No chat context.")
             if hasattr(chat_context, "save_session"):
@@ -109,7 +110,7 @@ Usage:
                     return CommandResult(success=True, message=f"Saved to {path}")
             return CommandResult(success=False, message="Failed to save session.")
 
-        elif action == "load":
+        elif action == SessionAction.LOAD:
             if not session_id:
                 return CommandResult(
                     success=False,
@@ -125,7 +126,7 @@ Usage:
                 success=False, message=f"Failed to load session: {session_id}"
             )
 
-        elif action == "delete":
+        elif action == SessionAction.DELETE:
             if not session_id:
                 return CommandResult(
                     success=False,

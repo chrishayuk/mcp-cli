@@ -9,7 +9,7 @@ from chuk_tool_processor import ToolCall as CTPToolCall
 from chuk_tool_processor import ToolInfo as RegistryToolInfo
 
 from mcp_cli.tools.filter import DisabledReason
-from mcp_cli.tools.manager import ToolManager, get_tool_manager, set_tool_manager
+from mcp_cli.tools.manager import ToolManager
 from mcp_cli.tools.models import ToolInfo
 
 
@@ -782,35 +782,6 @@ class TestToolManagerServerInfo:
         result = tm.list_prompts()
 
         assert result == []
-
-
-class TestGlobalToolManager:
-    """Test global tool manager functions."""
-
-    def test_get_tool_manager_none(self):
-        """Test get_tool_manager when not set."""
-        # Reset global
-        import mcp_cli.tools.manager as manager_module
-
-        manager_module._GLOBAL_TOOL_MANAGER = None
-
-        result = get_tool_manager()
-
-        assert result is None
-
-    def test_set_and_get_tool_manager(self):
-        """Test set_tool_manager and get_tool_manager."""
-        tm = ToolManager(config_file="test.json", servers=[])
-        set_tool_manager(tm)
-
-        result = get_tool_manager()
-
-        assert result is tm
-
-        # Cleanup
-        import mcp_cli.tools.manager as manager_module
-
-        manager_module._GLOBAL_TOOL_MANAGER = None
 
 
 class TestToolManagerGetAllToolsErrors:

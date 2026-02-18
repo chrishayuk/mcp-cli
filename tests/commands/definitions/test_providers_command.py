@@ -1,7 +1,7 @@
 """Tests for the providers command."""
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from mcp_cli.commands.providers.providers import ProviderCommand
 from mcp_cli.commands.base import CommandGroup
 
@@ -233,51 +233,58 @@ class TestProviderListCommandExtended:
             assert result.success is False
             assert "No LLM manager available" in result.error
 
-    def test_get_provider_status_ollama_running(self, command):
+    @pytest.mark.asyncio
+    async def test_get_provider_status_ollama_running(self, command):
         """Test _get_provider_status for running Ollama."""
         from mcp_cli.commands.models.provider import ProviderData
 
         provider = ProviderData(name="ollama", has_api_key=False, models=[])
 
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value.returncode = 0
-            mock_run.return_value.stdout = "NAME\nllama2\ncodellama"
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate.return_value = (b"NAME\nllama2\ncodellama", b"")
 
-            status = command._get_provider_status(provider)
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            status = await command._get_provider_status(provider)
 
             assert status.icon == "✅"
             assert "Running" in status.text
             assert "2 models" in status.text
 
-    def test_get_provider_status_ollama_not_running(self, command):
+    @pytest.mark.asyncio
+    async def test_get_provider_status_ollama_not_running(self, command):
         """Test _get_provider_status for non-running Ollama."""
         from mcp_cli.commands.models.provider import ProviderData
 
         provider = ProviderData(name="ollama", has_api_key=False, models=[])
 
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value.returncode = 1
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 1
+        mock_proc.communicate.return_value = (b"", b"")
 
-            status = command._get_provider_status(provider)
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            status = await command._get_provider_status(provider)
 
             assert status.icon == "❌"
             assert "Not running" in status.text
 
-    def test_get_provider_status_ollama_exception(self, command):
+    @pytest.mark.asyncio
+    async def test_get_provider_status_ollama_exception(self, command):
         """Test _get_provider_status when Ollama command fails."""
         from mcp_cli.commands.models.provider import ProviderData
 
         provider = ProviderData(name="ollama", has_api_key=False, models=[])
 
-        with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = Exception("Command not found")
-
-            status = command._get_provider_status(provider)
+        with patch(
+            "asyncio.create_subprocess_exec", side_effect=Exception("Command not found")
+        ):
+            status = await command._get_provider_status(provider)
 
             assert status.icon == "❌"
             assert "Not available" in status.text
 
-    def test_get_provider_status_with_api_key_and_models(self, command):
+    @pytest.mark.asyncio
+    async def test_get_provider_status_with_api_key_and_models(self, command):
         """Test _get_provider_status for provider with API key and models."""
         from mcp_cli.commands.models.provider import ProviderData
 
@@ -285,30 +292,32 @@ class TestProviderListCommandExtended:
             name="openai", has_api_key=True, models=["gpt-4", "gpt-3.5-turbo"]
         )
 
-        status = command._get_provider_status(provider)
+        status = await command._get_provider_status(provider)
 
         assert status.icon == "✅"
         assert "Configured" in status.text
         assert "2 models" in status.text
 
-    def test_get_provider_status_with_api_key_no_models(self, command):
+    @pytest.mark.asyncio
+    async def test_get_provider_status_with_api_key_no_models(self, command):
         """Test _get_provider_status for provider with API key but no models."""
         from mcp_cli.commands.models.provider import ProviderData
 
         provider = ProviderData(name="openai", has_api_key=True, models=[])
 
-        status = command._get_provider_status(provider)
+        status = await command._get_provider_status(provider)
 
         assert status.icon == "⚠️"
         assert "API key set" in status.text
 
-    def test_get_provider_status_no_api_key(self, command):
+    @pytest.mark.asyncio
+    async def test_get_provider_status_no_api_key(self, command):
         """Test _get_provider_status for provider without API key."""
         from mcp_cli.commands.models.provider import ProviderData
 
         provider = ProviderData(name="openai", has_api_key=False, models=[])
 
-        status = command._get_provider_status(provider)
+        status = await command._get_provider_status(provider)
 
         assert status.icon == "❌"
         assert "No API key" in status.text

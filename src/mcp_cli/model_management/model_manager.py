@@ -132,21 +132,57 @@ class ModelManager:
         models: list[str] | None = None,
     ) -> RuntimeProviderConfig:
         """
-        Add a provider at runtime (not persisted).
+        Add a provider at runtime (not persisted). No network I/O.
+
+        For automatic model discovery, use discover_runtime_provider() instead.
 
         Args:
             name: Provider name
             api_base: API base URL
             api_key: API key (kept in memory only)
-            models: List of available models (if None, will attempt to discover)
+            models: List of available models
 
         Returns:
             The created RuntimeProviderConfig
         """
-        # If no models provided, try to discover them from the API
+        # Create the RuntimeProviderConfig
+        config = RuntimeProviderConfig(
+            name=name,
+            api_base=api_base,
+            models=models if models else [],
+            api_key=api_key,
+            is_runtime=True,
+            default_model=None,  # Will be auto-set by model_validator
+        )
+
+        # Store the config
+        self._custom_providers[name] = config
+
+        logger.info(f"Added runtime provider: {name} with {len(config.models)} models")
+        return config
+
+    async def discover_runtime_provider(
+        self,
+        name: str,
+        api_base: str,
+        api_key: str | None = None,
+        models: list[str] | None = None,
+    ) -> RuntimeProviderConfig:
+        """
+        Add a runtime provider, discovering models from the API if needed.
+
+        Args:
+            name: Provider name
+            api_base: API base URL
+            api_key: API key (kept in memory only)
+            models: List of models (if None, will attempt to discover)
+
+        Returns:
+            The created RuntimeProviderConfig
+        """
         if not models and api_key:
             logger.info(f"Attempting to discover models from {name} at {api_base}")
-            discovery_result = ProviderDiscovery.discover_models_from_api(
+            discovery_result = await ProviderDiscovery.discover_models_from_api(
                 api_base, api_key, name
             )
 
@@ -160,21 +196,7 @@ class ModelManager:
                     f"Discovery failed for {name}: {discovery_result.error or 'No models found'}"
                 )
 
-        # Create the RuntimeProviderConfig
-        config = RuntimeProviderConfig(
-            name=name,
-            api_base=api_base,
-            models=models if models else [] or [],
-            api_key=api_key,
-            is_runtime=True,
-            default_model=None,  # Will be auto-set by model_validator
-        )
-
-        # Store the config
-        self._custom_providers[name] = config
-
-        logger.info(f"Added runtime provider: {name} with {len(config.models)} models")
-        return config
+        return self.add_runtime_provider(name, api_base, api_key, models)
 
     def is_custom_provider(self, name: str) -> bool:
         """Check if a provider is custom (either from preferences or runtime)."""
@@ -276,7 +298,7 @@ class ModelManager:
             available_models = self.get_available_models(provider)
             return available_models[0] if available_models else "default"
 
-    def refresh_models(self, provider: str | None = None) -> int:
+    async def refresh_models(self, provider: str | None = None) -> int:
         """
         Manually refresh models for a provider.
 
@@ -291,7 +313,7 @@ class ModelManager:
         # Check if it's a runtime/custom provider first
         if target_provider and target_provider in self._custom_providers:
             config = self._custom_providers[target_provider]
-            count = ProviderDiscovery.refresh_provider_models(config)
+            count = await ProviderDiscovery.refresh_provider_models(config)
             if count is not None:
                 self._client_factory.clear_cache()  # Clear cache after refresh
                 return count

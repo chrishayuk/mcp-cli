@@ -112,11 +112,92 @@ Every user-facing feature must have a working example in the `examples/` directo
 
 ---
 
-## Known Violations (Tier 4 Backlog)
+## MCP Apps (SEP-1865)
 
-Architecture review performed after Tier 2. These are tracked for remediation in Tier 4 (Code Quality).
+MCP Apps are interactive HTML UIs served by MCP servers and rendered in the user's browser via sandboxed iframes. When a tool has a `_meta.ui` annotation, mcp-cli launches a local web server that bridges the browser and the MCP backend.
+
+### Architecture
+
+```
+Browser                    Python Backend                MCP Server
+┌─────────────────┐       ┌──────────────────┐       ┌──────────────┐
+│  Host Page (JS)  │──WS──│  AppBridge        │──MCP──│  Tool Server │
+│  ┌─────────────┐ │      │  (bridge.py)      │       │              │
+│  │ App iframe  │ │      └──────────────────┘       └──────────────┘
+│  │ (sandboxed) │ │              │
+│  └─────────────┘ │      ┌──────────────────┐
+│   postMessage ↕  │      │  AppHostServer   │
+└─────────────────┘       │  (host.py)        │
+                          └──────────────────┘
+```
+
+- **`host.py`** — `AppHostServer` manages lifecycle: port allocation, HTTP serving (host page + app HTML), WebSocket server, browser launch
+- **`host_page.py`** — JavaScript host page template; bridges iframe postMessage ↔ WebSocket, handles `ui/initialize`, display modes, reconnection
+- **`bridge.py`** — `AppBridge` handles JSON-RPC protocol: proxies `tools/call` and `resources/read` to MCP servers, manages message queue for disconnected WS, formats tool results per MCP spec
+- **`models.py`** — Pydantic models: `AppInfo`, `AppState` (PENDING → INITIALIZING → READY → CLOSED), `HostContext`
+
+### Security Model
+
+- **Iframe sandbox:** `allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox`
+- **XSS prevention:** Tool names are `html.escape()`d before template injection
+- **CSP domain sanitization:** Server-supplied domains validated against `^[a-zA-Z0-9\-.:/*]+$`
+- **Tool name validation:** Bridge rejects tool names not matching `^[a-zA-Z0-9_\-./]+$`
+- **URL scheme validation:** `ui/open-link` only allows `http://` and `https://` schemes
+- **Safe JSON serialization:** `_safe_json_dumps()` with `_to_serializable()` fallback; circular reference protection
+
+### Session Reliability
+
+- **Message queue:** `_pending_notifications: deque[str]` (maxlen=50) queues notifications when WS is disconnected
+- **Drain on reconnect:** `drain_pending()` flushes queued messages when WS reconnects
+- **State reset:** `set_ws()` resets state to INITIALIZING, closes old WS
+- **Reconnect notification:** Host page sends `ui/notifications/reconnected` to app iframe on WS reconnect
+- **Exponential backoff:** WS reconnection uses 1s→30s exponential backoff with reset on success
+- **Initialization timeout:** Configurable JS timeout (default 30s) shows "initialization timed out" if app never initializes
+- **Deferred tool result delivery:** Initial tool results are stored on the bridge and pushed only after the app sends `ui/notifications/initialized`, preventing race conditions where postMessage is dropped before the app sets up its listener
+- **Duplicate prevention:** `launch_app()` closes previous instance before launching new one
+- **Push to existing:** `tool_processor.py` pushes new tool results to running apps instead of re-launching
+
+### Spec Compliance
+
+- `ui/initialize` response includes protocol version, host capabilities (with sandbox details), host info, host context
+- `ui/resource-teardown` sent to iframe on `beforeunload`
+- `ui/notifications/host-context-changed` sent after display mode changes
+- `structuredContent` recovered from JSON text blocks when transport loses it (CTP normalization)
+
+---
+
+## Two Message Classes
+
+The codebase has two classes that represent messages, serving different purposes:
+
+- **`chuk_llm.core.models.Message`** (re-exported via `chat/response_models.py`) — canonical LLM message with typed `ToolCall` objects. Used by `tool_processor.py` and `conversation.py`.
+- **`mcp_cli.chat.models.HistoryMessage`** (aliased as `Message` for backward compat) — SessionManager-compatible message with `tool_calls: list[dict]`. Used by `chat_context.py`.
+
+The roundtrip: chuk_llm Message → `to_dict()` → SessionEvent → `from_dict()` → HistoryMessage → `to_dict()` → API.
+
+## Secret Redaction
+
+`SecretRedactingFilter` in `config/logging.py` is always active on all log handlers (console and file). It redacts:
+
+- Bearer tokens (`Authorization: Bearer eyJ...`)
+- API keys (`sk-proj-...`, `sk-...`)
+- Generic `api_key=...` / `api-key: ...` values
+- OAuth access tokens in JSON (`"access_token": "..."`)
+- Authorization headers (`Authorization: Basic ...`)
+
+The filter is a module-level singleton (`secret_filter`) that can be added to custom handlers.
+
+---
+
+## Known Violations (Remaining)
+
+Architecture review performed after Tier 2. Tier 4 (Code Quality) resolved the most impactful issues. Remaining items are tracked here.
 
 ### Core/UI Separation (#5)
+
+**Resolved in Tier 4.3:** `chat/conversation.py`, `chat/tool_processor.py`, and `chat/chat_context.py` no longer import `chuk_term.ui.output`. All core logging goes through the `logging` module.
+
+**Remaining:**
 
 | File | Issue | Severity |
 |------|-------|----------|
@@ -130,15 +211,17 @@ Architecture review performed after Tier 2. These are tracked for remediation in
 | File | Issue | Severity |
 |------|-------|----------|
 | `chat/chat_context.py` | `openai_tools: list[dict]` instead of typed model | MEDIUM |
-| `chat/models.py` | `Message.tool_calls: list[dict]` instead of `list[ToolCallData]` | MEDIUM |
+| `chat/models.py` | `HistoryMessage.tool_calls: list[dict]` instead of `list[ToolCallData]` | MEDIUM — by design for SessionManager compat |
 | `chat/conversation.py` | `_validate_tool_messages()` works on raw dicts | MEDIUM — by design at serialization boundary |
 
 ### Explicit Dependencies (#7)
 
+**Resolved in Tier 4.1:** `_GLOBAL_TOOL_MANAGER` singleton removed. ToolManager is constructor-injected everywhere.
+
+**Remaining (deferred — low impact):**
+
 | File | Issue | Severity |
 |------|-------|----------|
-| `chat/tool_processor.py` | Uses `get_tool_state()`, `get_search_engine()` globals | MEDIUM |
-| `chat/conversation.py` | Uses `get_tool_state()` global | MEDIUM |
-| `chat/tool_processor.py` | Uses `get_preference_manager()` global | LOW |
-
-These are deferred to **Tier 4.1 (Replace Global Singletons)** and **Tier 4.2 (Consolidate Message Classes)**.
+| `chat/tool_processor.py` | Uses `get_tool_state()`, `get_search_engine()` globals | MEDIUM — external library singletons |
+| `chat/conversation.py` | Uses `get_tool_state()` global | MEDIUM — external library singleton |
+| `chat/tool_processor.py` | Uses `get_preference_manager()` global | LOW — 15 call sites, marginal payoff |

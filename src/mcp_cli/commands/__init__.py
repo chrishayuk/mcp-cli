@@ -105,6 +105,7 @@ def register_all_commands() -> None:
     from mcp_cli.commands.usage import UsageCommand
     from mcp_cli.commands.export import ExportCommand
     from mcp_cli.commands.sessions import SessionsCommand
+    from mcp_cli.commands.apps import AppsCommand
 
     # Register basic commands
     registry.register(HelpCommand())
@@ -144,6 +145,9 @@ def register_all_commands() -> None:
 
     # Register tool execution command for interactive mode
     registry.register(ExecuteToolCommand())
+
+    # Register MCP Apps command
+    registry.register(AppsCommand())
 
     # All commands have been migrated!
     # - tools (with subcommands: list, call, confirm)

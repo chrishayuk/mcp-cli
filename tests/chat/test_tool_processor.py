@@ -1,5 +1,6 @@
 # tests/mcp_cli/chat/test_tool_processor.py
 import json
+import logging
 import pytest
 from datetime import datetime, UTC
 
@@ -184,8 +185,8 @@ class DummyContext:
 
 
 @pytest.mark.asyncio
-async def test_process_tool_calls_empty_list(capfd):
-    # Test that an empty list of tool_calls prints a warning and does nothing.
+async def test_process_tool_calls_empty_list(caplog):
+    # Test that an empty list of tool_calls logs a warning and does nothing.
     tool_manager = DummyToolManager()
     context = DummyContext(
         stream_manager=DummyStreamManager(), tool_manager=tool_manager
@@ -193,13 +194,13 @@ async def test_process_tool_calls_empty_list(capfd):
     ui_manager = DummyUIManager()
     processor = ToolProcessor(context, ui_manager)
 
-    await processor.process_tool_calls([])
+    with caplog.at_level(logging.WARNING, logger="mcp_cli.chat.tool_processor"):
+        await processor.process_tool_calls([])
     # No tool calls processed; conversation history remains unchanged.
     assert context.conversation_history == []
 
-    # Optionally, also check that a warning was printed.
-    captured = capfd.readouterr().out
-    assert "Empty tool_calls list received." in captured
+    # Check that a warning was logged.
+    assert "Empty tool_calls list received." in caplog.text
 
 
 @pytest.mark.asyncio

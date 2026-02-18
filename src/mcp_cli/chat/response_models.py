@@ -9,18 +9,22 @@ across chuk-ai ecosystem.
 
 from __future__ import annotations
 
-from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-# Import canonical models from chuk_llm instead of redefining
+# chuk_llm's canonical models (frozen/immutable, for finalized LLM responses).
+# For SessionManager history messages, use mcp_cli.chat.models.HistoryMessage.
+# For mutable streaming function calls, use mcp_cli.chat.models.FunctionCallData.
 from chuk_llm.core.models import (
     FunctionCall,
     Message,
     MessageRole,
     ToolCall,
 )
+
+# Canonical MessageField enum lives in chat/models.py (has REASONING_CONTENT).
+from mcp_cli.chat.models import MessageField
 
 # Re-export for backwards compatibility
 __all__ = [
@@ -33,21 +37,6 @@ __all__ = [
     "convert_messages_to_models",
     "convert_messages_to_dicts",
 ]
-
-
-# ================================================================
-# Message Field Names (for serialization)
-# ================================================================
-
-
-class MessageField(str, Enum):
-    """Message field names for serialization."""
-
-    ROLE = "role"
-    CONTENT = "content"
-    TOOL_CALLS = "tool_calls"
-    TOOL_CALL_ID = "tool_call_id"
-    NAME = "name"
 
 
 # ================================================================
