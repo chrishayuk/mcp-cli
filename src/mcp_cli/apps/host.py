@@ -12,8 +12,10 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import html as html_mod
 import http
 import logging
+import re
 import webbrowser
 from typing import Any, TYPE_CHECKING
 
@@ -23,8 +25,7 @@ try:
     from websockets.http11 import Request, Response
 except ImportError:
     raise ImportError(
-        "MCP Apps support requires websockets. "
-        "Install with:  pip install mcp-cli[apps]"
+        "MCP Apps support requires websockets. Install with:  pip install mcp-cli[apps]"
     )
 
 from mcp_cli.apps.bridge import AppBridge
@@ -33,6 +34,7 @@ from mcp_cli.apps.models import AppInfo, AppState
 from mcp_cli.config.defaults import (
     DEFAULT_APP_AUTO_OPEN_BROWSER,
     DEFAULT_APP_HOST_PORT_START,
+    DEFAULT_APP_INIT_TIMEOUT,
     DEFAULT_APP_MAX_CONCURRENT,
 )
 
@@ -43,6 +45,10 @@ log = logging.getLogger(__name__)
 
 # Version injected into the host page
 _MCP_CLI_VERSION = "0.13"
+
+# Strict regex for CSP source values — reject anything that could break out
+# of an HTML attribute or inject additional directives.
+_SAFE_CSP_SOURCE = re.compile(r"^[a-zA-Z0-9\-.:/*]+$")
 
 
 class AppHostServer:
@@ -73,6 +79,11 @@ class AppHostServer:
         3. Open the user's default browser
         4. Push the initial tool result once the WebSocket connects
         """
+        # Close any previous instance of this tool's app
+        if tool_name in self._apps:
+            log.info("Closing previous instance of app %s", tool_name)
+            await self.close_app(tool_name)
+
         if len(self._apps) >= DEFAULT_APP_MAX_CONCURRENT:
             raise RuntimeError(
                 f"Maximum concurrent MCP Apps ({DEFAULT_APP_MAX_CONCURRENT}) reached"
@@ -125,8 +136,16 @@ class AppHostServer:
 
         # Open browser
         if DEFAULT_APP_AUTO_OPEN_BROWSER:
-            webbrowser.open(app_info.url)
-            log.info("Opened MCP App for %s at %s", tool_name, app_info.url)
+            try:
+                webbrowser.open(app_info.url)
+                log.info("Opened MCP App for %s at %s", tool_name, app_info.url)
+            except Exception as e:
+                log.warning(
+                    "Could not open browser for app %s at %s: %s",
+                    tool_name,
+                    app_info.url,
+                    e,
+                )
 
         return app_info
 
@@ -139,13 +158,17 @@ class AppHostServer:
 
     async def close_all(self) -> None:
         """Shut down all app servers."""
-        for server in self._servers:
+        # Mark all apps CLOSED first so active handlers see the state change
+        for app in self._apps.values():
+            app.state = AppState.CLOSED
+        servers = list(self._servers)
+        self._servers.clear()
+        for server in servers:
             try:
                 server.close()
                 await server.wait_closed()
             except Exception as e:
                 log.debug("Error cleaning up app server: %s", e)
-        self._servers.clear()
         self._apps.clear()
         self._bridges.clear()
         self._next_port = DEFAULT_APP_HOST_PORT_START
@@ -177,10 +200,18 @@ class AppHostServer:
                 "script-src 'unsafe-inline'",
                 "style-src 'unsafe-inline'",
             ]
-            connect = app_info.csp.get("connectDomains", [])
+            connect = [
+                s
+                for s in app_info.csp.get("connectDomains", [])
+                if _SAFE_CSP_SOURCE.match(s)
+            ]
             if connect:
                 csp_parts.append("connect-src " + " ".join(connect))
-            resource_domains = app_info.csp.get("resourceDomains", [])
+            resource_domains = [
+                s
+                for s in app_info.csp.get("resourceDomains", [])
+                if _SAFE_CSP_SOURCE.match(s)
+            ]
             if resource_domains:
                 domains = " ".join(resource_domains)
                 csp_parts.append(f"img-src {domains} data:")
@@ -188,11 +219,15 @@ class AppHostServer:
             csp_str = "; ".join(csp_parts)
             csp_attr = f'csp="{csp_str}"'
 
+        # Escape tool_name to prevent XSS in host page HTML
+        safe_tool_name = html_mod.escape(app_info.tool_name, quote=True)
+
         host_page = HOST_PAGE_TEMPLATE.format(
-            tool_name=app_info.tool_name,
+            tool_name=safe_tool_name,
             port=app_info.port,
             csp_attr=csp_attr,
             mcp_cli_version=_MCP_CLI_VERSION,
+            init_timeout=DEFAULT_APP_INIT_TIMEOUT,
         )
         host_page_bytes = host_page.encode("utf-8")
         app_html_bytes = app_info.html_content.encode("utf-8")
@@ -205,20 +240,24 @@ class AppHostServer:
                 return Response(
                     http.HTTPStatus.OK,
                     "OK",
-                    websockets.Headers({
-                        "Content-Type": "text/html; charset=utf-8",
-                        "Content-Length": str(len(host_page_bytes)),
-                    }),
+                    websockets.Headers(
+                        {
+                            "Content-Type": "text/html; charset=utf-8",
+                            "Content-Length": str(len(host_page_bytes)),
+                        }
+                    ),
                     host_page_bytes,
                 )
             if request.path == "/app":
                 return Response(
                     http.HTTPStatus.OK,
                     "OK",
-                    websockets.Headers({
-                        "Content-Type": "text/html; charset=utf-8",
-                        "Content-Length": str(len(app_html_bytes)),
-                    }),
+                    websockets.Headers(
+                        {
+                            "Content-Type": "text/html; charset=utf-8",
+                            "Content-Length": str(len(app_html_bytes)),
+                        }
+                    ),
                     app_html_bytes,
                 )
             if request.path != "/ws":
@@ -232,19 +271,18 @@ class AppHostServer:
             # Return None to proceed with WebSocket upgrade for /ws
             return None
 
+        # Store the initial tool result on the bridge so it is pushed
+        # only after the app sends ui/notifications/initialized.
+        if initial_tool_result is not None:
+            bridge.set_initial_tool_result(initial_tool_result)
+
         # WebSocket handler
         async def ws_handler(ws: ServerConnection) -> None:
             bridge.set_ws(ws)
-            app_info.state = AppState.INITIALIZING
             log.info("WebSocket connected for app %s", app_info.tool_name)
 
-            # Push initial tool result after a brief delay
-            if initial_tool_result is not None:
-                async def push_delayed() -> None:
-                    await asyncio.sleep(0.5)
-                    await bridge.push_tool_result(initial_tool_result)
-
-                asyncio.ensure_future(push_delayed())
+            # Drain any notifications that queued while WS was disconnected
+            await bridge.drain_pending()
 
             try:
                 async for message in ws:
@@ -267,7 +305,8 @@ class AppHostServer:
 
         log.info(
             "MCP App server started for %s on port %d",
-            app_info.tool_name, app_info.port,
+            app_info.tool_name,
+            app_info.port,
         )
 
     # ------------------------------------------------------------------ #
@@ -289,7 +328,9 @@ class AppHostServer:
                 return port
             except OSError:
                 port += 1
-        raise RuntimeError(f"Could not find available port after {max_attempts} attempts")
+        raise RuntimeError(
+            f"Could not find available port after {max_attempts} attempts"
+        )
 
     @staticmethod
     async def _fetch_http_resource(url: str) -> tuple[str, dict[str, Any]]:
@@ -302,11 +343,13 @@ class AppHostServer:
             html = resp.text
             # Wrap in a resource-like structure for CSP/permissions extraction
             resource = {
-                "contents": [{
-                    "uri": url,
-                    "mimeType": resp.headers.get("content-type", "text/html"),
-                    "text": html,
-                }]
+                "contents": [
+                    {
+                        "uri": url,
+                        "mimeType": resp.headers.get("content-type", "text/html"),
+                        "text": html,
+                    }
+                ]
             }
             return html, resource
 
@@ -322,7 +365,7 @@ class AppHostServer:
             if isinstance(first, dict):
                 text = first.get("text")
                 if text:
-                    return text
+                    return str(text)
                 blob = first.get("blob")
                 if blob:
                     return base64.b64decode(blob).decode("utf-8")
@@ -332,21 +375,27 @@ class AppHostServer:
     @staticmethod
     def _extract_csp(resource: dict[str, Any]) -> dict[str, Any] | None:
         """Extract CSP configuration from resource _meta.ui.csp."""
-        contents = resource.get("contents", resource.get("result", {}).get("contents", []))
+        contents = resource.get(
+            "contents", resource.get("result", {}).get("contents", [])
+        )
         if isinstance(contents, list) and contents:
             first = contents[0] if isinstance(contents[0], dict) else {}
             meta = first.get("_meta", {})
             ui = meta.get("ui", {})
-            return ui.get("csp")
+            csp: dict[str, Any] | None = ui.get("csp")
+            return csp
         return None
 
     @staticmethod
     def _extract_permissions(resource: dict[str, Any]) -> dict[str, Any] | None:
         """Extract permissions from resource _meta.ui.permissions."""
-        contents = resource.get("contents", resource.get("result", {}).get("contents", []))
+        contents = resource.get(
+            "contents", resource.get("result", {}).get("contents", [])
+        )
         if isinstance(contents, list) and contents:
             first = contents[0] if isinstance(contents[0], dict) else {}
             meta = first.get("_meta", {})
             ui = meta.get("ui", {})
-            return ui.get("permissions")
+            perms: dict[str, Any] | None = ui.get("permissions")
+            return perms
         return None

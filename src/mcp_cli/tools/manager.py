@@ -1204,7 +1204,7 @@ class ToolManager:
         """Read a resource by URI.
 
         Args:
-            uri: Resource URI to read (e.g. ui://tool-name/app.html)
+            uri: Resource URI to read (e.g. ui://tool-demo/chart)
             server_name: Optional server name to target
 
         Returns:
@@ -1213,39 +1213,14 @@ class ToolManager:
         if not self.stream_manager:
             return {}
 
-        # If StreamManager exposes read_resource, use it directly
-        if hasattr(self.stream_manager, "read_resource"):
-            try:
-                return await self.stream_manager.read_resource(uri, server_name)
-            except Exception as e:
-                logger.error("Error reading resource %s via StreamManager: %s", uri, e)
-                return {}
-
-        # Fallback: direct transport access
-        transports = getattr(self.stream_manager, "transports", {})
-        if not transports:
+        try:
+            result: dict[str, Any] = await self.stream_manager.read_resource(
+                uri, server_name
+            )
+            return result
+        except Exception as e:
+            logger.error("Error reading resource %s from %s: %s", uri, server_name, e)
             return {}
-
-        # Try targeted transport first
-        if server_name and server_name in transports:
-            transport = transports[server_name]
-            if hasattr(transport, "read_resource"):
-                try:
-                    return await transport.read_resource(uri)
-                except Exception as e:
-                    logger.error("Error reading resource %s from %s: %s", uri, server_name, e)
-                    return {}
-
-        # Try all transports
-        for name, transport in transports.items():
-            if hasattr(transport, "read_resource"):
-                try:
-                    result = await transport.read_resource(uri)
-                    if result:
-                        return result
-                except Exception:
-                    continue
-        return {}
 
     def list_prompts(self):
         """List available prompts from servers."""

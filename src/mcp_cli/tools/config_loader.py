@@ -58,6 +58,22 @@ class ConfigLoader:
         self.sse_servers: list[HTTPServerConfig] = []
         self.stdio_servers: list[STDIOServerConfig] = []
 
+    @staticmethod
+    def _resolve_bundled_config() -> str | None:
+        """Try to find the bundled package config as a fallback."""
+        try:
+            import importlib.resources as resources
+            from pathlib import Path
+
+            package_files = resources.files("mcp_cli")
+            bundled = package_files / "server_config.json"
+            bundled_path = str(bundled)
+            if Path(bundled_path).is_file():
+                return bundled_path
+        except (ImportError, FileNotFoundError, AttributeError, TypeError):
+            pass
+        return None
+
     def load(self) -> dict[str, Any]:
         """Load and parse MCP config file with token resolution (sync).
 
@@ -80,6 +96,18 @@ class ConfigLoader:
             return config
 
         except FileNotFoundError:
+            # Fall back to bundled package config
+            bundled = self._resolve_bundled_config()
+            if bundled:
+                logger.info("Using bundled server configuration")
+                try:
+                    with open(bundled) as f:
+                        config = cast(dict[str, Any], json.load(f))
+                    self._resolve_token_placeholders(config)
+                    self._config_cache = config
+                    return config
+                except Exception as e:
+                    logger.error(f"Error loading bundled config: {e}")
             logger.warning(f"Config file not found: {self.config_file}")
             return {}
         except json.JSONDecodeError as e:
@@ -116,6 +144,23 @@ class ConfigLoader:
             return config
 
         except FileNotFoundError:
+            # Fall back to bundled package config
+            bundled = self._resolve_bundled_config()
+            if bundled:
+                logger.info("Using bundled server configuration")
+                try:
+
+                    def _read_bundled() -> str:
+                        with open(bundled) as f:
+                            return f.read()
+
+                    content = await asyncio.to_thread(_read_bundled)
+                    config = cast(dict[str, Any], json.loads(content))
+                    self._resolve_token_placeholders(config)
+                    self._config_cache = config
+                    return config
+                except Exception as e:
+                    logger.error(f"Error loading bundled config: {e}")
             logger.warning(f"Config file not found: {self.config_file}")
             return {}
         except json.JSONDecodeError as e:

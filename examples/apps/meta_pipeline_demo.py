@@ -13,7 +13,6 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
@@ -103,11 +102,13 @@ def main() -> None:
     print()
 
     # Step 5: Show a tool without _meta
-    plain_tool = ToolDefinitionInput.model_validate({
-        "name": "get-weather",
-        "namespace": "weather",
-        "inputSchema": {"type": "object", "properties": {}},
-    })
+    plain_tool = ToolDefinitionInput.model_validate(
+        {
+            "name": "get-weather",
+            "namespace": "weather",
+            "inputSchema": {"type": "object", "properties": {}},
+        }
+    )
     plain_info = ToolInfo(
         name=plain_tool.name,
         namespace=plain_tool.namespace,

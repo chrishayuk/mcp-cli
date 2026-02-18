@@ -170,6 +170,30 @@ The missing piece: a **portable capability layer between prompts and tools**. If
 
 ---
 
+## MCP Apps (SEP-1865) ✅ COMPLETE
+
+Interactive HTML UIs served by MCP servers, rendered in sandboxed browser iframes.
+
+### Implementation
+
+- **Host/Bridge/HostPage architecture:** Local websockets server per app, iframe sandbox with postMessage ↔ WebSocket bridge
+- **Tool meta propagation:** `_meta.ui` on tool definitions triggers automatic app launch on tool call
+- **structuredContent recovery:** Extracts `structuredContent` from JSON text blocks when CTP transport discards it
+- **Security hardening:** XSS prevention (html.escape), CSP domain sanitization, tool name validation, URL scheme validation
+- **Session reliability:** Message queue with drain-on-reconnect, exponential backoff, state reset, duplicate prevention, push-to-existing-app
+- **Spec compliance:** `ui/initialize`, `ui/resource-teardown`, `ui/notifications/host-context-changed`, sandbox capabilities
+- **Robustness:** Tool execution timeout, safe JSON serialization, circular reference protection, initialization timeout
+- **Test coverage:** 96 tests across bridge, host, security, session, models, and meta propagation
+
+### Known Limitations
+
+- Map and video views depend on server-side app JavaScript (not an mcp-cli issue)
+- `ui/notifications/tool-input-partial` (streaming argument assembly) deferred to future work
+- HTTPS/TLS for remote deployment not yet implemented
+- CTP transport `_normalize_mcp_response` discards `structuredContent` — recovered via text block extraction
+
+---
+
 ## Tier 3: Performance & Polish
 
 ### 3.1 Tool Lookup Index

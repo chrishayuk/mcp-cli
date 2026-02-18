@@ -90,7 +90,8 @@ class ToolUIMeta(BaseModel):
         default=None, description="Content Security Policy domains"
     )
     permissions: dict[str, Any] | None = Field(
-        default=None, description="Requested iframe permissions (camera, microphone, etc.)"
+        default=None,
+        description="Requested iframe permissions (camera, microphone, etc.)",
     )
 
     model_config = {"frozen": False, "extra": "allow"}

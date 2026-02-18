@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from mcp_cli.apps.models import AppInfo, AppState, HostContext
 

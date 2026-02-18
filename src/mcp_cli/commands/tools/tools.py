@@ -341,9 +341,7 @@ Examples:
             return tool.namespace
 
         # Check if any tools have MCP App UIs
-        has_any_apps = any(
-            getattr(tool, "has_app_ui", False) for tool in tools
-        )
+        has_any_apps = any(getattr(tool, "has_app_ui", False) for tool in tools)
 
         table_data = []
         for tool in tools:

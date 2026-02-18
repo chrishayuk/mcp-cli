@@ -7,7 +7,14 @@ A powerful, feature-rich command-line interface for interacting with Model Conte
 
 **Default Configuration**: MCP CLI defaults to using Ollama with the `gpt-oss` reasoning model for local, privacy-focused operation without requiring API keys.
 
-## 🆕 Recent Updates (v0.12.0)
+## 🆕 Recent Updates (v0.13.0)
+
+### MCP Apps (SEP-1865)
+- **Interactive HTML UIs**: MCP servers can now serve interactive HTML applications (charts, tables, maps, markdown viewers) that render in your browser
+- **Sandboxed iframes**: Apps run in secure sandboxed iframes with CSP protection
+- **WebSocket bridge**: Real-time bidirectional communication between browser apps and MCP servers
+- **Automatic launch**: Tools with `_meta.ui` annotations automatically open in the browser when called
+- **Session reliability**: Message queuing, reconnection with exponential backoff, deferred tool result delivery
 
 ### Performance & Polish (Tier 3)
 - **O(1) Tool Lookups**: Indexed tool lookup replacing O(n) linear scans in both ToolManager and ChatContext
@@ -88,6 +95,14 @@ MCP CLI supports all providers and models from CHUK-LLM, including cutting-edge 
 - **Middleware**: Retry with exponential backoff, circuit breakers, and rate limiting via CTP
 - **Streaming Tool Calls**: Support for tools that return streaming data
 
+### MCP Apps (Interactive UIs)
+- **Browser-based UIs**: MCP servers can serve interactive HTML applications that render in your browser
+- **Automatic Detection**: Tools with `_meta.ui` annotations automatically launch browser apps on tool call
+- **Sandboxed Execution**: Apps run in secure sandboxed iframes with Content Security Policy protection
+- **WebSocket Bridge**: Real-time JSON-RPC bridge between browser apps and MCP tool servers
+- **Session Persistence**: Message queuing during disconnects, automatic reconnection, deferred tool result delivery
+- **structuredContent Support**: Full MCP spec compliance including structured content extraction and forwarding
+
 ### Advanced Configuration Management
 - **Environment Integration**: API keys and settings via environment variables
 - **File-based Config**: YAML and JSON configuration files
@@ -112,6 +127,7 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[Token Management](docs/TOKEN_MANAGEMENT.md)** - Comprehensive token management for providers and servers including OAuth, bearer tokens, and API keys
 
 ### Specialized Documentation
+- **[MCP Apps](docs/MCP_APPS.md)** - Interactive browser UIs served by MCP servers (SEP-1865)
 - **[OAuth Authentication](docs/OAUTH.md)** - OAuth flows, storage backends, and MCP server integration
 - **[Streaming Integration](docs/STREAMING.md)** - Real-time response streaming architecture
 - **[Package Management](docs/PACKAGE_MANAGEMENT.md)** - Dependency organization and feature groups
@@ -167,6 +183,9 @@ git clone https://github.com/chrishayuk/mcp-cli
 cd mcp-cli
 pip install -e "."
 mcp-cli --help
+
+# Optional: Enable MCP Apps (interactive browser UIs)
+pip install -e ".[apps]"
 ```
 
 ### Using Different Models
@@ -342,6 +361,47 @@ mcp-cli theme --list              # List all available themes
 mcp-cli token backends            # Show available storage backends
 mcp-cli --token-backend encrypted token list  # Use specific backend
 ```
+
+## 🌐 MCP Apps (Interactive Browser UIs)
+
+MCP Apps allow tool servers to provide interactive HTML UIs that render in your browser. When a tool has a `_meta.ui` annotation pointing to a UI resource, mcp-cli automatically launches a local web server and opens the app in your browser.
+
+### Prerequisites
+
+```bash
+# Install the apps extra (adds websockets dependency)
+pip install "mcp-cli[apps]"
+```
+
+### How It Works
+
+1. Connect to an MCP server that provides app-enabled tools
+2. Call a tool that has `_meta.ui` metadata (e.g., `show_chart`, `show_table`)
+3. mcp-cli automatically fetches the UI resource, starts a local server, and opens your browser
+4. The app receives tool results in real-time via WebSocket
+
+### Example
+
+```bash
+# Connect to a server with app-enabled tools
+mcp-cli --server view_demo
+
+# In chat, ask for something visual:
+> Show me the sales data as a chart
+# Browser opens automatically with an interactive chart
+
+# The /tools command shows which tools have app UIs (APP column)
+> /tools
+```
+
+### Architecture
+
+- **Host page** serves a sandboxed iframe with the app HTML
+- **WebSocket bridge** proxies JSON-RPC between the browser and MCP servers
+- **Security**: Iframe sandbox, CSP protection, XSS prevention, URL scheme validation
+- **Reliability**: Message queuing during disconnects, exponential backoff reconnection, deferred tool result delivery
+
+See [MCP Apps Documentation](docs/MCP_APPS.md) for the full guide.
 
 ## 🤖 Using Chat Mode
 
@@ -1160,6 +1220,13 @@ mcp-cli --log-level DEBUG interactive --server sqlite
 - **File Access**: Filesystem access can be disabled with `--disable-filesystem`
 - **Transport Monitoring**: Automatic detection of connection failures with warnings (v0.11+)
 
+### MCP Apps Security
+- **Iframe Sandbox**: Apps run in sandboxed iframes with restricted permissions
+- **Content Security Policy**: Server-supplied CSP domains are validated and sanitized
+- **XSS Prevention**: Tool names and user-supplied content are HTML-escaped before template injection
+- **URL Scheme Validation**: `ui/open-link` only allows `http://` and `https://` schemes
+- **Tool Name Validation**: Bridge rejects tool names not matching the MCP spec character set
+
 ## 🚀 Performance Features
 
 ### LLM Provider Performance (v0.16+)
@@ -1196,6 +1263,7 @@ Install with specific features:
 ```bash
 pip install "mcp-cli[cli]"        # Basic CLI features
 pip install "mcp-cli[cli,dev]"    # CLI with development tools
+pip install "mcp-cli[apps]"       # MCP Apps (interactive browser UIs)
 ```
 
 ## 🤝 Contributing

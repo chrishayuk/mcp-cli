@@ -520,9 +520,7 @@ class ToolProcessor:
         if success and self.tool_manager:
             await self._check_and_launch_app(actual_tool_name, result.result)
 
-    async def _check_and_launch_app(
-        self, tool_name: str, result: Any
-    ) -> None:
+    async def _check_and_launch_app(self, tool_name: str, result: Any) -> None:
         """Check if a tool has an MCP Apps UI and launch it if so."""
         if not self.tool_manager:
             return
@@ -534,12 +532,20 @@ class ToolProcessor:
 
             resource_uri = tool_info.app_resource_uri
             server_name = tool_info.namespace
-            log.info(
-                "Tool %s has MCP App UI at %s", tool_name, resource_uri
-            )
+
+            # If app is already running, push the new result instead of re-launching
+            app_host = self.tool_manager.app_host
+            bridge = app_host.get_bridge(tool_name)
+            if bridge is not None:
+                log.info("Pushing new result to existing app %s", tool_name)
+                await bridge.push_tool_result(result)
+                output.info(f"Updated running MCP App for {tool_name}")
+                return
+
+            log.info("Tool %s has MCP App UI at %s", tool_name, resource_uri)
             output.info(f"Launching MCP App for {tool_name}...")
 
-            app_info = await self.tool_manager.app_host.launch_app(
+            app_info = await app_host.launch_app(
                 tool_name=tool_name,
                 resource_uri=resource_uri,
                 server_name=server_name,

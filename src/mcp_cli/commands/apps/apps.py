@@ -99,12 +99,14 @@ Examples:
 
         table_data = []
         for tool in app_tools:
-            table_data.append({
-                "Server": tool.namespace,
-                "Tool": tool.name,
-                "UI Resource": tool.app_resource_uri or "unknown",
-                "Description": (tool.description or "")[:60],
-            })
+            table_data.append(
+                {
+                    "Server": tool.namespace,
+                    "Tool": tool.name,
+                    "UI Resource": tool.app_resource_uri or "unknown",
+                    "Description": (tool.description or "")[:60],
+                }
+            )
 
         table = format_table(
             table_data,
@@ -134,12 +136,14 @@ Examples:
 
         table_data = []
         for app in running:
-            table_data.append({
-                "Tool": app.tool_name,
-                "URL": app.url,
-                "State": app.state.value,
-                "Server": app.server_name,
-            })
+            table_data.append(
+                {
+                    "Tool": app.tool_name,
+                    "URL": app.url,
+                    "State": app.state.value,
+                    "Server": app.server_name,
+                }
+            )
 
         table = format_table(
             table_data,

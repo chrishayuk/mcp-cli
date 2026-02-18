@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, MagicMock
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from mcp_cli.apps.bridge import AppBridge
-from mcp_cli.apps.models import AppInfo, AppState
+from mcp_cli.apps.models import AppInfo
 
 
 def make_mock_tool_manager() -> MagicMock:
@@ -63,15 +63,17 @@ async def main() -> None:
 
     # ── 1. tools/call request ──
     print("  1. Handling tools/call request:")
-    request = json.dumps({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "tools/call",
-        "params": {
-            "name": "echo",
-            "arguments": {"message": "Hello from the app!"},
-        },
-    })
+    request = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "echo",
+                "arguments": {"message": "Hello from the app!"},
+            },
+        }
+    )
     print(f"     Request:  {request}")
     response = await bridge.handle_message(request)
     parsed = json.loads(response)
@@ -80,12 +82,14 @@ async def main() -> None:
 
     # ── 2. ui/message notification ──
     print("  2. Handling ui/message request:")
-    request = json.dumps({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "ui/message",
-        "params": {"content": {"text": "User selected option A"}},
-    })
+    request = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "ui/message",
+            "params": {"content": {"text": "User selected option A"}},
+        }
+    )
     response = await bridge.handle_message(request)
     parsed = json.loads(response)
     print(f"     Response: {json.dumps(parsed, indent=2)}")
@@ -93,12 +97,14 @@ async def main() -> None:
 
     # ── 3. ui/update-model-context ──
     print("  3. Handling ui/update-model-context request:")
-    request = json.dumps({
-        "jsonrpc": "2.0",
-        "id": 3,
-        "method": "ui/update-model-context",
-        "params": {"selectedItems": ["chart-1", "chart-2"]},
-    })
+    request = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "ui/update-model-context",
+            "params": {"selectedItems": ["chart-1", "chart-2"]},
+        }
+    )
     response = await bridge.handle_message(request)
     print(f"     Stored model context: {bridge.model_context}")
     print()
@@ -106,11 +112,13 @@ async def main() -> None:
     # ── 4. ui/notifications/initialized (notification, no id) ──
     print("  4. Handling ui/notifications/initialized notification:")
     print(f"     State before: {app_info.state.value}")
-    notification = json.dumps({
-        "jsonrpc": "2.0",
-        "method": "ui/notifications/initialized",
-        "params": {},
-    })
+    notification = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "method": "ui/notifications/initialized",
+            "params": {},
+        }
+    )
     response = await bridge.handle_message(notification)
     print(f"     Response: {response} (None = notification, no reply)")
     print(f"     State after: {app_info.state.value}")
@@ -118,12 +126,14 @@ async def main() -> None:
 
     # ── 5. Unknown method (request with id → error response) ──
     print("  5. Handling unknown method (error response):")
-    request = json.dumps({
-        "jsonrpc": "2.0",
-        "id": 4,
-        "method": "unknown/method",
-        "params": {},
-    })
+    request = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "unknown/method",
+            "params": {},
+        }
+    )
     response = await bridge.handle_message(request)
     parsed = json.loads(response)
     print(f"     Response: {json.dumps(parsed, indent=2)}")

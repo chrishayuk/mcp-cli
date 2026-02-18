@@ -130,6 +130,7 @@ class ConversationProcessor:
 
         # Reset tool state for this new prompt
         self._tool_state.reset_for_new_prompt()
+        self._consecutive_duplicate_count = 0
 
         # Advance search engine turn for session boosting
         # Tools used recently get boosted in search results
@@ -415,7 +416,7 @@ class ConversationProcessor:
                         if is_true_duplicate:
                             # True duplicate: same tool with same args
                             self._consecutive_duplicate_count += 1
-                            log.warning(
+                            log.debug(
                                 f"Duplicate tool call detected ({self._consecutive_duplicate_count}x): {current_sig_str[:100]}"
                             )
 
@@ -435,11 +436,15 @@ class ConversationProcessor:
                                     self.ui_manager.streaming_handler = None
                                 break
 
+                            # First duplicate is common (model retrying) — handle
+                            # silently.  Only show info on 2nd+ consecutive duplicate.
+                            if self._consecutive_duplicate_count >= 2:
+                                tool_names_str = ", ".join(tool_names)
+                                output.info(
+                                    f"Repeated tool call: {tool_names_str}. Using cached results."
+                                )
+
                             # Inject state summary to help model use cached values
-                            tool_names_str = ", ".join(tool_names)
-                            output.info(
-                                f"Detected repeated tool call: {tool_names_str}. Using cached results and providing state summary."
-                            )
                             state_summary = self._tool_state.format_state_for_model()
                             if state_summary:
                                 state_msg = (

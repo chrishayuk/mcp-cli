@@ -293,5 +293,11 @@ DEFAULT_APP_HOST_PORT_START = 9470
 DEFAULT_APP_AUTO_OPEN_BROWSER = True
 """Automatically open browser when an MCP App is launched."""
 
-DEFAULT_APP_MAX_CONCURRENT = 5
+DEFAULT_APP_MAX_CONCURRENT = 10
 """Maximum number of concurrent MCP Apps."""
+
+DEFAULT_APP_TOOL_TIMEOUT = 120.0
+"""Maximum seconds for a tool call from an MCP App."""
+
+DEFAULT_APP_INIT_TIMEOUT = 30
+"""Seconds before showing 'initialization timed out' in host page."""

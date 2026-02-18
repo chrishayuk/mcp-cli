@@ -82,11 +82,19 @@ HOST_PAGE_TEMPLATE = r"""<!DOCTYPE html>
   }}
 
   // ---- WebSocket ----
+  var reconnectDelay = 1000;
+  var MAX_RECONNECT_DELAY = 30000;
+
   function connectWs() {{
+    initialized = false;  // Reset on each connection attempt
     ws = new WebSocket(WS_URL);
 
     ws.onopen = function() {{
+      reconnectDelay = 1000;  // Reset backoff on success
       setStatus("Connected", "connected");
+      startInitTimer();  // Restart initialization timeout
+      // Notify app of reconnection so it can re-initialize if needed
+      postToApp({{ jsonrpc: "2.0", method: "ui/notifications/reconnected", params: {{}} }});
     }};
 
     ws.onmessage = function(ev) {{
@@ -110,9 +118,11 @@ HOST_PAGE_TEMPLATE = r"""<!DOCTYPE html>
     }};
 
     ws.onclose = function() {{
-      setStatus("Disconnected", "error");
-      // Attempt reconnect after 2s
-      setTimeout(connectWs, 2000);
+      setStatus("Disconnected \u2014 reconnecting\u2026", "error");
+      setTimeout(function() {{
+        reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
+        connectWs();
+      }}, reconnectDelay);
     }};
   }}
 
@@ -150,6 +160,7 @@ HOST_PAGE_TEMPLATE = r"""<!DOCTYPE html>
     switch (msg.method) {{
       case "ui/notifications/initialized":
         initialized = true;
+        clearTimeout(initTimer);
         setStatus("App ready", "connected");
         // Tell backend that app is initialized
         sendToBackend({{ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {{}} }});
@@ -183,7 +194,15 @@ HOST_PAGE_TEMPLATE = r"""<!DOCTYPE html>
         break;
 
       case "ui/open-link":
-        window.open(msg.params.url, "_blank");
+        var linkUrl = (msg.params && msg.params.url) || "";
+        if (!/^https?:\/\//i.test(linkUrl)) {{
+          postToApp({{
+            jsonrpc: "2.0", id: msg.id,
+            error: {{ code: -32602, message: "Only http/https URLs are allowed" }}
+          }});
+          break;
+        }}
+        window.open(linkUrl, "_blank");
         postToApp({{ jsonrpc: "2.0", id: msg.id, result: {{}} }});
         break;
 
@@ -207,6 +226,8 @@ HOST_PAGE_TEMPLATE = r"""<!DOCTYPE html>
           document.getElementById("app-container").style.height = "calc(100vh - 40px)";
         }}
         postToApp({{ jsonrpc: "2.0", id: msg.id, result: {{ mode: mode }} }});
+        // Notify app of context change per MCP spec
+        postToApp({{ jsonrpc: "2.0", method: "ui/notifications/host-context-changed", params: {{ displayMode: mode }} }});
         break;
 
       default:
@@ -225,7 +246,12 @@ HOST_PAGE_TEMPLATE = r"""<!DOCTYPE html>
         serverTools: {{ listChanged: false }},
         serverResources: {{ listChanged: false }},
         logging: {{}},
-        sandbox: {{}}
+        sandbox: {{
+          allowScripts: true,
+          allowForms: true,
+          allowSameOrigin: true,
+          allowPopups: true
+        }}
       }},
       hostInfo: {{ name: "mcp-cli", version: "{mcp_cli_version}" }},
       hostContext: {{
@@ -242,8 +268,30 @@ HOST_PAGE_TEMPLATE = r"""<!DOCTYPE html>
     postToApp({{ jsonrpc: "2.0", id: msg.id, result: result }});
   }}
 
+  // ---- Teardown ----
+  window.addEventListener("beforeunload", function() {{
+    // Notify the app of resource teardown per MCP spec
+    postToApp({{ jsonrpc: "2.0", method: "ui/resource-teardown", params: {{}} }});
+    // Notify the backend
+    sendToBackend({{ jsonrpc: "2.0", method: "ui/notifications/teardown", params: {{}} }});
+  }});
+
+  // ---- Initialization timeout ----
+  var INIT_TIMEOUT = {init_timeout} * 1000;
+  var initTimer = null;
+
+  function startInitTimer() {{
+    clearTimeout(initTimer);
+    initTimer = setTimeout(function() {{
+      if (!initialized) {{
+        setStatus("App initialization timed out", "error");
+      }}
+    }}, INIT_TIMEOUT);
+  }}
+
   // ---- Boot ----
   connectWs();
+  startInitTimer();
 
 }})();
 </script>

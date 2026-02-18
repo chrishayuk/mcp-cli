@@ -215,12 +215,15 @@ SAMPLE_APP_HTML = r"""<!DOCTYPE html>
 
 # ── Mock tool manager ────────────────────────────────────────────────────
 
+
 def make_mock_tool_manager() -> MagicMock:
     """Create a mock ToolManager that simulates tool execution."""
     tm = MagicMock()
 
     # Simulate read_resource returning our sample HTML
-    async def mock_read_resource(uri: str, server_name: str | None = None) -> dict[str, Any]:
+    async def mock_read_resource(
+        uri: str, server_name: str | None = None
+    ) -> dict[str, Any]:
         return {
             "contents": [
                 {
@@ -263,6 +266,7 @@ def make_mock_tool_manager() -> MagicMock:
 
 
 # ── Main ─────────────────────────────────────────────────────────────────
+
 
 async def main() -> None:
     from mcp_cli.apps.host import AppHostServer

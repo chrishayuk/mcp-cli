@@ -35,6 +35,36 @@
     },
     "weather": {
       "url": "https://weather.chukai.io/mcp"
+    },
+    "math": {
+      "url": "https://math.chukai.io/mcp"
+    },
+    "celestial": {
+      "url": "https://celestial.chukai.io/mcp"
+    },
+    "time": {
+      "url": "https://time.chukai.io/mcp"
+    },
+    "physics": {
+      "url": "https://physics.chukai.io/mcp"
+    },
+    "powerpoint": {
+      "url": "https://powerpoint.chukai.io/mcp"
+    },
+    "motion": {
+      "url": "https://motion.chukai.io/mcp"
+    },
+    "maritime": {
+      "url": "https://maritime-archives.chukai.io/mcp"
+    },
+    "geocoder": {
+      "url": "https://geocoder.chukai.io/mcp"
+    },
+    "her": {
+      "url": "https://her.chukai.io/mcp"
+    },
+    "view_demo": {
+      "url": "https://mcp-view-demo.fly.dev/mcp"
     }
   }
 }
