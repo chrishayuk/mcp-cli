@@ -42,6 +42,9 @@ DEFAULT_HTTP_CONNECT_TIMEOUT = 10.0
 DISCOVERY_TIMEOUT = 10.0
 """Provider discovery HTTP timeout."""
 
+DEFAULT_PROVIDER_DISCOVERY_TIMEOUT = 5.0
+"""Timeout for provider/model discovery HTTP requests and subprocess calls."""
+
 REFRESH_TIMEOUT = 1.0
 """Display refresh timeout."""
 
@@ -203,6 +206,15 @@ DEFAULT_TOKEN_BACKEND = "auto"
 # Path Defaults
 # ================================================================
 
+DEFAULT_CONFIG_DIR = "~/.mcp-cli"
+"""Default root config directory for mcp-cli."""
+
+DEFAULT_SESSIONS_DIR = "~/.mcp-cli/sessions"
+"""Default directory for saved conversation sessions."""
+
+DEFAULT_DOWNLOADS_DIR = "~/.mcp-cli/downloads"
+"""Default directory for downloaded files (e.g., VM page exports)."""
+
 DEFAULT_CONFIG_FILENAME = "server_config.json"
 """Default configuration filename."""
 
@@ -315,6 +327,20 @@ DEFAULT_APP_TOOL_TIMEOUT = 120.0
 
 DEFAULT_APP_INIT_TIMEOUT = 30
 """Seconds before showing 'initialization timed out' in host page."""
+
+
+# ================================================================
+# Memory Scope Defaults (Tier 8)
+# ================================================================
+
+DEFAULT_MEMORY_BASE_DIR = "~/.mcp-cli/memory"
+"""Default directory for persistent memory storage."""
+
+DEFAULT_MEMORY_MAX_ENTRIES_PER_SCOPE = 100
+"""Maximum number of memory entries per scope before oldest is evicted."""
+
+DEFAULT_MEMORY_MAX_PROMPT_CHARS = 2000
+"""Maximum characters for memory section in system prompt."""
 
 
 # ================================================================

@@ -5,7 +5,10 @@ Unified memory command — visualize AI Virtual Memory state.
 
 from __future__ import annotations
 
+import base64
 import json
+import logging
+from pathlib import Path
 from typing import Any
 
 from mcp_cli.commands.base import (
@@ -15,10 +18,13 @@ from mcp_cli.commands.base import (
     CommandResult,
 )
 from chuk_term.ui import output, format_table
+from mcp_cli.config.defaults import DEFAULT_DOWNLOADS_DIR
+
+log = logging.getLogger(__name__)
 
 
 class MemoryCommand(UnifiedCommand):
-    """View AI virtual memory state."""
+    """View AI virtual memory state and manage persistent memories."""
 
     @property
     def name(self) -> str:
@@ -30,26 +36,34 @@ class MemoryCommand(UnifiedCommand):
 
     @property
     def description(self) -> str:
-        return "View AI virtual memory state"
+        return "View AI virtual memory state and manage persistent memories"
 
     @property
     def help_text(self) -> str:
         return """
-View AI virtual memory state (requires --vm flag).
+View AI virtual memory state and manage persistent memories.
 
-Usage:
+VM Subcommands (requires --vm flag):
   /memory             - Summary dashboard (mode, pages, utilization, metrics)
   /memory pages       - Table of all memory pages
   /memory page <id>   - Detailed view of a specific page
+  /memory page <id> --download  - Download page content to file
   /memory stats       - Full debug dump of all VM subsystem stats
+
+Persistent Memory Subcommands:
+  /memory list [workspace|global]  - List persistent memories
+  /memory add <scope> <key> <content> - Add a memory
+  /memory remove <scope> <key>     - Remove a memory
+  /memory clear <scope>            - Clear all memories in a scope
 
 Aliases: /vm, /mem
 
 Examples:
   /vm                 - Quick overview of VM state
-  /vm pages           - See all pages with tier/type/tokens
-  /vm page msg_abc123 - Inspect a specific page
-  /vm stats           - Full diagnostic dump
+  /memory list workspace  - List workspace memories
+  /memory add global test_framework "always use pytest"
+  /memory remove workspace db_type
+  /memory clear global
 """
 
     @property
@@ -76,22 +90,41 @@ Examples:
                 error="Memory command requires chat context.",
             )
 
-        # Check VM is enabled
+        # Parse action from args
+        action = self._parse_action(kwargs)
+
+        # Dispatch persistent memory subcommands first
+        if action is not None:
+            if action.startswith("list"):
+                return self._persistent_list(chat_context, action)
+            if action.startswith("add "):
+                return self._persistent_add(chat_context, action)
+            if action.startswith("remove "):
+                return self._persistent_remove(chat_context, action)
+            if action.startswith("clear "):
+                return self._persistent_clear(chat_context, action)
+
+        # VM subcommands — require VM enabled
         session = getattr(chat_context, "session", None)
         vm = getattr(session, "vm", None) if session else None
         if not vm:
+            # If no VM and no persistent memory action, show persistent list
+            store = getattr(chat_context, "memory_store", None)
+            if store:
+                return self._persistent_list(chat_context, "list")
             return CommandResult(
                 success=False,
-                error="VM not enabled. Start with --vm flag.",
+                error="VM not enabled. Use /memory list|add|remove|clear for persistent memories.",
             )
-
-        # Parse action from args
-        action = self._parse_action(kwargs)
 
         if action == "pages":
             return self._show_pages(vm)
         elif action is not None and action.startswith("page "):
-            page_id = action[5:].strip()
+            parts = action[5:].strip().split()
+            page_id = parts[0] if parts else ""
+            download = "--download" in parts
+            if download:
+                return self._download_page(vm, page_id)
             return self._show_page_detail(vm, page_id)
         elif action == "stats":
             return self._show_full_stats(vm)
@@ -256,6 +289,22 @@ Examples:
             f"Last access: {entry.last_accessed}",
             f"Modality:    {entry.modality.value}",
         ]
+
+        # Modality-specific metadata
+        if page:
+            mime = getattr(page, "mime_type", None)
+            if mime:
+                lines.append(f"MIME type:   {mime}")
+            dims = getattr(page, "dimensions", None)
+            if dims:
+                lines.append(f"Dimensions:  {dims[0]}x{dims[1]}")
+            duration = getattr(page, "duration_seconds", None)
+            if duration:
+                lines.append(f"Duration:    {duration:.1f}s")
+            caption = getattr(page, "caption", None)
+            if caption:
+                lines.append(f"Caption:     {caption[:100]}")
+
         if entry.provenance:
             lines.append(f"Provenance:  {', '.join(entry.provenance)}")
 
@@ -270,6 +319,63 @@ Examples:
         )
         return CommandResult(success=True)
 
+    def _download_page(self, vm: Any, page_id: str) -> CommandResult:
+        """Download page content to a local file."""
+        entry = vm.page_table.entries.get(page_id)
+        if not entry:
+            return CommandResult(success=False, error=f"Page not found: {page_id}")
+
+        page = vm._page_store.get(page_id)
+        if not page or page.content is None:
+            return CommandResult(
+                success=False, error=f"No content available for page: {page_id}"
+            )
+
+        content = page.content
+        download_dir = Path(DEFAULT_DOWNLOADS_DIR).expanduser()
+        download_dir.mkdir(parents=True, exist_ok=True)
+
+        # Determine extension from mime_type or modality
+        mime = getattr(page, "mime_type", None) or ""
+        modality = entry.modality.value
+
+        ext_map = {
+            "image/png": ".png",
+            "image/jpeg": ".jpg",
+            "image/gif": ".gif",
+            "image/webp": ".webp",
+            "application/json": ".json",
+            "text/plain": ".txt",
+        }
+        ext = ext_map.get(mime, "")
+        if not ext:
+            if modality == "image":
+                ext = ".png"
+            elif modality == "structured":
+                ext = ".json"
+            else:
+                ext = ".txt"
+
+        out_path = download_dir / f"{page_id}{ext}"
+
+        try:
+            if isinstance(content, str) and content.startswith("data:"):
+                # base64 data URI: data:image/png;base64,iVBOR...
+                _, encoded = content.split(",", 1)
+                out_path.write_bytes(base64.b64decode(encoded))
+            elif isinstance(content, dict):
+                out_path.write_text(json.dumps(content, indent=2))
+            else:
+                out_path.write_text(str(content))
+
+            output.success(f"Downloaded to: {out_path}")
+            output.info(f"  Size: {out_path.stat().st_size:,} bytes")
+            return CommandResult(success=True, data={"path": str(out_path)})
+
+        except Exception as exc:
+            log.error(f"Download failed for {page_id}: {exc}")
+            return CommandResult(success=False, error=f"Download failed: {exc}")
+
     def _show_full_stats(self, vm: Any) -> CommandResult:
         """Show full debug dump of all subsystem stats."""
         stats = vm.get_stats()
@@ -283,3 +389,150 @@ Examples:
             style="cyan",
         )
         return CommandResult(success=True, data=stats)
+
+    # ------------------------------------------------------------------
+    # Persistent memory subcommands
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _get_store(chat_context: Any):
+        """Get the MemoryScopeStore from chat context."""
+        return getattr(chat_context, "memory_store", None)
+
+    def _persistent_list(self, chat_context: Any, action: str) -> CommandResult:
+        """List persistent memories."""
+        from mcp_cli.memory.models import MemoryScope
+
+        store = self._get_store(chat_context)
+        if not store:
+            return CommandResult(success=False, error="Memory store not available.")
+
+        # Parse optional scope filter
+        parts = action.split()
+        scope_filter = parts[1] if len(parts) > 1 else None
+
+        scopes = (
+            [MemoryScope(scope_filter)]
+            if scope_filter
+            else [MemoryScope.WORKSPACE, MemoryScope.GLOBAL]
+        )
+
+        rows = []
+        for scope in scopes:
+            for entry in store.list_entries(scope):
+                rows.append(
+                    {
+                        "Scope": scope.value,
+                        "Key": entry.key,
+                        "Content": (
+                            entry.content[:60] + "..."
+                            if len(entry.content) > 60
+                            else entry.content
+                        ),
+                        "Updated": entry.updated_at.strftime("%Y-%m-%d %H:%M"),
+                    }
+                )
+
+        if not rows:
+            output.info("No persistent memories found.")
+            return CommandResult(success=True)
+
+        table = format_table(
+            rows,
+            title=None,
+            columns=["Scope", "Key", "Content", "Updated"],
+        )
+        output.rule("[bold]Persistent Memories[/bold]", style="primary")
+        output.print_table(table)
+        return CommandResult(success=True, data=rows)
+
+    def _persistent_add(self, chat_context: Any, action: str) -> CommandResult:
+        """Add a persistent memory."""
+        from mcp_cli.memory.models import MemoryScope
+
+        store = self._get_store(chat_context)
+        if not store:
+            return CommandResult(success=False, error="Memory store not available.")
+
+        # Parse: add <scope> <key> <content...>
+        parts = action.split(maxsplit=3)
+        if len(parts) < 4:
+            return CommandResult(
+                success=False,
+                error="Usage: /memory add <workspace|global> <key> <content>",
+            )
+
+        try:
+            scope = MemoryScope(parts[1])
+        except ValueError:
+            return CommandResult(
+                success=False,
+                error=f"Invalid scope: {parts[1]}. Use 'workspace' or 'global'.",
+            )
+
+        key, content = parts[2], parts[3]
+        entry = store.remember(scope, key, content)
+        chat_context._system_prompt_dirty = True
+        output.success(f"Remembered '{entry.key}' in {scope.value} scope.")
+        return CommandResult(success=True)
+
+    def _persistent_remove(self, chat_context: Any, action: str) -> CommandResult:
+        """Remove a persistent memory."""
+        from mcp_cli.memory.models import MemoryScope
+
+        store = self._get_store(chat_context)
+        if not store:
+            return CommandResult(success=False, error="Memory store not available.")
+
+        # Parse: remove <scope> <key>
+        parts = action.split(maxsplit=2)
+        if len(parts) < 3:
+            return CommandResult(
+                success=False,
+                error="Usage: /memory remove <workspace|global> <key>",
+            )
+
+        try:
+            scope = MemoryScope(parts[1])
+        except ValueError:
+            return CommandResult(
+                success=False,
+                error=f"Invalid scope: {parts[1]}. Use 'workspace' or 'global'.",
+            )
+
+        removed = store.forget(scope, parts[2])
+        if removed:
+            chat_context._system_prompt_dirty = True
+            output.success(f"Forgot '{parts[2]}' from {scope.value} scope.")
+        else:
+            output.warning(f"No memory with key '{parts[2]}' in {scope.value} scope.")
+        return CommandResult(success=True)
+
+    def _persistent_clear(self, chat_context: Any, action: str) -> CommandResult:
+        """Clear all persistent memories in a scope."""
+        from mcp_cli.memory.models import MemoryScope
+
+        store = self._get_store(chat_context)
+        if not store:
+            return CommandResult(success=False, error="Memory store not available.")
+
+        # Parse: clear <scope>
+        parts = action.split(maxsplit=1)
+        if len(parts) < 2:
+            return CommandResult(
+                success=False,
+                error="Usage: /memory clear <workspace|global>",
+            )
+
+        try:
+            scope = MemoryScope(parts[1])
+        except ValueError:
+            return CommandResult(
+                success=False,
+                error=f"Invalid scope: {parts[1]}. Use 'workspace' or 'global'.",
+            )
+
+        count = store.clear(scope)
+        chat_context._system_prompt_dirty = True
+        output.success(f"Cleared {count} memories from {scope.value} scope.")
+        return CommandResult(success=True)

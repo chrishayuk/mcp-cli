@@ -318,9 +318,15 @@ Interactive HTML UIs served by MCP servers, rendered in sandboxed browser iframe
 - Added `DEFAULT_LOG_DIR`, `DEFAULT_LOG_MAX_BYTES`, `DEFAULT_LOG_BACKUP_COUNT` to defaults.py
 - 16 tests in `tests/config/test_logging_redaction.py`
 
-### 5.2 Server Health Monitoring
+### 5.2 Server Health Monitoring ✅ COMPLETE
 
-Deferred — requires `StreamManager` reconnect hooks in chuk-tool-processor (upstream dependency).
+**Files:** `src/mcp_cli/tools/manager.py`, `src/mcp_cli/commands/servers/health.py`, `src/mcp_cli/chat/conversation.py`, `src/mcp_cli/main.py`
+
+- **Health-check-on-failure**: `ToolManager.execute_tool()` detects connection errors via `_is_connection_error()`, runs `_diagnose_server()` to enrich error messages with server status
+- **`/health` command**: New `HealthCommand` checks one or all servers via `tool_manager.check_server_health()`, shows status (healthy/unhealthy/timeout/error) and latency
+- **Background health polling**: `ConversationProcessor._health_poll_loop()` runs at `--health-interval` seconds, logs status transitions (e.g. healthy → unhealthy)
+- **`--health-interval` CLI flag**: Enables background polling (0 = disabled, default)
+- **Note**: Server *reconnect* still requires upstream `StreamManager` hooks; health *monitoring* is complete
 
 ### 5.3 Per-Server Configuration
 
@@ -356,27 +362,31 @@ OS-style virtual memory for conversation context management, powered by `chuk-ai
 - **VM tool wiring (strict/relaxed)**: `page_fault` and `search_pages` tools injected into `openai_tools` for non-passive modes; intercepted in `tool_processor.py` before MCP guard checks and executed locally via `MemoryManager`; short-content annotation guides model to fault adjacent `[assistant]` response pages; `[user]`/`[assistant]` hint prefixes in manifest
 - **E2E demo**: 8 recall scenarios (simple facts, creative content, tool results, negative case, deep detail, multi-fault, structured data, image description) with distractor tools; validates correct tool selection and content recall
 
-### Planned: Multimodal Content Re-analysis
+### Multimodal Content Re-analysis ✅ COMPLETE
 
-Currently the VM stores images and other rich media as references (URLs, data URIs, captions) — not raw binary. When a multimodal page is faulted, the model receives a text description or URL, which is sufficient for recall but not for re-analysis.
+**Files:** `src/mcp_cli/chat/tool_processor.py`, `src/mcp_cli/chat/models.py`, `src/mcp_cli/commands/memory/memory.py`
 
-**Goal:** Enable faulted multimodal pages to be returned in a format that multimodal models can re-process (vision analysis, code re-execution, etc.).
-
-- **Image pages**: If the page contains a URL or base64 data URI, return it as an `image_url` content block alongside the text content so multimodal models can re-analyze the image
-- **Code/structured pages**: Return structured content with language metadata so models can reason about code structure, not just raw text
-- **Content-type routing in `_handle_vm_tool`**: Detect page modality and format the tool result appropriately — text-only models get captions, multimodal models get image blocks
-- **Download support**: `/memory page <id> --download` to extract stored URLs or base64 content to local files for inspection
-- **Compression-aware**: Track whether content was compressed (FULL vs ABSTRACT) and include a flag so the model knows if it's seeing the original or a summary
+- **Multi-block tool results**: `_build_page_content_blocks()` detects page modality and returns `list[dict]` (text + image_url blocks) for image pages with URLs/data URIs, or JSON string with modality/compression metadata for text/structured pages
+- **HistoryMessage content type**: Extended from `str | None` to `str | list[dict[str, Any]] | None` to support OpenAI multi-block content format
+- **`_add_tool_result_to_history()`**: Accepts multi-block content, skips truncation for list content
+- **Compression-aware notes**: Compressed pages (ABSTRACT/REFERENCE) include a note guiding the model to re-fault at target_level=0 for full content; short pages suggest checking for the adjacent assistant response page
+- **`/memory page <id> --download`**: Exports page content to `~/.mcp-cli/downloads/` with modality-aware extensions (.txt, .json, .png) and base64 data URI decoding
+- **Modality metadata display**: `/memory page <id>` shows MIME type, dimensions, duration, and caption when available
 
 ### Files
 
 | File | Change |
 |------|--------|
 | `src/mcp_cli/config/defaults.py` | `DEFAULT_ENABLE_VM`, `DEFAULT_VM_MODE`, `DEFAULT_VM_BUDGET` |
-| `src/mcp_cli/chat/chat_context.py` | VM params in init/create, `_vm_filter_events()`, VM context in `conversation_history` |
-| `src/mcp_cli/chat/chat_handler.py` | Thread `enable_vm`, `vm_mode`, `vm_budget` to ChatContext |
-| `src/mcp_cli/main.py` | `--vm`, `--vm-mode`, `--vm-budget` CLI options |
-| `src/mcp_cli/commands/memory/` | `MemoryCommand` with summary/pages/page/stats subcommands |
+| `src/mcp_cli/chat/chat_context.py` | VM params in init/create, `_vm_filter_events()`, VM context in `conversation_history`, `_health_interval` |
+| `src/mcp_cli/chat/chat_handler.py` | Thread `enable_vm`, `vm_mode`, `vm_budget`, `health_interval` to ChatContext |
+| `src/mcp_cli/chat/conversation.py` | Background health polling (`_health_poll_loop`, `_start_health_polling`, `_stop_health_polling`) |
+| `src/mcp_cli/chat/tool_processor.py` | `_build_page_content_blocks()`, multi-block `_add_tool_result_to_history()` |
+| `src/mcp_cli/chat/models.py` | `HistoryMessage.content` extended to `str \| list[dict] \| None` |
+| `src/mcp_cli/main.py` | `--vm`, `--vm-mode`, `--vm-budget`, `--health-interval` CLI options |
+| `src/mcp_cli/tools/manager.py` | `check_server_health()`, `_diagnose_server()`, `_is_connection_error()` |
+| `src/mcp_cli/commands/memory/` | `MemoryCommand` with summary/pages/page/stats/download subcommands |
+| `src/mcp_cli/commands/servers/health.py` | `HealthCommand` — `/health` slash command |
 
 ---
 

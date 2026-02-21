@@ -9,7 +9,9 @@ import asyncio
 import gc
 import logging
 
-# NEW: Use the new UI module instead of rich directly
+# UI imports — this module is the boundary between core and UI.
+# It wires chuk_term UI components to core ChatContext/ConversationProcessor.
+# Kept at module level for testability (tests patch these names).
 from chuk_term.ui import (
     output,
     clear_screen,
@@ -45,6 +47,7 @@ async def handle_chat_mode(
     enable_vm: bool = False,
     vm_mode: str = "passive",
     vm_budget: int = 128_000,
+    health_interval: int = 0,
 ) -> bool:
     """
     Launch the interactive chat loop with streaming support.
@@ -102,6 +105,7 @@ async def handle_chat_mode(
             enable_vm=enable_vm,
             vm_mode=vm_mode,
             vm_budget=vm_budget,
+            health_interval=health_interval,
         )
 
         if not await ctx.initialize(on_progress=on_progress):

@@ -131,7 +131,10 @@ class HistoryMessage(BaseModel):
     role: MessageRole = Field(
         description="Message role (user, assistant, system, tool)"
     )
-    content: str | None = Field(default=None, description="Message content")
+    content: str | list[dict[str, Any]] | None = Field(
+        default=None,
+        description="Message content (string, or list of content blocks for multimodal)",
+    )
     name: str | None = Field(default=None, description="Name (for tool messages)")
     tool_calls: list[dict[str, Any]] | None = Field(
         default=None, description="Tool calls (for assistant messages with tools)"

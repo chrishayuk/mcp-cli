@@ -14,6 +14,7 @@ from mcp_cli.commands.base import (
     CommandParameter,
     CommandResult,
 )
+from mcp_cli.config.defaults import DEFAULT_PROVIDER_DISCOVERY_TIMEOUT
 
 if TYPE_CHECKING:
     from mcp_cli.commands.models.model import ModelInfo
@@ -228,7 +229,9 @@ class ModelListCommand(UnifiedCommand):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
+            stdout, _ = await asyncio.wait_for(
+                proc.communicate(), timeout=DEFAULT_PROVIDER_DISCOVERY_TIMEOUT
+            )
             if proc.returncode == 0:
                 lines = stdout.decode().strip().split("\n")
                 models = []
@@ -302,7 +305,9 @@ class ModelListCommand(UnifiedCommand):
             # Ensure api_base ends properly for /models endpoint
             models_url = f"{api_base.rstrip('/')}/models"
 
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with httpx.AsyncClient(
+                timeout=DEFAULT_PROVIDER_DISCOVERY_TIMEOUT
+            ) as client:
                 resp = await client.get(
                     models_url,
                     headers={"Authorization": f"Bearer {api_key}"},

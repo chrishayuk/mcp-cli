@@ -50,8 +50,8 @@ class AppBridge:
         if old is not None and old is not ws:
             try:
                 asyncio.ensure_future(old.close())
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug("Failed to close old WebSocket: %s", e)
         log.info(
             "WebSocket set for app %s (state -> INITIALIZING)", self.app_info.tool_name
         )

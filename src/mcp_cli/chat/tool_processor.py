@@ -33,6 +33,7 @@ from mcp_cli.config.defaults import (
 from chuk_ai_session_manager.guards import get_tool_state, SoftBlockReason
 from chuk_tool_processor.discovery import get_search_engine
 from mcp_cli.llm.content_models import ContentBlockType
+from mcp_cli.memory.tools import _MEMORY_TOOL_NAMES
 from mcp_cli.utils.preferences import get_preference_manager
 
 if TYPE_CHECKING:
@@ -42,6 +43,8 @@ log = logging.getLogger(__name__)
 
 # VM tools handled locally via MemoryManager, not routed to MCP ToolManager
 _VM_TOOL_NAMES = frozenset({"page_fault", "search_pages"})
+
+# _MEMORY_TOOL_NAMES imported from mcp_cli.memory.tools (single source of truth)
 
 
 class ToolProcessor:
@@ -189,6 +192,15 @@ class ToolProcessor:
                 # handled by MemoryManager — not routed to MCP ToolManager.
                 if execution_tool_name in _VM_TOOL_NAMES:
                     await self._handle_vm_tool(
+                        execution_tool_name, arguments, llm_tool_name, call_id
+                    )
+                    continue
+
+                # ── Memory scope tool interception ─────────────────────
+                # remember, recall, forget are persistent memory ops,
+                # handled locally — not routed to MCP ToolManager.
+                if execution_tool_name in _MEMORY_TOOL_NAMES:
+                    await self._handle_memory_tool(
                         execution_tool_name, arguments, llm_tool_name, call_id
                     )
                     continue
@@ -530,6 +542,117 @@ class ToolProcessor:
     # Prevents oversized pages from flooding the conversation context.
     _VM_MAX_PAGE_CONTENT_CHARS = 2000
 
+    def _build_page_content_blocks(
+        self,
+        page: Any,
+        page_content: Any,
+        truncated: bool,
+        was_compressed: bool,
+        source_tier: Any,
+    ) -> str | list[dict[str, Any]]:
+        """Build tool result content, using multi-block for multimodal pages.
+
+        Returns a JSON string for text/structured, or a list of content blocks
+        when the page contains an image URL or data URI that a multimodal model
+        can re-analyze.
+        """
+        modality = getattr(page, "modality", None)
+        modality_val = getattr(modality, "value", str(modality)) if modality else "text"
+        compression = getattr(page, "compression_level", None)
+        comp_name = getattr(compression, "name", "FULL") if compression else "FULL"
+
+        # IMAGE with URL or data URI → multi-block content
+        if modality_val == "image" and isinstance(page_content, str):
+            if page_content.startswith(("http://", "https://", "data:")):
+                text_block = f"Page {page.page_id} (image, {comp_name}):"
+                if truncated:
+                    text_block += " [content truncated]"
+                blocks: list[dict[str, Any]] = [
+                    {"type": "text", "text": text_block},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": page_content, "detail": "low"},
+                    },
+                ]
+                return blocks
+
+        # All other cases: JSON string response
+        response: dict[str, Any] = {
+            "success": True,
+            "page_id": page.page_id,
+            "content": page_content,
+            "modality": modality_val,
+            "compression": comp_name,
+            "source_tier": str(source_tier) if source_tier else None,
+            "was_compressed": was_compressed,
+            "truncated": truncated,
+        }
+
+        # Hint for short pages
+        if isinstance(page_content, str) and len(page_content) < 120:
+            response["note"] = (
+                "Very short content — this may be a user "
+                "request. Check the manifest for the "
+                "[assistant] response page and fault that."
+            )
+
+        # Hint for compressed content
+        if comp_name in ("ABSTRACT", "REFERENCE"):
+            response["note"] = (
+                f"This is a {comp_name.lower()} summary. "
+                f'Use page_fault("{page.page_id}", target_level=0) '
+                "for full content."
+            )
+
+        return json.dumps(response)
+
+    async def _handle_memory_tool(
+        self,
+        tool_name: str,
+        arguments: dict,
+        llm_tool_name: str,
+        call_id: str,
+    ) -> None:
+        """Execute a memory scope tool (remember, recall, forget).
+
+        Memory tools are persistent-memory operations that bypass the MCP
+        ToolManager and all guard checks.
+        """
+        store = getattr(self.context, "memory_store", None)
+        if not store:
+            self._add_tool_result_to_history(
+                llm_tool_name, call_id, "Memory scopes not available."
+            )
+            return
+
+        log.info("Memory tool %s called with args: %s", tool_name, arguments)
+
+        # Show tool call in UI
+        try:
+            self.ui_manager.print_tool_call(tool_name, arguments)
+            await self.ui_manager.start_tool_execution(tool_name, arguments)
+        except Exception:
+            pass  # UI errors are non-fatal
+
+        from mcp_cli.memory.tools import handle_memory_tool
+
+        result_text = await handle_memory_tool(store, tool_name, arguments)
+
+        # Mark system prompt dirty so memory changes appear next turn
+        if tool_name in ("remember", "forget"):
+            if hasattr(self.context, "_system_prompt_dirty"):
+                self.context._system_prompt_dirty = True
+
+        # Finish UI display
+        try:
+            await self.ui_manager.finish_tool_execution(
+                result=result_text, success=True
+            )
+        except Exception:
+            pass  # UI errors are non-fatal
+
+        self._add_tool_result_to_history(llm_tool_name, call_id, result_text)
+
     async def _handle_vm_tool(
         self,
         tool_name: str,
@@ -563,6 +686,7 @@ class ToolProcessor:
         except Exception:
             pass  # UI errors are non-fatal
 
+        content: str | list[dict[str, Any]] = ""
         success = True
         try:
             if tool_name == "page_fault":
@@ -604,27 +728,13 @@ class ToolProcessor:
                             )
                             truncated = True
 
-                        response = {
-                            "success": True,
-                            "page_id": result.page.page_id,
-                            "content": page_content,
-                            "source_tier": (
-                                str(result.source_tier) if result.source_tier else None
-                            ),
-                            "was_compressed": result.was_compressed,
-                            "truncated": truncated,
-                        }
-
-                        # Hint for short pages: likely a user request,
-                        # the real content is in the adjacent response.
-                        if isinstance(page_content, str) and len(page_content) < 120:
-                            response["note"] = (
-                                "Very short content — this may be a user "
-                                "request. Check the manifest for the "
-                                "[assistant] response page and fault that."
-                            )
-
-                        content = json.dumps(response)
+                        content = self._build_page_content_blocks(
+                            page=result.page,
+                            page_content=page_content,
+                            truncated=truncated,
+                            was_compressed=result.was_compressed,
+                            source_tier=result.source_tier,
+                        )
                     else:
                         success = False
                         content = json.dumps(
@@ -657,7 +767,10 @@ class ToolProcessor:
 
         # Finish UI display
         try:
-            await self.ui_manager.finish_tool_execution(result=content, success=success)
+            ui_result = content if isinstance(content, str) else json.dumps(content)
+            await self.ui_manager.finish_tool_execution(
+                result=ui_result, success=success
+            )
         except Exception:
             pass  # UI errors are non-fatal
 
@@ -1116,7 +1229,10 @@ class ToolProcessor:
             log.error(f"Error adding assistant message to history: {e}")
 
     def _add_tool_result_to_history(
-        self, llm_tool_name: str, call_id: str, content: str
+        self,
+        llm_tool_name: str,
+        call_id: str,
+        content: str | list[dict[str, Any]],
     ) -> None:
         """Add tool result to conversation history."""
         try:
@@ -1124,6 +1240,19 @@ class ToolProcessor:
                 DEFAULT_MAX_TOOL_RESULT_CHARS,
                 DEFAULT_CONTEXT_NOTICES_ENABLED,
             )
+
+            # Multi-block content (e.g. image_url blocks) — skip truncation
+            if isinstance(content, list):
+                tool_msg = Message(
+                    role=MessageRole.TOOL,
+                    name=llm_tool_name,
+                    content=content,
+                    tool_call_id=call_id,
+                )
+                self.context.inject_tool_message(tool_msg)
+                self._result_ids_added.add(call_id)
+                log.debug(f"Added multi-block tool result to history: {llm_tool_name}")
+                return
 
             original_len = len(content)
             content = self._truncate_tool_result(content, DEFAULT_MAX_TOOL_RESULT_CHARS)

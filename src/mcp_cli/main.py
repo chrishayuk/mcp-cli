@@ -140,6 +140,11 @@ def main_callback(
         "--vm-budget",
         help="Token budget for conversation events in VM mode (on top of system prompt)",
     ),
+    health_interval: int = typer.Option(
+        0,
+        "--health-interval",
+        help="Background server health check interval in seconds (0 = disabled)",
+    ),
 ) -> None:
     """MCP CLI - If no subcommand is given, start chat mode."""
 
@@ -365,6 +370,7 @@ def main_callback(
                 enable_vm=vm,
                 vm_mode=vm_mode,
                 vm_budget=vm_budget,
+                health_interval=health_interval,
             )
             logger.debug(f"Chat mode completed with success: {success}")
         except asyncio.TimeoutError:
@@ -458,6 +464,11 @@ def _chat_command(
         128_000,
         "--vm-budget",
         help="Token budget for conversation events in VM mode (on top of system prompt)",
+    ),
+    health_interval: int = typer.Option(
+        0,
+        "--health-interval",
+        help="Background server health check interval in seconds (0 = disabled)",
     ),
 ) -> None:
     """Start chat mode (same as default behavior without subcommand)."""
@@ -592,6 +603,7 @@ def _chat_command(
                 enable_vm=vm,
                 vm_mode=vm_mode,
                 vm_budget=vm_budget,
+                health_interval=health_interval,
             )
             logger.debug(f"Chat mode completed with success: {success}")
         except asyncio.TimeoutError:

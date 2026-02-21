@@ -15,6 +15,13 @@ A powerful, feature-rich command-line interface for interacting with Model Conte
 - **`--vm-mode`**: Choose VM mode — `passive` (runtime-managed, default), `relaxed` (VM-aware conversation), or `strict` (model-driven paging with tools)
 - **`/memory` command**: Visualize VM state during conversations — page table, working set utilization, eviction metrics, TLB stats (aliases: `/vm`, `/mem`)
 - **Context filtering**: Budget-aware turn grouping keeps recent turns intact while evicted content is preserved as VM pages in the developer message
+- **Multimodal page_fault**: Image pages return multi-block content (text + image_url) so multimodal models can re-analyze recalled images; structured/text pages include modality and compression metadata
+- **`/memory page <id> --download`**: Export page content to local files with modality-aware extensions (.txt, .json, .png) and base64 data URI decoding
+
+### Server Health Monitoring
+- **`/health` command**: Check MCP server connectivity — shows status (healthy/unhealthy/timeout/error) and latency per server
+- **Health-check-on-failure**: When a tool call fails with a connection error, the system automatically diagnoses the server and enriches the error message
+- **`--health-interval`**: Optional background health polling that logs server status transitions (e.g. healthy → unhealthy)
 
 ### Production Hardening (Tier 5)
 - **Secret Redaction**: All log output (console and file) is automatically redacted for Bearer tokens, API keys, OAuth tokens, and Authorization headers

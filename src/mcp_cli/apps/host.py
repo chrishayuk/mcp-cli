@@ -36,6 +36,7 @@ from mcp_cli.config.defaults import (
     DEFAULT_APP_HOST_PORT_START,
     DEFAULT_APP_INIT_TIMEOUT,
     DEFAULT_APP_MAX_CONCURRENT,
+    DEFAULT_HTTP_REQUEST_TIMEOUT,
 )
 
 if TYPE_CHECKING:
@@ -372,7 +373,9 @@ class AppHostServer:
         """Fetch HTML content directly from an HTTP/HTTPS URL."""
         import httpx
 
-        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+        async with httpx.AsyncClient(
+            follow_redirects=True, timeout=DEFAULT_HTTP_REQUEST_TIMEOUT
+        ) as client:
             resp = await client.get(url)
             resp.raise_for_status()
             html = resp.text

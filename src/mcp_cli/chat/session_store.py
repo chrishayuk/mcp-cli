@@ -13,6 +13,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from mcp_cli.config.defaults import DEFAULT_SESSIONS_DIR
+
 logger = logging.getLogger(__name__)
 
 
@@ -48,7 +50,7 @@ class SessionStore:
 
     def __init__(self, sessions_dir: Path | None = None):
         if sessions_dir is None:
-            sessions_dir = Path.home() / ".mcp-cli" / "sessions"
+            sessions_dir = Path(DEFAULT_SESSIONS_DIR).expanduser()
         self.sessions_dir = sessions_dir
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
 

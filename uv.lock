@@ -374,16 +374,16 @@ wheels = [
 
 [[package]]
 name = "chuk-ai-session-manager"
-version = "0.10.3"
+version = "0.11"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "chuk-sessions" },
     { name = "chuk-tool-processor" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ce/37/03b5dae7bd8871d13473a7f67c8004fa630fa4321901931a4bd47298f41e/chuk_ai_session_manager-0.10.3.tar.gz", hash = "sha256:92bec613ecdd875251265f8a8e67adec2c9bc8f2ed0ace3dddfb2e228548808f", size = 233755, upload-time = "2026-02-21T01:28:02.56Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a7/8e/f2e2f1ffbf1a993d6913b0cc8dca4785bfb7ffbc97e9f0bffafe72010965/chuk_ai_session_manager-0.11.tar.gz", hash = "sha256:20c8f2a187bd27855991fb7185d9c0f0675c1ef5a28fb96b3218a0f8e3c5b667", size = 238736, upload-time = "2026-02-21T21:02:46.611Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/76/d0/67f972997a86c244bf8f65207305ef96bcc9171749d7a934b1d98ef257b1/chuk_ai_session_manager-0.10.3-py3-none-any.whl", hash = "sha256:bafb746d21dc7e6288ae0dcf020adab05fc39c92ac5d2a529c4a3c2833ebf9ad", size = 140978, upload-time = "2026-02-21T01:28:01.225Z" },
+    { url = "https://files.pythonhosted.org/packages/a5/0a/2ec830a5d4fbd99446e54c1ca9be238a9eba8a945e8b60edec3392032e4c/chuk_ai_session_manager-0.11-py3-none-any.whl", hash = "sha256:4b3e0773dd2b4ce3b141044b547da7b9a9a7134966a618877c889af27b49bec1", size = 149571, upload-time = "2026-02-21T21:02:45.164Z" },
 ]
 
 [[package]]
@@ -459,20 +459,20 @@ wheels = [
 
 [[package]]
 name = "chuk-term"
-version = "0.4"
+version = "0.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
     { name = "rich" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/63/1b/bc7382a4280ee18c8fe8654c9d9e3622f1d8e429813c8c84740ee926d728/chuk_term-0.4.tar.gz", hash = "sha256:15e3050ec96d0fd7181571893c1567ba40b6c2d12a1a560dde2591af309d7587", size = 199469, upload-time = "2026-02-18T17:01:55.481Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a2/d1/3ce4d3f584f35cbad0f2cefc7dbe2c6780808425d2d2bc10ed8b0db95d82/chuk_term-0.4.2.tar.gz", hash = "sha256:012c50a43515c06c8ff417e0c8e55111f5c35703e39d0af08dd69f5e8bfbd184", size = 199837, upload-time = "2026-02-21T22:29:09.187Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/54/4b/0d57297ca96dc85f123520bbd08b244b7c38e49cff2386bf6835f8a736e6/chuk_term-0.4-py3-none-any.whl", hash = "sha256:c7d1d08cf8b3609dd2075e632be4e4d7bbc363dbf91f808ab7430ed40d55ef40", size = 49872, upload-time = "2026-02-18T17:01:53.331Z" },
+    { url = "https://files.pythonhosted.org/packages/41/d1/955b22252a61dab143ce1b22f429b8daec024629ede78487d70b3f379ee8/chuk_term-0.4.2-py3-none-any.whl", hash = "sha256:493bb7c278bce348f77df1bc4116b11dbda6a7ca4c624263f9123c0c46622c53", size = 50057, upload-time = "2026-02-21T22:29:07.722Z" },
 ]
 
 [[package]]
 name = "chuk-tool-processor"
-version = "0.20.1"
+version = "0.22"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "chuk-mcp" },
@@ -481,9 +481,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "uuid" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bf/5b/892c74f6a13fa0f4d2b9fd1ec4941281466b5704f20a04480243f41b8bbc/chuk_tool_processor-0.20.1.tar.gz", hash = "sha256:8ab07c40337ddfa2f95bf160377cc6c858620fec4fac3064ab398abcda3002c9", size = 275722, upload-time = "2026-02-17T23:58:49.06Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cb/f9/237fe4aa99b3d9594cff900c4a97e99acd43515064b47090a1803677a70b/chuk_tool_processor-0.22.tar.gz", hash = "sha256:ce6a29eb25f0f62cb5a3273e419a56a342ea664790f8579e8a172575ac0bb909", size = 279926, upload-time = "2026-02-21T22:25:12.286Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b5/38/3789f949bffcdb1125f30e2b6915b723729594154f8a6e674536f5db9162/chuk_tool_processor-0.20.1-py3-none-any.whl", hash = "sha256:45c4549051642884373852a72b8bb1f50dffd97663ca375446cebd363def2abe", size = 328190, upload-time = "2026-02-17T23:58:47.408Z" },
+    { url = "https://files.pythonhosted.org/packages/ef/2c/4958f28b31deb86ef08825458199457100ba403ce8f91a23a342017fad1f/chuk_tool_processor-0.22-py3-none-any.whl", hash = "sha256:d72eecbd9df3e5be733d31e80dad52a456126bbf5aacdce976ada03c724983d1", size = 328716, upload-time = "2026-02-21T22:25:10.598Z" },
 ]
 
 [[package]]
@@ -1453,11 +1453,11 @@ dev = [
 requires-dist = [
     { name = "asyncio", specifier = ">=3.4.3" },
     { name = "asyncio", marker = "extra == 'dev'", specifier = ">=3.4.3" },
-    { name = "chuk-ai-session-manager", specifier = ">=0.10.3" },
+    { name = "chuk-ai-session-manager", specifier = ">=0.11" },
     { name = "chuk-llm", specifier = ">=0.17.1" },
     { name = "chuk-mcp-client-oauth", specifier = ">=0.3.5" },
-    { name = "chuk-term", specifier = ">=0.3" },
-    { name = "chuk-tool-processor", specifier = ">=0.20.1" },
+    { name = "chuk-term", specifier = ">=0.4.2" },
+    { name = "chuk-tool-processor", specifier = ">=0.22" },
     { name = "cryptography", specifier = ">=44.0.0" },
     { name = "fast-json", specifier = ">=0.3.2" },
     { name = "httpx", specifier = ">=0.27.0" },
@@ -2954,7 +2954,7 @@ wheels = [
 
 [[package]]
 name = "typer"
-version = "0.24.0"
+version = "0.24.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
@@ -2962,9 +2962,9 @@ dependencies = [
     { name = "rich" },
     { name = "shellingham" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5a/b6/3e681d3b6bb22647509bdbfdd18055d5adc0dce5c5585359fa46ff805fdc/typer-0.24.0.tar.gz", hash = "sha256:f9373dc4eff901350694f519f783c29b6d7a110fc0dcc11b1d7e353b85ca6504", size = 118380, upload-time = "2026-02-16T22:08:48.496Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f5/24/cb09efec5cc954f7f9b930bf8279447d24618bb6758d4f6adf2574c41780/typer-0.24.1.tar.gz", hash = "sha256:e39b4732d65fbdcde189ae76cf7cd48aeae72919dea1fdfc16593be016256b45", size = 118613, upload-time = "2026-02-21T16:54:40.609Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/85/d0/4da85c2a45054bb661993c93524138ace4956cb075a7ae0c9d1deadc331b/typer-0.24.0-py3-none-any.whl", hash = "sha256:5fc435a9c8356f6160ed6e85a6301fdd6e3d8b2851da502050d1f92c5e9eddc8", size = 56441, upload-time = "2026-02-16T22:08:47.535Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/91/48db081e7a63bb37284f9fbcefda7c44c277b18b0e13fbc36ea2335b71e6/typer-0.24.1-py3-none-any.whl", hash = "sha256:112c1f0ce578bfb4cab9ffdabc68f031416ebcc216536611ba21f04e9aa84c9e", size = 56085, upload-time = "2026-02-21T16:54:41.616Z" },
 ]
 
 [[package]]

@@ -61,6 +61,7 @@ class ChatContext:
         enable_vm: bool = False,
         vm_mode: str = "passive",
         vm_budget: int = 128_000,
+        health_interval: int = 0,
     ):
         """
         Create chat context with required managers.
@@ -76,6 +77,7 @@ class ChatContext:
             enable_vm: Enable AI Virtual Memory subsystem (experimental)
             vm_mode: VM mode - strict, relaxed, or passive
             vm_budget: Max tokens for VM L0 working set (context window budget)
+            health_interval: Background health check interval in seconds (0 = disabled)
         """
         self.tool_manager = tool_manager
         self.model_manager = model_manager
@@ -89,6 +91,7 @@ class ChatContext:
         self._enable_vm = enable_vm
         self._vm_mode = vm_mode
         self._vm_budget = vm_budget
+        self._health_interval = health_interval
 
         # Core session manager - always required
         self.session: SessionManager = SessionManager(session_id=self.session_id)
@@ -111,6 +114,9 @@ class ChatContext:
         # Context management notices (ephemeral, drained before each API call)
         self._pending_context_notices: list[str] = []
         self._system_prompt_dirty: bool = True
+
+        # Persistent memory scopes (workspace + global)
+        self.memory_store: Any = None
 
         # Token usage tracking
         self.token_tracker = TokenTracker()
@@ -155,6 +161,7 @@ class ChatContext:
         enable_vm: bool = False,
         vm_mode: str = "passive",
         vm_budget: int = 128_000,
+        health_interval: int = 0,
     ) -> "ChatContext":
         """
         Factory method for convenient creation.
@@ -174,6 +181,7 @@ class ChatContext:
             enable_vm: Enable AI Virtual Memory subsystem (experimental)
             vm_mode: VM mode - strict, relaxed, or passive
             vm_budget: Max tokens for VM L0 working set (context window budget)
+            health_interval: Background health check interval in seconds (0 = disabled)
 
         Returns:
             Configured ChatContext instance
@@ -205,6 +213,7 @@ class ChatContext:
             enable_vm=enable_vm,
             vm_mode=vm_mode,
             vm_budget=vm_budget,
+            health_interval=health_interval,
         )
 
     # ── Properties ────────────────────────────────────────────────────────
@@ -470,6 +479,17 @@ class ChatContext:
             vm_config=vm_config,
         )
         await self.session._ensure_initialized()
+
+        # Initialize persistent memory scopes
+        try:
+            from mcp_cli.memory.store import MemoryScopeStore
+
+            self.memory_store = MemoryScopeStore()
+            logger.debug("Persistent memory store initialized")
+        except Exception as exc:
+            logger.warning("Could not initialize memory store: %s", exc)
+            self.memory_store = None
+
         logger.debug(
             f"Session initialized: {self.session_id} "
             f"(infinite_context={self._infinite_context}, "
@@ -489,6 +509,13 @@ class ChatContext:
             tools=tools_for_prompt,
             server_tool_groups=server_tool_groups,
         )
+
+        # Append persistent memory context
+        if self.memory_store:
+            memory_section = self.memory_store.format_for_system_prompt()
+            if memory_section:
+                self._system_prompt += "\n\n" + memory_section
+
         self._system_prompt_dirty = False
 
     def _build_server_tool_groups(self) -> list[ServerToolGroup]:
@@ -788,9 +815,7 @@ class ChatContext:
         """
         try:
             messages = self.conversation_history
-            message_dicts = [
-                m.to_dict() if hasattr(m, "to_dict") else m for m in messages
-            ]
+            message_dicts: list[dict[str, Any]] = [m.to_dict() for m in messages]
 
             token_usage = None
             if self.token_tracker.turn_count > 0:

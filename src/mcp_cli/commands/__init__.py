@@ -86,6 +86,7 @@ def register_all_commands() -> None:
         ServersCommand,
         ServerSingularCommand,
         PingCommand,
+        HealthCommand,
     )
     from mcp_cli.commands.providers import (
         ProviderCommand,
@@ -119,6 +120,7 @@ def register_all_commands() -> None:
     registry.register(ServersCommand())  # /servers - list all
 
     registry.register(PingCommand())
+    registry.register(HealthCommand())
     registry.register(ResourcesCommand())
     registry.register(PromptsCommand())
 

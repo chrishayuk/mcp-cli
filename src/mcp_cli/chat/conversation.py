@@ -74,6 +74,42 @@ class ConversationProcessor:
         self._max_consecutive_duplicates = DEFAULT_MAX_CONSECUTIVE_DUPLICATES
         # Runtime uses adaptive policy: strict core with smooth wrapper
         # No mode selection needed - always enforces grounding with auto-repair
+        # Background health polling
+        self._health_task: asyncio.Task | None = None
+        self._health_interval: float = getattr(context, "_health_interval", 0)
+        self._last_health: dict[str, str] = {}  # server→status for transition detection
+
+    # ── Background health polling ─────────────────────────────────────
+    async def _health_poll_loop(self) -> None:
+        """Periodically check server health and log transitions."""
+        while True:
+            await asyncio.sleep(self._health_interval)
+            try:
+                tm = getattr(self.context, "tool_manager", None)
+                if not tm:
+                    continue
+                results = await tm.check_server_health()
+                for name, info in results.items():
+                    status = info.get("status", "unknown") if info else "unknown"
+                    prev = self._last_health.get(name)
+                    if prev and prev != status:
+                        log.warning(f"Server {name} health changed: {prev} → {status}")
+                    self._last_health[name] = status
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:
+                log.debug(f"Health poll error: {exc}")
+
+    def _start_health_polling(self) -> None:
+        """Start background health polling if configured."""
+        if self._health_interval > 0 and self._health_task is None:
+            self._health_task = asyncio.create_task(self._health_poll_loop())
+
+    def _stop_health_polling(self) -> None:
+        """Stop background health polling."""
+        if self._health_task is not None:
+            self._health_task.cancel()
+            self._health_task = None
 
     def _is_polling_tool(self, tool_name: str) -> bool:
         """Check if a tool is a polling/status tool that should be exempt from loop detection.
@@ -146,6 +182,9 @@ class ConversationProcessor:
         # Register user literals from the latest user message
         # This whitelists numbers from the user prompt so they pass ungrounded checks
         self._register_user_literals_from_history()
+
+        # Start background health polling if configured
+        self._start_health_polling()
 
         try:
             while turn_count < max_turns:
@@ -575,6 +614,8 @@ class ConversationProcessor:
                     break
         except asyncio.CancelledError:
             raise
+        finally:
+            self._stop_health_polling()
 
     async def _handle_streaming_completion(
         self,
@@ -719,6 +760,18 @@ class ConversationProcessor:
                 log.info(f"Injected {len(vm_tools)} VM tools for {vm_mode} mode")
             except Exception as exc:
                 log.warning(f"Could not load VM tools: {exc}")
+
+        # Inject persistent memory scope tools
+        store = getattr(self.context, "memory_store", None)
+        if store:
+            try:
+                from mcp_cli.memory.tools import get_memory_tools_as_dicts
+
+                memory_tools = get_memory_tools_as_dicts()
+                self.context.openai_tools.extend(memory_tools)
+                log.info(f"Injected {len(memory_tools)} memory scope tools")
+            except Exception as exc:
+                log.warning(f"Could not load memory tools: {exc}")
 
     @staticmethod
     def _prepare_messages_for_api(messages: list, context=None) -> list[dict]:
