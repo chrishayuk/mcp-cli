@@ -40,6 +40,9 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+# VM tools handled locally via MemoryManager, not routed to MCP ToolManager
+_VM_TOOL_NAMES = frozenset({"page_fault", "search_pages"})
+
 
 class ToolProcessor:
     """
@@ -76,6 +79,9 @@ class ToolProcessor:
         # Track which tool_call_ids have received results (for orphan detection)
         self._result_ids_added: set[str] = set()
 
+        # Track page_fault calls within a conversation to prevent re-fault loops
+        self._faulted_page_ids: set[str] = set()
+
         # Give the context a back-pointer for Ctrl-C cancellation
         # Note: This is the one place we set an attribute on context
         context.tool_processor = self
@@ -109,6 +115,7 @@ class ToolProcessor:
         self._call_metadata.clear()
         self._cancelled = False
         self._result_ids_added = set()
+        self._faulted_page_ids.clear()
 
         # Add assistant message with all tool calls BEFORE executing
         self._add_assistant_message_with_tool_calls(tool_calls, reasoning_content)
@@ -176,6 +183,15 @@ class ToolProcessor:
 
                 # Parse arguments
                 arguments = self._parse_arguments(raw_arguments)
+
+                # ── VM tool interception ────────────────────────────────
+                # page_fault and search_pages are internal VM operations,
+                # handled by MemoryManager — not routed to MCP ToolManager.
+                if execution_tool_name in _VM_TOOL_NAMES:
+                    await self._handle_vm_tool(
+                        execution_tool_name, arguments, llm_tool_name, call_id
+                    )
+                    continue
 
                 # DEBUG: Log exactly what the model sent for this tool call
                 log.info(f"TOOL CALL FROM MODEL: {llm_tool_name} id={call_id}")
@@ -486,6 +502,10 @@ class ToolProcessor:
         # Add to conversation history
         self._add_tool_result_to_history(llm_tool_name, result.id, content)
 
+        # Store successful tool results as VM pages so they survive eviction
+        if success:
+            await self._store_tool_result_as_vm_page(actual_tool_name, content)
+
         # Finish UI display
         await self.ui_manager.finish_tool_execution(result=content, success=success)
 
@@ -506,37 +526,227 @@ class ToolProcessor:
         if success and self.tool_manager:
             await self._check_and_launch_app(actual_tool_name, result.result)
 
+    # Maximum chars of page content to return from a single page_fault.
+    # Prevents oversized pages from flooding the conversation context.
+    _VM_MAX_PAGE_CONTENT_CHARS = 2000
+
+    async def _handle_vm_tool(
+        self,
+        tool_name: str,
+        arguments: dict,
+        llm_tool_name: str,
+        call_id: str,
+    ) -> None:
+        """Execute a VM tool (page_fault or search_pages) via MemoryManager.
+
+        VM tools are internal memory operations that bypass the MCP ToolManager
+        and all guard checks (dataflow tracking, $vN references, per-tool limits).
+
+        Includes:
+        - UI display so tool calls are visible in the chat output
+        - Loop prevention: refuses to re-fault the same page_id twice
+        - Content truncation for oversized pages
+        """
+        vm = getattr(getattr(self.context, "session", None), "vm", None)
+        if not vm:
+            self._add_tool_result_to_history(
+                llm_tool_name, call_id, "Error: VM not available."
+            )
+            return
+
+        log.info(f"VM tool {tool_name} called with args: {arguments}")
+
+        # Show tool call in UI (so page_fault calls are visible)
+        try:
+            self.ui_manager.print_tool_call(tool_name, arguments)
+            await self.ui_manager.start_tool_execution(tool_name, arguments)
+        except Exception:
+            pass  # UI errors are non-fatal
+
+        success = True
+        try:
+            if tool_name == "page_fault":
+                page_id = arguments.get("page_id", "")
+
+                # Loop prevention: don't re-fault the same page
+                if page_id in self._faulted_page_ids:
+                    content = json.dumps({
+                        "success": True,
+                        "already_loaded": True,
+                        "page_id": page_id,
+                        "message": (
+                            "This page was already loaded earlier in the "
+                            "conversation. The content is in a previous "
+                            "tool result message — use that directly."
+                        ),
+                    })
+                else:
+                    result = await vm.handle_fault(
+                        page_id=page_id,
+                        target_level=arguments.get("target_level", 2),
+                    )
+                    if result.success and result.page:
+                        self._faulted_page_ids.add(page_id)
+                        page_content = result.page.content
+                        truncated = False
+
+                        # Truncate oversized page content
+                        if (
+                            isinstance(page_content, str)
+                            and len(page_content) > self._VM_MAX_PAGE_CONTENT_CHARS
+                        ):
+                            page_content = (
+                                page_content[:self._VM_MAX_PAGE_CONTENT_CHARS]
+                                + f"\n\n[truncated — original was "
+                                f"{len(result.page.content)} chars]"
+                            )
+                            truncated = True
+
+                        response = {
+                            "success": True,
+                            "page_id": result.page.page_id,
+                            "content": page_content,
+                            "source_tier": (
+                                str(result.source_tier)
+                                if result.source_tier
+                                else None
+                            ),
+                            "was_compressed": result.was_compressed,
+                            "truncated": truncated,
+                        }
+
+                        # Hint for short pages: likely a user request,
+                        # the real content is in the adjacent response.
+                        if (
+                            isinstance(page_content, str)
+                            and len(page_content) < 120
+                        ):
+                            response["note"] = (
+                                "Very short content — this may be a user "
+                                "request. Check the manifest for the "
+                                "[assistant] response page and fault that."
+                            )
+
+                        content = json.dumps(response)
+                    else:
+                        success = False
+                        content = json.dumps({
+                            "success": False,
+                            "error": result.error or "Page not found",
+                        })
+
+            elif tool_name == "search_pages":
+                result = await vm.search_pages(
+                    query=arguments.get("query", ""),
+                    modality=arguments.get("modality"),
+                    limit=arguments.get("limit", 5),
+                )
+                content = result.to_json()
+
+            else:
+                success = False
+                content = json.dumps({"error": f"Unknown VM tool: {tool_name}"})
+
+            log.info(f"VM tool {tool_name} completed: {content[:200]}")
+
+        except Exception as exc:
+            log.error(f"VM tool {tool_name} failed: {exc}")
+            success = False
+            content = json.dumps({"success": False, "error": str(exc)})
+
+        self._add_tool_result_to_history(llm_tool_name, call_id, content)
+
+        # Finish UI display
+        try:
+            await self.ui_manager.finish_tool_execution(
+                result=content, success=success
+            )
+        except Exception:
+            pass  # UI errors are non-fatal
+
+    async def _store_tool_result_as_vm_page(
+        self, tool_name: str, content: str
+    ) -> None:
+        """Store a tool result as a VM page so it survives eviction.
+
+        Without this, tool results (weather forecasts, geocoding data, etc.)
+        exist only as raw session events and vanish when _vm_filter_events()
+        evicts older turns.  Creating a VM page ensures the content appears
+        in the manifest and can be recalled via page_fault.
+
+        Active for all VM modes — in passive mode pages still participate
+        in working set budget tracking and context packing.
+        """
+        vm = getattr(getattr(self.context, "session", None), "vm", None)
+        if not vm:
+            return
+
+        try:
+            from chuk_ai_session_manager.memory.models import PageType
+
+            page = vm.create_page(
+                content=content,
+                page_type=PageType.ARTIFACT,
+                importance=0.4,
+                hint=f"{tool_name}: {content[:100]}",
+            )
+            await vm.add_to_working_set(page)
+            log.debug(f"Stored tool result as VM page: {page.page_id}")
+        except Exception as exc:
+            log.debug(f"Could not store tool result as VM page: {exc}")
+
     async def _check_and_launch_app(self, tool_name: str, result: Any) -> None:
-        """Check if a tool has an MCP Apps UI and launch it if so."""
+        """Check if a tool has an MCP Apps UI and launch/update it.
+
+        Handles two cases per the MCP Apps spec:
+        1. Tool has resourceUri — reuse an existing app with the same URI
+           (multiple tools can share one UI), or launch a new one.
+        2. Tool has no resourceUri but returns a ui_patch — route the
+           patch to an already-running app so it can update in place.
+        """
         if not self.tool_manager:
             return
 
         try:
             tool_info = await self.tool_manager.get_tool_by_name(tool_name)
-            if not tool_info or not tool_info.has_app_ui:
-                return
-
-            resource_uri = tool_info.app_resource_uri
-            server_name = tool_info.namespace
-
-            # If app is already running, push the new result instead of re-launching
             app_host = self.tool_manager.app_host
-            bridge = app_host.get_bridge(tool_name)
-            if bridge is not None:
-                log.info("Pushing new result to existing app %s", tool_name)
-                await bridge.push_tool_result(result)
-                log.info("Updated running MCP App for %s", tool_name)
+
+            # ── Case 1: tool declares a resourceUri ──────────────────────
+            if tool_info and tool_info.has_app_ui:
+                resource_uri = tool_info.app_resource_uri
+                server_name = tool_info.namespace
+
+                # Reuse existing app — check by tool name, then by URI
+                bridge = app_host.get_bridge(tool_name)
+                if bridge is None and resource_uri:
+                    bridge = app_host.get_bridge_by_uri(resource_uri)
+
+                if bridge is not None:
+                    log.info(
+                        "Pushing result to existing app (tool=%s, uri=%s)",
+                        tool_name,
+                        resource_uri,
+                    )
+                    await bridge.push_tool_result(result)
+                    return
+
+                # No running app for this URI — launch a new one
+                log.info("Tool %s has MCP App UI at %s", tool_name, resource_uri)
+                app_info = await app_host.launch_app(
+                    tool_name=tool_name,
+                    resource_uri=resource_uri,
+                    server_name=server_name,
+                    tool_result=result,
+                )
+                log.info("MCP App opened at %s", app_info.url)
                 return
 
-            log.info("Tool %s has MCP App UI at %s", tool_name, resource_uri)
-
-            app_info = await app_host.launch_app(
-                tool_name=tool_name,
-                resource_uri=resource_uri,
-                server_name=server_name,
-                tool_result=result,
-            )
-            log.info("MCP App opened at %s", app_info.url)
+            # ── Case 2: no resourceUri — route ui_patch to running app ───
+            if self._result_contains_patch(result):
+                bridge = app_host.get_any_ready_bridge()
+                if bridge is not None:
+                    log.info("Routing ui_patch from %s to running app", tool_name)
+                    await bridge.push_tool_result(result)
 
         except ImportError:
             log.warning(
@@ -544,6 +754,58 @@ class ToolProcessor:
             )
         except Exception as e:
             log.error("Failed to launch MCP App for %s: %s", tool_name, e)
+
+    @staticmethod
+    def _result_contains_patch(result: Any) -> bool:
+        """Check whether a tool result carries a ui_patch structuredContent."""
+        try:
+            # Unwrap middleware/ToolCallResult wrappers
+            raw = result
+            seen: set[int] = set()
+            while hasattr(raw, "result") and not isinstance(raw, (dict, str)):
+                rid = id(raw)
+                if rid in seen:
+                    break
+                seen.add(rid)
+                raw = raw.result
+
+            # Check Pydantic model with structuredContent attr
+            if not isinstance(raw, dict) and hasattr(raw, "structuredContent"):
+                sc = raw.structuredContent
+                if isinstance(sc, dict) and sc.get("type") == "ui_patch":
+                    return True
+
+            if isinstance(raw, dict):
+                # Direct structuredContent field
+                sc = raw.get("structuredContent")
+                if isinstance(sc, dict) and sc.get("type") == "ui_patch":
+                    return True
+
+                # Recover from content text blocks (MCP backwards-compat)
+                content = raw.get("content")
+                if hasattr(content, "content"):
+                    content = content.content
+                if isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            text = block.get("text", "")
+                            if isinstance(text, str) and '"ui_patch"' in text:
+                                try:
+                                    parsed = json.loads(text)
+                                    if isinstance(parsed, dict):
+                                        if parsed.get("type") == "ui_patch":
+                                            return True
+                                        psc = parsed.get("structuredContent")
+                                        if (
+                                            isinstance(psc, dict)
+                                            and psc.get("type") == "ui_patch"
+                                        ):
+                                            return True
+                                except (json.JSONDecodeError, TypeError):
+                                    pass
+        except Exception:
+            pass
+        return False
 
     def _track_transport_failures(self, success: bool, error: str | None) -> None:
         """Track transport failures for recovery detection."""

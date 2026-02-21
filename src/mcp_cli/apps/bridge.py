@@ -371,37 +371,47 @@ class AppBridge:
         as JSON inside a text content block for backwards compatibility.
         When the upstream transport loses the top-level structuredContent
         (e.g. CTP normalisation), we recover it from that text block.
+
+        Scans all text blocks — servers commonly return a human-readable
+        text block alongside a JSON text block containing the structured
+        content (e.g. ``play_video`` returns "Video playback started."
+        plus the ``ui_patch`` JSON).
         """
         if "structuredContent" in out:
             return out  # already present
 
         content = out.get("content")
-        if not isinstance(content, list) or len(content) != 1:
+        if not isinstance(content, list) or not content:
             return out
 
-        block = content[0]
-        if not isinstance(block, dict) or block.get("type") != "text":
-            return out
+        for block in content:
+            if not isinstance(block, dict) or block.get("type") != "text":
+                continue
 
-        text = block.get("text", "")
-        if not isinstance(text, str) or not text.startswith("{"):
-            return out
+            text = block.get("text", "")
+            if not isinstance(text, str) or not text.startswith("{"):
+                continue
 
-        try:
-            parsed = json.loads(text)
-        except (json.JSONDecodeError, TypeError):
-            return out
+            try:
+                parsed = json.loads(text)
+            except (json.JSONDecodeError, TypeError):
+                continue
 
-        if not isinstance(parsed, dict):
-            return out
+            if not isinstance(parsed, dict):
+                continue
 
-        # Hoist structuredContent to the result level
-        if "structuredContent" in parsed:
-            out["structuredContent"] = parsed["structuredContent"]
-            # Replace content with the inner content array if present,
-            # otherwise keep the original text block
-            if "content" in parsed and isinstance(parsed["content"], list):
-                out["content"] = parsed["content"]
+            # Pattern 1: wrapper dict with a structuredContent key
+            if "structuredContent" in parsed:
+                out["structuredContent"] = parsed["structuredContent"]
+                if "content" in parsed and isinstance(parsed["content"], list):
+                    out["content"] = parsed["content"]
+                return out
+
+            # Pattern 2: the JSON IS the structured content (has type+version)
+            # e.g. {"type": "ui_patch", "version": "3.0", "ops": [...]}
+            if "type" in parsed and "version" in parsed:
+                out["structuredContent"] = parsed
+                return out
 
         return out
 

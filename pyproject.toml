@@ -15,7 +15,7 @@ keywords = ["llm", "openai", "claude", "mcp", "cli"]
 license = {text = "MIT"}
 dependencies = [
   "asyncio>=3.4.3",
-  "chuk-ai-session-manager>=0.9",
+  "chuk-ai-session-manager>=0.10.3",
   "chuk-llm>=0.17.1",
   "chuk-mcp-client-oauth>=0.3.5",
   "chuk-term>=0.3",

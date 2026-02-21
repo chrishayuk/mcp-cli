@@ -42,6 +42,9 @@ async def handle_chat_mode(
     model_manager=None,  # FIXED: Accept model_manager from caller
     runtime_config=None,  # RuntimeConfig | None
     max_history_messages: int = 0,
+    enable_vm: bool = False,
+    vm_mode: str = "passive",
+    vm_budget: int = 128_000,
 ) -> bool:
     """
     Launch the interactive chat loop with streaming support.
@@ -96,6 +99,9 @@ async def handle_chat_mode(
             api_key=api_key,
             model_manager=app_context.model_manager,  # Use the same instance
             max_history_messages=max_history_messages,
+            enable_vm=enable_vm,
+            vm_mode=vm_mode,
+            vm_budget=vm_budget,
         )
 
         if not await ctx.initialize(on_progress=on_progress):

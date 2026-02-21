@@ -58,6 +58,7 @@ class AppHostServer:
         self.tool_manager = tool_manager
         self._apps: dict[str, AppInfo] = {}
         self._bridges: dict[str, AppBridge] = {}
+        self._uri_to_tool: dict[str, str] = {}  # resourceUri → tool_name
         self._servers: list[Any] = []
         self._next_port = DEFAULT_APP_HOST_PORT_START
 
@@ -126,6 +127,7 @@ class AppHostServer:
             permissions=permissions,
         )
         self._apps[tool_name] = app_info
+        self._uri_to_tool[resource_uri] = tool_name
 
         # Create bridge
         bridge = AppBridge(app_info, self.tool_manager)
@@ -152,6 +154,8 @@ class AppHostServer:
     async def close_app(self, tool_name: str) -> None:
         """Close a specific app and its server."""
         if tool_name in self._apps:
+            uri = self._apps[tool_name].resource_uri
+            self._uri_to_tool.pop(uri, None)
             self._apps[tool_name].state = AppState.CLOSED
             del self._apps[tool_name]
         self._bridges.pop(tool_name, None)
@@ -171,6 +175,7 @@ class AppHostServer:
                 log.debug("Error cleaning up app server: %s", e)
         self._apps.clear()
         self._bridges.clear()
+        self._uri_to_tool.clear()
         self._next_port = DEFAULT_APP_HOST_PORT_START
 
     def get_running_apps(self) -> list[AppInfo]:
@@ -178,8 +183,38 @@ class AppHostServer:
         return [a for a in self._apps.values() if a.state != AppState.CLOSED]
 
     def get_bridge(self, tool_name: str) -> AppBridge | None:
-        """Get the bridge for a running app."""
+        """Get the bridge for a running app by tool name."""
         return self._bridges.get(tool_name)
+
+    def get_bridge_by_uri(self, resource_uri: str) -> AppBridge | None:
+        """Get the bridge for a running app by its resource URI.
+
+        Multiple tools can share the same resourceUri (e.g. show_video and
+        play_video both point at the dashboard).  This lookup lets the host
+        reuse the existing app instance instead of launching a new one.
+        """
+        tool_name = self._uri_to_tool.get(resource_uri)
+        if tool_name:
+            return self._bridges.get(tool_name)
+        return None
+
+    def get_any_ready_bridge(self) -> AppBridge | None:
+        """Get a bridge for any running app (preferring READY state).
+
+        Used to route ui_patch results from tools that don't carry a
+        resourceUri themselves — the patch targets a panel inside an
+        already-running dashboard.
+        """
+        # Prefer a READY app
+        for tool_name, app in self._apps.items():
+            if app.state == AppState.READY:
+                bridge = self._bridges.get(tool_name)
+                if bridge is not None:
+                    return bridge
+        # Fall back to any bridge (may still be INITIALIZING)
+        for bridge in self._bridges.values():
+            return bridge
+        return None
 
     # ------------------------------------------------------------------ #
     #  Server setup                                                       #

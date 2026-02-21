@@ -101,6 +101,20 @@ DEFAULT_MAX_STREAMING_CHUNKS = 50_000
 
 
 # ================================================================
+# Virtual Memory Defaults (Experimental)
+# ================================================================
+
+DEFAULT_ENABLE_VM = False
+"""Enable AI Virtual Memory subsystem (experimental)."""
+
+DEFAULT_VM_MODE = "passive"
+"""VM mode: strict, relaxed, or passive. Passive is safest for initial testing."""
+
+DEFAULT_VM_BUDGET = 128_000
+"""Token budget for conversation events in VM mode (on top of system prompt). Lower values force earlier eviction."""
+
+
+# ================================================================
 # Tier 2: Efficiency & Resilience Defaults
 # ================================================================
 

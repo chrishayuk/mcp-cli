@@ -9,6 +9,13 @@ A powerful, feature-rich command-line interface for interacting with Model Conte
 
 ## 🆕 Recent Updates (v0.14.0)
 
+### AI Virtual Memory (Experimental)
+- **`--vm` flag**: Enable OS-style virtual memory for conversation context management, powered by `chuk-ai-session-manager`
+- **`--vm-budget`**: Control token budget for conversation events (system prompt is uncapped on top), forcing earlier eviction and page creation
+- **`--vm-mode`**: Choose VM mode — `passive` (runtime-managed, default), `relaxed` (VM-aware conversation), or `strict` (model-driven paging with tools)
+- **`/memory` command**: Visualize VM state during conversations — page table, working set utilization, eviction metrics, TLB stats (aliases: `/vm`, `/mem`)
+- **Context filtering**: Budget-aware turn grouping keeps recent turns intact while evicted content is preserved as VM pages in the developer message
+
 ### Production Hardening (Tier 5)
 - **Secret Redaction**: All log output (console and file) is automatically redacted for Bearer tokens, API keys, OAuth tokens, and Authorization headers
 - **Structured File Logging**: Optional `--log-file` flag enables rotating JSON log files (10MB, 3 backups) at DEBUG level with secret redaction
@@ -251,6 +258,9 @@ Global options available for all modes and commands:
 - `--verbose`: Enable detailed logging
 - `--quiet`: Suppress non-essential output
 - `--log-file`: Write debug logs to a rotating file (secrets auto-redacted)
+- `--vm`: [Experimental] Enable AI virtual memory for context management
+- `--vm-budget`: Token budget for conversation events in VM mode (default: 128000, on top of system prompt)
+- `--vm-mode`: VM mode — `passive` (default), `relaxed`, or `strict`
 
 ### Environment Variables
 

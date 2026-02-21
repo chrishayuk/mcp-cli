@@ -342,6 +342,44 @@ Deferred — requires `StreamManager` reconnect hooks in chuk-tool-processor (up
 
 ---
 
+## AI Virtual Memory Integration (Experimental) ✅ COMPLETE
+
+OS-style virtual memory for conversation context management, powered by `chuk-ai-session-manager`.
+
+### Implementation
+
+- **`--vm` CLI flag**: Enables VM subsystem in SessionManager; system prompt replaced with VM-packed `developer_message` containing rules, manifest (page index), and working set content
+- **`--vm-budget`**: Token budget for conversation events (system prompt uncapped on top); forces earlier page creation and eviction at low values
+- **`--vm-mode`**: `passive` (runtime-managed, default), `relaxed` (VM-aware conversation), `strict` (model-driven paging with page_fault/search_pages tools)
+- **Budget-aware context filtering**: `_vm_filter_events()` groups conversation events into logical turns, includes newest-first within budget, guarantees minimum 3 recent turns; evicted content preserved as VM pages in developer_message
+- **`/memory` slash command** (aliases: `/vm`, `/mem`): Dashboard showing mode, turn, budget, working set utilization, page table, fault/eviction/TLB metrics; subcommands for page listing, page detail, and full stats dump
+- **VM tool wiring (strict/relaxed)**: `page_fault` and `search_pages` tools injected into `openai_tools` for non-passive modes; intercepted in `tool_processor.py` before MCP guard checks and executed locally via `MemoryManager`; short-content annotation guides model to fault adjacent `[assistant]` response pages; `[user]`/`[assistant]` hint prefixes in manifest
+- **E2E demo**: 8 recall scenarios (simple facts, creative content, tool results, negative case, deep detail, multi-fault, structured data, image description) with distractor tools; validates correct tool selection and content recall
+
+### Planned: Multimodal Content Re-analysis
+
+Currently the VM stores images and other rich media as references (URLs, data URIs, captions) — not raw binary. When a multimodal page is faulted, the model receives a text description or URL, which is sufficient for recall but not for re-analysis.
+
+**Goal:** Enable faulted multimodal pages to be returned in a format that multimodal models can re-process (vision analysis, code re-execution, etc.).
+
+- **Image pages**: If the page contains a URL or base64 data URI, return it as an `image_url` content block alongside the text content so multimodal models can re-analyze the image
+- **Code/structured pages**: Return structured content with language metadata so models can reason about code structure, not just raw text
+- **Content-type routing in `_handle_vm_tool`**: Detect page modality and format the tool result appropriately — text-only models get captions, multimodal models get image blocks
+- **Download support**: `/memory page <id> --download` to extract stored URLs or base64 content to local files for inspection
+- **Compression-aware**: Track whether content was compressed (FULL vs ABSTRACT) and include a flag so the model knows if it's seeing the original or a summary
+
+### Files
+
+| File | Change |
+|------|--------|
+| `src/mcp_cli/config/defaults.py` | `DEFAULT_ENABLE_VM`, `DEFAULT_VM_MODE`, `DEFAULT_VM_BUDGET` |
+| `src/mcp_cli/chat/chat_context.py` | VM params in init/create, `_vm_filter_events()`, VM context in `conversation_history` |
+| `src/mcp_cli/chat/chat_handler.py` | Thread `enable_vm`, `vm_mode`, `vm_budget` to ChatContext |
+| `src/mcp_cli/main.py` | `--vm`, `--vm-mode`, `--vm-budget` CLI options |
+| `src/mcp_cli/commands/memory/` | `MemoryCommand` with summary/pages/page/stats subcommands |
+
+---
+
 ## Tier 6: Execution Graphs & Plans
 
 > **Shift:** conversation → reasoning → tools **becomes** intent → plan → execution → memory → replay
@@ -800,6 +838,7 @@ mcp remote logs --follow
 | **3** | Performance & polish | Feels fast, saves work | ✅ Complete |
 | **4** | Code quality | Maintainable, testable | ✅ Complete |
 | **5** | Production hardening | Observable, auditable | ✅ Complete |
+| **VM** | AI Virtual Memory | OS-style context management | ✅ Complete (Experimental) |
 | **6** | Plans & execution graphs | Reproducible workflows | High |
 | **7** | Observability & traces | Debugger for AI behavior | High |
 | **8** | Memory scopes | Long-running assistants | High |

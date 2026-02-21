@@ -138,6 +138,11 @@ class ConversationProcessor:
         search_engine = get_search_engine()
         search_engine.advance_turn()
 
+        # Advance VM turn counter so eviction policies can track recency
+        vm = getattr(getattr(self.context, "session", None), "vm", None)
+        if vm:
+            vm.new_turn()
+
         # Register user literals from the latest user message
         # This whitelists numbers from the user prompt so they pass ungrounded checks
         self._register_user_literals_from_history()
@@ -699,6 +704,23 @@ class ConversationProcessor:
             log.error(f"Error loading tools: {exc}")
             self.context.openai_tools = []
             self.context.tool_name_mapping = {}
+
+        # Inject VM tools for strict/relaxed modes
+        vm = getattr(getattr(self.context, "session", None), "vm", None)
+        vm_mode = getattr(getattr(vm, "mode", None), "value", "passive")
+        if vm and vm_mode != "passive":
+            try:
+                from chuk_ai_session_manager.memory.vm_prompts import (
+                    get_vm_tools_as_dicts,
+                )
+
+                vm_tools = get_vm_tools_as_dicts(include_search=True)
+                self.context.openai_tools.extend(vm_tools)
+                log.info(
+                    f"Injected {len(vm_tools)} VM tools for {vm_mode} mode"
+                )
+            except Exception as exc:
+                log.warning(f"Could not load VM tools: {exc}")
 
     @staticmethod
     def _prepare_messages_for_api(messages: list, context=None) -> list[dict]:

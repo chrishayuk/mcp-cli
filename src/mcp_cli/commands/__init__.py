@@ -106,6 +106,7 @@ def register_all_commands() -> None:
     from mcp_cli.commands.export import ExportCommand
     from mcp_cli.commands.sessions import SessionsCommand
     from mcp_cli.commands.apps import AppsCommand
+    from mcp_cli.commands.memory import MemoryCommand
 
     # Register basic commands
     registry.register(HelpCommand())
@@ -148,6 +149,9 @@ def register_all_commands() -> None:
 
     # Register MCP Apps command
     registry.register(AppsCommand())
+
+    # Register VM visualization command (chat mode only)
+    registry.register(MemoryCommand())
 
     # All commands have been migrated!
     # - tools (with subcommands: list, call, confirm)

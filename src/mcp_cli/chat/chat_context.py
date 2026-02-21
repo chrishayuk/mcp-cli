@@ -29,6 +29,8 @@ from chuk_ai_session_manager.procedural_memory import (
     ProceduralContextFormatter,
     FormatterConfig,
 )
+from chuk_ai_session_manager.memory.models import VMMode
+from chuk_ai_session_manager.memory.working_set import WorkingSetConfig
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +58,9 @@ class ChatContext:
         infinite_context: bool = False,
         token_threshold: int = 4000,
         max_turns_per_segment: int = 20,
+        enable_vm: bool = False,
+        vm_mode: str = "passive",
+        vm_budget: int = 128_000,
     ):
         """
         Create chat context with required managers.
@@ -68,6 +73,9 @@ class ChatContext:
             infinite_context: Enable infinite context mode in SessionManager
             token_threshold: Token threshold for infinite context segmentation
             max_turns_per_segment: Max turns per segment before context packing
+            enable_vm: Enable AI Virtual Memory subsystem (experimental)
+            vm_mode: VM mode - strict, relaxed, or passive
+            vm_budget: Max tokens for VM L0 working set (context window budget)
         """
         self.tool_manager = tool_manager
         self.model_manager = model_manager
@@ -78,6 +86,9 @@ class ChatContext:
         self._infinite_context = infinite_context
         self._token_threshold = token_threshold
         self._max_turns_per_segment = max_turns_per_segment
+        self._enable_vm = enable_vm
+        self._vm_mode = vm_mode
+        self._vm_budget = vm_budget
 
         # Core session manager - always required
         self.session: SessionManager = SessionManager(session_id=self.session_id)
@@ -141,6 +152,9 @@ class ChatContext:
         infinite_context: bool = False,
         token_threshold: int = 4000,
         max_turns_per_segment: int = 20,
+        enable_vm: bool = False,
+        vm_mode: str = "passive",
+        vm_budget: int = 128_000,
     ) -> "ChatContext":
         """
         Factory method for convenient creation.
@@ -157,6 +171,9 @@ class ChatContext:
             infinite_context: Enable infinite context mode in SessionManager
             token_threshold: Token threshold for infinite context segmentation
             max_turns_per_segment: Max turns per segment before context packing
+            enable_vm: Enable AI Virtual Memory subsystem (experimental)
+            vm_mode: VM mode - strict, relaxed, or passive
+            vm_budget: Max tokens for VM L0 working set (context window budget)
 
         Returns:
             Configured ChatContext instance
@@ -185,6 +202,9 @@ class ChatContext:
             infinite_context=infinite_context,
             token_threshold=token_threshold,
             max_turns_per_segment=max_turns_per_segment,
+            enable_vm=enable_vm,
+            vm_mode=vm_mode,
+            vm_budget=vm_budget,
         )
 
     # ── Properties ────────────────────────────────────────────────────────
@@ -213,13 +233,29 @@ class ChatContext:
 
         System prompt is always included. If max_history_messages > 0,
         only the most recent N event-based messages are returned (sliding window).
+
+        When VM is enabled:
+        - System prompt is replaced with VM-packed developer_message
+          (manifest, working set summaries, VM rules).
+        - Only recent turn groups that fit within the VM token budget
+          are sent as raw events. Older turns are represented by VM pages
+          in the developer_message, avoiding double-counting.
         """
         messages = []
 
+        # Determine system prompt content — VM replaces it with packed context
+        if self.session.vm:
+            vm_ctx = self.session.get_vm_context()
+            system_content = (
+                vm_ctx["developer_message"] if vm_ctx else self._system_prompt
+            )
+        else:
+            system_content = self._system_prompt
+
         # System prompt always included (outside the window)
-        if self._system_prompt:
+        if system_content:
             messages.append(
-                HistoryMessage(role=MessageRole.SYSTEM, content=self._system_prompt)
+                HistoryMessage(role=MessageRole.SYSTEM, content=system_content)
             )
 
         # Build event-based messages
@@ -244,8 +280,12 @@ class ChatContext:
                     if isinstance(event.message, dict):
                         event_messages.append(HistoryMessage.from_dict(event.message))
 
-        # Apply sliding window if configured
-        if (
+        # VM-aware context filtering: fit raw events within token budget
+        if self.session.vm and system_content:
+            event_messages = self._vm_filter_events(event_messages, system_content)
+
+        # Apply sliding window if configured (non-VM fallback)
+        elif (
             self._max_history_messages > 0
             and len(event_messages) > self._max_history_messages
         ):
@@ -262,6 +302,117 @@ class ChatContext:
 
         messages.extend(event_messages)
         return messages
+
+    # ── VM context filtering ─────────────────────────────────────────────
+
+    # Minimum recent turns always included regardless of VM budget.
+    # Ensures the model can always see immediate conversation context.
+    _VM_MIN_RECENT_TURNS = 3
+
+    def _vm_filter_events(
+        self,
+        events: list[HistoryMessage],
+        system_content: str,
+    ) -> list[HistoryMessage]:
+        """Filter events to fit within VM token budget.
+
+        Groups events into logical turns (starting at each user message),
+        estimates token cost per group, and includes turn groups from newest
+        to oldest until the budget is exhausted. Tool-call pairs are kept
+        intact within their turn group.
+
+        The most recent ``_VM_MIN_RECENT_TURNS`` turns are always included
+        regardless of budget, so the model always has immediate context.
+        Older turns beyond those are included only if budget allows.
+
+        Evicted turns are NOT lost — they're represented by VM pages in the
+        developer_message (manifest + working set summaries).
+
+        Args:
+            events: All event-based messages from the session.
+            system_content: The VM developer_message (not counted against budget).
+
+        Returns:
+            Filtered event list that fits within the VM budget.
+        """
+        from mcp_cli.config.defaults import DEFAULT_CHARS_PER_TOKEN_ESTIMATE
+
+        if not events:
+            return events
+
+        cpt = DEFAULT_CHARS_PER_TOKEN_ESTIMATE
+
+        # Budget is for conversation events only — system prompt is on top
+        remaining = self._vm_budget
+
+        # Group events into logical turns.
+        # A new turn starts at each user message.
+        turns: list[list[HistoryMessage]] = []
+        current_turn: list[HistoryMessage] = []
+
+        for msg in events:
+            if msg.role == MessageRole.USER and current_turn:
+                turns.append(current_turn)
+                current_turn = []
+            current_turn.append(msg)
+        if current_turn:
+            turns.append(current_turn)
+
+        # Nothing to filter
+        if len(turns) <= self._VM_MIN_RECENT_TURNS:
+            return events
+
+        # Estimate token cost per turn group
+        def _estimate_turn_tokens(turn: list[HistoryMessage]) -> int:
+            total_chars = 0
+            for msg in turn:
+                total_chars += len(msg.content or "")
+                if msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        total_chars += len(str(tc))
+            return max(total_chars // cpt, 1)
+
+        # Always include the most recent N turns (guaranteed minimum)
+        guaranteed = turns[-self._VM_MIN_RECENT_TURNS:]
+        older = turns[:-self._VM_MIN_RECENT_TURNS]
+
+        # Deduct guaranteed turns from budget
+        for turn in guaranteed:
+            remaining -= _estimate_turn_tokens(turn)
+
+        # Include older turns from newest to oldest while budget allows
+        budget_included: list[list[HistoryMessage]] = []
+        for turn in reversed(older):
+            cost = _estimate_turn_tokens(turn)
+            if remaining >= cost:
+                budget_included.append(turn)
+                remaining -= cost
+            else:
+                break
+
+        # Restore chronological order
+        budget_included.reverse()
+
+        evicted_turns = len(older) - len(budget_included)
+        if evicted_turns > 0:
+            evicted_msgs = sum(len(t) for t in older[:evicted_turns])
+            logger.info(
+                f"VM context filter: keeping {len(budget_included) + len(guaranteed)}"
+                f"/{len(turns)} turns "
+                f"({evicted_msgs} messages evicted, budget={self._vm_budget} tokens)"
+            )
+            self.add_context_notice(
+                f"{evicted_turns} older conversation turns were moved to virtual memory. "
+                "Their content is available via the VM manifest in the system context."
+            )
+
+        # Flatten: budget-included older turns + guaranteed recent turns
+        result: list[HistoryMessage] = []
+        for turn in budget_included:
+            result.extend(turn)
+        for turn in guaranteed:
+            result.extend(turn)
+        return result
 
     # ── Initialization ────────────────────────────────────────────────────
     async def initialize(
@@ -300,17 +451,29 @@ class ChatContext:
 
     async def _initialize_session(self) -> None:
         """Initialize the session with system prompt and context management."""
+        vm_config = (
+            WorkingSetConfig(
+                max_l0_tokens=self._vm_budget,
+                reserved_tokens=min(4000, self._vm_budget // 4),
+            )
+            if self._enable_vm
+            else None
+        )
         self.session = SessionManager(
             session_id=self.session_id,
             system_prompt=self._system_prompt,
             infinite_context=self._infinite_context,
             token_threshold=self._token_threshold,
             max_turns_per_segment=self._max_turns_per_segment,
+            enable_vm=self._enable_vm,
+            vm_mode=VMMode(self._vm_mode),
+            vm_config=vm_config,
         )
         await self.session._ensure_initialized()
         logger.debug(
             f"Session initialized: {self.session_id} "
-            f"(infinite_context={self._infinite_context})"
+            f"(infinite_context={self._infinite_context}, "
+            f"vm={self._enable_vm}, vm_budget={self._vm_budget})"
         )
 
     def _generate_system_prompt(self) -> None:
