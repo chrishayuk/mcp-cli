@@ -67,18 +67,22 @@ jobs:
          matrix:
             test-path:
                - tests/adapters
+               - tests/apps
                - tests/auth
                - tests/chat
                - tests/cli
                - tests/commands
                - tests/config
+               - tests/context
+               - tests/core
+               - tests/display
                - tests/interactive
                - tests/llm
+               - tests/memory
                - tests/model_management
                - tests/tools
-               - tests/ui
                - tests/utils
-               - tests/test_command_consistency.py
+               - tests/test_command_consistency.py tests/test_mcp_cli_init.py tests/test_mcp_cli_main_entry.py
       steps:
          - name: Checkout code
            uses: actions/checkout@v6
@@ -97,7 +101,7 @@ jobs:
            run: uv sync --group dev
 
          - name: Run tests
-           run: uv run pytest --cov=src --cov-report= "${{ matrix.test-path }}"
+           run: uv run pytest --cov=src --cov-report= ${{ matrix.test-path }}
 
          - name: Rename coverage file
            run: mv .coverage ".coverage.${{ strategy.job-index }}"
@@ -146,5 +150,5 @@ jobs:
               echo "## Code Coverage Report" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
               echo '```' >> $GITHUB_STEP_SUMMARY
-              uv run coverage report -m >> $GITHUB_STEP_SUMMARY
+              uv run coverage report -m --fail-under=60 >> $GITHUB_STEP_SUMMARY
               echo '```' >> $GITHUB_STEP_SUMMARY

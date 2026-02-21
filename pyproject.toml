@@ -103,7 +103,6 @@ ignore_errors = true
 branch = true
 
 [tool.coverage.report]
-fail_under = 60
 show_missing = true
 exclude_lines = [
     "pragma: no cover",
