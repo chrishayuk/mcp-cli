@@ -5,6 +5,7 @@ Unified server health command — check MCP server connectivity and status.
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any
 
@@ -14,6 +15,8 @@ from mcp_cli.commands.base import (
     CommandResult,
 )
 from mcp_cli.context import get_context
+
+logger = logging.getLogger(__name__)
 
 
 class HealthCommand(UnifiedCommand):
@@ -65,8 +68,8 @@ Shows server status (healthy/unhealthy/timeout/error) and ping latency.
                 context = get_context()
                 if context:
                     tool_manager = context.tool_manager
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to get tool manager from context: %s", e)
 
         if not tool_manager:
             return CommandResult(

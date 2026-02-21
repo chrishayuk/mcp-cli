@@ -21,7 +21,7 @@ from mcp_cli.config.defaults import DEFAULT_APP_TOOL_TIMEOUT
 if TYPE_CHECKING:
     from mcp_cli.tools.manager import ToolManager
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 # MCP spec: tool names use A-Z, a-z, 0-9, underscore, hyphen, dot.
 _VALID_TOOL_NAME = re.compile(r"^[a-zA-Z0-9_\-./]+$")
@@ -51,8 +51,8 @@ class AppBridge:
             try:
                 asyncio.ensure_future(old.close())
             except Exception as e:
-                log.debug("Failed to close old WebSocket: %s", e)
-        log.info(
+                logger.debug("Failed to close old WebSocket: %s", e)
+        logger.info(
             "WebSocket set for app %s (state -> INITIALIZING)", self.app_info.tool_name
         )
 
@@ -78,7 +78,7 @@ class AppBridge:
         try:
             msg = json.loads(raw)
         except json.JSONDecodeError:
-            log.warning("Invalid JSON from browser: %s", raw[:200])
+            logger.warning("Invalid JSON from browser: %s", raw[:200])
             return None
 
         method = msg.get("method")
@@ -99,7 +99,7 @@ class AppBridge:
 
         if method == "ui/notifications/initialized":
             self.app_info.state = AppState.READY
-            log.info("App %s initialized", self.app_info.tool_name)
+            logger.info("App %s initialized", self.app_info.tool_name)
             # Push deferred initial tool result now that the app is ready
             if self._initial_tool_result is not None:
                 pending = self._initial_tool_result
@@ -109,7 +109,7 @@ class AppBridge:
 
         if method == "ui/notifications/teardown":
             self.app_info.state = AppState.CLOSED
-            log.info("App %s teardown", self.app_info.tool_name)
+            logger.info("App %s teardown", self.app_info.tool_name)
             return None
 
         # Unknown notification — ignore silently
@@ -146,7 +146,7 @@ class AppBridge:
                 }
             )
 
-        log.debug(
+        logger.debug(
             "App %s calling tool %s with %s",
             self.app_info.tool_name,
             tool_name,
@@ -186,7 +186,7 @@ class AppBridge:
                 )
 
         except asyncio.TimeoutError:
-            log.error(
+            logger.error(
                 "Tool call timed out after %ss: %s", DEFAULT_APP_TOOL_TIMEOUT, tool_name
             )
             return json.dumps(
@@ -201,7 +201,7 @@ class AppBridge:
             )
 
         except Exception as e:
-            log.error("Tool call failed: %s", e)
+            logger.error("Tool call failed: %s", e)
             return json.dumps(
                 {
                     "jsonrpc": "2.0",
@@ -224,7 +224,7 @@ class AppBridge:
             )
             return json.dumps({"jsonrpc": "2.0", "id": msg_id, "result": result})
         except Exception as e:
-            log.error("Resource read failed: %s", e)
+            logger.error("Resource read failed: %s", e)
             return json.dumps(
                 {
                     "jsonrpc": "2.0",
@@ -240,7 +240,7 @@ class AppBridge:
     def _handle_ui_message(self, msg_id: Any, params: dict[str, Any]) -> str:
         """Handle a message from the app to be added to conversation."""
         content = params.get("content", {})
-        log.info("App %s sent message: %s", self.app_info.tool_name, content)
+        logger.info("App %s sent message: %s", self.app_info.tool_name, content)
         return json.dumps({"jsonrpc": "2.0", "id": msg_id, "result": {}})
 
     # ------------------------------------------------------------------ #
@@ -250,7 +250,7 @@ class AppBridge:
     def _handle_model_context_update(self, msg_id: Any, params: dict[str, Any]) -> str:
         """Store updated model context from the app."""
         self._model_context = params
-        log.info("App %s updated model context", self.app_info.tool_name)
+        logger.info("App %s updated model context", self.app_info.tool_name)
         return json.dumps({"jsonrpc": "2.0", "id": msg_id, "result": {}})
 
     def set_initial_tool_result(self, result: Any) -> None:
@@ -278,14 +278,14 @@ class AppBridge:
 
         if not self._ws:
             self._pending_notifications.append(notification)
-            log.debug("Queued tool-result notification (ws not connected)")
+            logger.debug("Queued tool-result notification (ws not connected)")
             return
 
         try:
             await self._ws.send(notification)
         except Exception as e:
             self._pending_notifications.append(notification)
-            log.warning("Failed to push tool result, queued: %s", e)
+            logger.warning("Failed to push tool result, queued: %s", e)
 
     async def push_tool_input(self, arguments: dict[str, Any]) -> None:
         """Push tool input to the app (sent after initialization)."""
@@ -303,7 +303,7 @@ class AppBridge:
         try:
             await self._ws.send(notification)
         except Exception as e:
-            log.warning("Failed to push tool input: %s", e)
+            logger.warning("Failed to push tool input: %s", e)
 
     # ------------------------------------------------------------------ #
     #  Helpers                                                            #

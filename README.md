@@ -7,50 +7,43 @@ A powerful, feature-rich command-line interface for interacting with Model Conte
 
 **Default Configuration**: MCP CLI defaults to using Ollama with the `gpt-oss` reasoning model for local, privacy-focused operation without requiring API keys.
 
-## 🆕 Recent Updates (v0.14.0)
+## 🆕 Recent Updates (v0.16)
 
 ### AI Virtual Memory (Experimental)
 - **`--vm` flag**: Enable OS-style virtual memory for conversation context management, powered by `chuk-ai-session-manager`
 - **`--vm-budget`**: Control token budget for conversation events (system prompt is uncapped on top), forcing earlier eviction and page creation
 - **`--vm-mode`**: Choose VM mode — `passive` (runtime-managed, default), `relaxed` (VM-aware conversation), or `strict` (model-driven paging with tools)
 - **`/memory` command**: Visualize VM state during conversations — page table, working set utilization, eviction metrics, TLB stats (aliases: `/vm`, `/mem`)
-- **Context filtering**: Budget-aware turn grouping keeps recent turns intact while evicted content is preserved as VM pages in the developer message
-- **Multimodal page_fault**: Image pages return multi-block content (text + image_url) so multimodal models can re-analyze recalled images; structured/text pages include modality and compression metadata
-- **`/memory page <id> --download`**: Export page content to local files with modality-aware extensions (.txt, .json, .png) and base64 data URI decoding
+- **Multimodal page_fault**: Image pages return multi-block content (text + image_url) so multimodal models can re-analyze recalled images
+- **`/memory page <id> --download`**: Export page content to local files with modality-aware extensions (.txt, .json, .png)
 
-### Server Health Monitoring
-- **`/health` command**: Check MCP server connectivity — shows status (healthy/unhealthy/timeout/error) and latency per server
-- **Health-check-on-failure**: When a tool call fails with a connection error, the system automatically diagnoses the server and enriches the error message
-- **`--health-interval`**: Optional background health polling that logs server status transitions (e.g. healthy → unhealthy)
-
-### Production Hardening (Tier 5)
-- **Secret Redaction**: All log output (console and file) is automatically redacted for Bearer tokens, API keys, OAuth tokens, and Authorization headers
-- **Structured File Logging**: Optional `--log-file` flag enables rotating JSON log files (10MB, 3 backups) at DEBUG level with secret redaction
-- **Per-Server Timeouts**: Server configs now support `tool_timeout` and `init_timeout` overrides, resolved per-server → global → default
-- **Thread-Safe OAuth**: Concurrent OAuth flows are serialized with `asyncio.Lock` and copy-on-write header mutation
-
-### Code Quality (Tier 4)
-- **Core/UI Separation**: Core modules (`chat/conversation.py`, `chat/tool_processor.py`, `chat/chat_context.py`) no longer import `chuk_term.ui.output` — all logging goes through `logging` module
-- **Message Class Clarity**: Local `Message` renamed to `HistoryMessage` (backward-compat alias preserved) to distinguish from `chuk_llm.core.models.Message`
-- **Removed Global Singletons**: `_GLOBAL_TOOL_MANAGER` and associated getter/setter functions deleted
-- **Integration Test Framework**: Real MCP server tests with `@pytest.mark.integration` marker (SQLite server)
-- **Coverage Reporting**: Branch coverage enabled with `fail_under = 60` threshold in pyproject.toml
-
-### Previous: MCP Apps (SEP-1865)
-- **Interactive HTML UIs**: MCP servers can now serve interactive HTML applications (charts, tables, maps, markdown viewers) that render in your browser
+### MCP Apps (SEP-1865)
+- **Interactive HTML UIs**: MCP servers can serve interactive HTML applications (charts, tables, maps, markdown viewers) that render in your browser
 - **Sandboxed iframes**: Apps run in secure sandboxed iframes with CSP protection
 - **WebSocket bridge**: Real-time bidirectional communication between browser apps and MCP servers
 - **Automatic launch**: Tools with `_meta.ui` annotations automatically open in the browser when called
 - **Session reliability**: Message queuing, reconnection with exponential backoff, deferred tool result delivery
 
-### Previous: Performance & Polish (Tier 3)
-- **O(1) Tool Lookups**: Indexed tool lookup replacing O(n) linear scans in both ToolManager and ChatContext
-- **Cached LLM Tool Metadata**: Per-provider caching of tool definitions with automatic invalidation
-- **Startup Progress**: Real-time progress messages during initialization instead of a single spinner
-- **Token Usage Tracking**: Per-turn and cumulative token tracking with `/usage` command (aliases: `/tokens`, `/cost`)
+### Production Hardening
+- **Secret Redaction**: All log output (console and file) is automatically redacted for Bearer tokens, API keys, OAuth tokens, and Authorization headers
+- **Structured File Logging**: Optional `--log-file` flag enables rotating JSON log files (10MB, 3 backups) at DEBUG level
+- **Per-Server Timeouts**: Server configs support `tool_timeout` and `init_timeout` overrides, resolved per-server → global → default
+- **Thread-Safe OAuth**: Concurrent OAuth flows serialized with `asyncio.Lock` and copy-on-write header mutation
+- **Server Health Monitoring**: `/health` command, health-check-on-failure diagnostics, optional `--health-interval` background polling
+
+### Performance & Polish
+- **O(1) Tool Lookups**: Indexed tool lookup replacing O(n) linear scans
+- **Cached LLM Tool Metadata**: Per-provider caching with automatic invalidation
+- **Startup Progress**: Real-time progress messages during initialization
+- **Token Usage Tracking**: Per-turn and cumulative tracking with `/usage` command (aliases: `/tokens`, `/cost`)
 - **Session Persistence**: Save/load/list conversation sessions with auto-save every 10 turns (`/sessions`)
 - **Conversation Export**: Export conversations as Markdown or JSON with metadata (`/export`)
-- **Trusted Domains**: Tools from trusted server domains (e.g. chukai.io) skip confirmation prompts
+
+### Code Quality
+- **Core/UI Separation**: Core modules use `logging` only — no UI imports
+- **3,200+ tests**: Comprehensive test suite with branch coverage, integration tests, and 60% minimum threshold
+- **15 Architecture Principles**: Documented and enforced (see [architecture.md](architecture.md))
+- **Full [Roadmap](roadmap.md)**: Tiers 1-5 complete, Tiers 6-12 planned (plans, traces, skills, scheduling, multi-agent)
 
 ## 🔄 Architecture Overview
 
@@ -96,7 +89,7 @@ MCP CLI supports all providers and models from CHUK-LLM, including cutting-edge 
 | **IBM watsonx** 🏢 | Granite, Llama models | Enterprise compliance |
 | **Mistral AI** 🇪🇺 | Mistral Large, Medium | European, efficient models |
 
-### Robust Tool System (Powered by CHUK Tool Processor v0.13+)
+### Robust Tool System (Powered by CHUK Tool Processor v0.22+)
 - **Automatic Discovery**: Server-provided tools are automatically detected and catalogued
 - **Provider Adaptation**: Tool names are automatically sanitized for provider compatibility
 - **Production-Grade Execution**: Middleware layers with timeouts, retries, exponential backoff, caching, and circuit breakers
@@ -133,6 +126,10 @@ MCP CLI supports all providers and models from CHUK-LLM, including cutting-edge 
 ## 📚 Documentation
 
 Comprehensive documentation is available in the `docs/` directory:
+
+### Project
+- **[Architecture](architecture.md)** - 15 design principles, module layout, and coding conventions
+- **[Roadmap](roadmap.md)** - Vision, completed tiers (1-5), and planned tiers (6-12: plans, traces, skills, scheduling, multi-agent, remote sessions)
 
 ### Core Documentation
 - **[Commands System](docs/COMMANDS.md)** - Complete guide to the unified command system, patterns, and usage across all modes
@@ -1278,8 +1275,8 @@ Core dependencies are organized into feature groups:
 
 - **cli**: Terminal UI and command framework (Rich, Typer, chuk-term)
 - **dev**: Development tools, testing utilities, linting
-- **chuk-tool-processor v0.13+**: Production-grade tool execution with middleware, multiple execution strategies, and observability
-- **chuk-llm v0.16+**: Unified LLM provider with dynamic model discovery, capability-based selection, and llama.cpp integration for 52x faster imports and 112x faster client creation
+- **chuk-tool-processor v0.22+**: Production-grade tool execution with middleware, multiple execution strategies, and observability
+- **chuk-llm v0.17+**: Unified LLM provider with dynamic model discovery, capability-based selection, and llama.cpp integration
 - **chuk-term**: Enhanced terminal UI with themes, prompts, and cross-platform support
 
 Install with specific features:
@@ -1353,7 +1350,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 - **[CHUK Tool Processor](https://github.com/chrishayuk/chuk-tool-processor)** - Production-grade async tool execution with middleware and observability
-- **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)** - Unified LLM provider with dynamic model discovery, llama.cpp integration, and GPT-5/Claude 4.5 support (v0.16+)
+- **[CHUK-LLM](https://github.com/chrishayuk/chuk-llm)** - Unified LLM provider with dynamic model discovery, llama.cpp integration, and GPT-5/Claude 4.5 support (v0.17+)
 - **[CHUK-Term](https://github.com/chrishayuk/chuk-term)** - Enhanced terminal UI with themes and cross-platform support
 - **[Rich](https://github.com/Textualize/rich)** - Beautiful terminal formatting
 - **[Typer](https://typer.tiangolo.com/)** - CLI framework

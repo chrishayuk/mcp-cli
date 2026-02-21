@@ -836,6 +836,81 @@ mcp remote logs --follow
 - Read-only mode for auditors
 - Collaborative mode for pair-debugging agents
 
+## Code Review Fixes (Post-Audit)
+
+> **Goal:** Address findings from the comprehensive codebase review. Fixes organized by priority — high items are correctness/reliability, medium are consistency/maintainability, low are cleanup.
+
+### R.1 Add Logging to Remaining Silent Exception Blocks ✅
+
+**Problem:** 18 `except Exception: pass` blocks in commands/ and UI code lose error context entirely. The Tier 4 architecture audit fixed 6 in core modules; these are the remaining locations.
+
+**Files & Locations:**
+
+| File | Line | Context |
+|------|------|---------|
+| `commands/servers/ping.py` | 87-88 | Silent pass in ping check |
+| `commands/servers/health.py` | 68-69 | Silent pass in health check |
+| `commands/tokens/token.py` | 51-52 | Silent fallback to AUTO backend |
+| `commands/providers/providers.py` | 196-197 | Silent pass in provider status |
+| `commands/providers/providers.py` | 263-266 | Hardcoded error, missing logs |
+| `commands/providers/models.py` | 244-245 | Silent pass in Ollama discovery |
+| `commands/providers/models.py` | 286-287 | Silent pass in provider fetch |
+| `commands/providers/models.py` | 322-323 | Silent pass in API model fetch |
+| `commands/core/clear.py` | 91-99 | Nested silent passes |
+| `chat/tool_processor.py` | 634, 651, 686, 774 | Silent pass for UI errors |
+| `chat/tool_processor.py` | 914 | Silent pass for JSON parsing |
+| `chat/chat_handler.py` | 139-140 | Swallows tool count error |
+| `tools/manager.py` | 342-343 | Silent "non-critical" pass |
+| `config/discovery.py` | 212-213 | Returns False, loses error |
+
+**Action:** Add `logger.debug("context: %s", e)` to each block. Same pattern used in the 6 core fixes from Tier 4.
+
+### R.2 Delete Dead Code: `chat/__main__.py` ✅
+
+**Problem:** 196-line file marked dead in pyproject.toml coverage omit. Imports non-existent modules. Never executed.
+
+**File:** `src/mcp_cli/chat/__main__.py`
+
+**Action:** Delete the file. Remove from coverage omit in pyproject.toml.
+
+### R.3 Standardize Logger Variable Naming ✅
+
+**Problem:** 5 modules use `log = getLogger(__name__)` while the rest use `logger`. Inconsistent grep-ability.
+
+**Files:**
+- `apps/bridge.py` — `log`
+- `apps/host.py` — `log`
+- `chat/conversation.py` — `log`
+- `chat/tool_processor.py` — `log`
+- `commands/memory/memory.py` — `log`
+
+**Action:** Rename `log` → `logger` in these 5 files. Update all references.
+
+### R.4 Consolidate `constants/` Into `config/` ✅
+
+**Problem:** Two locations for project constants: `constants/__init__.py` (118 lines) and `config/defaults.py` + `config/enums.py`. Splits the single source of truth.
+
+**Action:** Move status values and enums from `constants/` to `config/enums.py` or `config/defaults.py`. Update imports. Delete `constants/` package.
+
+### R.5 Add Unit Tests for `core/model_resolver.py` ✅
+
+**Problem:** 178-line user-facing module with zero test coverage. Handles error display and model resolution fallback logic.
+
+**File:** `src/mcp_cli/core/model_resolver.py`
+
+**Action:** Create `tests/core/test_model_resolver.py` with tests for resolution paths, error handling, and fallback behavior.
+
+### R.6 Add Unit Tests for High-Risk Command Modules
+
+**Problem:** 48 command modules lack direct unit tests. Existing tests are end-to-end command usage tests that don't cover internal logic. Highest risk in large modules.
+
+**Priority files:**
+- `commands/tokens/token.py` (942 lines)
+- `commands/tools/execute_tool.py` (565 lines)
+- `commands/memory/memory.py` (538 lines)
+
+**Action:** Add targeted unit tests for complex internal logic in each module.
+
 ---
 
 ## Priority Summary
@@ -849,6 +924,7 @@ mcp remote logs --follow
 | **4** | Code quality | Maintainable, testable | ✅ Complete |
 | **5** | Production hardening | Observable, auditable | ✅ Complete |
 | **VM** | AI Virtual Memory | OS-style context management | ✅ Complete (Experimental) |
+| **Review** | Code review fixes | Silent exceptions, dead code, test gaps | ✅ Complete |
 | **6** | Plans & execution graphs | Reproducible workflows | High |
 | **7** | Observability & traces | Debugger for AI behavior | High |
 | **8** | Memory scopes | Long-running assistants | High |

@@ -101,9 +101,6 @@ ignore_errors = true
 
 [tool.coverage.run]
 branch = true
-omit = [
-    "src/mcp_cli/chat/__main__.py",  # legacy dead code – imports non-existent module
-]
 
 [tool.coverage.report]
 fail_under = 60

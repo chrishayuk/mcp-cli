@@ -339,8 +339,8 @@ class ToolManager:
                     self._report_progress(
                         f"Initialized {tool_count} tools from {server_count} server(s)"
                     )
-                except Exception:
-                    pass  # Non-critical
+                except Exception as e:
+                    logger.debug("Post-init tool count report failed: %s", e)
 
             # Enable middleware if configured (retry, circuit breaker, rate limiting)
             if self._middleware_enabled and self.stream_manager:

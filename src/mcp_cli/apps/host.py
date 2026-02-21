@@ -42,7 +42,7 @@ from mcp_cli.config.defaults import (
 if TYPE_CHECKING:
     from mcp_cli.tools.manager import ToolManager
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 # Version injected into the host page
 _MCP_CLI_VERSION = "0.13"
@@ -83,7 +83,7 @@ class AppHostServer:
         """
         # Close any previous instance of this tool's app
         if tool_name in self._apps:
-            log.info("Closing previous instance of app %s", tool_name)
+            logger.info("Closing previous instance of app %s", tool_name)
             await self.close_app(tool_name)
 
         if len(self._apps) >= DEFAULT_APP_MAX_CONCURRENT:
@@ -141,9 +141,9 @@ class AppHostServer:
         if DEFAULT_APP_AUTO_OPEN_BROWSER:
             try:
                 webbrowser.open(app_info.url)
-                log.info("Opened MCP App for %s at %s", tool_name, app_info.url)
+                logger.info("Opened MCP App for %s at %s", tool_name, app_info.url)
             except Exception as e:
-                log.warning(
+                logger.warning(
                     "Could not open browser for app %s at %s: %s",
                     tool_name,
                     app_info.url,
@@ -173,7 +173,7 @@ class AppHostServer:
                 server.close()
                 await server.wait_closed()
             except Exception as e:
-                log.debug("Error cleaning up app server: %s", e)
+                logger.debug("Error cleaning up app server: %s", e)
         self._apps.clear()
         self._bridges.clear()
         self._uri_to_tool.clear()
@@ -315,7 +315,7 @@ class AppHostServer:
         # WebSocket handler
         async def ws_handler(ws: ServerConnection) -> None:
             bridge.set_ws(ws)
-            log.info("WebSocket connected for app %s", app_info.tool_name)
+            logger.info("WebSocket connected for app %s", app_info.tool_name)
 
             # Drain any notifications that queued while WS was disconnected
             await bridge.drain_pending()
@@ -329,7 +329,7 @@ class AppHostServer:
             except websockets.ConnectionClosed:
                 pass
 
-            log.info("WebSocket closed for app %s", app_info.tool_name)
+            logger.info("WebSocket closed for app %s", app_info.tool_name)
 
         server = await ws_serve(
             ws_handler,
@@ -339,7 +339,7 @@ class AppHostServer:
         )
         self._servers.append(server)
 
-        log.info(
+        logger.info(
             "MCP App server started for %s on port %d",
             app_info.tool_name,
             app_info.port,

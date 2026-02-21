@@ -20,7 +20,7 @@ from mcp_cli.commands.base import (
 from chuk_term.ui import output, format_table
 from mcp_cli.config.defaults import DEFAULT_DOWNLOADS_DIR
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class MemoryCommand(UnifiedCommand):
@@ -373,7 +373,7 @@ Examples:
             return CommandResult(success=True, data={"path": str(out_path)})
 
         except Exception as exc:
-            log.error(f"Download failed for {page_id}: {exc}")
+            logger.error(f"Download failed for {page_id}: {exc}")
             return CommandResult(success=False, error=f"Download failed: {exc}")
 
     def _show_full_stats(self, vm: Any) -> CommandResult:

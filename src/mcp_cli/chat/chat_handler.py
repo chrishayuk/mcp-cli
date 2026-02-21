@@ -136,7 +136,8 @@ async def handle_chat_mode(
                 # Just show that we have a tool manager but don't know the count
                 else:
                     tool_count = "Available"
-            except Exception:
+            except Exception as e:
+                logger.debug("Failed to get tool count: %s", e)
                 tool_count = "Unknown"
 
         additional_info = {}

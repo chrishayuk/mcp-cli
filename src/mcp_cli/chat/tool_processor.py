@@ -39,7 +39,7 @@ from mcp_cli.utils.preferences import get_preference_manager
 if TYPE_CHECKING:
     from mcp_cli.tools.manager import ToolManager
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 # VM tools handled locally via MemoryManager, not routed to MCP ToolManager
 _VM_TOOL_NAMES = frozenset({"page_fault", "search_pages"})
@@ -104,13 +104,13 @@ class ToolProcessor:
             reasoning_content: Optional reasoning content from the LLM
         """
         if not tool_calls:
-            log.warning("Empty tool_calls list received.")
+            logger.warning("Empty tool_calls list received.")
             return
 
         if name_mapping is None:
             name_mapping = {}
 
-        log.info(
+        logger.info(
             f"Processing {len(tool_calls)} tool calls with {len(name_mapping)} name mappings"
         )
 
@@ -168,7 +168,7 @@ class ToolProcessor:
                 try:
                     self.ui_manager.print_tool_call(display_name, display_arguments)
                 except Exception as ui_exc:
-                    log.warning(f"UI display error (non-fatal): {ui_exc}")
+                    logger.warning(f"UI display error (non-fatal): {ui_exc}")
 
                 # Handle user confirmation
                 server_url = self._get_server_url_for_tool(execution_tool_name)
@@ -206,9 +206,9 @@ class ToolProcessor:
                     continue
 
                 # DEBUG: Log exactly what the model sent for this tool call
-                log.info(f"TOOL CALL FROM MODEL: {llm_tool_name} id={call_id}")
-                log.info(f"  raw_arguments: {raw_arguments}")
-                log.info(f"  parsed_arguments: {arguments}")
+                logger.info(f"TOOL CALL FROM MODEL: {llm_tool_name} id={call_id}")
+                logger.info(f"  raw_arguments: {raw_arguments}")
+                logger.info(f"  parsed_arguments: {arguments}")
 
                 # Get actual tool name for checks (for call_tool, it's the inner tool)
                 actual_tool_for_checks = execution_tool_name
@@ -228,7 +228,7 @@ class ToolProcessor:
                         f"INVALID_ARGS: Tool '{actual_tool_for_checks}' called with None values "
                         f"for: {', '.join(none_args)}. Please provide actual values."
                     )
-                    log.warning(error_msg)
+                    logger.warning(error_msg)
                     self._add_tool_result_to_history(
                         llm_tool_name,
                         call_id,
@@ -240,7 +240,7 @@ class ToolProcessor:
                 tool_state = get_tool_state()
                 ref_check = tool_state.check_references(arguments)
                 if not ref_check.valid:
-                    log.warning(
+                    logger.warning(
                         f"Missing references in {actual_tool_for_checks}: {ref_check.message}"
                     )
                     # Add error to history instead of executing
@@ -268,7 +268,7 @@ class ToolProcessor:
                     )
                     if ungrounded_check.is_ungrounded:
                         # Log args for observability (important for debugging)
-                        log.info(
+                        logger.info(
                             f"Ungrounded call to {actual_tool_for_checks} with args: {arguments}"
                         )
 
@@ -284,7 +284,7 @@ class ToolProcessor:
                                 )
                             )
                             if not precond_ok:
-                                log.warning(
+                                logger.warning(
                                     f"Precondition failed for {actual_tool_for_checks}"
                                 )
                                 self._add_tool_result_to_history(
@@ -298,7 +298,7 @@ class ToolProcessor:
                             display_args = {
                                 k: v for k, v in arguments.items() if k != "tool_name"
                             }
-                            log.info(
+                            logger.info(
                                 f"Allowing parameterized tool {actual_tool_for_checks} with args: {display_args}"
                             )
                             # Fall through to execution
@@ -314,7 +314,7 @@ class ToolProcessor:
 
                             if should_proceed and repaired_args:
                                 # Rebind succeeded - use repaired arguments
-                                log.info(
+                                logger.info(
                                     f"Auto-repaired ungrounded call to {actual_tool_for_checks}: "
                                     f"{arguments} -> {repaired_args}"
                                 )
@@ -322,7 +322,7 @@ class ToolProcessor:
                             elif fallback_response:
                                 # Symbolic fallback - return helpful response instead of blocking
                                 # Show visible annotation for observability
-                                log.info(
+                                logger.info(
                                     f"Symbolic fallback for {actual_tool_for_checks}"
                                 )
                                 self._add_tool_result_to_history(
@@ -331,7 +331,7 @@ class ToolProcessor:
                                 continue
                             else:
                                 # All repairs failed - add error to history
-                                log.warning(
+                                logger.warning(
                                     f"Could not repair ungrounded call to {actual_tool_for_checks}"
                                 )
                                 self._add_tool_result_to_history(
@@ -349,7 +349,7 @@ class ToolProcessor:
                     actual_tool_for_checks
                 )
                 if tool_state.limits.per_tool_cap > 0 and per_tool_result.blocked:
-                    log.warning(
+                    logger.warning(
                         f"Tool {actual_tool_for_checks} blocked by per-tool limit: {per_tool_result.reason}"
                     )
                     self._add_tool_result_to_history(
@@ -421,7 +421,7 @@ class ToolProcessor:
             # Show only the tool's arguments, not tool_name
             arguments = {k: v for k, v in arguments.items() if k != "tool_name"}
 
-        log.info(f"Executing tool: {call.tool} with args: {arguments}")
+        logger.info(f"Executing tool: {call.tool} with args: {arguments}")
         await self.ui_manager.start_tool_execution(display_name, arguments)
 
     async def _on_tool_result(self, result: CTPToolResult) -> None:
@@ -445,7 +445,7 @@ class ToolProcessor:
             actual_arguments = {k: v for k, v in arguments.items() if k != "tool_name"}
 
         success = result.is_success
-        log.info(
+        logger.info(
             f"Tool result ({actual_tool_name}): success={success}, error='{result.error}'"
         )
 
@@ -459,7 +459,7 @@ class ToolProcessor:
 
             # Cache result for dedup
             tool_state.cache_result(actual_tool_name, actual_arguments, actual_result)
-            log.debug(f"Cached result for {actual_tool_name}: {actual_result}")
+            logger.debug(f"Cached result for {actual_tool_name}: {actual_result}")
 
             # Create value binding ($v1, $v2, etc.) for dataflow tracking
             # Only bind "execution" tool results (not discovery tools)
@@ -467,7 +467,7 @@ class ToolProcessor:
                 value_binding = tool_state.bind_value(
                     actual_tool_name, actual_arguments, actual_result
                 )
-                log.info(
+                logger.info(
                     f"Bound value ${value_binding.id} = {actual_result} from {actual_tool_name}"
                 )
 
@@ -487,7 +487,7 @@ class ToolProcessor:
         if not tool_state.is_discovery_tool(execution_tool_name):
             per_tool_status = tool_state.track_tool_call(actual_tool_name)
             if per_tool_status.requires_justification:
-                log.warning(
+                logger.warning(
                     f"Tool {actual_tool_name} called {per_tool_status.call_count} times"
                 )
 
@@ -625,14 +625,14 @@ class ToolProcessor:
             )
             return
 
-        log.info("Memory tool %s called with args: %s", tool_name, arguments)
+        logger.info("Memory tool %s called with args: %s", tool_name, arguments)
 
         # Show tool call in UI
         try:
             self.ui_manager.print_tool_call(tool_name, arguments)
             await self.ui_manager.start_tool_execution(tool_name, arguments)
-        except Exception:
-            pass  # UI errors are non-fatal
+        except Exception as e:
+            logger.debug("UI error displaying memory tool call: %s", e)
 
         from mcp_cli.memory.tools import handle_memory_tool
 
@@ -648,8 +648,8 @@ class ToolProcessor:
             await self.ui_manager.finish_tool_execution(
                 result=result_text, success=True
             )
-        except Exception:
-            pass  # UI errors are non-fatal
+        except Exception as e:
+            logger.debug("UI error finishing memory tool display: %s", e)
 
         self._add_tool_result_to_history(llm_tool_name, call_id, result_text)
 
@@ -677,14 +677,14 @@ class ToolProcessor:
             )
             return
 
-        log.info(f"VM tool {tool_name} called with args: {arguments}")
+        logger.info(f"VM tool {tool_name} called with args: {arguments}")
 
         # Show tool call in UI (so page_fault calls are visible)
         try:
             self.ui_manager.print_tool_call(tool_name, arguments)
             await self.ui_manager.start_tool_execution(tool_name, arguments)
-        except Exception:
-            pass  # UI errors are non-fatal
+        except Exception as e:
+            logger.debug("UI error displaying VM tool call: %s", e)
 
         content: str | list[dict[str, Any]] = ""
         success = True
@@ -756,10 +756,10 @@ class ToolProcessor:
                 success = False
                 content = json.dumps({"error": f"Unknown VM tool: {tool_name}"})
 
-            log.info(f"VM tool {tool_name} completed: {content[:200]}")
+            logger.info(f"VM tool {tool_name} completed: {content[:200]}")
 
         except Exception as exc:
-            log.error(f"VM tool {tool_name} failed: {exc}")
+            logger.error(f"VM tool {tool_name} failed: {exc}")
             success = False
             content = json.dumps({"success": False, "error": str(exc)})
 
@@ -771,8 +771,8 @@ class ToolProcessor:
             await self.ui_manager.finish_tool_execution(
                 result=ui_result, success=success
             )
-        except Exception:
-            pass  # UI errors are non-fatal
+        except Exception as e:
+            logger.debug("UI error finishing VM tool display: %s", e)
 
     async def _store_tool_result_as_vm_page(self, tool_name: str, content: str) -> None:
         """Store a tool result as a VM page so it survives eviction.
@@ -799,9 +799,9 @@ class ToolProcessor:
                 hint=f"{tool_name}: {content[:100]}",
             )
             await vm.add_to_working_set(page)
-            log.debug(f"Stored tool result as VM page: {page.page_id}")
+            logger.debug(f"Stored tool result as VM page: {page.page_id}")
         except Exception as exc:
-            log.debug(f"Could not store tool result as VM page: {exc}")
+            logger.debug(f"Could not store tool result as VM page: {exc}")
 
     async def _check_and_launch_app(self, tool_name: str, result: Any) -> None:
         """Check if a tool has an MCP Apps UI and launch/update it.
@@ -830,7 +830,7 @@ class ToolProcessor:
                     bridge = app_host.get_bridge_by_uri(resource_uri)
 
                 if bridge is not None:
-                    log.info(
+                    logger.info(
                         "Pushing result to existing app (tool=%s, uri=%s)",
                         tool_name,
                         resource_uri,
@@ -839,29 +839,29 @@ class ToolProcessor:
                     return
 
                 # No running app for this URI — launch a new one
-                log.info("Tool %s has MCP App UI at %s", tool_name, resource_uri)
+                logger.info("Tool %s has MCP App UI at %s", tool_name, resource_uri)
                 app_info = await app_host.launch_app(
                     tool_name=tool_name,
                     resource_uri=resource_uri,
                     server_name=server_name,
                     tool_result=result,
                 )
-                log.info("MCP App opened at %s", app_info.url)
+                logger.info("MCP App opened at %s", app_info.url)
                 return
 
             # ── Case 2: no resourceUri — route ui_patch to running app ───
             if self._result_contains_patch(result):
                 bridge = app_host.get_any_ready_bridge()
                 if bridge is not None:
-                    log.info("Routing ui_patch from %s to running app", tool_name)
+                    logger.info("Routing ui_patch from %s to running app", tool_name)
                     await bridge.push_tool_result(result)
 
         except ImportError:
-            log.warning(
+            logger.warning(
                 "MCP Apps requires websockets. Install with: pip install mcp-cli[apps]"
             )
         except Exception as e:
-            log.error("Failed to launch MCP App for %s: %s", tool_name, e)
+            logger.error("Failed to launch MCP App for %s: %s", tool_name, e)
 
     @staticmethod
     def _result_contains_patch(result: Any) -> bool:
@@ -911,8 +911,8 @@ class ToolProcessor:
                                             return True
                                 except (json.JSONDecodeError, TypeError):
                                     pass
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Error checking UI result: %s", e)
         return False
 
     def _track_transport_failures(self, success: bool, error: str | None) -> None:
@@ -927,7 +927,7 @@ class ToolProcessor:
                     self._consecutive_transport_failures
                     >= DEFAULT_MAX_CONSECUTIVE_TRANSPORT_FAILURES
                 ):
-                    log.warning(
+                    logger.warning(
                         f"Detected {self._consecutive_transport_failures} consecutive transport failures. "
                         "The connection may need to be restarted."
                     )
@@ -947,7 +947,7 @@ class ToolProcessor:
         for idx, call in enumerate(tool_calls):
             llm_tool_name, _, call_id = self._extract_tool_call_info(call, idx)
             if call_id not in self._result_ids_added:
-                log.warning(
+                logger.warning(
                     f"Missing tool result for {llm_tool_name} ({call_id}), "
                     "adding error placeholder"
                 )
@@ -970,7 +970,7 @@ class ToolProcessor:
                 else:
                     self.ui_manager.finish_tool_calls()
             except Exception:
-                log.debug("finish_tool_calls() raised", exc_info=True)
+                logger.debug("finish_tool_calls() raised", exc_info=True)
 
     def _extract_tool_call_info(self, tool_call: Any, idx: int) -> tuple[str, Any, str]:
         """Extract tool name, arguments, and call ID from a tool call."""
@@ -983,13 +983,13 @@ class ToolProcessor:
             raw_arguments = tool_call.function.arguments
             call_id = tool_call.id
             # DEBUG: Log raw arguments from model
-            log.debug(
+            logger.debug(
                 f"RAW MODEL TOOL CALL: {llm_tool_name}, "
                 f"raw_arguments type={type(raw_arguments).__name__}, "
                 f"value={raw_arguments}"
             )
         elif isinstance(tool_call, dict) and "function" in tool_call:
-            log.warning(
+            logger.warning(
                 f"Received dict tool call instead of ToolCall model: {type(tool_call)}"
             )
             fn = tool_call["function"]
@@ -997,11 +997,11 @@ class ToolProcessor:
             raw_arguments = fn.get("arguments", {})
             call_id = tool_call.get("id", call_id)
         else:
-            log.error(f"Unrecognized tool call format: {type(tool_call)}")
+            logger.error(f"Unrecognized tool call format: {type(tool_call)}")
 
         # Validate
         if not llm_tool_name or llm_tool_name == "unknown_tool":
-            log.error(f"Tool name is empty or unknown in tool call: {tool_call}")
+            logger.error(f"Tool name is empty or unknown in tool call: {tool_call}")
             llm_tool_name = f"unknown_tool_{idx}"
 
         return llm_tool_name, raw_arguments, call_id
@@ -1017,10 +1017,10 @@ class ToolProcessor:
             result: dict[str, Any] = raw_arguments or {}
             return result
         except json.JSONDecodeError as e:
-            log.warning(f"Invalid JSON in arguments: {e}")
+            logger.warning(f"Invalid JSON in arguments: {e}")
             return {}
         except Exception as e:
-            log.error(f"Error parsing arguments: {e}")
+            logger.error(f"Error parsing arguments: {e}")
             return {}
 
     def _extract_result_value(self, result: Any) -> Any:
@@ -1205,7 +1205,7 @@ class ToolProcessor:
             f"({len(content):,} total) ---\n\n"
         )
         truncated = content[:head] + notice + content[-tail:]
-        log.info(
+        logger.info(
             f"Truncated tool result from {len(content):,} to {len(truncated):,} chars"
         )
         return truncated
@@ -1222,11 +1222,11 @@ class ToolProcessor:
                 reasoning_content=reasoning_content,
             )
             self.context.inject_tool_message(assistant_msg)
-            log.debug(
+            logger.debug(
                 f"Added assistant message with {len(tool_calls)} tool calls to history"
             )
         except Exception as e:
-            log.error(f"Error adding assistant message to history: {e}")
+            logger.error(f"Error adding assistant message to history: {e}")
 
     def _add_tool_result_to_history(
         self,
@@ -1251,7 +1251,9 @@ class ToolProcessor:
                 )
                 self.context.inject_tool_message(tool_msg)
                 self._result_ids_added.add(call_id)
-                log.debug(f"Added multi-block tool result to history: {llm_tool_name}")
+                logger.debug(
+                    f"Added multi-block tool result to history: {llm_tool_name}"
+                )
                 return
 
             original_len = len(content)
@@ -1277,9 +1279,9 @@ class ToolProcessor:
             )
             self.context.inject_tool_message(tool_msg)
             self._result_ids_added.add(call_id)
-            log.debug(f"Added tool result to conversation history: {llm_tool_name}")
+            logger.debug(f"Added tool result to conversation history: {llm_tool_name}")
         except Exception as e:
-            log.error(f"Error updating conversation history: {e}")
+            logger.error(f"Error updating conversation history: {e}")
 
     def _add_cancelled_tool_to_history(
         self, llm_tool_name: str, call_id: str, raw_arguments: Any
@@ -1328,7 +1330,7 @@ class ToolProcessor:
                 )
             )
         except Exception as e:
-            log.error(f"Error adding cancelled tool to history: {e}")
+            logger.error(f"Error adding cancelled tool to history: {e}")
 
     def _get_server_url_for_tool(self, tool_name: str) -> str | None:
         """Look up the server URL for a tool using cached context data."""
@@ -1349,7 +1351,7 @@ class ToolProcessor:
                     url: str | None = server.url
                     return url
         except Exception as e:
-            log.debug(f"Could not resolve server URL for {tool_name}: {e}")
+            logger.debug(f"Could not resolve server URL for {tool_name}: {e}")
         return None
 
     def _should_confirm_tool(
@@ -1363,7 +1365,7 @@ class ToolProcessor:
                 return False
             return prefs.should_confirm_tool(tool_name)
         except Exception as e:
-            log.warning(f"Error checking tool confirmation preference: {e}")
+            logger.warning(f"Error checking tool confirmation preference: {e}")
             return True
 
     def _register_discovered_tools(
@@ -1432,7 +1434,7 @@ class ToolProcessor:
             for name in tool_names:
                 if name:
                     tool_state.register_discovered_tool(name)
-                    log.debug(f"Discovered tool via {discovery_tool}: {name}")
+                    logger.debug(f"Discovered tool via {discovery_tool}: {name}")
 
         except Exception as e:
-            log.warning(f"Error registering discovered tools: {e}")
+            logger.warning(f"Error registering discovered tools: {e}")
