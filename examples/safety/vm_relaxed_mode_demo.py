@@ -30,79 +30,101 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 # Load .env for API keys
 from dotenv import load_dotenv
+
 load_dotenv()
 
 # ── Configuration ────────────────────────────────────────────────────────
 
-VM_BUDGET = 500          # Small budget to force evictions
+VM_BUDGET = 500  # Small budget to force evictions
 MODEL = os.getenv("VM_DEMO_MODEL", "gpt-5-mini")
 PROVIDER = "openai"
-MAX_TOOL_ROUNDS = 4      # Max LLM↔tool round-trips per scenario
+MAX_TOOL_ROUNDS = 4  # Max LLM↔tool round-trips per scenario
 
 # ── Conversation with all three content types ────────────────────────────
 
 CONVERSATION = [
     # Turn 1: Simple facts (name, location)
-    ("user",  "My name is Chris and I live in Leavenheath, Suffolk. "
-              "It's a small village on the Suffolk-Essex border, about "
-              "five miles from Colchester. I've lived there for ten years "
-              "and really enjoy the countryside and the local community."),
-    ("ai",    "Nice to meet you, Chris! Leavenheath sounds like a wonderful "
-              "place to live. Being on the Suffolk-Essex border gives you "
-              "easy access to both Colchester and Sudbury. The countryside "
-              "around there is beautiful — rolling farmland and quiet lanes. "
-              "How can I help you today?"),
+    (
+        "user",
+        "My name is Chris and I live in Leavenheath, Suffolk. "
+        "It's a small village on the Suffolk-Essex border, about "
+        "five miles from Colchester. I've lived there for ten years "
+        "and really enjoy the countryside and the local community.",
+    ),
+    (
+        "ai",
+        "Nice to meet you, Chris! Leavenheath sounds like a wonderful "
+        "place to live. Being on the Suffolk-Essex border gives you "
+        "easy access to both Colchester and Sudbury. The countryside "
+        "around there is beautiful — rolling farmland and quiet lanes. "
+        "How can I help you today?",
+    ),
     # Turn 2: Filler (Roman history) to push turn 1 out of budget
-    ("user",  "Can you tell me about the history of the Roman Empire? "
-              "I'm particularly interested in the rise of Augustus and "
-              "how the Republic transitioned into an Empire."),
-    ("ai",    "The Roman Republic's transition to the Empire is one of "
-              "history's most fascinating political transformations. After "
-              "Julius Caesar's assassination in 44 BC, his adopted heir "
-              "Octavian formed the Second Triumvirate with Mark Antony and "
-              "Lepidus. Following years of civil war, including the decisive "
-              "Battle of Actium in 31 BC against Antony and Cleopatra, "
-              "Octavian emerged as sole ruler. In 27 BC, the Senate granted "
-              "him the title Augustus, marking the official beginning of "
-              "the Roman Empire. He cleverly maintained the facade of "
-              "Republican institutions while consolidating absolute power."),
+    (
+        "user",
+        "Can you tell me about the history of the Roman Empire? "
+        "I'm particularly interested in the rise of Augustus and "
+        "how the Republic transitioned into an Empire.",
+    ),
+    (
+        "ai",
+        "The Roman Republic's transition to the Empire is one of "
+        "history's most fascinating political transformations. After "
+        "Julius Caesar's assassination in 44 BC, his adopted heir "
+        "Octavian formed the Second Triumvirate with Mark Antony and "
+        "Lepidus. Following years of civil war, including the decisive "
+        "Battle of Actium in 31 BC against Antony and Cleopatra, "
+        "Octavian emerged as sole ruler. In 27 BC, the Senate granted "
+        "him the title Augustus, marking the official beginning of "
+        "the Roman Empire. He cleverly maintained the facade of "
+        "Republican institutions while consolidating absolute power.",
+    ),
     # Turn 3: More filler
-    ("user",  "What about the fall of Rome? What were the main causes?"),
-    ("ai",    "The fall of the Western Roman Empire in 476 AD resulted from "
-              "multiple interconnected factors. Economic troubles including "
-              "inflation, over-taxation, and trade disruption weakened the "
-              "empire's financial foundations. Military problems included "
-              "overreliance on Germanic mercenaries and difficulty defending "
-              "the vast borders. Political instability saw dozens of emperors "
-              "in the final century, many assassinated. External pressures "
-              "from migrating peoples — Visigoths, Vandals, Huns — culminated "
-              "in Odoacer deposing the last emperor Romulus Augustulus."),
+    ("user", "What about the fall of Rome? What were the main causes?"),
+    (
+        "ai",
+        "The fall of the Western Roman Empire in 476 AD resulted from "
+        "multiple interconnected factors. Economic troubles including "
+        "inflation, over-taxation, and trade disruption weakened the "
+        "empire's financial foundations. Military problems included "
+        "overreliance on Germanic mercenaries and difficulty defending "
+        "the vast borders. Political instability saw dozens of emperors "
+        "in the final century, many assassinated. External pressures "
+        "from migrating peoples — Visigoths, Vandals, Huns — culminated "
+        "in Odoacer deposing the last emperor Romulus Augustulus.",
+    ),
     # Turn 4: Creative content (poem — the hardest recall case)
-    ("user",  "Tell me a poem about the stars tonight."),
-    ("ai",    "Beneath the velvet canopy of night, a thousand diamonds catch "
-              "the light. Each star a story, old and bright, a lantern hung "
-              "at heaven's height. They whisper tales of time and space, of "
-              "galaxies in slow embrace, of suns that lived and left no trace "
-              "but photons on a journey's face. And we who gaze from earth "
-              "below are humbled by the cosmic show — a reminder that our "
-              "fleeting days are stardust scattered through the haze."),
+    ("user", "Tell me a poem about the stars tonight."),
+    (
+        "ai",
+        "Beneath the velvet canopy of night, a thousand diamonds catch "
+        "the light. Each star a story, old and bright, a lantern hung "
+        "at heaven's height. They whisper tales of time and space, of "
+        "galaxies in slow embrace, of suns that lived and left no trace "
+        "but photons on a journey's face. And we who gaze from earth "
+        "below are humbled by the cosmic show — a reminder that our "
+        "fleeting days are stardust scattered through the haze.",
+    ),
     # Turn 5: Story with a detail buried deep past 120-char hint cutoff.
     # The hint will show "On a street that smelled of fresh croissants..."
     # but the key detail (the olive tree) is ~400 chars in.
-    ("user",  "Tell me a short story set in Paris."),
-    ("ai",    "On a street that smelled of fresh croissants and rain-washed "
-              "stone, there was a little bookshop with a green door. The owner, "
-              "Madame Lafont, kept a cat named Moustache who slept on the "
-              "counter between stacks of unsold novels. Every Tuesday a young "
-              "painter came in to browse, leaving charcoal smudges on the spines. "
-              "One afternoon he found a dusty notebook wedged behind a shelf. "
-              "Inside were sketches of an ancient olive tree that once stood in "
-              "the courtyard of the shop — drawn by someone who had clearly loved "
-              "it. Madame Lafont smiled when she saw the sketches. 'That was my "
-              "grandmother's tree,' she said. 'She planted it the year the war "
-              "ended.' The painter asked if he could paint it from the sketches, "
-              "and she agreed. He returned each Tuesday with oils and canvas, "
-              "slowly bringing the olive tree back to life on the bookshop wall."),
+    ("user", "Tell me a short story set in Paris."),
+    (
+        "ai",
+        "On a street that smelled of fresh croissants and rain-washed "
+        "stone, there was a little bookshop with a green door. The owner, "
+        "Madame Lafont, kept a cat named Moustache who slept on the "
+        "counter between stacks of unsold novels. Every Tuesday a young "
+        "painter came in to browse, leaving charcoal smudges on the spines. "
+        "One afternoon he found a dusty notebook wedged behind a shelf. "
+        "Inside were sketches of an ancient olive tree that once stood in "
+        "the courtyard of the shop — drawn by someone who had clearly loved "
+        "it. Madame Lafont smiled when she saw the sketches. 'That was my "
+        "grandmother's tree,' she said. 'She planted it the year the war "
+        "ended.' The painter asked if he could paint it from the sketches, "
+        "and she agreed. He returned each Tuesday with oils and canvas, "
+        "slowly bringing the olive tree back to life on the bookshop wall.",
+    ),
 ]
 
 # Simulated tool result — stored as an artifact page to test recall
@@ -114,19 +136,22 @@ TOOL_RESULT_CONTENT = (
 )
 
 # Simulated structured data (JSON API response) — Modality.STRUCTURED
-STRUCTURED_CONTENT = json.dumps({
-    "type": "flight_status",
-    "airline": "British Airways",
-    "flight": "BA1472",
-    "origin": {"code": "LHR", "city": "London Heathrow"},
-    "destination": {"code": "EDI", "city": "Edinburgh"},
-    "departure": "2026-02-21T14:30:00Z",
-    "arrival": "2026-02-21T15:55:00Z",
-    "status": "on_time",
-    "gate": "B42",
-    "terminal": "5",
-    "aircraft": "Airbus A320neo",
-}, indent=2)
+STRUCTURED_CONTENT = json.dumps(
+    {
+        "type": "flight_status",
+        "airline": "British Airways",
+        "flight": "BA1472",
+        "origin": {"code": "LHR", "city": "London Heathrow"},
+        "destination": {"code": "EDI", "city": "Edinburgh"},
+        "departure": "2026-02-21T14:30:00Z",
+        "arrival": "2026-02-21T15:55:00Z",
+        "status": "on_time",
+        "gate": "B42",
+        "terminal": "5",
+        "aircraft": "Airbus A320neo",
+    },
+    indent=2,
+)
 
 # Simulated image analysis result — Modality.IMAGE
 IMAGE_CONTENT = (
@@ -143,15 +168,18 @@ IMAGE_CONTENT = (
 
 # ── Recall scenarios ─────────────────────────────────────────────────────
 
+
 @dataclass
 class RecallScenario:
     """A single recall test case."""
+
     name: str
     question: str
-    expected_keywords: list[str]    # Must appear in final answer (lowered)
+    expected_keywords: list[str]  # Must appear in final answer (lowered)
     description: str
     reject_keywords: list[str] = field(default_factory=list)  # Must NOT appear
-    expect_decline: bool = False    # True if model should say "I don't have that"
+    expect_decline: bool = False  # True if model should say "I don't have that"
+
 
 SCENARIOS = [
     # ── Original three ───────────────────────────────────────────────
@@ -183,14 +211,21 @@ SCENARIOS = [
         expected_keywords=[],
         description="Never discussed — model should decline, not hallucinate",
         expect_decline=True,
-        reject_keywords=["giants", "arsenal", "chelsea", "united", "city",
-                         "liverpool", "tottenham", "spurs", "cowboys"],
+        reject_keywords=[
+            "giants",
+            "arsenal",
+            "chelsea",
+            "united",
+            "city",
+            "liverpool",
+            "tottenham",
+            "spurs",
+            "cowboys",
+        ],
     ),
     RecallScenario(
         name="Deep detail",
-        question=(
-            "In the Paris story, what kind of tree did the grandmother plant?"
-        ),
+        question=("In the Paris story, what kind of tree did the grandmother plant?"),
         expected_keywords=["olive"],
         description="Detail buried ~400 chars in — past the 120-char hint cutoff",
     ),
@@ -280,6 +315,7 @@ DISTRACTOR_TOOLS = [
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
+
 def header(n: int, title: str) -> None:
     print(f"\n{'=' * 70}")
     print(f"  {n}. {title}")
@@ -301,6 +337,7 @@ def info(msg: str) -> None:
 @dataclass
 class ScenarioResult:
     """Tracks what happened during a single recall scenario."""
+
     scenario: str
     page_fault_calls: int = 0
     search_pages_calls: int = 0
@@ -324,13 +361,11 @@ class ScenarioResult:
 
     @property
     def recalled_content(self) -> bool:
-        return (
-            len(self.keywords_missing) == 0
-            and len(self.reject_found) == 0
-        )
+        return len(self.keywords_missing) == 0 and len(self.reject_found) == 0
 
 
 # ── Setup: Session with evictions ────────────────────────────────────────
+
 
 async def setup_session() -> dict:
     """Create a VM session, play conversation, inject tool result, return context."""
@@ -406,7 +441,8 @@ async def setup_session() -> dict:
         "down from heaven. The ingenious use of pendentives — curved triangular "
         "sections that transition from a square base to a circular dome — was "
         "revolutionary for the period.",
-        model=MODEL, provider=PROVIDER,
+        model=MODEL,
+        provider=PROVIDER,
     )
 
     # Check evictions
@@ -449,6 +485,7 @@ async def setup_session() -> dict:
 
 
 # ── Infrastructure checks ───────────────────────────────────────────────
+
 
 def check_developer_message(dev_msg: str) -> None:
     """Quick sanity check on the developer message structure."""
@@ -541,7 +578,9 @@ async def run_scenario(
                         "success": True,
                         "page_id": fault.page.page_id,
                         "content": fault.page.content[:2000],
-                        "source_tier": str(fault.source_tier) if fault.source_tier else None,
+                        "source_tier": str(fault.source_tier)
+                        if fault.source_tier
+                        else None,
                     }
                     # Short content hint — likely a user request
                     if len(fault.page.content) < 120:
@@ -553,10 +592,12 @@ async def run_scenario(
                     tool_content = json.dumps(response)
                 else:
                     info(f"    → failed: {fault.error}")
-                    tool_content = json.dumps({
-                        "success": False,
-                        "error": fault.error or "Page not found",
-                    })
+                    tool_content = json.dumps(
+                        {
+                            "success": False,
+                            "error": fault.error or "Page not found",
+                        }
+                    )
 
             elif fn_name == "search_pages":
                 result.search_pages_calls += 1
@@ -570,16 +611,20 @@ async def run_scenario(
             else:
                 # Distractor tool was called — this is a failure
                 result.distractor_calls.append(fn_name)
-                tool_content = json.dumps({
-                    "error": f"Tool '{fn_name}' cannot retrieve conversation "
-                             f"history. Use page_fault instead.",
-                })
+                tool_content = json.dumps(
+                    {
+                        "error": f"Tool '{fn_name}' cannot retrieve conversation "
+                        f"history. Use page_fault instead.",
+                    }
+                )
 
-            messages.append({
-                "tool_call_id": tc.id,
-                "role": "tool",
-                "content": tool_content,
-            })
+            messages.append(
+                {
+                    "tool_call_id": tc.id,
+                    "role": "tool",
+                    "content": tool_content,
+                }
+            )
     else:
         # Exhausted rounds without a final answer
         result.answer = "(no final answer — tool loop exhausted)"
@@ -601,6 +646,7 @@ async def run_scenario(
 
 
 # ── Main ─────────────────────────────────────────────────────────────────
+
 
 async def main() -> None:
     print("=" * 70)
@@ -658,7 +704,9 @@ async def main() -> None:
         if sr.distractor_calls and sr.page_fault_calls == 0:
             fail(f"Distractor tools called WITHOUT page_fault: {sr.distractor_calls}")
         elif sr.distractor_calls:
-            info(f"Distractor tools called (alongside page_fault): {sr.distractor_calls}")
+            info(
+                f"Distractor tools called (alongside page_fault): {sr.distractor_calls}"
+            )
         else:
             ok("No distractor tools called")
 

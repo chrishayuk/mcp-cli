@@ -716,9 +716,7 @@ class ConversationProcessor:
 
                 vm_tools = get_vm_tools_as_dicts(include_search=True)
                 self.context.openai_tools.extend(vm_tools)
-                log.info(
-                    f"Injected {len(vm_tools)} VM tools for {vm_mode} mode"
-                )
+                log.info(f"Injected {len(vm_tools)} VM tools for {vm_mode} mode")
             except Exception as exc:
                 log.warning(f"Could not load VM tools: {exc}")
 

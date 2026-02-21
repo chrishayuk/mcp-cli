@@ -107,7 +107,7 @@ Examples:
         """Extract the action string from kwargs/args."""
         action = kwargs.get("action")
         if action is not None:
-            return action
+            return str(action)
 
         args_val = kwargs.get("args")
         if isinstance(args_val, list) and args_val:
@@ -133,6 +133,7 @@ Examples:
         tier_parts = []
         for tier_name in ("L0", "L1", "L2", "L3", "L4"):
             from chuk_ai_session_manager.memory.models import StorageTier
+
             tier = StorageTier(tier_name)
             count = pt_stats.pages_by_tier.get(tier, 0)
             if count > 0:
@@ -159,7 +160,7 @@ Examples:
             f"Page Table   Total: {pt_stats.total_pages}   Dirty: {pt_stats.dirty_pages}",
             f"  By tier: {tier_str}",
             "",
-            f"Metrics",
+            "Metrics",
             f"  Faults: {metrics.faults_total} total, {metrics.faults_this_turn} this turn",
             f"  Evictions: {metrics.evictions_total} total, {metrics.evictions_this_turn} this turn",
             f"  TLB: {metrics.tlb_hits} hits, {metrics.tlb_misses} misses ({tlb_rate})",
@@ -182,16 +183,18 @@ Examples:
         # Build table rows sorted by tier then importance
         rows = []
         for page_id, entry in entries.items():
-            rows.append({
-                "Page ID": page_id,
-                "Type": entry.page_type.value,
-                "Tier": entry.tier.value,
-                "Tokens": str(entry.size_tokens or "?"),
-                "Importance": f"{entry.eviction_priority:.1f}",
-                "Pinned": "Y" if entry.pinned else "",
-                "Compression": entry.compression_level.name.lower(),
-                "Accesses": str(entry.access_count),
-            })
+            rows.append(
+                {
+                    "Page ID": page_id,
+                    "Type": entry.page_type.value,
+                    "Tier": entry.tier.value,
+                    "Tokens": str(entry.size_tokens or "?"),
+                    "Importance": f"{entry.eviction_priority:.1f}",
+                    "Pinned": "Y" if entry.pinned else "",
+                    "Compression": entry.compression_level.name.lower(),
+                    "Accesses": str(entry.access_count),
+                }
+            )
 
         # Sort: L0 first, then L1, etc., then by eviction_priority ascending
         tier_order = {"L0": 0, "L1": 1, "L2": 2, "L3": 3, "L4": 4}
@@ -201,7 +204,16 @@ Examples:
         table = format_table(
             rows,
             title=None,
-            columns=["Page ID", "Type", "Tier", "Tokens", "Importance", "Pinned", "Compression", "Accesses"],
+            columns=[
+                "Page ID",
+                "Type",
+                "Tier",
+                "Tokens",
+                "Importance",
+                "Pinned",
+                "Compression",
+                "Accesses",
+            ],
         )
         output.print_table(table)
         output.print()
@@ -226,7 +238,10 @@ Examples:
         # Truncate very long content
         max_preview = 2000
         if isinstance(content, str) and len(content) > max_preview:
-            content = content[:max_preview] + f"\n\n... ({len(content) - max_preview} more chars)"
+            content = (
+                content[:max_preview]
+                + f"\n\n... ({len(content) - max_preview} more chars)"
+            )
 
         # Build detail view
         lines = [

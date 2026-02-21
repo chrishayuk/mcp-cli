@@ -373,8 +373,8 @@ class ChatContext:
             return max(total_chars // cpt, 1)
 
         # Always include the most recent N turns (guaranteed minimum)
-        guaranteed = turns[-self._VM_MIN_RECENT_TURNS:]
-        older = turns[:-self._VM_MIN_RECENT_TURNS]
+        guaranteed = turns[-self._VM_MIN_RECENT_TURNS :]
+        older = turns[: -self._VM_MIN_RECENT_TURNS]
 
         # Deduct guaranteed turns from budget
         for turn in guaranteed:

@@ -570,16 +570,18 @@ class ToolProcessor:
 
                 # Loop prevention: don't re-fault the same page
                 if page_id in self._faulted_page_ids:
-                    content = json.dumps({
-                        "success": True,
-                        "already_loaded": True,
-                        "page_id": page_id,
-                        "message": (
-                            "This page was already loaded earlier in the "
-                            "conversation. The content is in a previous "
-                            "tool result message — use that directly."
-                        ),
-                    })
+                    content = json.dumps(
+                        {
+                            "success": True,
+                            "already_loaded": True,
+                            "page_id": page_id,
+                            "message": (
+                                "This page was already loaded earlier in the "
+                                "conversation. The content is in a previous "
+                                "tool result message — use that directly."
+                            ),
+                        }
+                    )
                 else:
                     result = await vm.handle_fault(
                         page_id=page_id,
@@ -596,7 +598,7 @@ class ToolProcessor:
                             and len(page_content) > self._VM_MAX_PAGE_CONTENT_CHARS
                         ):
                             page_content = (
-                                page_content[:self._VM_MAX_PAGE_CONTENT_CHARS]
+                                page_content[: self._VM_MAX_PAGE_CONTENT_CHARS]
                                 + f"\n\n[truncated — original was "
                                 f"{len(result.page.content)} chars]"
                             )
@@ -607,9 +609,7 @@ class ToolProcessor:
                             "page_id": result.page.page_id,
                             "content": page_content,
                             "source_tier": (
-                                str(result.source_tier)
-                                if result.source_tier
-                                else None
+                                str(result.source_tier) if result.source_tier else None
                             ),
                             "was_compressed": result.was_compressed,
                             "truncated": truncated,
@@ -617,10 +617,7 @@ class ToolProcessor:
 
                         # Hint for short pages: likely a user request,
                         # the real content is in the adjacent response.
-                        if (
-                            isinstance(page_content, str)
-                            and len(page_content) < 120
-                        ):
+                        if isinstance(page_content, str) and len(page_content) < 120:
                             response["note"] = (
                                 "Very short content — this may be a user "
                                 "request. Check the manifest for the "
@@ -630,10 +627,12 @@ class ToolProcessor:
                         content = json.dumps(response)
                     else:
                         success = False
-                        content = json.dumps({
-                            "success": False,
-                            "error": result.error or "Page not found",
-                        })
+                        content = json.dumps(
+                            {
+                                "success": False,
+                                "error": result.error or "Page not found",
+                            }
+                        )
 
             elif tool_name == "search_pages":
                 result = await vm.search_pages(
@@ -658,15 +657,11 @@ class ToolProcessor:
 
         # Finish UI display
         try:
-            await self.ui_manager.finish_tool_execution(
-                result=content, success=success
-            )
+            await self.ui_manager.finish_tool_execution(result=content, success=success)
         except Exception:
             pass  # UI errors are non-fatal
 
-    async def _store_tool_result_as_vm_page(
-        self, tool_name: str, content: str
-    ) -> None:
+    async def _store_tool_result_as_vm_page(self, tool_name: str, content: str) -> None:
         """Store a tool result as a VM page so it survives eviction.
 
         Without this, tool results (weather forecasts, geocoding data, etc.)
@@ -783,7 +778,7 @@ class ToolProcessor:
 
                 # Recover from content text blocks (MCP backwards-compat)
                 content = raw.get("content")
-                if hasattr(content, "content"):
+                if content is not None and hasattr(content, "content"):
                     content = content.content
                 if isinstance(content, list):
                     for block in content:
