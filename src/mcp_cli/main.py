@@ -125,6 +125,26 @@ def main_callback(
         "--log-file",
         help="Write debug logs to a rotating file (expands ~, creates dirs)",
     ),
+    vm: bool = typer.Option(
+        False,
+        "--vm",
+        help="[Experimental] Enable AI virtual memory for context management",
+    ),
+    vm_mode: str = typer.Option(
+        "passive",
+        "--vm-mode",
+        help="VM mode: passive (runtime-managed), relaxed, or strict (model-driven paging)",
+    ),
+    vm_budget: int = typer.Option(
+        128_000,
+        "--vm-budget",
+        help="Token budget for conversation events in VM mode (on top of system prompt)",
+    ),
+    health_interval: int = typer.Option(
+        0,
+        "--health-interval",
+        help="Background server health check interval in seconds (0 = disabled)",
+    ),
 ) -> None:
     """MCP CLI - If no subcommand is given, start chat mode."""
 
@@ -347,6 +367,10 @@ def main_callback(
                 max_turns=max_turns,
                 model_manager=model_manager,  # FIXED: Pass the model manager with runtime provider
                 runtime_config=runtime_config,  # Pass runtime config with timeout overrides
+                enable_vm=vm,
+                vm_mode=vm_mode,
+                vm_budget=vm_budget,
+                health_interval=health_interval,
             )
             logger.debug(f"Chat mode completed with success: {success}")
         except asyncio.TimeoutError:
@@ -425,6 +449,26 @@ def _chat_command(
         120.0,
         "--init-timeout",
         help="Server initialization timeout in seconds",
+    ),
+    vm: bool = typer.Option(
+        False,
+        "--vm",
+        help="[Experimental] Enable AI virtual memory for context management",
+    ),
+    vm_mode: str = typer.Option(
+        "passive",
+        "--vm-mode",
+        help="VM mode: passive (runtime-managed), relaxed, or strict (model-driven paging)",
+    ),
+    vm_budget: int = typer.Option(
+        128_000,
+        "--vm-budget",
+        help="Token budget for conversation events in VM mode (on top of system prompt)",
+    ),
+    health_interval: int = typer.Option(
+        0,
+        "--health-interval",
+        help="Background server health check interval in seconds (0 = disabled)",
     ),
 ) -> None:
     """Start chat mode (same as default behavior without subcommand)."""
@@ -556,6 +600,10 @@ def _chat_command(
                 model=effective_model,
                 api_base=api_base,
                 api_key=api_key,
+                enable_vm=vm,
+                vm_mode=vm_mode,
+                vm_budget=vm_budget,
+                health_interval=health_interval,
             )
             logger.debug(f"Chat mode completed with success: {success}")
         except asyncio.TimeoutError:

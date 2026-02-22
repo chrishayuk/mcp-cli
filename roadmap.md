@@ -318,9 +318,15 @@ Interactive HTML UIs served by MCP servers, rendered in sandboxed browser iframe
 - Added `DEFAULT_LOG_DIR`, `DEFAULT_LOG_MAX_BYTES`, `DEFAULT_LOG_BACKUP_COUNT` to defaults.py
 - 16 tests in `tests/config/test_logging_redaction.py`
 
-### 5.2 Server Health Monitoring
+### 5.2 Server Health Monitoring ✅ COMPLETE
 
-Deferred — requires `StreamManager` reconnect hooks in chuk-tool-processor (upstream dependency).
+**Files:** `src/mcp_cli/tools/manager.py`, `src/mcp_cli/commands/servers/health.py`, `src/mcp_cli/chat/conversation.py`, `src/mcp_cli/main.py`
+
+- **Health-check-on-failure**: `ToolManager.execute_tool()` detects connection errors via `_is_connection_error()`, runs `_diagnose_server()` to enrich error messages with server status
+- **`/health` command**: New `HealthCommand` checks one or all servers via `tool_manager.check_server_health()`, shows status (healthy/unhealthy/timeout/error) and latency
+- **Background health polling**: `ConversationProcessor._health_poll_loop()` runs at `--health-interval` seconds, logs status transitions (e.g. healthy → unhealthy)
+- **`--health-interval` CLI flag**: Enables background polling (0 = disabled, default)
+- **Note**: Server *reconnect* still requires upstream `StreamManager` hooks; health *monitoring* is complete
 
 ### 5.3 Per-Server Configuration
 
@@ -339,6 +345,48 @@ Deferred — requires `StreamManager` reconnect hooks in chuk-tool-processor (up
 - Wrapped `_handle_oauth_flow()` body in `async with self._oauth_lock:`
 - Replaced direct dict mutation with copy-on-write for `transport.configured_headers`
 - Tests: 3 concurrent OAuth flows verify lock serialization, per-server timeout resolution
+
+---
+
+## AI Virtual Memory Integration (Experimental) ✅ COMPLETE
+
+OS-style virtual memory for conversation context management, powered by `chuk-ai-session-manager`.
+
+### Implementation
+
+- **`--vm` CLI flag**: Enables VM subsystem in SessionManager; system prompt replaced with VM-packed `developer_message` containing rules, manifest (page index), and working set content
+- **`--vm-budget`**: Token budget for conversation events (system prompt uncapped on top); forces earlier page creation and eviction at low values
+- **`--vm-mode`**: `passive` (runtime-managed, default), `relaxed` (VM-aware conversation), `strict` (model-driven paging with page_fault/search_pages tools)
+- **Budget-aware context filtering**: `_vm_filter_events()` groups conversation events into logical turns, includes newest-first within budget, guarantees minimum 3 recent turns; evicted content preserved as VM pages in developer_message
+- **`/memory` slash command** (aliases: `/vm`, `/mem`): Dashboard showing mode, turn, budget, working set utilization, page table, fault/eviction/TLB metrics; subcommands for page listing, page detail, and full stats dump
+- **VM tool wiring (strict/relaxed)**: `page_fault` and `search_pages` tools injected into `openai_tools` for non-passive modes; intercepted in `tool_processor.py` before MCP guard checks and executed locally via `MemoryManager`; short-content annotation guides model to fault adjacent `[assistant]` response pages; `[user]`/`[assistant]` hint prefixes in manifest
+- **E2E demo**: 8 recall scenarios (simple facts, creative content, tool results, negative case, deep detail, multi-fault, structured data, image description) with distractor tools; validates correct tool selection and content recall
+
+### Multimodal Content Re-analysis ✅ COMPLETE
+
+**Files:** `src/mcp_cli/chat/tool_processor.py`, `src/mcp_cli/chat/models.py`, `src/mcp_cli/commands/memory/memory.py`
+
+- **Multi-block tool results**: `_build_page_content_blocks()` detects page modality and returns `list[dict]` (text + image_url blocks) for image pages with URLs/data URIs, or JSON string with modality/compression metadata for text/structured pages
+- **HistoryMessage content type**: Extended from `str | None` to `str | list[dict[str, Any]] | None` to support OpenAI multi-block content format
+- **`_add_tool_result_to_history()`**: Accepts multi-block content, skips truncation for list content
+- **Compression-aware notes**: Compressed pages (ABSTRACT/REFERENCE) include a note guiding the model to re-fault at target_level=0 for full content; short pages suggest checking for the adjacent assistant response page
+- **`/memory page <id> --download`**: Exports page content to `~/.mcp-cli/downloads/` with modality-aware extensions (.txt, .json, .png) and base64 data URI decoding
+- **Modality metadata display**: `/memory page <id>` shows MIME type, dimensions, duration, and caption when available
+
+### Files
+
+| File | Change |
+|------|--------|
+| `src/mcp_cli/config/defaults.py` | `DEFAULT_ENABLE_VM`, `DEFAULT_VM_MODE`, `DEFAULT_VM_BUDGET` |
+| `src/mcp_cli/chat/chat_context.py` | VM params in init/create, `_vm_filter_events()`, VM context in `conversation_history`, `_health_interval` |
+| `src/mcp_cli/chat/chat_handler.py` | Thread `enable_vm`, `vm_mode`, `vm_budget`, `health_interval` to ChatContext |
+| `src/mcp_cli/chat/conversation.py` | Background health polling (`_health_poll_loop`, `_start_health_polling`, `_stop_health_polling`) |
+| `src/mcp_cli/chat/tool_processor.py` | `_build_page_content_blocks()`, multi-block `_add_tool_result_to_history()` |
+| `src/mcp_cli/chat/models.py` | `HistoryMessage.content` extended to `str \| list[dict] \| None` |
+| `src/mcp_cli/main.py` | `--vm`, `--vm-mode`, `--vm-budget`, `--health-interval` CLI options |
+| `src/mcp_cli/tools/manager.py` | `check_server_health()`, `_diagnose_server()`, `_is_connection_error()` |
+| `src/mcp_cli/commands/memory/` | `MemoryCommand` with summary/pages/page/stats/download subcommands |
+| `src/mcp_cli/commands/servers/health.py` | `HealthCommand` — `/health` slash command |
 
 ---
 
@@ -788,6 +836,81 @@ mcp remote logs --follow
 - Read-only mode for auditors
 - Collaborative mode for pair-debugging agents
 
+## Code Review Fixes (Post-Audit)
+
+> **Goal:** Address findings from the comprehensive codebase review. Fixes organized by priority — high items are correctness/reliability, medium are consistency/maintainability, low are cleanup.
+
+### R.1 Add Logging to Remaining Silent Exception Blocks ✅
+
+**Problem:** 18 `except Exception: pass` blocks in commands/ and UI code lose error context entirely. The Tier 4 architecture audit fixed 6 in core modules; these are the remaining locations.
+
+**Files & Locations:**
+
+| File | Line | Context |
+|------|------|---------|
+| `commands/servers/ping.py` | 87-88 | Silent pass in ping check |
+| `commands/servers/health.py` | 68-69 | Silent pass in health check |
+| `commands/tokens/token.py` | 51-52 | Silent fallback to AUTO backend |
+| `commands/providers/providers.py` | 196-197 | Silent pass in provider status |
+| `commands/providers/providers.py` | 263-266 | Hardcoded error, missing logs |
+| `commands/providers/models.py` | 244-245 | Silent pass in Ollama discovery |
+| `commands/providers/models.py` | 286-287 | Silent pass in provider fetch |
+| `commands/providers/models.py` | 322-323 | Silent pass in API model fetch |
+| `commands/core/clear.py` | 91-99 | Nested silent passes |
+| `chat/tool_processor.py` | 634, 651, 686, 774 | Silent pass for UI errors |
+| `chat/tool_processor.py` | 914 | Silent pass for JSON parsing |
+| `chat/chat_handler.py` | 139-140 | Swallows tool count error |
+| `tools/manager.py` | 342-343 | Silent "non-critical" pass |
+| `config/discovery.py` | 212-213 | Returns False, loses error |
+
+**Action:** Add `logger.debug("context: %s", e)` to each block. Same pattern used in the 6 core fixes from Tier 4.
+
+### R.2 Delete Dead Code: `chat/__main__.py` ✅
+
+**Problem:** 196-line file marked dead in pyproject.toml coverage omit. Imports non-existent modules. Never executed.
+
+**File:** `src/mcp_cli/chat/__main__.py`
+
+**Action:** Delete the file. Remove from coverage omit in pyproject.toml.
+
+### R.3 Standardize Logger Variable Naming ✅
+
+**Problem:** 5 modules use `log = getLogger(__name__)` while the rest use `logger`. Inconsistent grep-ability.
+
+**Files:**
+- `apps/bridge.py` — `log`
+- `apps/host.py` — `log`
+- `chat/conversation.py` — `log`
+- `chat/tool_processor.py` — `log`
+- `commands/memory/memory.py` — `log`
+
+**Action:** Rename `log` → `logger` in these 5 files. Update all references.
+
+### R.4 Consolidate `constants/` Into `config/` ✅
+
+**Problem:** Two locations for project constants: `constants/__init__.py` (118 lines) and `config/defaults.py` + `config/enums.py`. Splits the single source of truth.
+
+**Action:** Move status values and enums from `constants/` to `config/enums.py` or `config/defaults.py`. Update imports. Delete `constants/` package.
+
+### R.5 Add Unit Tests for `core/model_resolver.py` ✅
+
+**Problem:** 178-line user-facing module with zero test coverage. Handles error display and model resolution fallback logic.
+
+**File:** `src/mcp_cli/core/model_resolver.py`
+
+**Action:** Create `tests/core/test_model_resolver.py` with tests for resolution paths, error handling, and fallback behavior.
+
+### R.6 Add Unit Tests for High-Risk Command Modules
+
+**Problem:** 48 command modules lack direct unit tests. Existing tests are end-to-end command usage tests that don't cover internal logic. Highest risk in large modules.
+
+**Priority files:**
+- `commands/tokens/token.py` (942 lines)
+- `commands/tools/execute_tool.py` (565 lines)
+- `commands/memory/memory.py` (538 lines)
+
+**Action:** Add targeted unit tests for complex internal logic in each module.
+
 ---
 
 ## Priority Summary
@@ -800,6 +923,8 @@ mcp remote logs --follow
 | **3** | Performance & polish | Feels fast, saves work | ✅ Complete |
 | **4** | Code quality | Maintainable, testable | ✅ Complete |
 | **5** | Production hardening | Observable, auditable | ✅ Complete |
+| **VM** | AI Virtual Memory | OS-style context management | ✅ Complete (Experimental) |
+| **Review** | Code review fixes | Silent exceptions, dead code, test gaps | ✅ Complete |
 | **6** | Plans & execution graphs | Reproducible workflows | High |
 | **7** | Observability & traces | Debugger for AI behavior | High |
 | **8** | Memory scopes | Long-running assistants | High |

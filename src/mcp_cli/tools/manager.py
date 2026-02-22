@@ -339,8 +339,8 @@ class ToolManager:
                     self._report_progress(
                         f"Initialized {tool_count} tools from {server_count} server(s)"
                     )
-                except Exception:
-                    pass  # Non-critical
+                except Exception as e:
+                    logger.debug("Post-init tool count report failed: %s", e)
 
             # Enable middleware if configured (retry, circuit breaker, rate limiting)
             if self._middleware_enabled and self.stream_manager:
@@ -532,8 +532,8 @@ class ToolManager:
                 ]
                 if text_blocks:
                     return "\n".join(block.text for block in text_blocks)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("TextContent parse fallback: %s", e)
 
             if all(
                 isinstance(item, dict)
@@ -702,7 +702,7 @@ class ToolManager:
 
                     output.error(f"❌ OAuth authentication failed: {e}")
                 except ImportError:
-                    pass
+                    logger.debug("chuk_term.ui not available for error display")
                 return False
 
     async def execute_tool(
@@ -788,11 +788,14 @@ class ToolManager:
 
             # Classify error for better diagnostics
             if self._is_connection_error(error_msg):
+                server_name = namespace or await self.get_server_for_tool(tool_name)
+                diag = await self._diagnose_server(server_name)
                 logger.warning(
                     f"Connection error for tool {tool_name} "
-                    f"(server: {namespace or 'unknown'}). "
-                    "Server may be down or unresponsive."
+                    f"(server: {server_name or 'unknown'}). {diag}"
                 )
+                if diag:
+                    error_msg += f" ({diag})"
 
             # Check if this is an OAuth error and we haven't already retried
             if _is_oauth_error(error_msg) and not _oauth_retry:
@@ -842,6 +845,41 @@ class ToolManager:
         """Check if an error message indicates a connection problem."""
         error_lower = error.lower()
         return any(pat in error_lower for pat in self._CONNECTION_ERROR_PATTERNS)
+
+    async def _diagnose_server(self, server_name: str | None) -> str:
+        """Run health check on a server and return a diagnostic string."""
+        if not server_name or not self.stream_manager:
+            return ""
+        try:
+            health = await self.stream_manager.health_check()
+            info = health.get("transports", {}).get(server_name, {})
+            status = info.get("status", "unknown")
+            if status != "healthy":
+                return f"Server {server_name} is {status}"
+        except Exception as exc:
+            logger.debug(f"Health check failed for {server_name}: {exc}")
+        return ""
+
+    async def check_server_health(
+        self, server_name: str | None = None
+    ) -> dict[str, Any]:
+        """Check health of one or all servers.
+
+        Returns a dict with per-server status:
+          {"server_name": {"status": "healthy"|"unhealthy"|"timeout"|"error", ...}}
+        """
+        if not self.stream_manager:
+            return {}
+        try:
+            health = await self.stream_manager.health_check()
+            transports = health.get("transports", {})
+            if server_name:
+                info = transports.get(server_name)
+                return {server_name: info} if info else {}
+            return dict(transports)
+        except Exception as exc:
+            logger.error(f"Health check failed: {exc}")
+            return {}
 
     async def stream_execute_tool(
         self,

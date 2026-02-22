@@ -155,3 +155,27 @@ Demonstrates:
 6. Narrower exception handlers
 7. Provider validation at startup
 8. LLM-visible context management notices
+
+### AI Virtual Memory
+
+```bash
+# VM subsystem: budget enforcement, eviction, page lifecycle — no API key needed
+python examples/safety/vm_memory_management_demo.py
+
+# E2E recall scenarios: page_fault, search_pages, distractor tools — requires OPENAI_API_KEY
+python examples/safety/vm_relaxed_mode_demo.py
+
+# Server health monitoring + VM multimodal content — no API key needed
+python examples/safety/health_vm_multimodal_demo.py
+```
+
+Demonstrates:
+1. Health-check-on-failure and connection error diagnostics
+2. Background health polling lifecycle (start, transition detection, stop)
+3. `/health` command (all healthy, mixed, missing server)
+4. Multimodal page_fault — image pages as multi-block content (text + image_url)
+5. Text/structured page_fault with modality and compression metadata
+6. search_pages with hint-based matching and modality filtering
+7. `/memory page --download` — export text, JSON, and base64 image pages
+8. Multi-block content in HistoryMessage serialization
+9. Full VM lifecycle: eviction under pressure → search → fault → content blocks

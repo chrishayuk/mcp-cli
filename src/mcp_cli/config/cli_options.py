@@ -17,8 +17,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-from chuk_term.ui import output
-
 from mcp_cli.config import (
     MCPConfig,
     setup_chuk_llm_environment,
@@ -151,6 +149,9 @@ def process_options(
     from mcp_cli.utils.preferences import get_preference_manager
 
     pref_manager = get_preference_manager()
+
+    # Lazy import: chuk_term.ui is a UI dependency, only needed for user-facing warnings
+    from chuk_term.ui import output
 
     # Filter out disabled servers
     if user_specified:
