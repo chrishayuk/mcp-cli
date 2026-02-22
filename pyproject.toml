@@ -76,6 +76,14 @@ asyncio_default_fixture_loop_scope = "function"
 markers = [
     "integration: end-to-end tests requiring external MCP servers",
 ]
+filterwarnings = [
+    "error::RuntimeWarning",
+    # Third-party deprecation warnings we can't fix
+    "ignore::pydantic.warnings.PydanticDeprecatedSince211",
+    "ignore::pydantic.warnings.PydanticDeprecatedSince212",
+    "ignore:The 'is_flag' and 'flag_value' parameters:DeprecationWarning:typer",
+    "ignore:Pydantic serializer warnings:UserWarning:pydantic",
+]
 
 [tool.mypy]
 python_version = "3.12"
