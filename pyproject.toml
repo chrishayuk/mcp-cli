@@ -83,6 +83,7 @@ filterwarnings = [
     "ignore::pydantic.warnings.PydanticDeprecatedSince212",
     "ignore:The 'is_flag' and 'flag_value' parameters:DeprecationWarning:typer",
     "ignore:Pydantic serializer warnings:UserWarning:pydantic",
+    "ignore:datetime.datetime.utcnow:DeprecationWarning",
 ]
 
 [tool.mypy]
