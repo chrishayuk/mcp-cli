@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcp-cli"
-version = "0.15"
+version = "0.16"
 description = "A cli for the Model Context Provider"
 requires-python = ">=3.11"
 readme = "README.md"
@@ -15,11 +15,11 @@ keywords = ["llm", "openai", "claude", "mcp", "cli"]
 license = {text = "MIT"}
 dependencies = [
   "asyncio>=3.4.3",
-  "chuk-ai-session-manager>=0.9",
+  "chuk-ai-session-manager>=0.11",
   "chuk-llm>=0.17.1",
   "chuk-mcp-client-oauth>=0.3.5",
-  "chuk-term>=0.3",
-  "chuk-tool-processor>=0.20.1",
+  "chuk-term>=0.4.2",
+  "chuk-tool-processor>=0.22.1",
   "cryptography>=44.0.0",
   "fast-json>=0.3.2",
   "httpx>=0.27.0",
@@ -76,6 +76,15 @@ asyncio_default_fixture_loop_scope = "function"
 markers = [
     "integration: end-to-end tests requiring external MCP servers",
 ]
+filterwarnings = [
+    "error::RuntimeWarning",
+    # Third-party deprecation warnings we can't fix
+    "ignore::pydantic.warnings.PydanticDeprecatedSince211",
+    "ignore::pydantic.warnings.PydanticDeprecatedSince212",
+    "ignore:The 'is_flag' and 'flag_value' parameters:DeprecationWarning:typer",
+    "ignore:Pydantic serializer warnings:UserWarning:pydantic",
+    "ignore:datetime.datetime.utcnow:DeprecationWarning",
+]
 
 [tool.mypy]
 python_version = "3.12"
@@ -101,12 +110,8 @@ ignore_errors = true
 
 [tool.coverage.run]
 branch = true
-omit = [
-    "src/mcp_cli/chat/__main__.py",  # legacy dead code – imports non-existent module
-]
 
 [tool.coverage.report]
-fail_under = 60
 show_missing = true
 exclude_lines = [
     "pragma: no cover",

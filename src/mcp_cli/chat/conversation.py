@@ -26,7 +26,7 @@ from mcp_cli.chat.token_tracker import TokenTracker, TurnUsage
 from mcp_cli.config.defaults import DEFAULT_MAX_CONSECUTIVE_DUPLICATES
 from chuk_ai_session_manager.guards import get_tool_state
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ConversationProcessor:
@@ -74,6 +74,44 @@ class ConversationProcessor:
         self._max_consecutive_duplicates = DEFAULT_MAX_CONSECUTIVE_DUPLICATES
         # Runtime uses adaptive policy: strict core with smooth wrapper
         # No mode selection needed - always enforces grounding with auto-repair
+        # Background health polling
+        self._health_task: asyncio.Task | None = None
+        self._health_interval: float = getattr(context, "_health_interval", 0)
+        self._last_health: dict[str, str] = {}  # server→status for transition detection
+
+    # ── Background health polling ─────────────────────────────────────
+    async def _health_poll_loop(self) -> None:
+        """Periodically check server health and log transitions."""
+        while True:
+            await asyncio.sleep(self._health_interval)
+            try:
+                tm = getattr(self.context, "tool_manager", None)
+                if not tm:
+                    continue
+                results = await tm.check_server_health()
+                for name, info in results.items():
+                    status = info.get("status", "unknown") if info else "unknown"
+                    prev = self._last_health.get(name)
+                    if prev and prev != status:
+                        logger.warning(
+                            f"Server {name} health changed: {prev} → {status}"
+                        )
+                    self._last_health[name] = status
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:
+                logger.debug(f"Health poll error: {exc}")
+
+    def _start_health_polling(self) -> None:
+        """Start background health polling if configured."""
+        if self._health_interval > 0 and self._health_task is None:
+            self._health_task = asyncio.create_task(self._health_poll_loop())
+
+    def _stop_health_polling(self) -> None:
+        """Stop background health polling."""
+        if self._health_task is not None:
+            self._health_task.cancel()
+            self._health_task = None
 
     def _is_polling_tool(self, tool_name: str) -> bool:
         """Check if a tool is a polling/status tool that should be exempt from loop detection.
@@ -138,9 +176,17 @@ class ConversationProcessor:
         search_engine = get_search_engine()
         search_engine.advance_turn()
 
+        # Advance VM turn counter so eviction policies can track recency
+        vm = getattr(getattr(self.context, "session", None), "vm", None)
+        if vm:
+            vm.new_turn()
+
         # Register user literals from the latest user message
         # This whitelists numbers from the user prompt so they pass ungrounded checks
         self._register_user_literals_from_history()
+
+        # Start background health polling if configured
+        self._start_health_polling()
 
         try:
             while turn_count < max_turns:
@@ -169,13 +215,13 @@ class ConversationProcessor:
 
                     # Always pass tools - let the model decide what to do
                     tools_for_completion = self.context.openai_tools
-                    log.debug(
+                    logger.debug(
                         f"Passing {len(tools_for_completion) if tools_for_completion else 0} tools to completion"
                     )
 
                     # Log conversation history size for debugging
                     history_size = len(self.context.conversation_history)
-                    log.debug(f"Conversation history has {history_size} messages")
+                    logger.debug(f"Conversation history has {history_size} messages")
 
                     # Log last few messages for debugging (truncated)
                     for i, msg in enumerate(self.context.conversation_history[-3:]):
@@ -183,7 +229,7 @@ class ConversationProcessor:
                             msg.role if isinstance(msg, Message) else MessageRole.USER
                         )
                         content_preview = str(msg.content)[:100] if msg.content else ""
-                        log.debug(
+                        logger.debug(
                             f"  Message {history_size - 3 + i}: role={role}, content_preview={content_preview}"
                         )
 
@@ -202,7 +248,7 @@ class ConversationProcessor:
                             has_stream_param = "stream" in sig.parameters
                             supports_streaming = has_stream_param
                         except Exception as e:
-                            log.debug(f"Could not inspect signature: {e}")
+                            logger.debug(f"Could not inspect signature: {e}")
                             supports_streaming = False
 
                     completion: CompletionResponse | None = None
@@ -215,7 +261,7 @@ class ConversationProcessor:
                                 after_tool_calls=after_tool_calls,
                             )
                         except Exception as e:
-                            log.warning(
+                            logger.warning(
                                 f"Streaming failed, falling back to regular completion: {e}"
                             )
                             completion = await self._handle_regular_completion(
@@ -233,21 +279,21 @@ class ConversationProcessor:
                     reasoning_content = completion.reasoning_content
 
                     # Trace-level logging for completion results
-                    log.debug("=== COMPLETION RESULT ===")
-                    log.debug(
+                    logger.debug("=== COMPLETION RESULT ===")
+                    logger.debug(
                         f"Response length: {len(response_content) if response_content else 0}"
                     )
-                    log.debug(
+                    logger.debug(
                         f"Tool calls count: {len(tool_calls) if tool_calls else 0}"
                     )
-                    log.debug(
+                    logger.debug(
                         f"Reasoning length: {len(reasoning_content) if reasoning_content else 0}"
                     )
                     if response_content and response_content != "No response":
-                        log.debug(f"Response preview: {response_content[:200]}")
+                        logger.debug(f"Response preview: {response_content[:200]}")
                     if tool_calls:
                         for i, tc in enumerate(tool_calls):
-                            log.debug(
+                            logger.debug(
                                 f"Tool call {i}: {tc.function.name} args={tc.function.arguments}"
                             )
 
@@ -256,7 +302,9 @@ class ConversationProcessor:
 
                     # If model requested tool calls, execute them
                     if tool_calls and len(tool_calls) > 0:
-                        log.debug(f"Processing {len(tool_calls)} tool calls from LLM")
+                        logger.debug(
+                            f"Processing {len(tool_calls)} tool calls from LLM"
+                        )
 
                         # Check split budgets for each tool call type
                         # Get name mapping for looking up actual tool names
@@ -284,7 +332,7 @@ class ConversationProcessor:
                             if disc_status.should_stop and "Discovery" in (
                                 disc_status.reason or ""
                             ):
-                                log.warning(
+                                logger.warning(
                                     f"Discovery budget exhausted: {disc_status.reason}"
                                 )
 
@@ -305,7 +353,7 @@ class ConversationProcessor:
                             if exec_status.should_stop and "Execution" in (
                                 exec_status.reason or ""
                             ):
-                                log.warning(
+                                logger.warning(
                                     f"Execution budget exhausted: {exec_status.reason}"
                                 )
 
@@ -321,7 +369,7 @@ class ConversationProcessor:
                         # Check general runaway status (combined budget, saturation, etc.)
                         runaway_status = self._tool_state.check_runaway()
                         if runaway_status.should_stop:
-                            log.warning(f"Runaway detected: {runaway_status.reason}")
+                            logger.warning(f"Runaway detected: {runaway_status.reason}")
 
                             # Generate appropriate stop message
                             if runaway_status.budget_exhausted:
@@ -359,7 +407,7 @@ class ConversationProcessor:
 
                         # Check if we're at max turns
                         if turn_count >= max_turns:
-                            log.warning(
+                            logger.warning(
                                 f"Maximum conversation turns ({max_turns}) reached. Stopping."
                             )
                             self.context.inject_assistant_message(
@@ -397,7 +445,7 @@ class ConversationProcessor:
                             and not all_polling
                         )
 
-                        log.debug(
+                        logger.debug(
                             f"Duplicate check: sig={current_sig_str[:50]}, "
                             f"is_dup={is_true_duplicate}, all_polling={all_polling}"
                         )
@@ -405,7 +453,7 @@ class ConversationProcessor:
                         if is_true_duplicate:
                             # True duplicate: same tool with same args
                             self._consecutive_duplicate_count += 1
-                            log.debug(
+                            logger.debug(
                                 f"Duplicate tool call detected ({self._consecutive_duplicate_count}x): {current_sig_str[:100]}"
                             )
 
@@ -414,7 +462,7 @@ class ConversationProcessor:
                                 self._consecutive_duplicate_count
                                 >= self._max_consecutive_duplicates
                             ):
-                                log.warning(
+                                logger.warning(
                                     f"Model called exact same tool {self._consecutive_duplicate_count} times in a row. "
                                     "Returning to prompt."
                                 )
@@ -429,7 +477,7 @@ class ConversationProcessor:
                             # silently.  Only show info on 2nd+ consecutive duplicate.
                             if self._consecutive_duplicate_count >= 2:
                                 tool_names_str = ", ".join(tool_names)
-                                log.info(
+                                logger.info(
                                     f"Repeated tool call: {tool_names_str}. Using cached results."
                                 )
 
@@ -443,7 +491,7 @@ class ConversationProcessor:
                                     "Do not re-call tools for values already computed."
                                 )
                                 self.context.inject_assistant_message(state_msg)
-                                log.info(
+                                logger.info(
                                     f"Injected state summary: {state_summary[:200]}"
                                 )
 
@@ -457,11 +505,11 @@ class ConversationProcessor:
 
                         # Log the tool calls for debugging
                         for i, tc in enumerate(tool_calls):
-                            log.debug(f"Tool call {i}: {tc}")
+                            logger.debug(f"Tool call {i}: {tc}")
 
                         # FIXED: Get name mapping from universal tool compatibility system
                         name_mapping = getattr(self.context, "tool_name_mapping", {})
-                        log.debug(f"Using name mapping: {name_mapping}")
+                        logger.debug(f"Using name mapping: {name_mapping}")
 
                         # Process tool calls - this will handle streaming display
                         await self.tool_processor.process_tool_calls(
@@ -498,7 +546,7 @@ class ConversationProcessor:
                     # analytically without referencing tool results explicitly
                     unused_warning = self._tool_state.format_unused_warning()
                     if unused_warning:
-                        log.info("Unused tool results detected at end of turn")
+                        logger.info("Unused tool results detected at end of turn")
                         # output.info(unused_warning)  # Disabled - too noisy for demos
 
                     # Extract and register any value bindings from assistant text
@@ -508,11 +556,11 @@ class ConversationProcessor:
                             response_content
                         )
                         if new_bindings:
-                            log.info(
+                            logger.info(
                                 f"Extracted {len(new_bindings)} value bindings from assistant response"
                             )
                             for binding in new_bindings:
-                                log.debug(
+                                logger.debug(
                                     f"  ${binding.id} = {binding.raw_value} (aliases: {binding.aliases})"
                                 )
 
@@ -529,7 +577,7 @@ class ConversationProcessor:
                 except asyncio.CancelledError:
                     raise
                 except asyncio.TimeoutError as exc:
-                    log.warning(f"Timeout during conversation processing: {exc}")
+                    logger.warning(f"Timeout during conversation processing: {exc}")
                     self.context.inject_assistant_message(
                         "The previous request timed out. "
                         "Please try again or simplify the query."
@@ -540,7 +588,7 @@ class ConversationProcessor:
                         self.ui_manager.streaming_handler = None
                     break
                 except (ConnectionError, OSError) as exc:
-                    log.error(f"Connection error: {exc}")
+                    logger.error(f"Connection error: {exc}")
                     self.context.inject_assistant_message(
                         "Lost connection to a service. "
                         "Please check connectivity and try again."
@@ -551,14 +599,16 @@ class ConversationProcessor:
                         self.ui_manager.streaming_handler = None
                     break
                 except (ValueError, TypeError) as exc:
-                    log.error(f"Configuration/validation error: {exc}", exc_info=True)
+                    logger.error(
+                        f"Configuration/validation error: {exc}", exc_info=True
+                    )
                     if self.ui_manager.is_streaming_response:
                         await self.ui_manager.stop_streaming_response()
                     if hasattr(self.ui_manager, "streaming_handler"):
                         self.ui_manager.streaming_handler = None
                     break
                 except Exception as exc:
-                    log.exception("Unexpected error during conversation processing")
+                    logger.exception("Unexpected error during conversation processing")
                     self.context.inject_assistant_message(
                         f"I encountered an error: {exc}"
                     )
@@ -570,6 +620,8 @@ class ConversationProcessor:
                     break
         except asyncio.CancelledError:
             raise
+        finally:
+            self._stop_health_polling()
 
     async def _handle_streaming_completion(
         self,
@@ -614,11 +666,11 @@ class ConversationProcessor:
 
             # Enhanced tool call validation and logging
             if completion.tool_calls:
-                log.debug(
+                logger.debug(
                     f"Streaming completion returned {len(completion.tool_calls)} tool calls"
                 )
                 for i, tc in enumerate(completion.tool_calls):
-                    log.debug(f"Streamed tool call {i}: {tc}")
+                    logger.debug(f"Streamed tool call {i}: {tc}")
 
             return completion
 
@@ -652,7 +704,7 @@ class ConversationProcessor:
             # If tools spec invalid, retry without tools
             err = str(e)
             if "Invalid 'tools" in err:
-                log.error(f"Tool definition error: {err}")
+                logger.error(f"Tool definition error: {err}")
                 messages_as_dicts = self._prepare_messages_for_api(
                     self.context.conversation_history, context=self.context
                 )
@@ -688,17 +740,44 @@ class ConversationProcessor:
                 )
                 self.context.openai_tools = tools_and_mapping[0]
                 self.context.tool_name_mapping = tools_and_mapping[1]
-                log.debug(
+                logger.debug(
                     f"Loaded {len(self.context.openai_tools)} adapted tools for {provider}"
                 )
 
                 # FIXED: No longer validate tool names here since universal compatibility handles it
-                log.debug(f"Universal tool compatibility enabled for {provider}")
+                logger.debug(f"Universal tool compatibility enabled for {provider}")
 
         except Exception as exc:
-            log.error(f"Error loading tools: {exc}")
+            logger.error(f"Error loading tools: {exc}")
             self.context.openai_tools = []
             self.context.tool_name_mapping = {}
+
+        # Inject VM tools for strict/relaxed modes
+        vm = getattr(getattr(self.context, "session", None), "vm", None)
+        vm_mode = getattr(getattr(vm, "mode", None), "value", "passive")
+        if vm and vm_mode != "passive":
+            try:
+                from chuk_ai_session_manager.memory.vm_prompts import (
+                    get_vm_tools_as_dicts,
+                )
+
+                vm_tools = get_vm_tools_as_dicts(include_search=True)
+                self.context.openai_tools.extend(vm_tools)
+                logger.info(f"Injected {len(vm_tools)} VM tools for {vm_mode} mode")
+            except Exception as exc:
+                logger.warning(f"Could not load VM tools: {exc}")
+
+        # Inject persistent memory scope tools
+        store = getattr(self.context, "memory_store", None)
+        if store:
+            try:
+                from mcp_cli.memory.tools import get_memory_tools_as_dicts
+
+                memory_tools = get_memory_tools_as_dicts()
+                self.context.openai_tools.extend(memory_tools)
+                logger.info(f"Injected {len(memory_tools)} memory scope tools")
+            except Exception as exc:
+                logger.warning(f"Could not load memory tools: {exc}")
 
     @staticmethod
     def _prepare_messages_for_api(messages: list, context=None) -> list[dict]:
@@ -822,7 +901,7 @@ class ConversationProcessor:
                 # Insert placeholders for any missing tool results
                 missing = expected_ids - found_ids
                 for mid in missing:
-                    log.warning(f"Repairing orphaned tool_call_id: {mid}")
+                    logger.warning(f"Repairing orphaned tool_call_id: {mid}")
                     repaired.append(
                         {
                             "role": MessageRole.TOOL.value,
@@ -851,12 +930,12 @@ class ConversationProcessor:
             if msg.role == MessageRole.USER and msg.content:
                 count = self._tool_state.register_user_literals(msg.content)
                 total_registered += count
-                log.debug(f"Registered {count} user literals from message")
+                logger.debug(f"Registered {count} user literals from message")
                 # Only process the most recent user message
                 break
 
         if total_registered > 0:
-            log.info(
+            logger.info(
                 f"Registered {total_registered} user literals for ungrounded check whitelist"
             )
 

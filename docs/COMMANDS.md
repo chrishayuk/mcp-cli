@@ -298,6 +298,39 @@ See [TOKEN_MANAGEMENT.md](./TOKEN_MANAGEMENT.md) for comprehensive token documen
 /cls                               # Clear screen only
 ```
 
+### Virtual Memory (Experimental)
+
+Inspect the AI virtual memory subsystem during conversations (requires `--vm` flag):
+
+```bash
+/memory                            # Summary dashboard: mode, turn, pages, utilization, metrics
+/vm                                # Alias for /memory
+/mem                               # Alias for /memory
+/memory pages                      # Table of all memory pages (ID, type, tier, tokens, pinned)
+/memory page <id>                  # Detailed view of a specific page with content preview
+/memory stats                      # Full debug dump of all VM subsystem stats (JSON)
+```
+
+The dashboard shows:
+- **Working set utilization**: L0/L1 page counts, tokens used/available, visual utilization bar
+- **Page table**: Total pages, dirty pages, distribution by storage tier (L0-L4)
+- **Metrics**: Page faults, evictions, TLB hit rate
+- **Configuration**: VM mode, current turn, token budget
+
+Without `--vm`, the command shows: "VM not enabled. Start with --vm flag."
+
+**VM CLI Flags:**
+```bash
+# Enable VM with defaults (passive mode, 128K budget)
+mcp-cli --server sqlite --vm
+
+# Set a tight budget to force eviction pressure
+mcp-cli --server sqlite --vm --vm-budget 500
+
+# Use relaxed mode (VM-aware but conversational)
+mcp-cli --server sqlite --vm --vm-mode relaxed
+```
+
 ### Token Usage
 
 Track API token consumption across your conversation:
@@ -588,6 +621,7 @@ Available Commands:
   exit         - Exit the application
   export ▸     - Export conversation (markdown/json)
   help         - Show help information
+  memory ▸     - View AI virtual memory state (aliases: /vm, /mem)
   model ▸      - Show current model or switch models
   models       - List all available models
   provider ▸   - Show current provider or switch providers

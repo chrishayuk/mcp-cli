@@ -328,7 +328,7 @@ def test_process_options_quiet_mode(mock_discovery, monkeypatch, tmp_path, caplo
     pass
 
 
-@patch("mcp_cli.config.cli_options.output")
+@patch("chuk_term.ui.output")
 @patch("mcp_cli.config.cli_options.trigger_discovery_after_setup")
 @patch("mcp_cli.utils.preferences.get_preference_manager")
 def test_process_options_disabled_server_blocked(

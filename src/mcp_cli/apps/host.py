@@ -36,12 +36,13 @@ from mcp_cli.config.defaults import (
     DEFAULT_APP_HOST_PORT_START,
     DEFAULT_APP_INIT_TIMEOUT,
     DEFAULT_APP_MAX_CONCURRENT,
+    DEFAULT_HTTP_REQUEST_TIMEOUT,
 )
 
 if TYPE_CHECKING:
     from mcp_cli.tools.manager import ToolManager
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 # Version injected into the host page
 _MCP_CLI_VERSION = "0.13"
@@ -58,6 +59,7 @@ class AppHostServer:
         self.tool_manager = tool_manager
         self._apps: dict[str, AppInfo] = {}
         self._bridges: dict[str, AppBridge] = {}
+        self._uri_to_tool: dict[str, str] = {}  # resourceUri → tool_name
         self._servers: list[Any] = []
         self._next_port = DEFAULT_APP_HOST_PORT_START
 
@@ -81,7 +83,7 @@ class AppHostServer:
         """
         # Close any previous instance of this tool's app
         if tool_name in self._apps:
-            log.info("Closing previous instance of app %s", tool_name)
+            logger.info("Closing previous instance of app %s", tool_name)
             await self.close_app(tool_name)
 
         if len(self._apps) >= DEFAULT_APP_MAX_CONCURRENT:
@@ -126,6 +128,7 @@ class AppHostServer:
             permissions=permissions,
         )
         self._apps[tool_name] = app_info
+        self._uri_to_tool[resource_uri] = tool_name
 
         # Create bridge
         bridge = AppBridge(app_info, self.tool_manager)
@@ -138,9 +141,9 @@ class AppHostServer:
         if DEFAULT_APP_AUTO_OPEN_BROWSER:
             try:
                 webbrowser.open(app_info.url)
-                log.info("Opened MCP App for %s at %s", tool_name, app_info.url)
+                logger.info("Opened MCP App for %s at %s", tool_name, app_info.url)
             except Exception as e:
-                log.warning(
+                logger.warning(
                     "Could not open browser for app %s at %s: %s",
                     tool_name,
                     app_info.url,
@@ -152,6 +155,8 @@ class AppHostServer:
     async def close_app(self, tool_name: str) -> None:
         """Close a specific app and its server."""
         if tool_name in self._apps:
+            uri = self._apps[tool_name].resource_uri
+            self._uri_to_tool.pop(uri, None)
             self._apps[tool_name].state = AppState.CLOSED
             del self._apps[tool_name]
         self._bridges.pop(tool_name, None)
@@ -168,9 +173,10 @@ class AppHostServer:
                 server.close()
                 await server.wait_closed()
             except Exception as e:
-                log.debug("Error cleaning up app server: %s", e)
+                logger.debug("Error cleaning up app server: %s", e)
         self._apps.clear()
         self._bridges.clear()
+        self._uri_to_tool.clear()
         self._next_port = DEFAULT_APP_HOST_PORT_START
 
     def get_running_apps(self) -> list[AppInfo]:
@@ -178,8 +184,38 @@ class AppHostServer:
         return [a for a in self._apps.values() if a.state != AppState.CLOSED]
 
     def get_bridge(self, tool_name: str) -> AppBridge | None:
-        """Get the bridge for a running app."""
+        """Get the bridge for a running app by tool name."""
         return self._bridges.get(tool_name)
+
+    def get_bridge_by_uri(self, resource_uri: str) -> AppBridge | None:
+        """Get the bridge for a running app by its resource URI.
+
+        Multiple tools can share the same resourceUri (e.g. show_video and
+        play_video both point at the dashboard).  This lookup lets the host
+        reuse the existing app instance instead of launching a new one.
+        """
+        tool_name = self._uri_to_tool.get(resource_uri)
+        if tool_name:
+            return self._bridges.get(tool_name)
+        return None
+
+    def get_any_ready_bridge(self) -> AppBridge | None:
+        """Get a bridge for any running app (preferring READY state).
+
+        Used to route ui_patch results from tools that don't carry a
+        resourceUri themselves — the patch targets a panel inside an
+        already-running dashboard.
+        """
+        # Prefer a READY app
+        for tool_name, app in self._apps.items():
+            if app.state == AppState.READY:
+                bridge = self._bridges.get(tool_name)
+                if bridge is not None:
+                    return bridge
+        # Fall back to any bridge (may still be INITIALIZING)
+        for bridge in self._bridges.values():
+            return bridge
+        return None
 
     # ------------------------------------------------------------------ #
     #  Server setup                                                       #
@@ -279,7 +315,7 @@ class AppHostServer:
         # WebSocket handler
         async def ws_handler(ws: ServerConnection) -> None:
             bridge.set_ws(ws)
-            log.info("WebSocket connected for app %s", app_info.tool_name)
+            logger.info("WebSocket connected for app %s", app_info.tool_name)
 
             # Drain any notifications that queued while WS was disconnected
             await bridge.drain_pending()
@@ -293,7 +329,7 @@ class AppHostServer:
             except websockets.ConnectionClosed:
                 pass
 
-            log.info("WebSocket closed for app %s", app_info.tool_name)
+            logger.info("WebSocket closed for app %s", app_info.tool_name)
 
         server = await ws_serve(
             ws_handler,
@@ -303,7 +339,7 @@ class AppHostServer:
         )
         self._servers.append(server)
 
-        log.info(
+        logger.info(
             "MCP App server started for %s on port %d",
             app_info.tool_name,
             app_info.port,
@@ -337,7 +373,9 @@ class AppHostServer:
         """Fetch HTML content directly from an HTTP/HTTPS URL."""
         import httpx
 
-        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+        async with httpx.AsyncClient(
+            follow_redirects=True, timeout=DEFAULT_HTTP_REQUEST_TIMEOUT
+        ) as client:
             resp = await client.get(url)
             resp.raise_for_status()
             html = resp.text

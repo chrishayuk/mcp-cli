@@ -9,7 +9,9 @@ import asyncio
 import gc
 import logging
 
-# NEW: Use the new UI module instead of rich directly
+# UI imports — this module is the boundary between core and UI.
+# It wires chuk_term UI components to core ChatContext/ConversationProcessor.
+# Kept at module level for testability (tests patch these names).
 from chuk_term.ui import (
     output,
     clear_screen,
@@ -42,6 +44,10 @@ async def handle_chat_mode(
     model_manager=None,  # FIXED: Accept model_manager from caller
     runtime_config=None,  # RuntimeConfig | None
     max_history_messages: int = 0,
+    enable_vm: bool = False,
+    vm_mode: str = "passive",
+    vm_budget: int = 128_000,
+    health_interval: int = 0,
 ) -> bool:
     """
     Launch the interactive chat loop with streaming support.
@@ -96,6 +102,10 @@ async def handle_chat_mode(
             api_key=api_key,
             model_manager=app_context.model_manager,  # Use the same instance
             max_history_messages=max_history_messages,
+            enable_vm=enable_vm,
+            vm_mode=vm_mode,
+            vm_budget=vm_budget,
+            health_interval=health_interval,
         )
 
         if not await ctx.initialize(on_progress=on_progress):
@@ -126,7 +136,8 @@ async def handle_chat_mode(
                 # Just show that we have a tool manager but don't know the count
                 else:
                     tool_count = "Available"
-            except Exception:
+            except Exception as e:
+                logger.debug("Failed to get tool count: %s", e)
                 tool_count = "Unknown"
 
         additional_info = {}
