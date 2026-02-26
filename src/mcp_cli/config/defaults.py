@@ -350,6 +350,9 @@ DEFAULT_MEMORY_MAX_PROMPT_CHARS = 2000
 DEFAULT_PLANS_DIR = "~/.mcp-cli/plans"
 """Default directory for plan persistence."""
 
+DEFAULT_ENABLE_PLAN_TOOLS = False
+"""Enable plan_create / plan_execute / plan_create_and_execute as LLM-callable tools."""
+
 DEFAULT_PLAN_MAX_CONCURRENCY = 4
 """Maximum concurrent steps within a parallel batch."""
 

@@ -767,6 +767,17 @@ class ConversationProcessor:
             except Exception as exc:
                 logger.warning(f"Could not load VM tools: {exc}")
 
+        # Inject plan tools when enabled
+        if getattr(self.context, "_enable_plan_tools", False):
+            try:
+                from mcp_cli.planning.tools import get_plan_tools_as_dicts
+
+                plan_tools = get_plan_tools_as_dicts()
+                self.context.openai_tools.extend(plan_tools)
+                logger.info(f"Injected {len(plan_tools)} plan tools")
+            except Exception as exc:
+                logger.warning(f"Could not load plan tools: {exc}")
+
         # Inject persistent memory scope tools
         store = getattr(self.context, "memory_store", None)
         if store:

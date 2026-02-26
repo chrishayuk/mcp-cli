@@ -145,6 +145,11 @@ def main_callback(
         "--health-interval",
         help="Background server health check interval in seconds (0 = disabled)",
     ),
+    plan_tools: bool = typer.Option(
+        False,
+        "--plan-tools",
+        help="Enable plan_create/plan_execute as LLM-callable tools for autonomous multi-step planning",
+    ),
 ) -> None:
     """MCP CLI - If no subcommand is given, start chat mode."""
 
@@ -371,6 +376,7 @@ def main_callback(
                 vm_mode=vm_mode,
                 vm_budget=vm_budget,
                 health_interval=health_interval,
+                enable_plan_tools=plan_tools,
             )
             logger.debug(f"Chat mode completed with success: {success}")
         except asyncio.TimeoutError:
@@ -469,6 +475,11 @@ def _chat_command(
         0,
         "--health-interval",
         help="Background server health check interval in seconds (0 = disabled)",
+    ),
+    plan_tools: bool = typer.Option(
+        False,
+        "--plan-tools",
+        help="Enable plan_create/plan_execute as LLM-callable tools for autonomous multi-step planning",
     ),
 ) -> None:
     """Start chat mode (same as default behavior without subcommand)."""
@@ -604,6 +615,7 @@ def _chat_command(
                 vm_mode=vm_mode,
                 vm_budget=vm_budget,
                 health_interval=health_interval,
+                enable_plan_tools=plan_tools,
             )
             logger.debug(f"Chat mode completed with success: {success}")
         except asyncio.TimeoutError:

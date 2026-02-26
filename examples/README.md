@@ -144,7 +144,7 @@ uv run python examples/planning/plan_parallel_demo.py
 uv run python examples/planning/plan_guard_demo.py
 ```
 
-### LLM-Integrated Demo (requires OPENAI_API_KEY)
+### LLM-Integrated Demos (requires OPENAI_API_KEY)
 
 ```bash
 # Full pipeline: LLM generates plan from natural language → validate → visualize → execute
@@ -155,6 +155,13 @@ uv run python examples/planning/plan_llm_demo.py --model gpt-4o
 
 # Custom task description
 uv run python examples/planning/plan_llm_demo.py --prompt "fetch weather for 3 cities and compare"
+
+# Plan-as-a-Tool (Tier 6.8): The LLM decides WHEN to plan — uses plan_create_and_execute
+# for complex multi-step tasks, calls tools directly for simple ones
+uv run python examples/planning/plan_as_tool_demo.py
+
+# Custom task
+uv run python examples/planning/plan_as_tool_demo.py --prompt "read the config and run tests"
 ```
 
 Demonstrates:
@@ -170,6 +177,7 @@ Demonstrates:
 10. Fan-out, diamond, and wide pipeline DAG patterns with timing evidence
 11. LLM plan generation with PlanAgent (auto-retry on validation failure)
 12. End-to-end pipeline: natural language → structured plan → parallel execution
+13. Model-driven planning: LLM autonomously invokes plan_create_and_execute when tasks need multi-step coordination
 
 ## Safety
 

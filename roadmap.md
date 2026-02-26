@@ -494,6 +494,57 @@ Adaptive re-planning when execution hits problems (opt-in via `enable_replan=Tru
 - `PlanExecutionResult.replanned` flag indicates whether re-planning occurred
 - Disabled by default — failure just fails without LLM involvement
 
+### 6.8 Model-Driven Planning (Plan as a Tool)
+
+The model can autonomously create and execute plans during conversation — no `/plan` command required.
+
+When the model determines a task needs multi-step orchestration, it calls an internal `plan` tool to decompose the task into a structured execution graph, then executes it — all within the normal chat flow.
+
+**Internal tools (intercepted before MCP routing, like VM tools):**
+
+| Tool | Purpose |
+|------|---------|
+| `plan_create` | Model describes a goal → PlanAgent generates a plan DAG → returns plan ID + step summary |
+| `plan_execute` | Model passes plan ID → PlanRunner executes → returns results + variables |
+| `plan_create_and_execute` | Combined: generate + execute in one call (common case) |
+
+**How it works:**
+
+```
+User: "What's the weather like for sailing in Raglan tomorrow?"
+
+Model (internally): This needs geocoding then weather lookup.
+  → calls plan_create_and_execute(goal="Get weather forecast for Raglan, NZ")
+  → PlanAgent generates: [geocode Raglan] → [get weather for coords]
+  → PlanRunner executes both steps via MCP servers
+  → Results flow back to model as tool result
+
+Model: "Tomorrow in Raglan: 18°C, light winds from the SW at 12 km/h,
+        partly cloudy. Good conditions for sailing."
+```
+
+**Key design decisions:**
+
+- **Intercepted like VM tools:** `plan_create`, `plan_execute`, `plan_create_and_execute` are caught in `tool_processor.py` before MCP guard routing, executed locally via PlanRunner
+- **Model decides when to plan:** The system prompt describes the planning tools; the model calls them when it determines multi-step orchestration is more effective than sequential tool calls
+- **Plans are ephemeral by default:** Created during conversation, not persisted unless the model or user explicitly saves them. Reduces clutter vs `/plan create`
+- **Shares guard budget:** Plan tool calls count against the same budget as regular tool calls
+- **Display integration:** Plan execution renders with the same `StreamingDisplayManager` callbacks as regular tool calls — the user sees each step executing in real time
+- **Variable flow:** Plan results are returned as the tool result, so the model can reference them naturally in its response
+- **Opt-in via system prompt:** The planning tools only appear when `--enable-plan-tools` is set (or equivalent config), so the model doesn't attempt planning on simple tasks
+
+**Files:**
+- `src/mcp_cli/chat/tool_processor.py` — Intercept `plan_create` / `plan_execute` / `plan_create_and_execute` before MCP routing
+- `src/mcp_cli/planning/tools.py` — Tool definitions (OpenAI function format) and execution handlers
+- `src/mcp_cli/chat/system_prompt.py` — Inject planning tool descriptions when enabled
+- `src/mcp_cli/config/defaults.py` — `DEFAULT_ENABLE_PLAN_TOOLS = False`
+
+**Why this matters:**
+
+Today: User types `/plan create "get weather for Raglan"` → plan generated → user types `/plan run <id>` → result shown. Three interactions.
+
+With 6.8: User asks a question → model decides it needs a plan → creates and executes it → answers. One interaction. The model becomes a self-orchestrating agent when the task demands it, and a simple chatbot when it doesn't.
+
 ---
 
 ## Tier 7: Observability & Traces
@@ -982,7 +1033,8 @@ mcp remote logs --follow
 | **5** | Production hardening | Observable, auditable | ✅ Complete |
 | **VM** | AI Virtual Memory | OS-style context management | ✅ Complete (Experimental) |
 | **Review** | Code review fixes | Silent exceptions, dead code, test gaps | ✅ Complete |
-| **6** | Plans & execution graphs | Reproducible workflows | ✅ Complete |
+| **6** | Plans & execution graphs | Reproducible workflows | ✅ Complete (6.0–6.7) |
+| **6.8** | Model-driven planning | Model creates & executes plans as tools | High |
 | **7** | Observability & traces | Debugger for AI behavior | High |
 | **8** | Memory scopes | Long-running assistants | High |
 | **9** | Skills & capabilities | Portable behaviour layer | High |
@@ -994,7 +1046,7 @@ mcp remote logs --follow
 
 These change the category of the tool from **chat interface** to **agent operating system**:
 
-1. **Plans** (Tier 6) — reproducible, inspectable execution
+1. **Plans** (Tier 6) — reproducible, inspectable execution; model-driven planning (6.8) makes the model a self-orchestrating agent
 2. **Traces** (Tier 7) — explainable AI operations
 3. **Skills** (Tier 9) — portable, reusable behaviour (the npm for agents)
 4. **Scheduling** (Tier 10) — autonomous background agents

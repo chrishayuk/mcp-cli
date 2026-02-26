@@ -62,6 +62,7 @@ class ChatContext:
         vm_mode: str = "passive",
         vm_budget: int = 128_000,
         health_interval: int = 0,
+        enable_plan_tools: bool = False,
     ):
         """
         Create chat context with required managers.
@@ -78,6 +79,7 @@ class ChatContext:
             vm_mode: VM mode - strict, relaxed, or passive
             vm_budget: Max tokens for VM L0 working set (context window budget)
             health_interval: Background health check interval in seconds (0 = disabled)
+            enable_plan_tools: Enable plan_create/plan_execute as LLM-callable tools
         """
         self.tool_manager = tool_manager
         self.model_manager = model_manager
@@ -92,6 +94,7 @@ class ChatContext:
         self._vm_mode = vm_mode
         self._vm_budget = vm_budget
         self._health_interval = health_interval
+        self._enable_plan_tools = enable_plan_tools
 
         # Core session manager - always required
         self.session: SessionManager = SessionManager(session_id=self.session_id)
@@ -162,6 +165,7 @@ class ChatContext:
         vm_mode: str = "passive",
         vm_budget: int = 128_000,
         health_interval: int = 0,
+        enable_plan_tools: bool = False,
     ) -> "ChatContext":
         """
         Factory method for convenient creation.
@@ -182,6 +186,7 @@ class ChatContext:
             vm_mode: VM mode - strict, relaxed, or passive
             vm_budget: Max tokens for VM L0 working set (context window budget)
             health_interval: Background health check interval in seconds (0 = disabled)
+            enable_plan_tools: Enable plan_create/plan_execute as LLM-callable tools
 
         Returns:
             Configured ChatContext instance
@@ -214,6 +219,7 @@ class ChatContext:
             vm_mode=vm_mode,
             vm_budget=vm_budget,
             health_interval=health_interval,
+            enable_plan_tools=enable_plan_tools,
         )
 
     # ── Properties ────────────────────────────────────────────────────────

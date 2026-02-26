@@ -331,6 +331,27 @@ mcp-cli --server sqlite --vm --vm-budget 500
 mcp-cli --server sqlite --vm --vm-mode relaxed
 ```
 
+### Model-Driven Planning
+
+Enable the LLM to autonomously create and execute multi-step plans during conversation:
+
+```bash
+# Enable plan tools — the model decides WHEN to plan
+mcp-cli --server sqlite --plan-tools
+
+# Or with the chat subcommand
+mcp-cli chat --server sqlite --plan-tools
+```
+
+When enabled, three internal tools are added to the LLM's tool list:
+- `plan_create_and_execute` — generate and execute a plan in one call (most common)
+- `plan_create` — generate a plan without executing it
+- `plan_execute` — execute a previously created plan by ID
+
+The model calls these when it determines a task requires multi-step coordination (e.g., "read a file, find importers, run tests"). For simple tasks, it calls tools directly.
+
+See [PLANNING.md](./PLANNING.md) for full documentation.
+
 ### Token Usage
 
 Track API token consumption across your conversation:

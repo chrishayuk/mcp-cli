@@ -19,6 +19,7 @@ A powerful, feature-rich command-line interface for interacting with Model Conte
 
 ### Execution Plans (Tier 6)
 - **`/plan` command**: Create, inspect, and execute reproducible tool call graphs — `create`, `list`, `show`, `run`, `delete`, `resume`
+- **Model-driven planning (`--plan-tools`)**: The LLM autonomously creates and executes plans during conversation — no `/plan` command needed. It calls `plan_create_and_execute` when multi-step orchestration is required, and uses regular tools for simple tasks
 - **Parallel batch execution**: Independent plan steps run concurrently via topological batching (Kahn's BFS), with configurable `max_concurrency`
 - **Variable resolution**: `${var}`, `${var.field}` nested access, and template strings like `"https://${api.host}/users"` — type-preserving for single refs
 - **Dry-run mode**: Trace planned tool calls without executing — safe for production inspection
@@ -121,6 +122,7 @@ MCP CLI supports all providers and models from CHUK-LLM, including cutting-edge 
 
 ### Execution Plans (Powered by chuk-ai-planner)
 - **Plan Creation**: Generate execution plans from natural language descriptions using LLM-based plan agents
+- **Model-Driven Planning**: With `--plan-tools`, the LLM autonomously decides when to plan — calls `plan_create_and_execute` for complex multi-step tasks, uses regular tools for simple ones
 - **DAG Execution**: Plans are directed acyclic graphs — independent steps run in parallel batches, dependent steps wait
 - **Variable Resolution**: Step outputs bind to variables (`result_variable`), referenced by later steps as `${var}` or `${var.field}`
 - **Dry-Run Mode**: Trace what a plan would do without executing any tools — safe for production

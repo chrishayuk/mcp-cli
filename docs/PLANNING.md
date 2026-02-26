@@ -41,6 +41,7 @@ MCP Servers              ← actual tool execution
 | `PlanningContext` | `planning/context.py` | State container: graph store, plan registry, tool manager, tool catalog |
 | `PlanRunner` | `planning/executor.py` | Orchestrates execution: batching, concurrency, checkpointing, dry-run, re-planning |
 | `PlanCommand` | `commands/plan/plan.py` | Unified command interface (`/plan` in all modes) |
+| `plan tools` | `planning/tools.py` | Tool definitions + handlers for model-driven planning (`--plan-tools`) |
 
 ### Module Layout
 
@@ -51,6 +52,7 @@ src/mcp_cli/
     backends.py          # McpToolBackend + guard helpers
     context.py           # PlanningContext (state + registry)
     executor.py          # PlanRunner + batching + variables + DAG viz
+    tools.py             # Plan-as-a-Tool: LLM-callable plan tools (--plan-tools)
   commands/
     plan/
       plan.py            # /plan command (create, list, show, run, delete, resume)
@@ -341,6 +343,68 @@ batches = _compute_batches(steps)
 # [[step1], [step2, step3], [step4]]
 ```
 
+## Model-Driven Planning (Plan as a Tool)
+
+With the `--plan-tools` flag, the LLM can autonomously create and execute plans during conversation. Instead of the user typing `/plan create`, the model itself decides when multi-step orchestration is needed.
+
+### Enabling
+
+```bash
+# Enable plan tools in chat mode
+mcp-cli --server sqlite --plan-tools
+
+# Or with the chat subcommand
+mcp-cli chat --server sqlite --plan-tools
+```
+
+### How It Works
+
+Three internal tools are injected into the LLM's tool list:
+
+| Tool | Purpose |
+|------|---------|
+| `plan_create` | Generate a plan from a goal description, returns plan ID + step summary |
+| `plan_execute` | Execute a previously created plan by ID |
+| `plan_create_and_execute` | Generate and execute in one call (most common) |
+
+These tools are **intercepted** in `tool_processor.py` before MCP routing — the same pattern used by VM and memory tools. They never reach the MCP server.
+
+### Example Flow
+
+```
+User: "Read the auth module, find all files that import it, and run the tests"
+
+Model (internally): This needs 3 coordinated steps.
+  → calls plan_create_and_execute(goal="Read auth module, find importers, run tests")
+  → PlanAgent generates: [read_file] → [search_code] → [run_tests]
+  → PlanRunner executes all 3 steps
+  → Results returned as tool result
+
+Model: "The auth module contains handle_auth() and verify_jwt().
+        It's imported in 6 files across src/ and tests/.
+        All 8 tests passed (2 skipped)."
+```
+
+For simple single-tool tasks, the model calls the tool directly — no planning overhead.
+
+### Programmatic API
+
+```python
+from mcp_cli.planning.tools import get_plan_tools_as_dicts, handle_plan_tool
+from mcp_cli.planning.context import PlanningContext
+
+# Get OpenAI-format tool definitions
+plan_tools = get_plan_tools_as_dicts()  # 3 tool dicts
+
+# Execute a plan tool
+ctx = PlanningContext(tool_manager)
+result_json = await handle_plan_tool(
+    "plan_create_and_execute",
+    {"goal": "Read file and run tests"},
+    ctx,
+)
+```
+
 ## Examples
 
 Self-contained demos in `examples/planning/` (no API key or MCP server needed):
@@ -359,9 +423,23 @@ uv run python examples/planning/plan_parallel_demo.py
 uv run python examples/planning/plan_guard_demo.py
 ```
 
+### Model-Driven Planning Demo (requires OPENAI_API_KEY)
+
+```bash
+# LLM decides WHEN to plan — uses plan_create_and_execute for complex tasks,
+# calls tools directly for simple ones
+uv run python examples/planning/plan_as_tool_demo.py
+
+# Use a different model
+uv run python examples/planning/plan_as_tool_demo.py --model gpt-4o
+
+# Custom task description
+uv run python examples/planning/plan_as_tool_demo.py --prompt "read the config, search for usages, and run tests"
+```
+
 ## Tests
 
-89 tests covering all planning functionality:
+200+ tests covering all planning functionality:
 
 ```bash
 # Run planning tests
@@ -371,4 +449,5 @@ uv run pytest tests/planning/ -v
 #   tests/planning/test_backends.py   — McpToolBackend, guards, result extraction
 #   tests/planning/test_context.py    — PlanningContext, PlanRegistry round-trips
 #   tests/planning/test_executor.py   — PlanRunner, batching, variables, DAG, re-planning
+#   tests/planning/test_tools.py      — Plan-as-a-Tool definitions, validation, handlers
 ```
