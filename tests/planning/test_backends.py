@@ -13,6 +13,8 @@ from chuk_ai_planner.execution.models import ToolExecutionRequest
 from mcp_cli.planning.backends import (
     McpToolBackend,
     _extract_result,
+    _extract_content_blocks,
+    _try_parse_json,
     _is_error_result,
     _extract_error_message,
     _check_guards,
@@ -458,6 +460,162 @@ class TestExtractResult:
         wrapper = CTPResult(success=True, result=inner, error=None)
         assert _extract_result(wrapper) == "geocoded coords"
 
+    def test_mcp_dict_wrapper_with_tool_result(self):
+        """Extract text from MCP dict wrapper with ToolResult object.
+
+        This is the most common format from stream_manager.call_tool():
+        {"isError": False, "content": ToolResult(content=[{type, text}])}
+        """
+
+        class FakeToolResult:
+            def __init__(self, content):
+                self.content = content
+
+        tool_result = FakeToolResult(
+            content=[{"type": "text", "text": '{"lat": 51.95, "lon": 0.85}'}]
+        )
+        raw = {"isError": False, "content": tool_result}
+        result = _extract_result(raw)
+        # JSON string should be parsed into a dict
+        assert result == {"lat": 51.95, "lon": 0.85}
+
+    def test_mcp_dict_wrapper_with_list_content(self):
+        """Extract text from MCP dict wrapper with content as a list."""
+        raw = {
+            "isError": False,
+            "content": [{"type": "text", "text": "hello world"}],
+        }
+        assert _extract_result(raw) == "hello world"
+
+    def test_tool_result_object_directly(self):
+        """Extract text from a ToolResult object without dict wrapper."""
+
+        class FakeToolResult:
+            def __init__(self, content):
+                self.content = content
+
+        tool_result = FakeToolResult(content=[{"type": "text", "text": "data"}])
+        assert _extract_result(tool_result) == "data"
+
+    def test_tool_result_with_object_content_blocks(self):
+        """Extract text from ToolResult with object-type content blocks."""
+
+        class ContentBlock:
+            def __init__(self, type_, text):
+                self.type = type_
+                self.text = text
+
+        class FakeToolResult:
+            def __init__(self, content):
+                self.content = content
+
+        tool_result = FakeToolResult(
+            content=[ContentBlock("text", '{"results": [1, 2, 3]}')]
+        )
+        result = _extract_result(tool_result)
+        assert result == {"results": [1, 2, 3]}
+
+    def test_json_string_parsed_to_dict(self):
+        """JSON strings are parsed into dicts."""
+        raw = '{"temperature": 15.5, "unit": "celsius"}'
+        result = _extract_result(raw)
+        assert result == {"temperature": 15.5, "unit": "celsius"}
+
+    def test_json_string_parsed_to_list(self):
+        """JSON strings are parsed into lists."""
+        raw = "[1, 2, 3]"
+        result = _extract_result(raw)
+        assert result == [1, 2, 3]
+
+    def test_non_json_string_preserved(self):
+        """Non-JSON strings are returned as-is."""
+        assert _extract_result("plain text") == "plain text"
+
+    def test_integer_preserved(self):
+        """Integer values are returned as-is."""
+        assert _extract_result(42) == 42
+
+    def test_nested_mcp_ctp_wrapper(self):
+        """Handle CTP wrapping an MCP dict: CTP(result={isError, content: TR})."""
+
+        class FakeToolResult:
+            def __init__(self, content):
+                self.content = content
+
+        @dataclass
+        class CTPResult:
+            success: bool
+            result: Any
+            error: str | None
+
+        tool_result = FakeToolResult(
+            content=[{"type": "text", "text": '{"coords": [51.95, 0.85]}'}]
+        )
+        ctp = CTPResult(
+            success=True,
+            result={"isError": False, "content": tool_result},
+            error=None,
+        )
+        result = _extract_result(ctp)
+        assert result == {"coords": [51.95, 0.85]}
+
+
+# ── Tests: Content Block Helpers ──────────────────────────────────────────
+
+
+class TestExtractContentBlocks:
+    """Test _extract_content_blocks helper."""
+
+    def test_dict_blocks(self):
+        blocks = [{"type": "text", "text": "hello"}]
+        assert _extract_content_blocks(blocks) == "hello"
+
+    def test_object_blocks(self):
+        class Block:
+            def __init__(self, type_, text):
+                self.type = type_
+                self.text = text
+
+        blocks = [Block("text", "world")]
+        assert _extract_content_blocks(blocks) == "world"
+
+    def test_mixed_blocks(self):
+        blocks = [
+            {"type": "image", "url": "x"},
+            {"type": "text", "text": "caption"},
+        ]
+        assert _extract_content_blocks(blocks) == "caption"
+
+    def test_no_text_blocks(self):
+        blocks = [{"type": "image", "url": "x"}]
+        assert _extract_content_blocks(blocks) == blocks
+
+    def test_json_text_parsed(self):
+        blocks = [{"type": "text", "text": '{"key": "value"}'}]
+        assert _extract_content_blocks(blocks) == {"key": "value"}
+
+
+class TestTryParseJson:
+    """Test _try_parse_json helper."""
+
+    def test_valid_dict(self):
+        assert _try_parse_json('{"a": 1}') == {"a": 1}
+
+    def test_valid_list(self):
+        assert _try_parse_json("[1, 2]") == [1, 2]
+
+    def test_plain_string(self):
+        assert _try_parse_json("hello") == "hello"
+
+    def test_empty_string(self):
+        assert _try_parse_json("") == ""
+
+    def test_numeric_string(self):
+        assert _try_parse_json("42") == 42
+
+    def test_invalid_json(self):
+        assert _try_parse_json("{bad json") == "{bad json"
+
 
 # ── Tests: Is Error Result ────────────────────────────────────────────────
 
@@ -515,6 +673,24 @@ class TestIsErrorResult:
 
         wrapper = CTPResult(success=True, result="data", error=None)
         assert not _is_error_result(wrapper)
+
+    def test_dict_with_nested_is_error(self):
+        """Detect error in nested content ToolResult with isError=True."""
+
+        class FakeToolResult:
+            isError = True
+
+        raw = {"content": FakeToolResult()}
+        assert _is_error_result(raw)
+
+    def test_dict_with_nested_no_error(self):
+        """Dict with content that has isError=False is not an error."""
+
+        class FakeToolResult:
+            isError = False
+
+        raw = {"content": FakeToolResult()}
+        assert not _is_error_result(raw)
 
 
 # ── Tests: Extract Error Message ──────────────────────────────────────────

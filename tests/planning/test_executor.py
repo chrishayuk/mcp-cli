@@ -1,6 +1,6 @@
 # tests/planning/test_executor.py
 """Tests for PlanRunner — plan execution with parallel batches, guards, DAG viz,
-checkpoints, variable resolution, and re-planning."""
+checkpoints, variable resolution, and agentic LLM-driven execution."""
 
 from __future__ import annotations
 
@@ -8,18 +8,23 @@ import asyncio
 import json
 from typing import Any
 from dataclasses import dataclass
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from mcp_cli.planning.executor import (
     PlanRunner,
     PlanExecutionResult,
+    ModelManagerProtocol,
     render_plan_dag,
+    _maybe_await,
     _serialize_variables,
+    _summarize_variables,
     _compute_batches,
     _resolve_variables,
     _resolve_value,
+    _extract_tool_call,
+    _parse_tool_call_entry,
 )
 from mcp_cli.planning.context import PlanningContext
 
@@ -774,15 +779,88 @@ class TestRenderPlanDag:
         assert "my_tool" in dag
 
 
-# ── Tests: Re-planning ─────────────────────────────────────────────────────
+# ── Tests: LLM-Driven Execution ───────────────────────────────────────────
 
 
-class TestReplanOnFailure:
-    """Test re-planning when a step fails."""
+class TestLLMDrivenExecution:
+    """Test agentic LLM-driven step execution.
+
+    The agentic loop feeds ALL tool results (success and failure) back to the
+    LLM, letting it evaluate results and decide whether to retry, try
+    different parameters, or signal step completion with a text response.
+    """
+
+    def _make_model_manager(self, responses: list[dict]) -> MagicMock:
+        """Create a mock ModelManager with a sequence of LLM responses.
+
+        Each response can have 'tool_calls' (LLM wants to call a tool)
+        or just 'content' (LLM signals step complete).
+        """
+        client = AsyncMock()
+        client.create_completion = AsyncMock(side_effect=responses)
+
+        mm = MagicMock(spec=ModelManagerProtocol)
+        mm.get_client.return_value = client
+        return mm
+
+    def _tool_call_response(self, name: str, args: dict) -> dict:
+        """Build a mock LLM response containing a tool call.
+
+        Uses the chuk_llm native format (top-level tool_calls key).
+        """
+        return {
+            "response": None,
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": json.dumps(args),
+                    },
+                }
+            ],
+            "usage": {"prompt_tokens": 50, "completion_tokens": 15},
+        }
+
+    def _text_response(self, text: str = "Step complete.") -> dict:
+        """Build a mock LLM response with text only (no tool call).
+
+        Uses the chuk_llm native format (top-level response key).
+        """
+        return {
+            "response": text,
+            "tool_calls": None,
+            "usage": {"prompt_tokens": 100, "completion_tokens": 20},
+        }
 
     @pytest.mark.asyncio
-    async def test_replan_disabled_by_default(self, tmp_path):
-        """Re-planning is off by default — failure just fails."""
+    async def test_no_model_manager_uses_static(self, tmp_path):
+        """Without model_manager, falls back to static arg execution."""
+        tm = FakeToolManager(results={"read_file": "file content"})
+        context = PlanningContext(tm, plans_dir=tmp_path / "plans")
+        runner = PlanRunner(context, enable_guards=False)
+
+        plan = {
+            "id": "test",
+            "title": "Test",
+            "steps": [
+                {
+                    "index": "1",
+                    "title": "Read",
+                    "tool": "read_file",
+                    "args": {"path": "/tmp/x"},
+                },
+            ],
+        }
+        result = await runner.execute_plan(plan, checkpoint=False)
+
+        assert result.success
+        assert len(result.steps) == 1
+
+    @pytest.mark.asyncio
+    async def test_failure_without_llm_stops_plan(self, tmp_path):
+        """Without LLM, a failed step stops the plan."""
         tm = FailingToolManager({"search_code"}, {"read_file": "data"})
         context = PlanningContext(tm, plans_dir=tmp_path / "plans")
         runner = PlanRunner(context, enable_guards=False)
@@ -790,31 +868,228 @@ class TestReplanOnFailure:
         result = await runner.execute_plan(SAMPLE_PLAN, checkpoint=False)
 
         assert not result.success
-        assert not result.replanned
 
     @pytest.mark.asyncio
-    async def test_replan_attempts_on_failure(self, tmp_path):
-        """When enabled, PlanRunner attempts re-planning on step failure."""
-        tm = FailingToolManager({"search_code"}, {"read_file": "data"})
+    async def test_agentic_loop_success_then_text(self, tmp_path):
+        """LLM calls tool, sees result, then responds with text = step done."""
+        tm = FakeToolManager(results={"geocode_location": {"lat": 52.0, "lon": 0.85}})
         context = PlanningContext(tm, plans_dir=tmp_path / "plans")
-        runner = PlanRunner(
-            context,
-            enable_guards=False,
-            enable_replan=True,
-            max_replans=1,
+
+        mm = self._make_model_manager(
+            [
+                # Turn 1: LLM calls the tool
+                self._tool_call_response("geocode_location", {"name": "Leavenheath"}),
+                # Turn 2: LLM sees the successful result, responds with text
+                self._text_response("Geocoded: lat=52.0, lon=0.85"),
+            ]
         )
 
-        with patch(
-            "mcp_cli.planning.executor.PlanRunner._replan_on_failure",
-            return_value=None,  # Re-plan fails → execution fails
-        ):
-            result = await runner.execute_plan(SAMPLE_PLAN, checkpoint=False)
+        runner = PlanRunner(context, model_manager=mm, enable_guards=False)
+
+        plan = {
+            "id": "test",
+            "title": "Test",
+            "steps": [
+                {
+                    "index": "1",
+                    "title": "Geocode location",
+                    "tool": "geocode_location",
+                    "args": {"name": "Leavenheath"},
+                    "result_variable": "geo_result",
+                },
+            ],
+        }
+        result = await runner.execute_plan(plan, checkpoint=False)
+
+        assert result.success
+        assert result.steps[0].success
+        assert result.variables["geo_result"] == {"lat": 52.0, "lon": 0.85}
+
+    @pytest.mark.asyncio
+    async def test_agentic_loop_retry_on_failure(self, tmp_path):
+        """LLM calls tool with wrong args, sees error, retries with correct args."""
+        call_count = 0
+
+        async def smart_execute(tool_name, arguments, namespace=None, timeout=None):
+            nonlocal call_count
+            call_count += 1
+            if arguments.get("latitude") and isinstance(arguments["latitude"], str):
+                return FakeToolCallResult(
+                    tool_name=tool_name,
+                    success=False,
+                    error="expected number, got str",
+                )
+            return FakeToolCallResult(
+                tool_name=tool_name,
+                result={"temperature": 15.5},
+            )
+
+        tm = FakeToolManager()
+        tm.execute_tool = smart_execute
+        context = PlanningContext(tm, plans_dir=tmp_path / "plans")
+
+        mm = self._make_model_manager(
+            [
+                # Turn 1: LLM passes string lat/lon
+                self._tool_call_response(
+                    "get_weather", {"latitude": "52.0", "longitude": "0.85"}
+                ),
+                # Turn 2: LLM sees error, retries with numbers
+                self._tool_call_response(
+                    "get_weather", {"latitude": 52.0, "longitude": 0.85}
+                ),
+                # Turn 3: LLM sees success, signals completion
+                self._text_response("Weather: 15.5°C"),
+            ]
+        )
+
+        runner = PlanRunner(context, model_manager=mm, enable_guards=False)
+
+        plan = {
+            "id": "test",
+            "title": "Test",
+            "steps": [
+                {
+                    "index": "1",
+                    "title": "Get weather",
+                    "tool": "get_weather",
+                    "args": {"latitude": 52.0, "longitude": 0.85},
+                    "result_variable": "weather",
+                },
+            ],
+        }
+        result = await runner.execute_plan(plan, checkpoint=False)
+
+        assert result.success
+        assert result.variables["weather"] == {"temperature": 15.5}
+        assert call_count == 2  # First call failed, second succeeded
+
+    @pytest.mark.asyncio
+    async def test_agentic_loop_retry_on_empty_result(self, tmp_path):
+        """LLM sees null/empty result and retries with different params."""
+        call_count = 0
+
+        async def retry_execute(tool_name, arguments, namespace=None, timeout=None):
+            nonlocal call_count
+            call_count += 1
+            if arguments.get("name") == "Leavenheath, Suffolk":
+                return FakeToolCallResult(tool_name=tool_name, result={"results": None})
+            # Simpler name works
+            return FakeToolCallResult(
+                tool_name=tool_name, result={"results": [{"lat": 52.0}]}
+            )
+
+        tm = FakeToolManager()
+        tm.execute_tool = retry_execute
+        context = PlanningContext(tm, plans_dir=tmp_path / "plans")
+
+        mm = self._make_model_manager(
+            [
+                # Turn 1: LLM tries full name
+                self._tool_call_response("geocode", {"name": "Leavenheath, Suffolk"}),
+                # Turn 2: LLM sees null results, tries simpler name
+                self._tool_call_response("geocode", {"name": "Leavenheath"}),
+                # Turn 3: LLM sees good result, signals done
+                self._text_response("Found coordinates."),
+            ]
+        )
+
+        runner = PlanRunner(context, model_manager=mm, enable_guards=False)
+
+        plan = {
+            "id": "test",
+            "title": "Test",
+            "steps": [
+                {
+                    "index": "1",
+                    "title": "Geocode",
+                    "tool": "geocode",
+                    "args": {"name": "Leavenheath, Suffolk"},
+                    "result_variable": "geo",
+                },
+            ],
+        }
+        result = await runner.execute_plan(plan, checkpoint=False)
+
+        assert result.success
+        assert result.variables["geo"] == {"results": [{"lat": 52.0}]}
+        assert call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_agentic_loop_max_turns_exhausted_with_result(self, tmp_path):
+        """When max turns exhausted but we have a result, return success."""
+        tm = FakeToolManager(results={"tool_a": "data"})
+        context = PlanningContext(tm, plans_dir=tmp_path / "plans")
+
+        # LLM keeps calling tools until turns run out (never sends text)
+        mm = self._make_model_manager(
+            [
+                self._tool_call_response("tool_a", {"x": 1}),
+                self._tool_call_response("tool_a", {"x": 2}),
+                self._tool_call_response("tool_a", {"x": 3}),
+            ]
+        )
+
+        runner = PlanRunner(
+            context, model_manager=mm, enable_guards=False, max_step_retries=2
+        )
+
+        plan = {
+            "id": "test",
+            "title": "Test",
+            "steps": [
+                {
+                    "index": "1",
+                    "title": "Do thing",
+                    "tool": "tool_a",
+                    "args": {"x": 1},
+                    "result_variable": "out",
+                },
+            ],
+        }
+        result = await runner.execute_plan(plan, checkpoint=False)
+
+        # Should succeed because we got a result
+        assert result.success
+        assert result.variables["out"] == "data"
+
+    @pytest.mark.asyncio
+    async def test_agentic_loop_max_turns_exhausted_no_result(self, tmp_path):
+        """When max turns exhausted with no success, return failure."""
+        tm = FailingToolManager({"tool_a"})
+        context = PlanningContext(tm, plans_dir=tmp_path / "plans")
+
+        mm = self._make_model_manager(
+            [
+                self._tool_call_response("tool_a", {"x": 1}),
+                self._tool_call_response("tool_a", {"x": 2}),
+                self._tool_call_response("tool_a", {"x": 3}),
+            ]
+        )
+
+        runner = PlanRunner(
+            context, model_manager=mm, enable_guards=False, max_step_retries=2
+        )
+
+        plan = {
+            "id": "test",
+            "title": "Test",
+            "steps": [
+                {
+                    "index": "1",
+                    "title": "Do thing",
+                    "tool": "tool_a",
+                    "args": {"x": 1},
+                },
+            ],
+        }
+        result = await runner.execute_plan(plan, checkpoint=False)
 
         assert not result.success
 
     @pytest.mark.asyncio
-    async def test_replan_result_has_flag(self, tmp_path):
-        """Replanned results have the replanned flag set."""
+    async def test_replanned_flag_on_result(self, tmp_path):
+        """PlanExecutionResult supports replanned flag."""
         result = PlanExecutionResult(
             plan_id="test",
             plan_title="Test",
@@ -822,6 +1097,13 @@ class TestReplanOnFailure:
             replanned=True,
         )
         assert result.replanned is True
+
+    @pytest.mark.asyncio
+    async def test_model_manager_protocol(self):
+        """ModelManagerProtocol is satisfied by objects with get_client()."""
+        mm = MagicMock()
+        mm.get_client = MagicMock(return_value=AsyncMock())
+        assert isinstance(mm, ModelManagerProtocol)
 
 
 # ── Tests: Serialize Variables ───────────────────────────────────────────────
@@ -849,3 +1131,489 @@ class TestSerializeVariables:
         small_dict = {"a": 1, "b": 2}
         result = _serialize_variables({"config": small_dict})
         assert result["config"] == {"a": 1, "b": 2}
+
+
+# ── Tests: Summarize Variables ───────────────────────────────────────────────
+
+
+class TestSummarizeVariables:
+    """Test _summarize_variables helper."""
+
+    def test_empty_context(self):
+        assert _summarize_variables({}) == "none"
+
+    def test_single_variable(self):
+        result = _summarize_variables({"geo": {"lat": 52.0}})
+        assert "${geo}" in result
+        assert "52.0" in result
+
+    def test_multiple_variables(self):
+        result = _summarize_variables({"a": 1, "b": "hello"})
+        assert "${a}" in result
+        assert "${b}" in result
+        assert "1" in result
+        assert "hello" in result
+
+    def test_long_value_truncated(self):
+        long_val = {"data": "x" * 1000}
+        result = _summarize_variables({"big": long_val})
+        assert "..." in result
+
+
+# ── Tests: Maybe Await ───────────────────────────────────────────────────────
+
+
+class TestMaybeAwait:
+    """Test _maybe_await helper for sync/async callback support."""
+
+    @pytest.mark.asyncio
+    async def test_sync_value_returned(self):
+        result = await _maybe_await(42)
+        assert result == 42
+
+    @pytest.mark.asyncio
+    async def test_none_returned(self):
+        result = await _maybe_await(None)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_coroutine_awaited(self):
+        async def async_fn():
+            return "async_result"
+
+        result = await _maybe_await(async_fn())
+        assert result == "async_result"
+
+    @pytest.mark.asyncio
+    async def test_sync_callback_result(self):
+        def sync_callback(x):
+            return x * 2
+
+        result = await _maybe_await(sync_callback(5))
+        assert result == 10
+
+    @pytest.mark.asyncio
+    async def test_async_callback_result(self):
+        async def async_callback(x):
+            return x * 2
+
+        result = await _maybe_await(async_callback(5))
+        assert result == 10
+
+
+# ── Tests: Extract Tool Call ──────────────────────────────────────────────────
+
+
+class TestExtractToolCall:
+    """Test _extract_tool_call with different response formats."""
+
+    def test_chuk_llm_native_format_with_tool_calls(self):
+        """chuk_llm returns {"response": null, "tool_calls": [...], "usage": {...}}."""
+        response = {
+            "response": None,
+            "tool_calls": [
+                {
+                    "id": "call_abc123",
+                    "type": "function",
+                    "function": {
+                        "name": "geocode_location",
+                        "arguments": '{"name": "London"}',
+                    },
+                }
+            ],
+            "usage": {"prompt_tokens": 53, "completion_tokens": 15},
+        }
+        result = _extract_tool_call(response)
+        assert result is not None
+        assert result["name"] == "geocode_location"
+        assert result["args"] == {"name": "London"}
+
+    def test_chuk_llm_native_format_text_response(self):
+        """chuk_llm text response: {"response": "text", "tool_calls": null}."""
+        response = {
+            "response": "The temperature is 12.3 degrees.",
+            "tool_calls": None,
+            "usage": {"prompt_tokens": 100, "completion_tokens": 20},
+        }
+        result = _extract_tool_call(response)
+        assert result is None
+
+    def test_chuk_llm_native_format_empty_tool_calls(self):
+        """chuk_llm with empty tool_calls list."""
+        response = {
+            "response": "Done",
+            "tool_calls": [],
+            "usage": {},
+        }
+        result = _extract_tool_call(response)
+        assert result is None
+
+    def test_openai_format_with_tool_calls(self):
+        """OpenAI-style: {"choices": [{"message": {"tool_calls": [...]}}]}."""
+        response = {
+            "choices": [
+                {
+                    "message": {
+                        "tool_calls": [
+                            {
+                                "id": "call_1",
+                                "type": "function",
+                                "function": {
+                                    "name": "get_weather",
+                                    "arguments": '{"lat": 52.0}',
+                                },
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+        result = _extract_tool_call(response)
+        assert result is not None
+        assert result["name"] == "get_weather"
+        assert result["args"] == {"lat": 52.0}
+
+    def test_openai_format_text_response(self):
+        """OpenAI-style text response: no tool_calls in message."""
+        response = {"choices": [{"message": {"content": "Hello!"}}]}
+        result = _extract_tool_call(response)
+        assert result is None
+
+    def test_none_response(self):
+        assert _extract_tool_call(None) is None
+
+    def test_empty_dict(self):
+        assert _extract_tool_call({}) is None
+
+    def test_dict_args_not_string(self):
+        """Arguments already parsed as dict (not JSON string)."""
+        response = {
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {
+                        "name": "test_tool",
+                        "arguments": {"key": "value"},
+                    },
+                }
+            ],
+        }
+        result = _extract_tool_call(response)
+        assert result is not None
+        assert result["args"] == {"key": "value"}
+
+    def test_invalid_json_arguments(self):
+        """Malformed JSON in arguments defaults to empty dict."""
+        response = {
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {
+                        "name": "test_tool",
+                        "arguments": "not valid json{",
+                    },
+                }
+            ],
+        }
+        result = _extract_tool_call(response)
+        assert result is not None
+        assert result["name"] == "test_tool"
+        assert result["args"] == {}
+
+
+class TestParseToolCallEntry:
+    """Test _parse_tool_call_entry with dict and object formats."""
+
+    def test_dict_entry(self):
+        tc = {
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "my_tool", "arguments": '{"x": 1}'},
+        }
+        result = _parse_tool_call_entry(tc)
+        assert result == {"name": "my_tool", "args": {"x": 1}}
+
+    def test_object_entry(self):
+        class FuncObj:
+            name = "my_tool"
+            arguments = '{"x": 1}'
+
+        class TCObj:
+            function = FuncObj()
+
+        result = _parse_tool_call_entry(TCObj())
+        assert result == {"name": "my_tool", "args": {"x": 1}}
+
+    def test_no_function_returns_none(self):
+        result = _parse_tool_call_entry("not a tool call")
+        assert result is None
+
+    def test_empty_name_returns_none(self):
+        tc = {"function": {"name": "", "arguments": "{}"}}
+        result = _parse_tool_call_entry(tc)
+        assert result is None
+
+
+# ── Tests: Error Paths & Edge Cases ──────────────────────────────────────────
+
+
+class TestAgenticLoopErrorPaths:
+    """Error paths in the agentic LLM loop.
+
+    Covers: RuntimeError guard, LLM exceptions mid-loop, tool callbacks
+    with async/sync variants, and turn-0 text fallback.
+    """
+
+    def _make_model_manager(self, responses: list[dict]) -> MagicMock:
+        client = AsyncMock()
+        client.create_completion = AsyncMock(side_effect=responses)
+        mm = MagicMock(spec=ModelManagerProtocol)
+        mm.get_client.return_value = client
+        return mm
+
+    def _tool_call_response(self, name: str, args: dict) -> dict:
+        return {
+            "response": None,
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": json.dumps(args),
+                    },
+                }
+            ],
+            "usage": {"prompt_tokens": 50, "completion_tokens": 15},
+        }
+
+    def _text_response(self, text: str = "Step complete.") -> dict:
+        return {
+            "response": text,
+            "tool_calls": None,
+            "usage": {"prompt_tokens": 100, "completion_tokens": 20},
+        }
+
+    @pytest.mark.asyncio
+    async def test_missing_model_manager_raises_runtime_error(self, tmp_path):
+        """_execute_step_with_llm raises RuntimeError without model_manager."""
+        tm = FakeToolManager(results={"tool_a": "ok"})
+        context = PlanningContext(tm, plans_dir=tmp_path / "plans")
+        runner = PlanRunner(context, enable_guards=False)  # No model_manager
+
+        with pytest.raises(RuntimeError, match="requires model_manager"):
+            await runner._execute_step_with_llm(
+                step={"index": "1", "title": "X", "tool": "tool_a", "args": {}},
+                var_context={},
+                step_index="1",
+                step_title="X",
+                hint_tool="tool_a",
+                hint_args={},
+            )
+
+    @pytest.mark.asyncio
+    async def test_llm_exception_mid_loop_retries(self, tmp_path):
+        """If the LLM raises an exception on one turn, the loop retries."""
+        tm = FakeToolManager(results={"tool_a": "result_data"})
+        context = PlanningContext(tm, plans_dir=tmp_path / "plans")
+
+        client = AsyncMock()
+        client.create_completion = AsyncMock(
+            side_effect=[
+                # Turn 1: LLM raises an exception
+                RuntimeError("LLM connection failed"),
+                # Turn 2: LLM succeeds with a tool call
+                self._tool_call_response("tool_a", {"x": 1}),
+                # Turn 3: LLM signals done
+                self._text_response("Done"),
+            ]
+        )
+        mm = MagicMock(spec=ModelManagerProtocol)
+        mm.get_client.return_value = client
+
+        runner = PlanRunner(context, model_manager=mm, enable_guards=False)
+
+        plan = {
+            "id": "exc-test",
+            "title": "Exception Test",
+            "steps": [
+                {
+                    "index": "1",
+                    "title": "Do thing",
+                    "tool": "tool_a",
+                    "args": {"x": 1},
+                    "result_variable": "out",
+                },
+            ],
+        }
+        result = await runner.execute_plan(plan, checkpoint=False)
+
+        assert result.success
+        assert result.variables["out"] == "result_data"
+
+    @pytest.mark.asyncio
+    async def test_turn_0_text_falls_back_to_static(self, tmp_path):
+        """If LLM responds with text on turn 0, fall back to static execution."""
+        tm = FakeToolManager(results={"tool_a": "static_result"})
+        context = PlanningContext(tm, plans_dir=tmp_path / "plans")
+
+        mm = self._make_model_manager(
+            [
+                self._text_response("I don't need to call a tool"),
+            ]
+        )
+
+        runner = PlanRunner(context, model_manager=mm, enable_guards=False)
+
+        plan = {
+            "id": "fallback-test",
+            "title": "Fallback Test",
+            "steps": [
+                {
+                    "index": "1",
+                    "title": "Do thing",
+                    "tool": "tool_a",
+                    "args": {"key": "val"},
+                    "result_variable": "out",
+                },
+            ],
+        }
+        result = await runner.execute_plan(plan, checkpoint=False)
+
+        assert result.success
+        assert result.variables["out"] == "static_result"
+        # Should have used static execution, so one tool call
+        assert len(tm.calls) == 1
+        assert tm.calls[0] == ("tool_a", {"key": "val"})
+
+    @pytest.mark.asyncio
+    async def test_tool_callbacks_fire_in_agentic_loop(self, tmp_path):
+        """on_tool_start / on_tool_complete fire for each tool call in loop."""
+        tm = FakeToolManager(results={"tool_a": "ok"})
+        context = PlanningContext(tm, plans_dir=tmp_path / "plans")
+
+        mm = self._make_model_manager(
+            [
+                self._tool_call_response("tool_a", {"x": 1}),
+                self._tool_call_response("tool_a", {"x": 2}),
+                self._text_response("Done"),
+            ]
+        )
+
+        tool_starts: list[tuple[str, dict]] = []
+        tool_completes: list[tuple[str, bool]] = []
+
+        runner = PlanRunner(
+            context,
+            model_manager=mm,
+            enable_guards=False,
+            on_tool_start=lambda name, args: tool_starts.append((name, args)),
+            on_tool_complete=lambda name, result, ok, elapsed: tool_completes.append(
+                (name, ok)
+            ),
+        )
+
+        plan = {
+            "id": "cb-test",
+            "title": "Callback Test",
+            "steps": [
+                {
+                    "index": "1",
+                    "title": "Do thing",
+                    "tool": "tool_a",
+                    "args": {"x": 1},
+                },
+            ],
+        }
+        result = await runner.execute_plan(plan, checkpoint=False)
+
+        assert result.success
+        assert len(tool_starts) == 2
+        assert tool_starts[0] == ("tool_a", {"x": 1})
+        assert tool_starts[1] == ("tool_a", {"x": 2})
+        assert len(tool_completes) == 2
+        assert all(ok for _, ok in tool_completes)
+
+    @pytest.mark.asyncio
+    async def test_async_tool_callbacks(self, tmp_path):
+        """Async tool callbacks are properly awaited."""
+        tm = FakeToolManager(results={"tool_a": "ok"})
+        context = PlanningContext(tm, plans_dir=tmp_path / "plans")
+
+        mm = self._make_model_manager(
+            [
+                self._tool_call_response("tool_a", {"x": 1}),
+                self._text_response("Done"),
+            ]
+        )
+
+        started = []
+        completed = []
+
+        async def on_start(name, args):
+            started.append(name)
+
+        async def on_complete(name, result, ok, elapsed):
+            completed.append((name, ok))
+
+        runner = PlanRunner(
+            context,
+            model_manager=mm,
+            enable_guards=False,
+            on_tool_start=on_start,
+            on_tool_complete=on_complete,
+        )
+
+        plan = {
+            "id": "async-cb-test",
+            "title": "Async Callback Test",
+            "steps": [
+                {
+                    "index": "1",
+                    "title": "Do thing",
+                    "tool": "tool_a",
+                    "args": {"x": 1},
+                },
+            ],
+        }
+        result = await runner.execute_plan(plan, checkpoint=False)
+
+        assert result.success
+        assert started == ["tool_a"]
+        assert completed == [("tool_a", True)]
+
+    @pytest.mark.asyncio
+    async def test_text_on_later_turn_without_result_fails(self, tmp_path):
+        """LLM text on turn > 0 but no prior success → step failure."""
+        tm = FailingToolManager({"tool_a"})
+        context = PlanningContext(tm, plans_dir=tmp_path / "plans")
+
+        mm = self._make_model_manager(
+            [
+                # Turn 1: tool call fails
+                self._tool_call_response("tool_a", {"x": 1}),
+                # Turn 2: LLM gives up with text (no good result stored)
+                self._text_response("I could not complete this step."),
+            ]
+        )
+
+        runner = PlanRunner(context, model_manager=mm, enable_guards=False)
+
+        plan = {
+            "id": "fail-test",
+            "title": "Fail Test",
+            "steps": [
+                {
+                    "index": "1",
+                    "title": "Do thing",
+                    "tool": "tool_a",
+                    "args": {"x": 1},
+                },
+            ],
+        }
+        result = await runner.execute_plan(plan, checkpoint=False)
+
+        assert not result.success
+        assert result.steps[0].error is not None

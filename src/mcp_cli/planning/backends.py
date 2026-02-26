@@ -15,6 +15,7 @@ Same protocol interface, different execution path.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from typing import TYPE_CHECKING, Any
@@ -23,6 +24,9 @@ from chuk_ai_planner.execution.models import (
     ToolExecutionRequest,
     ToolExecutionResult,
 )
+
+from mcp_cli.config.defaults import DEFAULT_PLAN_ERROR_MESSAGE_MAX_CHARS
+from mcp_cli.llm.content_models import ContentBlockType
 
 if TYPE_CHECKING:
     from mcp_cli.tools.manager import ToolManager
@@ -258,11 +262,16 @@ def _is_error_result(raw: Any) -> bool:
         if not raw.success:
             return True
 
-    # MCP CallToolResult with isError flag
+    # MCP CallToolResult with isError flag (object or dict)
     if hasattr(raw, "isError") and raw.isError:
         return True
-    if isinstance(raw, dict) and raw.get("isError"):
-        return True
+    if isinstance(raw, dict):
+        if raw.get("isError"):
+            return True
+        # Check nested content for isError
+        if "content" in raw and hasattr(raw["content"], "isError"):
+            if raw["content"].isError:
+                return True
 
     # MCP error content blocks
     if isinstance(raw, list):
@@ -285,21 +294,29 @@ def _extract_error_message(raw: Any) -> str | None:
     # Extract text from MCP content blocks
     if isinstance(raw, list):
         for block in raw:
-            if isinstance(block, dict) and block.get("type") == "text":
+            if isinstance(block, dict) and block.get("type") == ContentBlockType.TEXT:
                 return str(block.get("text", ""))
 
     text = str(raw)
-    if len(text) > 200:
-        text = text[:200] + "..."
+    if len(text) > DEFAULT_PLAN_ERROR_MESSAGE_MAX_CHARS:
+        text = text[:DEFAULT_PLAN_ERROR_MESSAGE_MAX_CHARS] + "..."
     return text
 
 
 def _extract_result(raw: Any) -> Any:
     """Extract a clean result value from ToolCallResult.result.
 
-    MCP tool results can be strings, dicts, or lists of content blocks.
-    When CTP middleware is enabled, the result may be a ToolExecutionResult
-    object — unwrap it to get the actual tool output.
+    MCP tool results come in several forms depending on the execution path:
+
+    1. CTP middleware: ToolExecutionResult(success, result, error)
+    2. MCP dict wrapper: {"isError": False, "content": ToolResult(...)}
+    3. MCP ToolResult object: ToolResult(content=[{type, text}, ...])
+    4. Content block list: [{"type": "text", "text": "..."}, ...]
+    5. JSON string: '{"results": [...]}'
+    6. Plain value: string, int, etc.
+
+    This function unwraps all layers to return clean, usable data.
+    JSON strings are parsed into dicts/lists for easier downstream use.
     """
     if raw is None:
         return None
@@ -310,16 +327,61 @@ def _extract_result(raw: Any) -> Any:
             return _extract_result(raw.result)  # Recurse to handle nested results
         return None  # Error case — caller should check _is_error_result first
 
-    # If it's a list of content blocks (MCP style), extract text
+    # Dict with "content" key (MCP CallToolResult as dict)
+    # e.g. {"isError": False, "content": ToolResult(content=[...])}
+    if isinstance(raw, dict) and "content" in raw:
+        return _extract_result(raw["content"])
+
+    # Object with .content attribute (MCP ToolResult / CallToolResult)
+    # e.g. ToolResult(content=[{"type": "text", "text": "..."}])
+    if hasattr(raw, "content") and not isinstance(raw, (str, bytes)):
+        content = raw.content
+        if isinstance(content, list):
+            return _extract_content_blocks(content)
+        return _extract_result(content)
+
+    # List of content blocks (MCP style)
     if isinstance(raw, list):
-        texts = []
-        for block in raw:
-            if isinstance(block, dict) and block.get("type") == "text":
-                texts.append(block.get("text", ""))
-            elif isinstance(block, str):
-                texts.append(block)
-        if texts:
-            return "\n".join(texts) if len(texts) > 1 else texts[0]
-        return raw
+        return _extract_content_blocks(raw)
+
+    # JSON string → parse to dict/list for cleaner variable access
+    if isinstance(raw, str):
+        return _try_parse_json(raw)
 
     return raw
+
+
+def _extract_content_blocks(blocks: list) -> Any:
+    """Extract text from a list of MCP content blocks.
+
+    Content blocks can be dicts or objects with type/text attributes.
+    Returns parsed JSON if the text is valid JSON, otherwise raw text.
+    """
+    texts = []
+    for block in blocks:
+        # Dict content block: {"type": "text", "text": "..."}
+        if isinstance(block, dict) and block.get("type") == ContentBlockType.TEXT:
+            texts.append(block.get("text", ""))
+        # Object content block: block.type == "text", block.text == "..."
+        elif hasattr(block, "type") and hasattr(block, "text"):
+            if str(block.type) == ContentBlockType.TEXT:
+                texts.append(str(block.text))
+        elif isinstance(block, str):
+            texts.append(block)
+
+    if texts:
+        combined = "\n".join(texts) if len(texts) > 1 else texts[0]
+        return _try_parse_json(combined)
+
+    return blocks  # Return raw if no text blocks found
+
+
+def _try_parse_json(text: str) -> Any:
+    """Try to parse a string as JSON. Returns parsed value or original string."""
+    if not text or not text.strip():
+        return text
+    try:
+        parsed = json.loads(text)
+        return parsed
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return text

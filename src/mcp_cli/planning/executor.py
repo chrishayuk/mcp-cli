@@ -1,13 +1,13 @@
 # src/mcp_cli/planning/executor.py
-"""PlanRunner — orchestrates plan execution with guard integration.
+"""PlanRunner — orchestrates LLM-driven plan execution.
 
 Executes plans step-by-step with:
-- Guard checks (budget, per-tool limits, runaway detection)
+- LLM-driven tool call generation with tool schemas
+- Automatic retry on failure with LLM error correction
 - Parallel batch execution for independent steps (topological batching)
 - Progress callbacks for terminal/dashboard display
 - Dry-run mode (trace without executing)
 - Execution checkpointing and resume
-- Re-planning on step failure (optional)
 - DAG visualization
 """
 
@@ -18,15 +18,20 @@ import json
 import logging
 import re
 import time
-from collections.abc import Callable
-from dataclasses import dataclass, field
-from typing import Any
+from collections.abc import Callable, Coroutine
+from typing import Any, Protocol, Union, runtime_checkable
+
+from pydantic import BaseModel, Field
 
 from chuk_ai_planner.execution.models import ToolExecutionRequest
 
+from mcp_cli.chat.models import MessageRole
 from mcp_cli.config.defaults import (
+    DEFAULT_PLAN_CHECKPOINT_MAX_CHARS,
+    DEFAULT_PLAN_DAG_TITLE_MAX_CHARS,
     DEFAULT_PLAN_MAX_CONCURRENCY,
-    DEFAULT_PLAN_MAX_REPLANS,
+    DEFAULT_PLAN_MAX_STEP_RETRIES,
+    DEFAULT_PLAN_VARIABLE_SUMMARY_MAX_CHARS,
 )
 from mcp_cli.config.enums import PlanStatus
 from mcp_cli.planning.backends import McpToolBackend
@@ -35,8 +40,32 @@ from mcp_cli.planning.context import PlanningContext
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class StepResult:
+@runtime_checkable
+class ModelManagerProtocol(Protocol):
+    """Minimal interface for model manager used by PlanRunner."""
+
+    def get_client(
+        self,
+        provider: str | None = None,
+        model: str | None = None,
+    ) -> Any: ...
+
+
+# Callback type aliases (sync or async)
+ToolStartCallback = Callable[
+    [str, dict[str, Any]],
+    Union[None, Coroutine[Any, Any, None]],
+]
+"""Called before each tool execution: (tool_name, arguments) -> None."""
+
+ToolCompleteCallback = Callable[
+    [str, str, bool, float],
+    Union[None, Coroutine[Any, Any, None]],
+]
+"""Called after each tool execution: (tool_name, result_text, success, elapsed) -> None."""
+
+
+class StepResult(BaseModel):
     """Result of a single plan step execution."""
 
     step_index: str
@@ -47,73 +76,90 @@ class StepResult:
     error: str | None = None
     duration: float = 0.0
 
+    model_config = {"arbitrary_types_allowed": True}
 
-@dataclass
-class PlanExecutionResult:
+
+class PlanExecutionResult(BaseModel):
     """Result of executing an entire plan."""
 
     plan_id: str
     plan_title: str
     success: bool
-    steps: list[StepResult] = field(default_factory=list)
-    variables: dict[str, Any] = field(default_factory=dict)
+    steps: list[StepResult] = Field(default_factory=list)
+    variables: dict[str, Any] = Field(default_factory=dict)
     total_duration: float = 0.0
     error: str | None = None
     replanned: bool = False
 
+    model_config = {"arbitrary_types_allowed": True}
+
 
 class PlanRunner:
-    """Orchestrates plan execution with mcp-cli integration.
+    """Orchestrates LLM-driven plan execution with mcp-cli integration.
 
-    Executes plans using topological batch ordering — independent steps
-    within each batch run concurrently via asyncio.gather(), while batches
-    execute sequentially to respect dependency ordering.
+    Each step is executed by the LLM: given the step description and tool
+    schemas, the LLM generates the actual tool call (with correct parameter
+    names and values). If a tool fails, the error is fed back to the LLM
+    which can retry with corrected arguments.
 
     Features:
-    - McpToolBackend with guard integration for MCP server tool execution
-    - Parallel batch execution for independent steps
+    - LLM-driven tool call generation with tool schemas
+    - Automatic retry on failure with LLM error correction
+    - Parallel batch execution for independent steps (topological batching)
     - Progress callbacks for terminal/dashboard display
     - Dry-run mode (trace without executing)
     - Execution checkpointing and resume
-    - Re-planning on step failure (optional)
+    - DAG visualization
     """
 
     def __init__(
         self,
         context: PlanningContext,
         *,
+        model_manager: ModelManagerProtocol | None = None,
         on_step_start: Callable[[str, str, str], None] | None = None,
         on_step_complete: Callable[[StepResult], None] | None = None,
+        on_tool_start: ToolStartCallback | None = None,
+        on_tool_complete: ToolCompleteCallback | None = None,
         enable_guards: bool = False,
         max_concurrency: int = DEFAULT_PLAN_MAX_CONCURRENCY,
-        enable_replan: bool = False,
-        max_replans: int = DEFAULT_PLAN_MAX_REPLANS,
+        max_step_retries: int = DEFAULT_PLAN_MAX_STEP_RETRIES,
     ) -> None:
         """Initialize the plan runner.
 
         Args:
             context: PlanningContext with tool_manager and graph_store.
+            model_manager: ModelManager for LLM-driven step execution.
+                When provided, the LLM generates tool calls from step
+                descriptions and can retry on failure with error feedback.
             on_step_start: Callback(step_index, step_title, tool_name) before each step.
             on_step_complete: Callback(StepResult) after each step.
+            on_tool_start: Async callback(tool_name, arguments) before each tool call
+                within a step. Called for each agentic loop tool invocation.
+            on_tool_complete: Async callback(tool_name, result_str, success, elapsed)
+                after each tool call. Called for each agentic loop tool invocation.
             enable_guards: If True, enforce guard checks during execution.
-                Defaults to False because plans are explicit user-initiated
-                sequences — chat-loop guards (per-tool caps, budget) don't apply.
-            max_concurrency: Maximum concurrent steps within a batch (default: 4).
-            enable_replan: If True, attempt re-planning on step failure.
-            max_replans: Maximum number of re-plan attempts (default: 2).
+            max_concurrency: Maximum concurrent steps within a batch.
+            max_step_retries: Maximum LLM retry attempts per step on failure.
         """
         self.context = context
+        self._model_manager = model_manager
         self._on_step_start = on_step_start
         self._on_step_complete = on_step_complete
+        self._on_tool_start = on_tool_start
+        self._on_tool_complete = on_tool_complete
         self._max_concurrency = max_concurrency
-        self._enable_replan = enable_replan
-        self._max_replans = max_replans
+        self._max_step_retries = max_step_retries
 
         # Create the MCP tool backend with guard integration
         self._backend = McpToolBackend(
             context.tool_manager,
             enable_guards=enable_guards,
         )
+
+        # Tool catalog cache (lazy-loaded, protected by lock for parallel steps)
+        self._tool_catalog: list[dict[str, Any]] | None = None
+        self._tool_catalog_lock = asyncio.Lock()
 
     async def execute_plan(
         self,
@@ -173,8 +219,6 @@ class PlanRunner:
 
             all_step_results: list[StepResult] = []
             completed_indices: list[str] = []
-            replanned = False
-            replan_count = 0
 
             for batch_num, batch in enumerate(batches, 1):
                 logger.debug(
@@ -193,24 +237,6 @@ class PlanRunner:
                     if result.success:
                         completed_indices.append(result.step_index)
                     else:
-                        # Attempt re-planning on failure
-                        if self._enable_replan and replan_count < self._max_replans:
-                            replan_result = await self._replan_on_failure(
-                                plan_data,
-                                result,
-                                var_context,
-                                completed_indices,
-                                all_step_results,
-                            )
-                            if replan_result is not None:
-                                replan_result.total_duration = (
-                                    time.perf_counter() - start_time
-                                )
-                                replan_result.replanned = True
-                                return replan_result
-                            replan_count += 1
-
-                        # No re-plan or re-plan failed — checkpoint and fail
                         if checkpoint:
                             self._save_checkpoint(
                                 plan_id,
@@ -286,7 +312,6 @@ class PlanRunner:
                 steps=all_step_results,
                 variables=var_context,
                 total_duration=total_duration,
-                replanned=replanned,
             )
 
         except Exception as e:
@@ -300,69 +325,360 @@ class PlanRunner:
                 error=str(e),
             )
 
+    async def _get_tool_catalog(self) -> list[dict[str, Any]]:
+        """Get tool catalog, caching for the duration of the plan run.
+
+        Uses an asyncio.Lock to prevent duplicate fetches when parallel
+        batch steps hit the cache simultaneously.
+        """
+        async with self._tool_catalog_lock:
+            if self._tool_catalog is None:
+                self._tool_catalog = await self.context.get_tool_catalog()
+            return self._tool_catalog
+
     async def _execute_step(
         self,
         step: dict[str, Any],
         var_context: dict[str, Any],
     ) -> StepResult:
-        """Execute a single plan step.
+        """Execute a single plan step using the LLM for tool call generation.
 
-        Resolves variable references in arguments, executes the tool
-        via McpToolBackend, and stores the result in the variable context.
+        When a model_manager is available, the LLM generates the tool call
+        from the step description and tool schemas, then the tool is executed.
+        If the tool fails, the error is fed back to the LLM for retry.
+
+        Falls back to static arg execution when no model_manager is provided.
         """
         step_index = step.get("index", "?")
         step_title = step.get("title", "Untitled")
         tool_calls = step.get("tool_calls", [])
-        tool_name = tool_calls[0]["name"] if tool_calls else step.get("tool", "none")
-        args = tool_calls[0].get("args", {}) if tool_calls else step.get("args", {})
-
-        # Resolve ${var} references in arguments
-        resolved_args = _resolve_variables(args, var_context)
+        hint_tool = tool_calls[0]["name"] if tool_calls else step.get("tool", "none")
+        hint_args = (
+            tool_calls[0].get("args", {}) if tool_calls else step.get("args", {})
+        )
 
         if self._on_step_start:
-            self._on_step_start(step_index, step_title, tool_name)
+            self._on_step_start(step_index, step_title, hint_tool)
 
         start_time = time.perf_counter()
 
+        # LLM-driven execution (agentic loop with retry)
+        if self._model_manager:
+            logger.info(
+                "Step %s: using agentic LLM execution (model_manager=%s)",
+                step_index,
+                type(self._model_manager).__name__,
+            )
+            step_result = await self._execute_step_with_llm(
+                step, var_context, step_index, step_title, hint_tool, hint_args
+            )
+        else:
+            logger.info(
+                "Step %s: using static arg execution (no model_manager)", step_index
+            )
+            step_result = await self._execute_step_static(
+                step, var_context, step_index, step_title, hint_tool, hint_args
+            )
+
+        step_result.duration = time.perf_counter() - start_time
+
+        if self._on_step_complete:
+            self._on_step_complete(step_result)
+
+        return step_result
+
+    async def _execute_step_static(
+        self,
+        step: dict[str, Any],
+        var_context: dict[str, Any],
+        step_index: str,
+        step_title: str,
+        tool_name: str,
+        args: dict[str, Any],
+    ) -> StepResult:
+        """Execute a step using the plan's static arguments (no LLM)."""
+        resolved_args = _resolve_variables(args, var_context)
+
         try:
+            if self._on_tool_start:
+                await _maybe_await(self._on_tool_start(tool_name, resolved_args))
+
+            tool_start = time.perf_counter()
             request = ToolExecutionRequest(
                 tool_name=tool_name,
                 args=resolved_args,
                 step_id=f"step-{step_index}",
             )
             exec_result = await self._backend.execute_tool(request)
-            duration = time.perf_counter() - start_time
+            tool_elapsed = time.perf_counter() - tool_start
 
-            step_result = StepResult(
+            result_var = step.get("result_variable")
+            if result_var and exec_result.success:
+                var_context[result_var] = exec_result.result
+
+            result_text = (
+                json.dumps(exec_result.result, default=str)
+                if exec_result.success
+                else (exec_result.error or "Tool execution failed")
+            )
+            if self._on_tool_complete:
+                await _maybe_await(
+                    self._on_tool_complete(
+                        tool_name, result_text, exec_result.success, tool_elapsed
+                    )
+                )
+
+            return StepResult(
                 step_index=step_index,
                 step_title=step_title,
                 tool_name=tool_name,
                 success=exec_result.success,
                 result=exec_result.result,
                 error=exec_result.error,
-                duration=duration,
             )
-
-            # Store result variable if specified
-            result_var = step.get("result_variable")
-            if result_var and exec_result.success:
-                var_context[result_var] = exec_result.result
-
         except Exception as e:
-            duration = time.perf_counter() - start_time
-            step_result = StepResult(
+            return StepResult(
                 step_index=step_index,
                 step_title=step_title,
                 tool_name=tool_name,
                 success=False,
                 error=str(e),
-                duration=duration,
             )
 
-        if self._on_step_complete:
-            self._on_step_complete(step_result)
+    async def _execute_step_with_llm(
+        self,
+        step: dict[str, Any],
+        var_context: dict[str, Any],
+        step_index: str,
+        step_title: str,
+        hint_tool: str,
+        hint_args: dict[str, Any],
+    ) -> StepResult:
+        """Execute a step via a full agentic loop.
 
-        return step_result
+        The LLM drives the entire step execution:
+        1. Sees the step description, tool schemas, and variable context
+        2. Generates a tool call with correct parameters
+        3. Sees the tool result (success OR failure)
+        4. Evaluates the result — was it useful? Empty? Wrong?
+        5. Decides: respond with final answer (step done) or call another tool
+
+        The loop continues until the LLM responds with text (no tool call),
+        indicating it considers the step complete, or max turns are exhausted.
+        """
+        tool_catalog = await self._get_tool_catalog()
+        if self._model_manager is None:
+            raise RuntimeError(
+                "_execute_step_with_llm requires model_manager but none was provided"
+            )
+        client = self._model_manager.get_client()
+
+        # Build variable summary for context
+        var_summary = _summarize_variables(var_context) if var_context else "none"
+
+        # Resolve any ${var} references in hint args for context
+        resolved_hints = _resolve_variables(hint_args, var_context)
+        hint_str = json.dumps(resolved_hints, default=str) if resolved_hints else "{}"
+
+        result_var = step.get("result_variable")
+
+        # Initial messages: instruct the LLM to act as an agent for this step
+        messages: list[dict[str, Any]] = [
+            {
+                "role": MessageRole.SYSTEM,
+                "content": (
+                    "You are executing one step of a plan. Your job is to call "
+                    "the appropriate tool(s) to accomplish the step goal.\n\n"
+                    "Rules:\n"
+                    "- Use the tool schemas to determine correct parameter names and types\n"
+                    "- After each tool call, you will see the result\n"
+                    "- If the result is empty, null, or unhelpful, try again with "
+                    "different parameters (e.g. a simpler location name)\n"
+                    "- If the tool returns an error, fix the parameters and retry\n"
+                    "- When you have a satisfactory result, respond with a brief "
+                    "text summary (no tool call) to complete the step\n"
+                    "- Ensure numeric parameters are numbers, not strings\n\n"
+                    f"Available variables from previous steps:\n{var_summary}"
+                ),
+            },
+            {
+                "role": MessageRole.USER,
+                "content": (
+                    f"Execute this plan step:\n"
+                    f"  Step {step_index}: {step_title}\n"
+                    f"  Suggested tool: {hint_tool}\n"
+                    f"  Suggested args: {hint_str}\n\n"
+                    f"Call the tool now."
+                ),
+            },
+        ]
+
+        last_error: str | None = None
+        last_result: Any = None
+        used_tool: str = hint_tool
+        max_turns = 1 + self._max_step_retries
+
+        for turn in range(max_turns):
+            try:
+                response = await client.create_completion(
+                    messages=messages,
+                    tools=tool_catalog,
+                    stream=False,
+                )
+
+                tool_call = _extract_tool_call(response)
+
+                if not tool_call:
+                    # LLM responded with text (no tool call).
+                    # On turn 0, it means the LLM chose not to call a tool — fall back.
+                    if turn == 0:
+                        logger.debug(
+                            "Step %s: LLM did not generate tool call, "
+                            "using static args",
+                            step_index,
+                        )
+                        return await self._execute_step_static(
+                            step,
+                            var_context,
+                            step_index,
+                            step_title,
+                            hint_tool,
+                            hint_args,
+                        )
+
+                    # On later turns, the LLM is signaling step completion.
+                    # Use the last successful result as the step output.
+                    if last_result is not None:
+                        if result_var:
+                            var_context[result_var] = last_result
+                        return StepResult(
+                            step_index=step_index,
+                            step_title=step_title,
+                            tool_name=used_tool,
+                            success=True,
+                            result=last_result,
+                        )
+                    # No successful result yet — treat as failure
+                    return StepResult(
+                        step_index=step_index,
+                        step_title=step_title,
+                        tool_name=used_tool,
+                        success=False,
+                        error=last_error or "LLM ended step without a result",
+                    )
+
+                # LLM generated a tool call — execute it
+                used_tool = tool_call["name"]
+                tool_args = tool_call["args"]
+                call_id = f"call_{step_index}_{turn}"
+
+                # Notify UI: tool execution starting
+                if self._on_tool_start:
+                    await _maybe_await(self._on_tool_start(used_tool, tool_args))
+
+                tool_start = time.perf_counter()
+                request = ToolExecutionRequest(
+                    tool_name=used_tool,
+                    args=tool_args,
+                    step_id=f"step-{step_index}",
+                )
+                exec_result = await self._backend.execute_tool(request)
+                tool_elapsed = time.perf_counter() - tool_start
+
+                # Build the assistant + tool result messages for the conversation
+                messages.append(
+                    {
+                        "role": MessageRole.ASSISTANT,
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": call_id,
+                                "type": "function",
+                                "function": {
+                                    "name": used_tool,
+                                    "arguments": json.dumps(tool_args, default=str),
+                                },
+                            }
+                        ],
+                    }
+                )
+
+                if exec_result.success:
+                    last_result = exec_result.result
+                    result_text = json.dumps(exec_result.result, default=str)
+                    messages.append(
+                        {
+                            "role": MessageRole.TOOL,
+                            "tool_call_id": call_id,
+                            "content": result_text,
+                        }
+                    )
+                    # Notify UI: tool execution completed
+                    if self._on_tool_complete:
+                        await _maybe_await(
+                            self._on_tool_complete(
+                                used_tool, result_text, True, tool_elapsed
+                            )
+                        )
+                    logger.debug(
+                        "Step %s turn %d: tool %s succeeded in %.2fs",
+                        step_index,
+                        turn + 1,
+                        used_tool,
+                        tool_elapsed,
+                    )
+                else:
+                    last_error = exec_result.error or "Tool execution failed"
+                    messages.append(
+                        {
+                            "role": MessageRole.TOOL,
+                            "tool_call_id": call_id,
+                            "content": f"Error: {last_error}",
+                        }
+                    )
+                    # Notify UI: tool execution failed
+                    if self._on_tool_complete:
+                        await _maybe_await(
+                            self._on_tool_complete(
+                                used_tool, last_error, False, tool_elapsed
+                            )
+                        )
+                    logger.info(
+                        "Step %s turn %d: tool %s failed in %.2fs: %s",
+                        step_index,
+                        turn + 1,
+                        used_tool,
+                        tool_elapsed,
+                        last_error,
+                    )
+
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(
+                    "Step %s turn %d raised exception: %s",
+                    step_index,
+                    turn + 1,
+                    last_error,
+                )
+
+        # Max turns exhausted — return whatever we have
+        if last_result is not None:
+            if result_var:
+                var_context[result_var] = last_result
+            return StepResult(
+                step_index=step_index,
+                step_title=step_title,
+                tool_name=used_tool,
+                success=True,
+                result=last_result,
+            )
+        return StepResult(
+            step_index=step_index,
+            step_title=step_title,
+            tool_name=used_tool,
+            success=False,
+            error=last_error or "All retry attempts failed",
+        )
 
     async def _execute_batch(
         self,
@@ -398,139 +714,6 @@ class PlanRunner:
             else:
                 step_results.append(result)
         return step_results
-
-    async def _replan_on_failure(
-        self,
-        original_plan: dict[str, Any],
-        failed_step: StepResult,
-        var_context: dict[str, Any],
-        completed_indices: list[str],
-        all_step_results: list[StepResult],
-    ) -> PlanExecutionResult | None:
-        """Attempt to re-plan the remaining steps after a failure.
-
-        Generates a revised plan for the remaining work using the LLM,
-        then executes it. Returns None if re-planning fails.
-        """
-        try:
-            from chuk_ai_planner.agents.plan_agent import PlanAgent
-        except ImportError:
-            logger.debug("PlanAgent not available for re-planning")
-            return None
-
-        plan_title = original_plan.get("title", "Untitled")
-        plan_id = original_plan.get("id", "unknown")
-
-        logger.info(
-            "Re-planning after step %s (%s) failed: %s",
-            failed_step.step_index,
-            failed_step.step_title,
-            failed_step.error,
-        )
-
-        # Build context for the LLM
-        tool_names = await self.context.get_tool_names()
-        if not tool_names:
-            logger.warning("No tools available for re-planning")
-            return None
-
-        # Summarize what's been done and what failed
-        completed_summary = "\n".join(
-            f"  - Step {r.step_index}: {r.step_title} [{r.tool_name}] → "
-            + (str(r.result)[:200] if r.success else f"FAILED: {r.error}")
-            for r in all_step_results
-        )
-
-        # Get remaining steps (not yet attempted)
-        remaining = [
-            s
-            for s in original_plan.get("steps", [])
-            if s.get("index") not in completed_indices
-            and s.get("index") != failed_step.step_index
-        ]
-        remaining_summary = "\n".join(
-            f"  - Step {s.get('index')}: {s.get('title')} [{s.get('tool', 'unknown')}]"
-            for s in remaining
-        )
-
-        # Build re-planning prompt
-        tools_list = "\n".join(f"  - {name}" for name in tool_names)
-        replan_prompt = (
-            f"The plan '{plan_title}' encountered an error.\n\n"
-            f"Completed steps:\n{completed_summary}\n\n"
-            f"Failed step:\n"
-            f"  - Step {failed_step.step_index}: {failed_step.step_title} "
-            f"[{failed_step.tool_name}] → ERROR: {failed_step.error}\n\n"
-            f"Remaining steps that haven't been attempted:\n{remaining_summary}\n\n"
-            f"Available tools:\n{tools_list}\n\n"
-            f"Current variables: {json.dumps(_serialize_variables(var_context), default=str)}\n\n"
-            f"Create a revised plan to complete the remaining work. "
-            f"You may use a different approach for the failed step. "
-            f"Do NOT include steps that already completed successfully."
-        )
-
-        system_prompt = (
-            "You are a re-planning assistant. A plan step failed during execution. "
-            "Create a revised plan to complete the remaining work.\n\n"
-            'Output a JSON object with: {"title": "...", "steps": [{"title": "...", '
-            '"tool": "tool_name", "args": {...}, "depends_on": [], '
-            '"result_variable": "optional_var"}]}\n\n'
-            "Rules:\n"
-            "- Only use tools from the available tools list\n"
-            "- depends_on uses 0-based indices within this NEW plan only\n"
-            "- Use result_variable to store step outputs for later use as ${var}\n"
-            "- Consider alternative approaches to the failed step"
-        )
-
-        try:
-            agent = PlanAgent(
-                system_prompt=system_prompt,
-                max_retries=1,
-            )
-            revised_plan = await agent.plan(replan_prompt)
-
-            if not revised_plan or not revised_plan.get("steps"):
-                logger.warning("Re-planning produced empty plan")
-                return None
-
-            logger.info(
-                "Re-plan produced %d steps: %s",
-                len(revised_plan["steps"]),
-                revised_plan.get("title", "Revised"),
-            )
-
-            # Execute the revised plan (without further re-planning to avoid loops)
-            revised_plan["id"] = f"{plan_id}-replan"
-            runner = PlanRunner(
-                self.context,
-                on_step_start=self._on_step_start,
-                on_step_complete=self._on_step_complete,
-                enable_guards=self._backend._enable_guards,
-                max_concurrency=self._max_concurrency,
-                enable_replan=False,  # No recursive re-planning
-            )
-
-            replan_result = await runner.execute_plan(
-                revised_plan,
-                variables=var_context,
-                checkpoint=False,
-            )
-
-            # Merge results: completed + replan
-            merged_steps = list(all_step_results) + replan_result.steps
-            return PlanExecutionResult(
-                plan_id=plan_id,
-                plan_title=plan_title,
-                success=replan_result.success,
-                steps=merged_steps,
-                variables=replan_result.variables,
-                replanned=True,
-                error=replan_result.error,
-            )
-
-        except Exception as e:
-            logger.warning("Re-planning failed: %s", e)
-            return None
 
     async def _dry_run(
         self,
@@ -765,6 +948,110 @@ def _resolve_path(var_path: str, variables: dict[str, Any]) -> Any:
     return current
 
 
+# ── Callback Helpers ──────────────────────────────────────────────────────
+
+
+async def _maybe_await(result: Any) -> Any:
+    """Await a result if it's a coroutine, otherwise return it directly.
+
+    Allows callbacks to be either sync or async functions.
+    """
+    if asyncio.iscoroutine(result):
+        return await result
+    return result
+
+
+# ── LLM Response Helpers ──────────────────────────────────────────────────
+
+
+def _extract_tool_call(response: Any) -> dict[str, Any] | None:
+    """Extract a tool call from an LLM completion response.
+
+    Handles three response formats:
+    1. chuk_llm native: {"response": ..., "tool_calls": [...], "usage": {...}}
+    2. OpenAI-style dict: {"choices": [{"message": {"tool_calls": [...]}}]}
+    3. Object-style: response.choices[0].message.tool_calls
+
+    Returns:
+        Dict with 'name' and 'args', or None if no tool call found.
+    """
+    if response is None:
+        return None
+
+    if isinstance(response, dict):
+        # chuk_llm native format: top-level "tool_calls" key
+        tool_calls = response.get("tool_calls")
+        if tool_calls:
+            return _parse_tool_call_entry(tool_calls[0])
+
+        # OpenAI-style dict format: choices[0].message.tool_calls
+        choices = response.get("choices", [])
+        if choices:
+            message = choices[0].get("message", {})
+            tool_calls = message.get("tool_calls", [])
+            if tool_calls:
+                return _parse_tool_call_entry(tool_calls[0])
+
+        return None
+
+    # Object-style response (e.g., Pydantic models)
+    # Check for top-level tool_calls attribute (chuk_llm objects)
+    if hasattr(response, "tool_calls") and response.tool_calls:
+        return _parse_tool_call_entry(response.tool_calls[0])
+
+    # OpenAI-style object: response.choices[0].message.tool_calls
+    if hasattr(response, "choices") and response.choices:
+        choice = response.choices[0]
+        message = getattr(choice, "message", None)
+        if message:
+            tool_calls = getattr(message, "tool_calls", None)
+            if tool_calls:
+                return _parse_tool_call_entry(tool_calls[0])
+
+    return None
+
+
+def _parse_tool_call_entry(tc: Any) -> dict[str, Any] | None:
+    """Parse a single tool call entry from either dict or object format.
+
+    Args:
+        tc: A tool call entry (dict or object with function attribute).
+
+    Returns:
+        Dict with 'name' and 'args', or None if parsing fails.
+    """
+    if isinstance(tc, dict):
+        func = tc.get("function", {})
+        name = func.get("name", "")
+        args_str = func.get("arguments", "{}")
+    elif hasattr(tc, "function"):
+        func = tc.function
+        name = getattr(func, "name", "")
+        args_str = getattr(func, "arguments", "{}")
+    else:
+        return None
+
+    try:
+        args = json.loads(args_str) if isinstance(args_str, str) else args_str
+    except (json.JSONDecodeError, TypeError):
+        args = {}
+
+    return {"name": name, "args": args} if name else None
+
+
+def _summarize_variables(var_context: dict[str, Any]) -> str:
+    """Build a compact summary of current variables for the LLM."""
+    if not var_context:
+        return "none"
+    lines = []
+    for key, value in var_context.items():
+        text = json.dumps(value, default=str)
+        if len(text) > DEFAULT_PLAN_VARIABLE_SUMMARY_MAX_CHARS:
+            text = text[:DEFAULT_PLAN_VARIABLE_SUMMARY_MAX_CHARS] + "..."
+        lines.append(f"  ${{{key}}} = {text}")
+    return "\n".join(lines)
+
+
 # ── DAG Visualization ──────────────────────────────────────────────────────
 
 
@@ -796,7 +1083,7 @@ def render_plan_dag(plan_data: dict[str, Any]) -> str:
 
     for i, step in enumerate(steps):
         index = step.get("index", str(i + 1))
-        title = step.get("title", "Untitled")[:35]
+        title = step.get("title", "Untitled")[:DEFAULT_PLAN_DAG_TITLE_MAX_CHARS]
         tool_calls = step.get("tool_calls", [])
         tool_name = tool_calls[0]["name"] if tool_calls else step.get("tool", "?")
         depends_on = step.get("depends_on", [])
@@ -846,11 +1133,11 @@ def _serialize_variables(variables: dict[str, Any]) -> dict[str, Any]:
     """
     result: dict[str, Any] = {}
     for key, value in variables.items():
-        if isinstance(value, str) and len(value) > 1000:
-            result[key] = value[:1000] + "... [truncated]"
+        if isinstance(value, str) and len(value) > DEFAULT_PLAN_CHECKPOINT_MAX_CHARS:
+            result[key] = value[:DEFAULT_PLAN_CHECKPOINT_MAX_CHARS] + "... [truncated]"
         elif isinstance(value, (dict, list)):
             serialized = json.dumps(value, default=str)
-            if len(serialized) > 1000:
+            if len(serialized) > DEFAULT_PLAN_CHECKPOINT_MAX_CHARS:
                 result[key] = f"[{type(value).__name__}, {len(serialized)} chars]"
             else:
                 result[key] = value

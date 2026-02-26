@@ -121,7 +121,9 @@ Usage:
                 )
             dry_run = "--dry-run" in remainder or "--simulate" in remainder
             plan_id = remainder.split()[0]
-            return await self._run_plan(planning_context, plan_id, dry_run=dry_run)
+            return await self._run_plan(
+                planning_context, plan_id, dry_run=dry_run, kwargs=kwargs
+            )
 
         elif action == PlanAction.DELETE:
             if not remainder:
@@ -189,16 +191,21 @@ Usage:
         output.info(f"Generating plan: {description}")
 
         try:
-            # Get available tools for the system prompt
-            tool_names = await context.get_tool_names()
+            # Get full tool catalog (with parameter schemas) for the system prompt
+            tool_catalog = await context.get_tool_catalog()
+            tool_names = [
+                t.get("function", {}).get("name", "")
+                for t in tool_catalog
+                if t.get("function", {}).get("name")
+            ]
             if not tool_names:
                 return CommandResult(
                     success=False,
                     error="No tools available. Connect to MCP servers first.",
                 )
 
-            # Build system prompt with tool catalog
-            system_prompt = _build_plan_system_prompt(tool_names)
+            # Build system prompt with tool schemas
+            system_prompt = _build_plan_system_prompt(tool_catalog)
 
             # Use PlanAgent to generate the plan
             from chuk_ai_planner.agents.plan_agent import PlanAgent
@@ -220,8 +227,9 @@ Usage:
             # Save via PlanningContext (builds UniversalPlan + registers)
             plan_id = await context.save_plan_from_dict(plan_dict)
 
-            # Display the plan
-            _display_plan(plan_dict)
+            # Display the saved plan (has patched 1-based dependencies)
+            saved_plan = await context.get_plan(plan_id)
+            _display_plan(saved_plan or plan_dict)
 
             output.success(f"Plan saved: {plan_id[:8]}...")
             return CommandResult(
@@ -250,7 +258,12 @@ Usage:
         return CommandResult(success=True, data=plan_data)
 
     async def _run_plan(
-        self, context, plan_id: str, *, dry_run: bool = False
+        self,
+        context,
+        plan_id: str,
+        *,
+        dry_run: bool = False,
+        kwargs: dict | None = None,
     ) -> CommandResult:
         """Execute a plan."""
         from chuk_term.ui import output
@@ -266,21 +279,38 @@ Usage:
         mode_label = "[DRY RUN] " if dry_run else ""
         output.info(f"{mode_label}Executing plan: {plan_data.get('title', 'Untitled')}")
 
+        # Get display manager for tool execution rendering (matches regular chat display)
+        ui_manager = (kwargs or {}).get("ui_manager")
+        display = getattr(ui_manager, "display", None) if ui_manager else None
+
         def on_step_start(index, title, tool):
-            output.info(f"  Step {index}: {title} [{tool}]")
+            output.info(f"  Step {index}: {title}")
 
         def on_step_complete(step_result):
-            if step_result.success:
-                # Show a preview of the result
-                preview = _result_preview(step_result.result)
-                output.success(f"    -> {preview}")
-            else:
-                output.error(f"    -> FAILED: {step_result.error}")
+            # Tool results are shown by on_tool_complete — step complete is a summary
+            if not step_result.success:
+                output.error(
+                    f"  Step {step_result.step_index} failed: {step_result.error}"
+                )
+
+        async def on_tool_start(tool_name, arguments):
+            if display:
+                await display.start_tool_execution(tool_name, arguments)
+
+        async def on_tool_complete(tool_name, result_text, success, elapsed):
+            if display:
+                await display.stop_tool_execution(result_text, success)
+
+        # Get model_manager for LLM-driven execution
+        model_manager = (kwargs or {}).get("model_manager")
 
         runner = PlanRunner(
             context,
+            model_manager=model_manager,
             on_step_start=on_step_start,
             on_step_complete=on_step_complete,
+            on_tool_start=on_tool_start,
+            on_tool_complete=on_tool_complete,
         )
 
         result = await runner.execute_plan(plan_data, dry_run=dry_run)
@@ -289,12 +319,6 @@ Usage:
             output.success(
                 f"Plan completed: {len(result.steps)} steps in {result.total_duration:.1f}s"
             )
-            # Show final variable values
-            if result.variables:
-                output.info("\nResults:")
-                for key, value in result.variables.items():
-                    preview = _result_preview(value, max_len=200)
-                    output.info(f"  {key}: {preview}")
         else:
             output.error(f"Plan failed: {result.error or 'unknown error'}")
 
@@ -370,13 +394,40 @@ Usage:
         return CommandResult(success=result.success)
 
 
-def _build_plan_system_prompt(tool_names: list[str]) -> str:
-    """Build the system prompt for LLM plan generation."""
-    tools_list = "\n".join(f"  - {name}" for name in tool_names)
+def _build_plan_system_prompt(tool_catalog: list[dict]) -> str:
+    """Build the system prompt for LLM plan generation.
+
+    Args:
+        tool_catalog: Full tool definitions with schemas (OpenAI function format).
+    """
+
+    # Format each tool with its parameter schema
+    tool_lines = []
+    for tool in tool_catalog:
+        func = tool.get("function", {})
+        name = func.get("name", "?")
+        desc = func.get("description", "")
+        params = func.get("parameters", {})
+        props = params.get("properties", {})
+        required = params.get("required", [])
+
+        param_parts = []
+        for pname, pinfo in props.items():
+            ptype = pinfo.get("type", "any")
+            pdesc = pinfo.get("description", "")
+            req = " (required)" if pname in required else ""
+            param_parts.append(f"      {pname}: {ptype}{req} — {pdesc}")
+
+        params_str = "\n".join(param_parts) if param_parts else "      (no parameters)"
+        tool_lines.append(f"  {name}: {desc}\n    Parameters:\n{params_str}")
+
+    tools_text = "\n\n".join(tool_lines)
+
     return f"""You are a planning assistant. Given a task description, create a structured execution plan.
 
-Available tools:
-{tools_list}
+Available tools (with parameter schemas):
+
+{tools_text}
 
 Output a JSON object with this exact structure:
 {{
@@ -394,6 +445,7 @@ Output a JSON object with this exact structure:
 
 Rules:
 - Only use tools from the available tools list above
+- Use the EXACT parameter names shown in the tool schemas
 - depends_on is a list of step indices (0-based) that must complete first
 - result_variable stores the output for use in later steps as ${{var_name}}
 - Keep plans focused — prefer fewer, targeted steps over many small ones
@@ -428,15 +480,3 @@ def _display_plan(plan_data: dict) -> None:
     if result_vars:
         output.info(f"\nVariables: {', '.join(result_vars)}")
     output.info("")
-
-
-def _result_preview(value: object, *, max_len: int = 120) -> str:
-    """Create a short preview string of a tool result."""
-    if value is None:
-        return "(no output)"
-    text = str(value)
-    # Collapse whitespace for display
-    text = " ".join(text.split())
-    if len(text) > max_len:
-        return text[:max_len] + "..."
-    return text
