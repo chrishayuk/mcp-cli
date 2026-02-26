@@ -390,52 +390,109 @@ OS-style virtual memory for conversation context management, powered by `chuk-ai
 
 ---
 
-## Tier 6: Execution Graphs & Plans
+## Tier 6: Execution Graphs & Plans ✅ COMPLETE
 
 > **Shift:** conversation → reasoning → tools **becomes** intent → plan → execution → memory → replay
+>
+> **Spec:** `specs/6.0-planner-integration.md`
+> **Integration:** `chuk-ai-planner>=0.2` — graph-based plan DSL, executor, LLM plan generation
 
-### 6.1 First-Class Plans
+### 6.0 Planner Foundation Wiring ✅
 
-Today the AI reasons from scratch each time. Plans make workflows reproducible, shareable, schedulable, and testable — Terraform for agents.
+Bridge `chuk-ai-planner` to mcp-cli's MCP tool execution layer.
+
+**Files:**
+- `src/mcp_cli/planning/backends.py` — `McpToolBackend` (implements `ToolExecutionBackend` protocol, wraps `ToolManager.execute_tool()`)
+- `src/mcp_cli/planning/context.py` — `PlanningContext` (state container: graph store, tool manager, plan registry, tool catalog)
+- `src/mcp_cli/planning/executor.py` — `PlanRunner` (orchestrates plan execution with guard integration, dry-run, checkpointing)
+- `src/mcp_cli/planning/__init__.py` — Public API
+
+**Key integration:** chuk-ai-planner's `ToolProcessorBackend` calls `CTP.process()` for registered Python functions. `McpToolBackend` instead calls `ToolManager.execute_tool()` for real MCP server tools — same protocol interface, different execution path.
+
+### 6.1 Plan Commands ✅
 
 ```
-mcp plan create "plan a coastal walk tomorrow"
-mcp plan inspect 42
-mcp plan run 42
-mcp plan replay 42 --dry-run
+mcp plan create "add auth to this API"
+mcp plan list
+mcp plan show <id>
+mcp plan run <id>
+mcp plan run <id> --dry-run
+mcp plan delete <id>
+mcp plan resume <id>
 ```
+
+**Files:**
+- `src/mcp_cli/commands/plan/plan.py` — `PlanCommand` (unified command, supports CHAT + CLI + INTERACTIVE)
+- `src/mcp_cli/config/enums.py` — `PlanAction` enum
+
+**Chat mode:** `/plan create "description"`, `/plan list`, `/plan run <id>`
 
 - Plan = persistent, inspectable execution graph (DAG of tool calls + decisions)
-- Plans are serialized (YAML/JSON) and version-controlled
-- `replay --dry-run` shows what would execute without side effects
-- Plans can be parameterized: `mcp plan run 42 --date 2026-03-01`
+- Plans are serialized as JSON at `~/.mcp-cli/plans/`
+- `--dry-run` shows what would execute without side effects
+- Plans can be parameterized: `mcp plan run <id> --var date=2026-03-01`
 
-### 6.2 Simulation / Dry-Run Mode
+### 6.2 Plan Execution with Guards ✅
+
+Plan execution respects mcp-cli's existing guard infrastructure:
+
+- Pre-execution: `ToolStateManager.check_all_guards()` — budget, runaway, per-tool limits
+- Post-execution: `ToolStateManager.record_tool_call()` — tracking + value binding
+- Step error handling: retry (via `PlanStep.max_retries`), fallback, or pause for user input
+- Budget shared with conversation — plan execution counts against same limits
+- 55 tests covering guard integration, PlanRegistry round-trips, DAG visualization
+
+### 6.3 Execution Checkpointing & Resume ✅
+
+- After each step: persist state to `~/.mcp-cli/plans/{id}_state.json`
+- `mcp plan resume <id>` — loads checkpoint, skips completed steps, continues
+- Tracks: completed steps, variable bindings, failed steps, timing
+
+### 6.4 Simulation / Dry-Run Mode ✅
 
 Critical for trust. Show planned tool calls without executing them.
 
 ```
-mcp run "delete inactive users" --simulate
+mcp plan run <id> --dry-run
 ```
 
-- Traces the full execution path
-- Shows tool calls that *would* happen, with estimated arguments
+- Walks plan in topological order
+- Resolves `${var}` references
+- Displays each step: tool name, resolved arguments, dependencies
+- Reports estimated tool call count
 - No side effects — safe to run in production
-- Foundation for plan creation: `--simulate` output becomes a plan
 
-### 6.3 Deterministic Mode
+### 6.5 Parallel Step Execution ✅
 
-Enterprise reliability — bounded, predictable execution.
+Independent plan steps execute concurrently via topological batch ordering:
 
-```
-mcp run "book cheapest train" --deterministic
-```
+- `_compute_batches()` uses Kahn's BFS topological sort to group steps into parallel batches
+- Steps within a batch run concurrently via `asyncio.gather()` with semaphore-controlled concurrency
+- Batches execute sequentially to respect dependency ordering
+- `max_concurrency` parameter (default: 4) limits concurrent tool calls
+- Diamond DAG (1 → 2,3,4 → 5) executes with 3 batches: [1], [2,3,4], [5]
+- Variable resolution: `${var}`, `${var.field.subfield}`, template strings — type-preserving for single refs
 
-- Fixed tool selection (no exploration)
-- Bounded reasoning (max turns, max tokens)
-- Structured outputs with schema validation
-- Configurable retry policies
-- Reproducible given same inputs
+### 6.6 DAG Visualization ✅
+
+Terminal visualization of plan execution:
+
+- Terminal: ASCII DAG rendering with step status indicators (○ pending, ◉ running, ● completed, ✗ failed)
+- `render_plan_dag()` function for terminal display
+- Parallel step indicator (∥) marks steps that run concurrently within a batch
+- Browser: MCP App panel with D3 force-directed graph, live WebSocket updates (Future)
+
+### 6.7 Re-planning ✅
+
+Adaptive re-planning when execution hits problems (opt-in via `enable_replan=True`):
+
+- On step failure: injects failure context (completed steps, error, remaining steps, variables) into PlanAgent
+- PlanAgent generates a revised plan for the remaining work
+- Revised plan executes with the current variable context (no recursive re-planning)
+- Results merged: completed steps from original + steps from revised plan
+- `max_replans` parameter (default: 2) limits re-planning attempts
+- `PlanExecutionResult.replanned` flag indicates whether re-planning occurred
+- Disabled by default — failure just fails without LLM involvement
 
 ---
 
@@ -925,7 +982,7 @@ mcp remote logs --follow
 | **5** | Production hardening | Observable, auditable | ✅ Complete |
 | **VM** | AI Virtual Memory | OS-style context management | ✅ Complete (Experimental) |
 | **Review** | Code review fixes | Silent exceptions, dead code, test gaps | ✅ Complete |
-| **6** | Plans & execution graphs | Reproducible workflows | High |
+| **6** | Plans & execution graphs | Reproducible workflows | ✅ Complete |
 | **7** | Observability & traces | Debugger for AI behavior | High |
 | **8** | Memory scopes | Long-running assistants | High |
 | **9** | Skills & capabilities | Portable behaviour layer | High |

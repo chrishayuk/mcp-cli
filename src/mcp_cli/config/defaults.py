@@ -344,6 +344,20 @@ DEFAULT_MEMORY_MAX_PROMPT_CHARS = 2000
 
 
 # ================================================================
+# Planning Defaults (Tier 6)
+# ================================================================
+
+DEFAULT_PLANS_DIR = "~/.mcp-cli/plans"
+"""Default directory for plan persistence."""
+
+DEFAULT_PLAN_MAX_CONCURRENCY = 4
+"""Maximum concurrent steps within a parallel batch."""
+
+DEFAULT_PLAN_MAX_REPLANS = 2
+"""Maximum number of re-plan attempts on step failure."""
+
+
+# ================================================================
 # Logging Defaults
 # ================================================================
 
