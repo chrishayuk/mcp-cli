@@ -387,11 +387,15 @@ class TestDependencyPreservation:
     UniversalPlan.to_dict() drops depends_on fields. PlanningContext
     patches the saved JSON to preserve them, and get_plan reads from
     disk directly to avoid the lossy to_dict() path.
+
+    The LLM generates 0-based depends_on but PlanRegistry assigns
+    1-based string indices. _patch_saved_plan converts 0→"1", 1→"2", etc.
     """
 
     @pytest.mark.asyncio
     async def test_depends_on_preserved_on_disk(self, tmp_path):
-        """After save_plan_from_dict, the JSON file should contain depends_on."""
+        """After save_plan_from_dict, the JSON file should contain depends_on
+        with 0-based refs converted to match saved step indices."""
         import json
 
         tm = FakeToolManager()
@@ -425,12 +429,13 @@ class TestDependencyPreservation:
 
         # Step 0 should have empty depends_on
         assert data["steps"][0].get("depends_on") == []
-        # Step 1 should depend on step 0
-        assert data["steps"][1].get("depends_on") == [0]
+        # Step 1 should depend on step 1 (0-based 0 → 1-based "1")
+        step1_deps = data["steps"][1].get("depends_on")
+        assert step1_deps == ["1"]
 
     @pytest.mark.asyncio
     async def test_depends_on_survives_load(self, tmp_path):
-        """get_plan should return plan dicts with depends_on intact."""
+        """get_plan should return plan dicts with converted depends_on intact."""
         tm = FakeToolManager()
         ctx = PlanningContext(tm, plans_dir=tmp_path / "plans")
 
@@ -464,8 +469,10 @@ class TestDependencyPreservation:
         loaded = await ctx.get_plan(plan_id)
         assert loaded is not None
         assert loaded["steps"][0].get("depends_on") == []
-        assert loaded["steps"][1].get("depends_on") == [0]
-        assert loaded["steps"][2].get("depends_on") == [0, 1]
+        # 0-based [0] → 1-based ["1"]
+        assert loaded["steps"][1].get("depends_on") == ["1"]
+        # 0-based [0, 1] → 1-based ["1", "2"]
+        assert loaded["steps"][2].get("depends_on") == ["1", "2"]
 
     @pytest.mark.asyncio
     async def test_depends_on_survives_fresh_context(self, tmp_path):
@@ -487,7 +494,8 @@ class TestDependencyPreservation:
         ctx2 = PlanningContext(tm, plans_dir=tmp_path / "plans")
         loaded = await ctx2.get_plan(plan_id)
         assert loaded is not None
-        assert loaded["steps"][1].get("depends_on") == [0]
+        # 0-based [0] → 1-based ["1"]
+        assert loaded["steps"][1].get("depends_on") == ["1"]
 
     @pytest.mark.asyncio
     async def test_state_files_excluded_from_plan_ids(self, tmp_path):
