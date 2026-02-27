@@ -19,7 +19,7 @@ A powerful, feature-rich command-line interface for interacting with Model Conte
 
 ### Execution Plans (Tier 6)
 - **`/plan` command**: Create, inspect, and execute reproducible tool call graphs — `create`, `list`, `show`, `run`, `delete`, `resume`
-- **Model-driven planning (`--plan-tools`)**: The LLM autonomously creates and executes plans during conversation — no `/plan` command needed. It calls `plan_create_and_execute` when multi-step orchestration is required, and uses regular tools for simple tasks
+- **Model-driven planning (`--plan-tools`)**: The LLM autonomously creates and executes plans during conversation — no `/plan` command needed. It calls `plan_create_and_execute` when multi-step orchestration is required, and uses regular tools for simple tasks. Each step renders with real-time progress in the terminal
 - **Parallel batch execution**: Independent plan steps run concurrently via topological batching (Kahn's BFS), with configurable `max_concurrency`
 - **Variable resolution**: `${var}`, `${var.field}` nested access, and template strings like `"https://${api.host}/users"` — type-preserving for single refs
 - **Dry-run mode**: Trace planned tool calls without executing — safe for production inspection

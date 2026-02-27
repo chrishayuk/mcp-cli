@@ -387,6 +387,21 @@ Model: "The auth module contains handle_auth() and verify_jwt().
 
 For simple single-tool tasks, the model calls the tool directly — no planning overhead.
 
+### Display Integration
+
+Plan execution renders step-by-step in the terminal using the same `StreamingDisplayManager` as regular tool calls. Each MCP tool call within the plan gets its own spinner and result display:
+
+```
+✓ plan_create_and_execute completed in 17.08s
+   Result: Plan generated: Weather for Leavenheath (2 steps)
+✓ geocode_location completed in 0.58s
+   Result keys: results, generationtime_ms
+✓ get_weather_forecast completed in 0.43s
+   Result keys: latitude, longitude, elevation, ...
+```
+
+The `ui_manager` is passed through from `tool_processor.py` → `handle_plan_tool()` → `PlanRunner` callbacks, so the user sees real-time progress rather than a single long-running spinner.
+
 ### Programmatic API
 
 ```python
@@ -396,12 +411,13 @@ from mcp_cli.planning.context import PlanningContext
 # Get OpenAI-format tool definitions
 plan_tools = get_plan_tools_as_dicts()  # 3 tool dicts
 
-# Execute a plan tool
+# Execute a plan tool (ui_manager is optional, for step-by-step display)
 ctx = PlanningContext(tool_manager)
 result_json = await handle_plan_tool(
     "plan_create_and_execute",
     {"goal": "Read file and run tests"},
     ctx,
+    ui_manager=ui_manager,  # optional: enables per-step progress
 )
 ```
 

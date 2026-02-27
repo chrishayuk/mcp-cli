@@ -494,7 +494,7 @@ Adaptive re-planning when execution hits problems (opt-in via `enable_replan=Tru
 - `PlanExecutionResult.replanned` flag indicates whether re-planning occurred
 - Disabled by default — failure just fails without LLM involvement
 
-### 6.8 Model-Driven Planning (Plan as a Tool)
+### 6.8 Model-Driven Planning (Plan as a Tool) ✅
 
 The model can autonomously create and execute plans during conversation — no `/plan` command required.
 
