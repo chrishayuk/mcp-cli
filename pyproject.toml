@@ -15,6 +15,7 @@ keywords = ["llm", "openai", "claude", "mcp", "cli"]
 license = {text = "MIT"}
 dependencies = [
   "asyncio>=3.4.3",
+  "chuk-ai-planner>=0.2",
   "chuk-ai-session-manager>=0.11",
   "chuk-llm>=0.17.1",
   "chuk-mcp-client-oauth>=0.3.5",
@@ -113,6 +114,7 @@ branch = true
 
 [tool.coverage.report]
 show_missing = true
+fail_under = 60
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",

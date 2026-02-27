@@ -318,6 +318,9 @@ class ToolProcessorContext(Protocol):
     # Optional processor back-reference (set by ToolProcessor)
     tool_processor: Any  # Will be set to ToolProcessor instance
 
+    # Optional planning context (lazy-created by _handle_plan_tool)
+    _planning_context: Any
+
     def get_display_name_for_tool(self, tool_name: str) -> str:
         """Get display name for a tool (may be namespaced)."""
         ...

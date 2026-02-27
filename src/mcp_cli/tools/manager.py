@@ -472,7 +472,10 @@ class ToolManager:
         if self._tool_index is None:
             await self._build_tool_index()
 
-        assert self._tool_index is not None  # for type checker
+        if (
+            self._tool_index is None
+        ):  # pragma: no cover — unreachable after _build_tool_index
+            return None
 
         if namespace:
             # Prefer fully-qualified lookup

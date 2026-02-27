@@ -344,6 +344,38 @@ DEFAULT_MEMORY_MAX_PROMPT_CHARS = 2000
 
 
 # ================================================================
+# Planning Defaults (Tier 6)
+# ================================================================
+
+DEFAULT_PLANS_DIR = "~/.mcp-cli/plans"
+"""Default directory for plan persistence."""
+
+DEFAULT_ENABLE_PLAN_TOOLS = False
+"""Enable plan_create / plan_execute / plan_create_and_execute as LLM-callable tools."""
+
+DEFAULT_PLAN_MAX_CONCURRENCY = 4
+"""Maximum concurrent steps within a parallel batch."""
+
+DEFAULT_PLAN_MAX_REPLANS = 2
+"""Maximum number of re-plan attempts on step failure."""
+
+DEFAULT_PLAN_MAX_STEP_RETRIES = 2
+"""Maximum LLM retry attempts per plan step on tool failure."""
+
+DEFAULT_PLAN_VARIABLE_SUMMARY_MAX_CHARS = 500
+"""Maximum characters per variable in LLM variable summary."""
+
+DEFAULT_PLAN_CHECKPOINT_MAX_CHARS = 1000
+"""Maximum characters per variable in checkpoint serialization."""
+
+DEFAULT_PLAN_ERROR_MESSAGE_MAX_CHARS = 200
+"""Maximum characters for error messages in plan execution results."""
+
+DEFAULT_PLAN_DAG_TITLE_MAX_CHARS = 35
+"""Maximum characters for step titles in DAG visualization."""
+
+
+# ================================================================
 # Logging Defaults
 # ================================================================
 

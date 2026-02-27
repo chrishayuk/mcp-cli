@@ -34,6 +34,7 @@ from chuk_ai_session_manager.guards import get_tool_state, SoftBlockReason
 from chuk_tool_processor.discovery import get_search_engine
 from mcp_cli.llm.content_models import ContentBlockType
 from mcp_cli.memory.tools import _MEMORY_TOOL_NAMES
+from mcp_cli.planning.tools import _PLAN_TOOL_NAMES
 from mcp_cli.utils.preferences import get_preference_manager
 
 if TYPE_CHECKING:
@@ -45,6 +46,7 @@ logger = logging.getLogger(__name__)
 _VM_TOOL_NAMES = frozenset({"page_fault", "search_pages"})
 
 # _MEMORY_TOOL_NAMES imported from mcp_cli.memory.tools (single source of truth)
+# _PLAN_TOOL_NAMES imported from mcp_cli.planning.tools (single source of truth)
 
 
 class ToolProcessor:
@@ -201,6 +203,15 @@ class ToolProcessor:
                 # handled locally — not routed to MCP ToolManager.
                 if execution_tool_name in _MEMORY_TOOL_NAMES:
                     await self._handle_memory_tool(
+                        execution_tool_name, arguments, llm_tool_name, call_id
+                    )
+                    continue
+
+                # ── Plan tool interception ─────────────────────────────
+                # plan_create, plan_execute, plan_create_and_execute are
+                # internal planning ops — not routed to MCP ToolManager.
+                if execution_tool_name in _PLAN_TOOL_NAMES:
+                    await self._handle_plan_tool(
                         execution_tool_name, arguments, llm_tool_name, call_id
                     )
                     continue
@@ -650,6 +661,50 @@ class ToolProcessor:
             )
         except Exception as e:
             logger.debug("UI error finishing memory tool display: %s", e)
+
+        self._add_tool_result_to_history(llm_tool_name, call_id, result_text)
+
+    async def _handle_plan_tool(
+        self,
+        tool_name: str,
+        arguments: dict,
+        llm_tool_name: str,
+        call_id: str,
+    ) -> None:
+        """Execute a plan tool (plan_create, plan_execute, plan_create_and_execute).
+
+        Plan tools are internal operations that bypass the MCP ToolManager
+        and all guard checks. They use PlanningContext to generate and
+        execute multi-step plans.
+        """
+        if not getattr(self.context, "_enable_plan_tools", False):
+            self._add_tool_result_to_history(
+                llm_tool_name, call_id, "Plan tools are not enabled."
+            )
+            return
+
+        logger.info("Plan tool %s called with args: %s", tool_name, arguments)
+
+        from mcp_cli.planning.context import PlanningContext
+        from mcp_cli.planning.tools import handle_plan_tool
+
+        # Lazy-create PlanningContext (cached on context object)
+        planning_context = getattr(self.context, "_planning_context", None)
+        if planning_context is None:
+            planning_context = PlanningContext(self.context.tool_manager)
+            self.context._planning_context = planning_context
+
+        # Get model_manager for LLM-driven step execution
+        model_manager = getattr(self.context, "model_manager", None)
+
+        # Pass the UI manager so handle_plan_tool can show step-by-step progress
+        result_text = await handle_plan_tool(
+            tool_name,
+            arguments,
+            planning_context,
+            model_manager,
+            ui_manager=self.ui_manager,
+        )
 
         self._add_tool_result_to_history(llm_tool_name, call_id, result_text)
 

@@ -48,6 +48,7 @@ async def handle_chat_mode(
     vm_mode: str = "passive",
     vm_budget: int = 128_000,
     health_interval: int = 0,
+    enable_plan_tools: bool = False,
 ) -> bool:
     """
     Launch the interactive chat loop with streaming support.
@@ -106,6 +107,7 @@ async def handle_chat_mode(
             vm_mode=vm_mode,
             vm_budget=vm_budget,
             health_interval=health_interval,
+            enable_plan_tools=enable_plan_tools,
         )
 
         if not await ctx.initialize(on_progress=on_progress):

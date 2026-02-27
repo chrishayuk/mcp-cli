@@ -17,6 +17,18 @@ A powerful, feature-rich command-line interface for interacting with Model Conte
 - **Multimodal page_fault**: Image pages return multi-block content (text + image_url) so multimodal models can re-analyze recalled images
 - **`/memory page <id> --download`**: Export page content to local files with modality-aware extensions (.txt, .json, .png)
 
+### Execution Plans (Tier 6)
+- **`/plan` command**: Create, inspect, and execute reproducible tool call graphs — `create`, `list`, `show`, `run`, `delete`, `resume`
+- **Model-driven planning (`--plan-tools`)**: The LLM autonomously creates and executes plans during conversation — no `/plan` command needed. It calls `plan_create_and_execute` when multi-step orchestration is required, and uses regular tools for simple tasks. Each step renders with real-time progress in the terminal
+- **Parallel batch execution**: Independent plan steps run concurrently via topological batching (Kahn's BFS), with configurable `max_concurrency`
+- **Variable resolution**: `${var}`, `${var.field}` nested access, and template strings like `"https://${api.host}/users"` — type-preserving for single refs
+- **Dry-run mode**: Trace planned tool calls without executing — safe for production inspection
+- **Checkpointing & resume**: Execution state persisted after each batch; resume interrupted plans with `/plan resume <id>`
+- **Guard integration**: Plans respect existing budget, per-tool limits, and runaway detection guards
+- **DAG visualization**: ASCII rendering with status indicators (○/◉/●/✗) and parallel markers (∥)
+- **Re-planning**: Optional LLM-based re-planning on step failure (`enable_replan=True`)
+- **Powered by**: [chuk-ai-planner](https://github.com/chrishayuk/chuk-ai-planner) graph-based plan DSL
+
 ### MCP Apps (SEP-1865)
 - **Interactive HTML UIs**: MCP servers can serve interactive HTML applications (charts, tables, maps, markdown viewers) that render in your browser
 - **Sandboxed iframes**: Apps run in secure sandboxed iframes with CSP protection
@@ -41,9 +53,9 @@ A powerful, feature-rich command-line interface for interacting with Model Conte
 
 ### Code Quality
 - **Core/UI Separation**: Core modules use `logging` only — no UI imports
-- **3,200+ tests**: Comprehensive test suite with branch coverage, integration tests, and 60% minimum threshold
+- **3,800+ tests**: Comprehensive test suite with branch coverage, integration tests, and 60% minimum threshold
 - **15 Architecture Principles**: Documented and enforced (see [architecture.md](architecture.md))
-- **Full [Roadmap](roadmap.md)**: Tiers 1-5 complete, Tiers 6-12 planned (plans, traces, skills, scheduling, multi-agent)
+- **Full [Roadmap](roadmap.md)**: Tiers 1-6 complete, Tiers 7-12 planned (traces, memory scopes, skills, scheduling, multi-agent)
 
 ## 🔄 Architecture Overview
 
@@ -108,6 +120,18 @@ MCP CLI supports all providers and models from CHUK-LLM, including cutting-edge 
 - **Session Persistence**: Message queuing during disconnects, automatic reconnection, deferred tool result delivery
 - **structuredContent Support**: Full MCP spec compliance including structured content extraction and forwarding
 
+### Execution Plans (Powered by chuk-ai-planner)
+- **Plan Creation**: Generate execution plans from natural language descriptions using LLM-based plan agents
+- **Model-Driven Planning**: With `--plan-tools`, the LLM autonomously decides when to plan — calls `plan_create_and_execute` for complex multi-step tasks, uses regular tools for simple ones
+- **DAG Execution**: Plans are directed acyclic graphs — independent steps run in parallel batches, dependent steps wait
+- **Variable Resolution**: Step outputs bind to variables (`result_variable`), referenced by later steps as `${var}` or `${var.field}`
+- **Dry-Run Mode**: Trace what a plan would do without executing any tools — safe for production
+- **Checkpointing**: Execution state saved after each batch; resume interrupted plans without re-running completed steps
+- **Guard Integration**: Plans share budget and per-tool limits with the conversation — no bypass
+- **Re-planning**: On step failure, optionally invoke the LLM to generate a revised plan for remaining work
+- **DAG Visualization**: ASCII rendering shows dependency structure, batch grouping, and parallel markers
+- **Persistence**: Plans stored as JSON at `~/.mcp-cli/plans/`
+
 ### Advanced Configuration Management
 - **Environment Integration**: API keys and settings via environment variables
 - **File-based Config**: YAML and JSON configuration files
@@ -136,6 +160,7 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[Token Management](docs/TOKEN_MANAGEMENT.md)** - Comprehensive token management for providers and servers including OAuth, bearer tokens, and API keys
 
 ### Specialized Documentation
+- **[Execution Plans](docs/PLANNING.md)** - Plan creation, parallel execution, variable resolution, checkpointing, guards, and re-planning
 - **[MCP Apps](docs/MCP_APPS.md)** - Interactive browser UIs served by MCP servers (SEP-1865)
 - **[OAuth Authentication](docs/OAUTH.md)** - OAuth flows, storage backends, and MCP server integration
 - **[Streaming Integration](docs/STREAMING.md)** - Real-time response streaming architecture
