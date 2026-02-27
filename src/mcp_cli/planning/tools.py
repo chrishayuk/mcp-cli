@@ -104,6 +104,7 @@ async def handle_plan_tool(
     arguments: dict[str, Any],
     planning_context: PlanningContext,
     model_manager: Any | None = None,
+    ui_manager: Any | None = None,
 ) -> str:
     """Execute a plan tool and return the result as a JSON string.
 
@@ -112,6 +113,7 @@ async def handle_plan_tool(
         arguments: Tool arguments from the LLM.
         planning_context: PlanningContext with tool_manager and plan registry.
         model_manager: Optional ModelManager for LLM-driven step execution.
+        ui_manager: Optional UI manager for per-step progress display.
 
     Returns:
         JSON string with the result (for insertion into conversation history).
@@ -120,11 +122,13 @@ async def handle_plan_tool(
         return await _handle_plan_create(arguments, planning_context)
 
     if tool_name == "plan_execute":
-        return await _handle_plan_execute(arguments, planning_context, model_manager)
+        return await _handle_plan_execute(
+            arguments, planning_context, model_manager, ui_manager
+        )
 
     if tool_name == "plan_create_and_execute":
         return await _handle_plan_create_and_execute(
-            arguments, planning_context, model_manager
+            arguments, planning_context, model_manager, ui_manager
         )
 
     return json.dumps({"error": f"Unknown plan tool: {tool_name}"})
@@ -171,6 +175,7 @@ async def _handle_plan_execute(
     arguments: dict[str, Any],
     context: PlanningContext,
     model_manager: Any | None = None,
+    ui_manager: Any | None = None,
 ) -> str:
     """Execute a previously created plan."""
     plan_id = arguments.get("plan_id", "")
@@ -181,21 +186,44 @@ async def _handle_plan_execute(
     if not plan_data:
         return json.dumps({"error": f"Plan not found: {plan_id}"})
 
-    return await _run_plan(context, plan_data, model_manager)
+    return await _run_plan(context, plan_data, model_manager, ui_manager)
 
 
 async def _handle_plan_create_and_execute(
     arguments: dict[str, Any],
     context: PlanningContext,
     model_manager: Any | None = None,
+    ui_manager: Any | None = None,
 ) -> str:
     """Generate a plan and execute it immediately."""
     goal = arguments.get("goal", "")
     if not goal:
         return json.dumps({"error": "Goal description is required."})
 
+    # Show plan generation phase
+    if ui_manager:
+        try:
+            await ui_manager.start_tool_execution(
+                "plan_create_and_execute", {"phase": "generating plan..."}
+            )
+        except Exception:
+            pass
+
     try:
         plan_dict = await _generate_plan(context, goal)
+
+        # Finish the generation spinner
+        if ui_manager:
+            try:
+                steps = plan_dict.get("steps", []) if plan_dict else []
+                title = plan_dict.get("title", "Untitled") if plan_dict else "?"
+                await ui_manager.finish_tool_execution(
+                    result=f"Plan generated: {title} ({len(steps)} steps)",
+                    success=bool(plan_dict and steps),
+                )
+            except Exception:
+                pass
+
         if not plan_dict or not plan_dict.get("steps"):
             return json.dumps({"error": "Failed to generate a valid plan."})
 
@@ -205,9 +233,15 @@ async def _handle_plan_create_and_execute(
         if not plan_data:
             return json.dumps({"error": "Failed to load saved plan."})
 
-        return await _run_plan(context, plan_data, model_manager)
+        return await _run_plan(context, plan_data, model_manager, ui_manager)
 
     except Exception as e:
+        # Make sure spinner is stopped on error
+        if ui_manager:
+            try:
+                await ui_manager.finish_tool_execution(result=str(e), success=False)
+            except Exception:
+                pass
         logger.error("Plan create-and-execute failed: %s", e)
         return json.dumps({"error": f"Plan create-and-execute failed: {e}"})
 
@@ -244,14 +278,36 @@ async def _run_plan(
     context: PlanningContext,
     plan_data: dict[str, Any],
     model_manager: Any | None = None,
+    ui_manager: Any | None = None,
 ) -> str:
     """Execute a plan and return JSON results."""
     from mcp_cli.planning.executor import PlanRunner
+
+    # Build per-step callbacks that drive the UI manager
+    async def on_tool_start(tool_name: str, arguments: dict) -> None:
+        if ui_manager:
+            try:
+                await ui_manager.start_tool_execution(tool_name, arguments)
+            except Exception:
+                pass
+
+    async def on_tool_complete(
+        tool_name: str, result_text: str, success: bool, elapsed: float
+    ) -> None:
+        if ui_manager:
+            try:
+                await ui_manager.finish_tool_execution(
+                    result=result_text, success=success
+                )
+            except Exception:
+                pass
 
     runner = PlanRunner(
         context,
         model_manager=model_manager,
         enable_guards=False,
+        on_tool_start=on_tool_start,
+        on_tool_complete=on_tool_complete,
     )
 
     result = await runner.execute_plan(plan_data, checkpoint=False)

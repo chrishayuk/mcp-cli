@@ -210,6 +210,10 @@ class ConversationProcessor:
                     if not getattr(self.context, "openai_tools", None):
                         await self._load_tools()
 
+                    # Inject internal tools (plan, VM, memory) even when
+                    # openai_tools were pre-loaded by ChatContext.
+                    await self._inject_internal_tools()
+
                     # REMOVED: Sanitization logic - now handled by universal tool compatibility
                     # The OpenAI client automatically handles tool name sanitization and restoration
 
@@ -752,41 +756,87 @@ class ConversationProcessor:
             self.context.openai_tools = []
             self.context.tool_name_mapping = {}
 
+        # Inject internal tools (plan, VM, memory) after loading MCP tools
+        await self._inject_internal_tools()
+
+    async def _inject_internal_tools(self):
+        """Inject internal (non-MCP) tools into the tool list.
+
+        Idempotent — checks for existing tool names before adding.
+        Called both from _load_tools() and from the main loop to handle
+        the case where openai_tools were pre-loaded by ChatContext.
+        """
+        tools = getattr(self.context, "openai_tools", None)
+        if tools is None:
+            return
+
+        # Build set of existing tool names for dedup
+        existing = {
+            t.get("function", {}).get("name", "") for t in tools if isinstance(t, dict)
+        }
+
         # Inject VM tools for strict/relaxed modes
         vm = getattr(getattr(self.context, "session", None), "vm", None)
         vm_mode = getattr(getattr(vm, "mode", None), "value", "passive")
-        if vm and vm_mode != "passive":
+        if vm and vm_mode != "passive" and "page_fault" not in existing:
             try:
                 from chuk_ai_session_manager.memory.vm_prompts import (
                     get_vm_tools_as_dicts,
                 )
 
                 vm_tools = get_vm_tools_as_dicts(include_search=True)
-                self.context.openai_tools.extend(vm_tools)
-                logger.info(f"Injected {len(vm_tools)} VM tools for {vm_mode} mode")
+                new_vm = [
+                    t
+                    for t in vm_tools
+                    if t.get("function", {}).get("name", "") not in existing
+                ]
+                if new_vm:
+                    self.context.openai_tools.extend(new_vm)
+                    existing.update(
+                        t.get("function", {}).get("name", "") for t in new_vm
+                    )
+                    logger.info(f"Injected {len(new_vm)} VM tools for {vm_mode} mode")
             except Exception as exc:
                 logger.warning(f"Could not load VM tools: {exc}")
 
         # Inject plan tools when enabled
-        if getattr(self.context, "_enable_plan_tools", False):
+        if (
+            getattr(self.context, "_enable_plan_tools", False)
+            and "plan_create_and_execute" not in existing
+        ):
             try:
                 from mcp_cli.planning.tools import get_plan_tools_as_dicts
 
                 plan_tools = get_plan_tools_as_dicts()
-                self.context.openai_tools.extend(plan_tools)
-                logger.info(f"Injected {len(plan_tools)} plan tools")
+                new_plan = [
+                    t
+                    for t in plan_tools
+                    if t.get("function", {}).get("name", "") not in existing
+                ]
+                if new_plan:
+                    self.context.openai_tools.extend(new_plan)
+                    existing.update(
+                        t.get("function", {}).get("name", "") for t in new_plan
+                    )
+                    logger.info(f"Injected {len(new_plan)} plan tools")
             except Exception as exc:
                 logger.warning(f"Could not load plan tools: {exc}")
 
         # Inject persistent memory scope tools
         store = getattr(self.context, "memory_store", None)
-        if store:
+        if store and "memory_store_page" not in existing:
             try:
                 from mcp_cli.memory.tools import get_memory_tools_as_dicts
 
                 memory_tools = get_memory_tools_as_dicts()
-                self.context.openai_tools.extend(memory_tools)
-                logger.info(f"Injected {len(memory_tools)} memory scope tools")
+                new_mem = [
+                    t
+                    for t in memory_tools
+                    if t.get("function", {}).get("name", "") not in existing
+                ]
+                if new_mem:
+                    self.context.openai_tools.extend(new_mem)
+                    logger.info(f"Injected {len(new_mem)} memory scope tools")
             except Exception as exc:
                 logger.warning(f"Could not load memory tools: {exc}")
 

@@ -463,3 +463,742 @@ class TestPlanArgsParsing:
             with patch("mcp_cli.commands.plan.plan.output", create=True):
                 result = await cmd.execute(args="list", tool_manager=tool_manager)
         assert result.success is True
+
+
+# ---------------------------------------------------------------------------
+# _get_planning_context — lines 152-157
+# ---------------------------------------------------------------------------
+
+
+class TestGetPlanningContext:
+    @pytest.mark.asyncio
+    async def test_creates_planning_context(self, cmd, tool_manager):
+        """First call creates a new PlanningContext and caches it."""
+        with patch("mcp_cli.planning.context.PlanningContext") as mock_pc:
+            mock_instance = MagicMock()
+            mock_pc.return_value = mock_instance
+
+            result = await cmd._get_planning_context(tool_manager)
+
+            mock_pc.assert_called_once_with(tool_manager)
+            assert result is mock_instance
+
+    @pytest.mark.asyncio
+    async def test_caches_planning_context(self, cmd, tool_manager):
+        """Second call returns cached context, does not re-create."""
+        with patch("mcp_cli.planning.context.PlanningContext") as mock_pc:
+            mock_instance = MagicMock()
+            mock_pc.return_value = mock_instance
+
+            r1 = await cmd._get_planning_context(tool_manager)
+            r2 = await cmd._get_planning_context(tool_manager)
+
+            mock_pc.assert_called_once()  # Only created once
+            assert r1 is r2
+
+
+# ---------------------------------------------------------------------------
+# _create_plan success path — lines 208-243
+# ---------------------------------------------------------------------------
+
+
+class TestPlanCreateSuccess:
+    @pytest.mark.asyncio
+    async def test_create_plan_success(self, cmd, tool_manager):
+        """Full success path: agent generates plan, context saves it."""
+        tool_catalog = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "read_file",
+                    "description": "Read a file",
+                    "parameters": {
+                        "properties": {
+                            "path": {"type": "string", "description": "File path"}
+                        },
+                        "required": ["path"],
+                    },
+                },
+            }
+        ]
+        plan_dict = {
+            "title": "My Plan",
+            "steps": [
+                {
+                    "title": "Read file",
+                    "tool": "read_file",
+                    "args": {"path": "/tmp/test.py"},
+                    "depends_on": [],
+                    "result_variable": "fc",
+                }
+            ],
+        }
+
+        with patch(
+            "mcp_cli.commands.plan.plan.PlanCommand._get_planning_context"
+        ) as mock_get_ctx:
+            ctx = AsyncMock()
+            ctx.get_tool_catalog = AsyncMock(return_value=tool_catalog)
+            ctx.save_plan_from_dict = AsyncMock(return_value="plan-abc-123")
+            ctx.get_plan = AsyncMock(return_value=plan_dict)
+            mock_get_ctx.return_value = ctx
+
+            with patch("chuk_ai_planner.agents.plan_agent.PlanAgent") as mock_agent_cls:
+                mock_agent = AsyncMock()
+                mock_agent.plan = AsyncMock(return_value=plan_dict)
+                mock_agent_cls.return_value = mock_agent
+
+                with patch("chuk_term.ui.output"):
+                    with patch("mcp_cli.commands.plan.plan._display_plan"):
+                        result = await cmd.execute(
+                            args="create read the config file",
+                            tool_manager=tool_manager,
+                        )
+
+        assert result.success is True
+        assert result.data["plan_id"] == "plan-abc-123"
+        assert "1 steps" in result.output
+        ctx.save_plan_from_dict.assert_awaited_once_with(plan_dict)
+
+    @pytest.mark.asyncio
+    async def test_create_plan_agent_returns_empty(self, cmd, tool_manager):
+        """Agent returns empty plan → error."""
+        tool_catalog = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "read_file",
+                    "description": "Read a file",
+                    "parameters": {"properties": {}, "required": []},
+                },
+            }
+        ]
+
+        with patch(
+            "mcp_cli.commands.plan.plan.PlanCommand._get_planning_context"
+        ) as mock_get_ctx:
+            ctx = AsyncMock()
+            ctx.get_tool_catalog = AsyncMock(return_value=tool_catalog)
+            mock_get_ctx.return_value = ctx
+
+            with patch("chuk_ai_planner.agents.plan_agent.PlanAgent") as mock_agent_cls:
+                mock_agent = AsyncMock()
+                mock_agent.plan = AsyncMock(return_value={"steps": []})
+                mock_agent_cls.return_value = mock_agent
+
+                with patch("chuk_term.ui.output"):
+                    result = await cmd.execute(
+                        args="create do stuff", tool_manager=tool_manager
+                    )
+
+        assert result.success is False
+        assert "Failed to generate" in result.error
+
+    @pytest.mark.asyncio
+    async def test_create_plan_agent_exception(self, cmd, tool_manager):
+        """Agent raises exception → error."""
+        tool_catalog = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "read_file",
+                    "description": "Read a file",
+                    "parameters": {"properties": {}, "required": []},
+                },
+            }
+        ]
+
+        with patch(
+            "mcp_cli.commands.plan.plan.PlanCommand._get_planning_context"
+        ) as mock_get_ctx:
+            ctx = AsyncMock()
+            ctx.get_tool_catalog = AsyncMock(return_value=tool_catalog)
+            mock_get_ctx.return_value = ctx
+
+            with patch("chuk_ai_planner.agents.plan_agent.PlanAgent") as mock_agent_cls:
+                mock_agent = AsyncMock()
+                mock_agent.plan = AsyncMock(side_effect=RuntimeError("LLM failed"))
+                mock_agent_cls.return_value = mock_agent
+
+                with patch("chuk_term.ui.output"):
+                    result = await cmd.execute(
+                        args="create do stuff", tool_manager=tool_manager
+                    )
+
+        assert result.success is False
+        assert "Plan creation failed" in result.error
+
+
+# ---------------------------------------------------------------------------
+# _run_plan callbacks, success, failure — lines 287-323
+# ---------------------------------------------------------------------------
+
+
+class TestPlanRunCallbacks:
+    """Test _run_plan with step callbacks and success/failure paths."""
+
+    def _make_exec_result(self, *, success=True, error=None):
+        """Create a mock PlanExecutionResult."""
+        r = MagicMock()
+        r.success = success
+        r.steps = [MagicMock()]
+        r.total_duration = 1.5
+        r.variables = {"v1": "val"}
+        r.error = error
+        return r
+
+    @pytest.mark.asyncio
+    async def test_run_success_with_callbacks(self, cmd, tool_manager):
+        """Success path: result.success=True, output.success is called."""
+        plan_data = {
+            "title": "My Plan",
+            "steps": [{"title": "s1", "tool": "read_file", "depends_on": []}],
+        }
+        exec_result = self._make_exec_result(success=True)
+
+        with patch(
+            "mcp_cli.commands.plan.plan.PlanCommand._get_planning_context"
+        ) as mock_get_ctx:
+            ctx = AsyncMock()
+            ctx.get_plan = AsyncMock(return_value=plan_data)
+            mock_get_ctx.return_value = ctx
+
+            with patch("mcp_cli.planning.executor.PlanRunner") as mock_runner_cls:
+                mock_runner = AsyncMock()
+                mock_runner.execute_plan = AsyncMock(return_value=exec_result)
+                mock_runner_cls.return_value = mock_runner
+
+                with patch("chuk_term.ui.output") as mock_output:
+                    result = await cmd.execute(
+                        args="run abc123", tool_manager=tool_manager
+                    )
+
+        assert result.success is True
+        assert "completed" in result.output
+        mock_output.success.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_failure(self, cmd, tool_manager):
+        """Failure path: result.success=False, output.error is called."""
+        plan_data = {
+            "title": "My Plan",
+            "steps": [{"title": "s1", "tool": "read_file", "depends_on": []}],
+        }
+        exec_result = self._make_exec_result(success=False, error="Step 1 timed out")
+
+        with patch(
+            "mcp_cli.commands.plan.plan.PlanCommand._get_planning_context"
+        ) as mock_get_ctx:
+            ctx = AsyncMock()
+            ctx.get_plan = AsyncMock(return_value=plan_data)
+            mock_get_ctx.return_value = ctx
+
+            with patch("mcp_cli.planning.executor.PlanRunner") as mock_runner_cls:
+                mock_runner = AsyncMock()
+                mock_runner.execute_plan = AsyncMock(return_value=exec_result)
+                mock_runner_cls.return_value = mock_runner
+
+                with patch("chuk_term.ui.output") as mock_output:
+                    result = await cmd.execute(
+                        args="run abc123", tool_manager=tool_manager
+                    )
+
+        assert result.success is False
+        assert "failed" in result.output
+        mock_output.error.assert_called_once()
+        assert "Step 1 timed out" in mock_output.error.call_args[0][0]
+
+    @pytest.mark.asyncio
+    async def test_run_step_callbacks_invoked(self, cmd, tool_manager):
+        """Verify on_step_start / on_step_complete callbacks are wired."""
+        plan_data = {"title": "P", "steps": [{"title": "s1"}]}
+        exec_result = self._make_exec_result(success=True)
+
+        with patch(
+            "mcp_cli.commands.plan.plan.PlanCommand._get_planning_context"
+        ) as mock_get_ctx:
+            ctx = AsyncMock()
+            ctx.get_plan = AsyncMock(return_value=plan_data)
+            mock_get_ctx.return_value = ctx
+
+            with patch("mcp_cli.planning.executor.PlanRunner") as mock_runner_cls:
+                mock_runner = AsyncMock()
+                mock_runner.execute_plan = AsyncMock(return_value=exec_result)
+                mock_runner_cls.return_value = mock_runner
+
+                with patch("chuk_term.ui.output"):
+                    await cmd.execute(args="run abc123", tool_manager=tool_manager)
+
+                # Check PlanRunner was constructed with callbacks
+                init_kwargs = mock_runner_cls.call_args[1]
+                assert callable(init_kwargs["on_step_start"])
+                assert callable(init_kwargs["on_step_complete"])
+                assert callable(init_kwargs["on_tool_start"])
+                assert callable(init_kwargs["on_tool_complete"])
+
+    @pytest.mark.asyncio
+    async def test_on_step_start_callback(self, cmd, tool_manager):
+        """Exercise the on_step_start callback."""
+        plan_data = {"title": "P", "steps": []}
+        exec_result = self._make_exec_result(success=True)
+
+        with patch(
+            "mcp_cli.commands.plan.plan.PlanCommand._get_planning_context"
+        ) as mock_get_ctx:
+            ctx = AsyncMock()
+            ctx.get_plan = AsyncMock(return_value=plan_data)
+            mock_get_ctx.return_value = ctx
+
+            captured_callbacks = {}
+
+            with patch("mcp_cli.planning.executor.PlanRunner") as mock_runner_cls:
+                mock_runner = AsyncMock()
+                mock_runner.execute_plan = AsyncMock(return_value=exec_result)
+
+                def capture_init(*args, **kwargs):
+                    captured_callbacks.update(kwargs)
+                    return mock_runner
+
+                mock_runner_cls.side_effect = capture_init
+
+                with patch("chuk_term.ui.output") as mock_output:
+                    await cmd.execute(args="run abc123", tool_manager=tool_manager)
+
+                    # Call the captured callback
+                    captured_callbacks["on_step_start"]("1", "Read file", "read_file")
+                    mock_output.info.assert_any_call("  Step 1: Read file")
+
+    @pytest.mark.asyncio
+    async def test_on_step_complete_failure_callback(self, cmd, tool_manager):
+        """Exercise on_step_complete callback with a failed step."""
+        plan_data = {"title": "P", "steps": []}
+        exec_result = self._make_exec_result(success=True)
+
+        with patch(
+            "mcp_cli.commands.plan.plan.PlanCommand._get_planning_context"
+        ) as mock_get_ctx:
+            ctx = AsyncMock()
+            ctx.get_plan = AsyncMock(return_value=plan_data)
+            mock_get_ctx.return_value = ctx
+
+            captured_callbacks = {}
+
+            with patch("mcp_cli.planning.executor.PlanRunner") as mock_runner_cls:
+                mock_runner = AsyncMock()
+                mock_runner.execute_plan = AsyncMock(return_value=exec_result)
+
+                def capture_init(*args, **kwargs):
+                    captured_callbacks.update(kwargs)
+                    return mock_runner
+
+                mock_runner_cls.side_effect = capture_init
+
+                with patch("chuk_term.ui.output") as mock_output:
+                    await cmd.execute(args="run abc123", tool_manager=tool_manager)
+
+                    # Create a failed step result
+                    step_result = MagicMock()
+                    step_result.success = False
+                    step_result.step_index = "2"
+                    step_result.error = "timeout"
+                    captured_callbacks["on_step_complete"](step_result)
+                    mock_output.error.assert_any_call("  Step 2 failed: timeout")
+
+    @pytest.mark.asyncio
+    async def test_on_tool_start_with_display(self, cmd, tool_manager):
+        """Exercise on_tool_start callback with a display manager."""
+        plan_data = {"title": "P", "steps": []}
+        exec_result = self._make_exec_result(success=True)
+
+        mock_display = AsyncMock()
+        mock_ui_manager = MagicMock()
+        mock_ui_manager.display = mock_display
+
+        with patch(
+            "mcp_cli.commands.plan.plan.PlanCommand._get_planning_context"
+        ) as mock_get_ctx:
+            ctx = AsyncMock()
+            ctx.get_plan = AsyncMock(return_value=plan_data)
+            mock_get_ctx.return_value = ctx
+
+            captured_callbacks = {}
+
+            with patch("mcp_cli.planning.executor.PlanRunner") as mock_runner_cls:
+                mock_runner = AsyncMock()
+                mock_runner.execute_plan = AsyncMock(return_value=exec_result)
+
+                def capture_init(*args, **kwargs):
+                    captured_callbacks.update(kwargs)
+                    return mock_runner
+
+                mock_runner_cls.side_effect = capture_init
+
+                with patch("chuk_term.ui.output"):
+                    await cmd.execute(
+                        args="run abc123",
+                        tool_manager=tool_manager,
+                        ui_manager=mock_ui_manager,
+                    )
+
+                    # Call the async callback
+                    await captured_callbacks["on_tool_start"](
+                        "read_file", {"path": "/tmp"}
+                    )
+                    mock_display.start_tool_execution.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_on_tool_complete_with_display(self, cmd, tool_manager):
+        """Exercise on_tool_complete callback with a display manager."""
+        plan_data = {"title": "P", "steps": []}
+        exec_result = self._make_exec_result(success=True)
+
+        mock_display = AsyncMock()
+        mock_ui_manager = MagicMock()
+        mock_ui_manager.display = mock_display
+
+        with patch(
+            "mcp_cli.commands.plan.plan.PlanCommand._get_planning_context"
+        ) as mock_get_ctx:
+            ctx = AsyncMock()
+            ctx.get_plan = AsyncMock(return_value=plan_data)
+            mock_get_ctx.return_value = ctx
+
+            captured_callbacks = {}
+
+            with patch("mcp_cli.planning.executor.PlanRunner") as mock_runner_cls:
+                mock_runner = AsyncMock()
+                mock_runner.execute_plan = AsyncMock(return_value=exec_result)
+
+                def capture_init(*args, **kwargs):
+                    captured_callbacks.update(kwargs)
+                    return mock_runner
+
+                mock_runner_cls.side_effect = capture_init
+
+                with patch("chuk_term.ui.output"):
+                    await cmd.execute(
+                        args="run abc123",
+                        tool_manager=tool_manager,
+                        ui_manager=mock_ui_manager,
+                    )
+
+                    await captured_callbacks["on_tool_complete"](
+                        "read_file", "ok", True, 0.5
+                    )
+                    mock_display.stop_tool_execution.assert_awaited_once_with(
+                        "ok", True
+                    )
+
+
+# ---------------------------------------------------------------------------
+# _resume_plan with checkpoint — lines 371-394
+# ---------------------------------------------------------------------------
+
+
+class TestPlanResumeWithCheckpoint:
+    @pytest.mark.asyncio
+    async def test_resume_success(self, cmd, tool_manager):
+        """Resume with checkpoint found, execution succeeds."""
+        plan_data = {
+            "title": "My Plan",
+            "steps": [
+                {"index": "1", "title": "s1", "tool": "a", "depends_on": []},
+                {"index": "2", "title": "s2", "tool": "b", "depends_on": ["1"]},
+            ],
+        }
+        checkpoint = {
+            "completed_steps": ["1"],
+            "variables": {"v1": "data"},
+        }
+        exec_result = MagicMock()
+        exec_result.success = True
+        exec_result.error = None
+
+        with patch(
+            "mcp_cli.commands.plan.plan.PlanCommand._get_planning_context"
+        ) as mock_get_ctx:
+            ctx = AsyncMock()
+            ctx.get_plan = AsyncMock(return_value=plan_data)
+            mock_get_ctx.return_value = ctx
+
+            with patch("mcp_cli.planning.executor.PlanRunner") as mock_runner_cls:
+                mock_runner = MagicMock()
+                mock_runner.load_checkpoint = MagicMock(return_value=checkpoint)
+                mock_runner.execute_plan = AsyncMock(return_value=exec_result)
+                mock_runner_cls.return_value = mock_runner
+
+                with patch("chuk_term.ui.output") as mock_output:
+                    result = await cmd.execute(
+                        args="resume abc123", tool_manager=tool_manager
+                    )
+
+        assert result.success is True
+        mock_output.success.assert_called_once()
+        # Verify execute_plan was called with remaining steps only
+        call_args = mock_runner.execute_plan.call_args
+        plan_arg = call_args[0][0]
+        assert len(plan_arg["steps"]) == 1  # Only step 2 remains
+        assert call_args[1]["variables"] == {"v1": "data"}
+
+    @pytest.mark.asyncio
+    async def test_resume_failure(self, cmd, tool_manager):
+        """Resume with checkpoint found, execution fails."""
+        plan_data = {
+            "title": "Fail Plan",
+            "steps": [
+                {"index": "1", "title": "s1", "tool": "a", "depends_on": []},
+                {"index": "2", "title": "s2", "tool": "b", "depends_on": ["1"]},
+            ],
+        }
+        checkpoint = {
+            "completed_steps": ["1"],
+            "variables": {},
+        }
+        exec_result = MagicMock()
+        exec_result.success = False
+        exec_result.error = "step 2 blew up"
+
+        with patch(
+            "mcp_cli.commands.plan.plan.PlanCommand._get_planning_context"
+        ) as mock_get_ctx:
+            ctx = AsyncMock()
+            ctx.get_plan = AsyncMock(return_value=plan_data)
+            mock_get_ctx.return_value = ctx
+
+            with patch("mcp_cli.planning.executor.PlanRunner") as mock_runner_cls:
+                mock_runner = MagicMock()
+                mock_runner.load_checkpoint = MagicMock(return_value=checkpoint)
+                mock_runner.execute_plan = AsyncMock(return_value=exec_result)
+                mock_runner_cls.return_value = mock_runner
+
+                with patch("chuk_term.ui.output") as mock_output:
+                    result = await cmd.execute(
+                        args="resume abc123", tool_manager=tool_manager
+                    )
+
+        assert result.success is False
+        mock_output.error.assert_called_once()
+        assert "step 2 blew up" in mock_output.error.call_args[0][0]
+
+
+# ---------------------------------------------------------------------------
+# _build_plan_system_prompt — lines 405-426
+# ---------------------------------------------------------------------------
+
+
+class TestBuildPlanSystemPrompt:
+    def test_basic_prompt(self):
+        from mcp_cli.commands.plan.plan import _build_plan_system_prompt
+
+        catalog = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "read_file",
+                    "description": "Read a file from disk",
+                    "parameters": {
+                        "properties": {
+                            "path": {
+                                "type": "string",
+                                "description": "File path to read",
+                            }
+                        },
+                        "required": ["path"],
+                    },
+                },
+            }
+        ]
+        prompt = _build_plan_system_prompt(catalog)
+
+        assert "read_file" in prompt
+        assert "Read a file from disk" in prompt
+        assert "path: string (required)" in prompt
+        assert "File path to read" in prompt
+        assert "planning assistant" in prompt
+        assert "JSON object" in prompt
+
+    def test_tool_without_params(self):
+        from mcp_cli.commands.plan.plan import _build_plan_system_prompt
+
+        catalog = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "no_args_tool",
+                    "description": "Takes nothing",
+                    "parameters": {"properties": {}, "required": []},
+                },
+            }
+        ]
+        prompt = _build_plan_system_prompt(catalog)
+
+        assert "no_args_tool" in prompt
+        assert "(no parameters)" in prompt
+
+    def test_multiple_tools(self):
+        from mcp_cli.commands.plan.plan import _build_plan_system_prompt
+
+        catalog = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "tool_a",
+                    "description": "Tool A",
+                    "parameters": {"properties": {}, "required": []},
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "tool_b",
+                    "description": "Tool B",
+                    "parameters": {
+                        "properties": {
+                            "x": {"type": "integer", "description": "A number"},
+                        },
+                        "required": [],
+                    },
+                },
+            },
+        ]
+        prompt = _build_plan_system_prompt(catalog)
+
+        assert "tool_a" in prompt
+        assert "tool_b" in prompt
+        assert "x: integer" in prompt
+
+    def test_optional_param(self):
+        from mcp_cli.commands.plan.plan import _build_plan_system_prompt
+
+        catalog = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "my_tool",
+                    "description": "desc",
+                    "parameters": {
+                        "properties": {
+                            "opt": {"type": "string", "description": "optional arg"},
+                        },
+                        "required": [],  # Not required
+                    },
+                },
+            }
+        ]
+        prompt = _build_plan_system_prompt(catalog)
+
+        # Should NOT contain "(required)"
+        assert "opt: string —" in prompt
+        assert "(required)" not in prompt.split("opt")[1].split("\n")[0]
+
+
+# ---------------------------------------------------------------------------
+# _validate_step — lines 457-462
+# ---------------------------------------------------------------------------
+
+
+class TestValidateStep:
+    def test_valid_step(self):
+        from mcp_cli.commands.plan.plan import _validate_step
+
+        step = {"tool": "read_file", "title": "Read it"}
+        ok, msg = _validate_step(step, ["read_file", "write_file"])
+        assert ok is True
+        assert msg == ""
+
+    def test_unknown_tool(self):
+        from mcp_cli.commands.plan.plan import _validate_step
+
+        step = {"tool": "hack_planet", "title": "Hack"}
+        ok, msg = _validate_step(step, ["read_file", "write_file"])
+        assert ok is False
+        assert "Unknown tool" in msg
+        assert "hack_planet" in msg
+
+    def test_missing_title(self):
+        from mcp_cli.commands.plan.plan import _validate_step
+
+        step = {"tool": "read_file", "title": ""}
+        ok, msg = _validate_step(step, ["read_file"])
+        assert ok is False
+        assert "title" in msg.lower()
+
+    def test_missing_tool_key(self):
+        from mcp_cli.commands.plan.plan import _validate_step
+
+        step = {"title": "No tool"}
+        ok, msg = _validate_step(step, ["read_file"])
+        assert ok is False
+        assert "Unknown tool" in msg
+
+
+# ---------------------------------------------------------------------------
+# _display_plan — lines 467-482
+# ---------------------------------------------------------------------------
+
+
+class TestDisplayPlan:
+    def test_display_plan_basic(self):
+        from mcp_cli.commands.plan.plan import _display_plan
+
+        plan_data = {
+            "title": "Test Plan",
+            "steps": [
+                {"title": "Read file", "tool": "read_file", "depends_on": []},
+            ],
+        }
+        with patch("chuk_term.ui.output") as mock_output:
+            with patch(
+                "mcp_cli.planning.executor.render_plan_dag", return_value="DAG-VIZ"
+            ):
+                _display_plan(plan_data)
+
+        # Check title and DAG were printed
+        calls = [str(c) for c in mock_output.info.call_args_list]
+        assert any("Test Plan" in c and "1 steps" in c for c in calls)
+        assert any("DAG-VIZ" in c for c in calls)
+
+    def test_display_plan_with_result_variables(self):
+        from mcp_cli.commands.plan.plan import _display_plan
+
+        plan_data = {
+            "title": "Var Plan",
+            "steps": [
+                {
+                    "title": "Read",
+                    "tool": "read_file",
+                    "depends_on": [],
+                    "result_variable": "content",
+                },
+                {
+                    "title": "Search",
+                    "tool": "search_code",
+                    "depends_on": ["1"],
+                    "result_variable": "results",
+                },
+            ],
+        }
+        with patch("chuk_term.ui.output") as mock_output:
+            with patch("mcp_cli.planning.executor.render_plan_dag", return_value="DAG"):
+                _display_plan(plan_data)
+
+        # Should display variables
+        calls = [str(c) for c in mock_output.info.call_args_list]
+        assert any("content" in c and "results" in c for c in calls)
+
+    def test_display_plan_no_result_variables(self):
+        from mcp_cli.commands.plan.plan import _display_plan
+
+        plan_data = {
+            "title": "No Vars",
+            "steps": [
+                {"title": "s1", "tool": "t1", "depends_on": []},
+            ],
+        }
+        with patch("chuk_term.ui.output") as mock_output:
+            with patch("mcp_cli.planning.executor.render_plan_dag", return_value="DAG"):
+                _display_plan(plan_data)
+
+        # "Variables:" should NOT appear (no result_variable keys)
+        calls = " ".join(str(c) for c in mock_output.info.call_args_list)
+        assert "Variables:" not in calls

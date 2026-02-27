@@ -685,13 +685,6 @@ class ToolProcessor:
 
         logger.info("Plan tool %s called with args: %s", tool_name, arguments)
 
-        # Show tool call in UI
-        try:
-            self.ui_manager.print_tool_call(tool_name, arguments)
-            await self.ui_manager.start_tool_execution(tool_name, arguments)
-        except Exception as e:
-            logger.debug("UI error displaying plan tool call: %s", e)
-
         from mcp_cli.planning.context import PlanningContext
         from mcp_cli.planning.tools import handle_plan_tool
 
@@ -704,28 +697,14 @@ class ToolProcessor:
         # Get model_manager for LLM-driven step execution
         model_manager = getattr(self.context, "model_manager", None)
 
+        # Pass the UI manager so handle_plan_tool can show step-by-step progress
         result_text = await handle_plan_tool(
-            tool_name, arguments, planning_context, model_manager
+            tool_name,
+            arguments,
+            planning_context,
+            model_manager,
+            ui_manager=self.ui_manager,
         )
-
-        # Determine success from result
-        import json as _json
-
-        success = True
-        try:
-            parsed = _json.loads(result_text)
-            if isinstance(parsed, dict) and "error" in parsed:
-                success = False
-        except (ValueError, TypeError):
-            pass
-
-        # Finish UI display
-        try:
-            await self.ui_manager.finish_tool_execution(
-                result=result_text, success=success
-            )
-        except Exception as e:
-            logger.debug("UI error finishing plan tool display: %s", e)
 
         self._add_tool_result_to_history(llm_tool_name, call_id, result_text)
 
