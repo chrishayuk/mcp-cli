@@ -150,6 +150,21 @@ def main_callback(
         "--plan-tools",
         help="Enable plan_create/plan_execute as LLM-callable tools for autonomous multi-step planning",
     ),
+    dashboard: bool = typer.Option(
+        False,
+        "--dashboard",
+        help="Open browser dashboard alongside chat (requires: pip install mcp-cli[dashboard])",
+    ),
+    no_browser: bool = typer.Option(
+        False,
+        "--no-browser",
+        help="Start dashboard server but do not auto-open the browser (prints URL instead)",
+    ),
+    dashboard_port: int = typer.Option(
+        0,
+        "--dashboard-port",
+        help="Dashboard HTTP port (0 = auto-select starting at 9120)",
+    ),
 ) -> None:
     """MCP CLI - If no subcommand is given, start chat mode."""
 
@@ -377,6 +392,9 @@ def main_callback(
                 vm_budget=vm_budget,
                 health_interval=health_interval,
                 enable_plan_tools=plan_tools,
+                dashboard=dashboard,
+                no_browser=no_browser,
+                dashboard_port=dashboard_port,
             )
             logger.debug(f"Chat mode completed with success: {success}")
         except asyncio.TimeoutError:
@@ -480,6 +498,21 @@ def _chat_command(
         False,
         "--plan-tools",
         help="Enable plan_create/plan_execute as LLM-callable tools for autonomous multi-step planning",
+    ),
+    dashboard: bool = typer.Option(
+        False,
+        "--dashboard",
+        help="Open browser dashboard alongside chat (requires: pip install mcp-cli[dashboard])",
+    ),
+    no_browser: bool = typer.Option(
+        False,
+        "--no-browser",
+        help="Start dashboard server but do not auto-open the browser (prints URL instead)",
+    ),
+    dashboard_port: int = typer.Option(
+        0,
+        "--dashboard-port",
+        help="Dashboard HTTP port (0 = auto-select starting at 9120)",
     ),
 ) -> None:
     """Start chat mode (same as default behavior without subcommand)."""
@@ -616,6 +649,9 @@ def _chat_command(
                 vm_budget=vm_budget,
                 health_interval=health_interval,
                 enable_plan_tools=plan_tools,
+                dashboard=dashboard,
+                no_browser=no_browser,
+                dashboard_port=dashboard_port,
             )
             logger.debug(f"Chat mode completed with success: {success}")
         except asyncio.TimeoutError:

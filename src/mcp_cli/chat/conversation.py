@@ -257,6 +257,24 @@ class ConversationProcessor:
 
                     completion: CompletionResponse | None = None
 
+                    # Dashboard: notify "thinking"
+                    if _dash := getattr(self.context, "dashboard_bridge", None):
+                        try:
+                            await _dash.on_agent_state(
+                                "thinking",
+                                None,
+                                turn_count,
+                                getattr(
+                                    getattr(self.context, "token_tracker", None),
+                                    "total_tokens",
+                                    0,
+                                ),
+                            )
+                        except Exception as _e:
+                            logger.debug(
+                                "Dashboard on_agent_state(thinking) error: %s", _e
+                            )
+
                     if supports_streaming:
                         # Use streaming response handler
                         try:
@@ -309,6 +327,28 @@ class ConversationProcessor:
                         logger.debug(
                             f"Processing {len(tool_calls)} tool calls from LLM"
                         )
+
+                        # Dashboard: notify "tool_calling"
+                        if _dash := getattr(self.context, "dashboard_bridge", None):
+                            try:
+                                _first_tool = (
+                                    tool_calls[0].function.name if tool_calls else None
+                                )
+                                await _dash.on_agent_state(
+                                    "tool_calling",
+                                    _first_tool,
+                                    turn_count,
+                                    getattr(
+                                        getattr(self.context, "token_tracker", None),
+                                        "total_tokens",
+                                        0,
+                                    ),
+                                )
+                            except Exception as _e:
+                                logger.debug(
+                                    "Dashboard on_agent_state(tool_calling) error: %s",
+                                    _e,
+                                )
 
                         # Check split budgets for each tool call type
                         # Get name mapping for looking up actual tool names
@@ -572,6 +612,33 @@ class ConversationProcessor:
                     # Include reasoning_content if present (for DeepSeek reasoner and similar models)
                     await self.context.add_assistant_message(response_content)
 
+                    # Dashboard: broadcast assistant message and idle state
+                    if _dash := getattr(self.context, "dashboard_bridge", None):
+                        try:
+                            await _dash.on_message(
+                                "assistant",
+                                response_content,
+                                streaming=bool(completion.streaming),
+                                reasoning=reasoning_content
+                                if reasoning_content
+                                else None,
+                            )
+                            await _dash.on_agent_state(
+                                "idle",
+                                None,
+                                turn_count,
+                                getattr(
+                                    getattr(self.context, "token_tracker", None),
+                                    "total_tokens",
+                                    0,
+                                ),
+                            )
+                        except Exception as _e:
+                            logger.debug(
+                                "Dashboard on_message/on_agent_state(idle) error: %s",
+                                _e,
+                            )
+
                     # Auto-save check
                     if hasattr(self.context, "auto_save_check"):
                         self.context.auto_save_check()
@@ -649,7 +716,9 @@ class ConversationProcessor:
 
         # Set the streaming handler reference in UI manager for interruption support
         streaming_handler = StreamingResponseHandler(
-            display=self.ui_manager.display, runtime_config=self.runtime_config
+            display=self.ui_manager.display,
+            runtime_config=self.runtime_config,
+            dashboard_bridge=getattr(self.context, "dashboard_bridge", None),
         )
         self.ui_manager.streaming_handler = streaming_handler
 

@@ -13,7 +13,10 @@ import asyncio
 import json
 import time
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from mcp_cli.dashboard.bridge import DashboardBridge
 
 from pydantic import BaseModel, Field
 
@@ -226,18 +229,21 @@ class StreamingResponseHandler:
         self,
         display: StreamingDisplayManager,
         runtime_config: RuntimeConfig | None = None,
+        dashboard_bridge: "DashboardBridge | None" = None,
     ):
         """Initialize handler.
 
         Args:
             display: The unified display manager (required, no fallback)
             runtime_config: Runtime configuration (optional, will load defaults if not provided)
+            dashboard_bridge: Optional DashboardBridge for live token streaming to browser.
         """
         self.display = display
         self.tool_accumulator = ToolCallAccumulator()
         self._interrupted = False
         self._usage: dict[str, int] | None = None
         self.runtime_config = runtime_config or load_runtime_config()
+        self._dashboard_bridge = dashboard_bridge
 
     async def stream_response(
         self,
@@ -318,6 +324,13 @@ class StreamingResponseHandler:
                 f"Streaming complete: {len(final_content)} chars, "
                 f"{len(tool_calls)} tools, {elapsed:.2f}s"
             )
+
+            # Signal stream end to dashboard
+            if self._dashboard_bridge is not None:
+                try:
+                    await self._dashboard_bridge.on_token("", done=True)
+                except Exception as _e:
+                    logger.debug("Dashboard on_token(done) error: %s", _e)
 
             return response.to_dict()
 
@@ -468,6 +481,27 @@ class StreamingResponseHandler:
         """
         # Use display to process chunk (normalizes format)
         await self.display.add_chunk(raw_chunk)
+
+        # Broadcast token to dashboard if connected
+        if self._dashboard_bridge is not None:
+            token: str | None = None
+            if "response" in raw_chunk:
+                token = raw_chunk["response"]
+            elif "content" in raw_chunk:
+                token = raw_chunk["content"]
+            elif "text" in raw_chunk:
+                token = raw_chunk["text"]
+            elif "delta" in raw_chunk and isinstance(raw_chunk["delta"], dict):
+                token = raw_chunk["delta"].get("content")
+            elif "choices" in raw_chunk and raw_chunk["choices"]:
+                delta = raw_chunk["choices"][0].get("delta", {})
+                if isinstance(delta, dict):
+                    token = delta.get("content")
+            if token:
+                try:
+                    await self._dashboard_bridge.on_token(token)
+                except Exception as _e:
+                    logger.debug("Dashboard on_token error: %s", _e)
 
         # Extract tool calls if present
         if "tool_calls" in raw_chunk and raw_chunk["tool_calls"]:

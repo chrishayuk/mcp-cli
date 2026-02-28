@@ -549,6 +549,42 @@ class ToolProcessor:
         if success and self.tool_manager:
             await self._check_and_launch_app(actual_tool_name, result.result)
 
+        # Dashboard bridge — broadcast tool result to browser clients
+        if bridge := getattr(self.context, "dashboard_bridge", None):
+            server_name = getattr(self.context, "tool_to_server_map", {}).get(
+                actual_tool_name, ""
+            )
+            duration_ms: int | None = None
+            if (
+                meta is not None
+                and hasattr(meta, "start_time")
+                and meta.start_time is not None
+            ):
+                import time as _time
+
+                duration_ms = int((_time.monotonic() - meta.start_time) * 1000)
+            _dash_result = (
+                actual_result if success and result.result is not None else None
+            )
+            meta_ui = (
+                getattr(result.result, "structuredContent", None)
+                if (success and result.result is not None)
+                else None
+            )
+            try:
+                await bridge.on_tool_result(
+                    tool_name=actual_tool_name,
+                    server_name=server_name,
+                    result=_dash_result,
+                    success=success,
+                    error=result.error if not success else None,
+                    duration_ms=duration_ms,
+                    meta_ui=meta_ui,
+                    call_id=result.id,
+                )
+            except Exception as _bridge_exc:
+                logger.debug("Dashboard bridge on_tool_result error: %s", _bridge_exc)
+
     # Maximum chars of page content to return from a single page_fault.
     # Prevents oversized pages from flooding the conversation context.
     _VM_MAX_PAGE_CONTENT_CHARS = 2000

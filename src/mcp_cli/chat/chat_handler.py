@@ -49,6 +49,9 @@ async def handle_chat_mode(
     vm_budget: int = 128_000,
     health_interval: int = 0,
     enable_plan_tools: bool = False,
+    dashboard: bool = False,
+    no_browser: bool = False,
+    dashboard_port: int = 0,
 ) -> bool:
     """
     Launch the interactive chat loop with streaming support.
@@ -68,11 +71,15 @@ async def handle_chat_mode(
         max_turns: Maximum conversation turns before forcing exit (default: 100)
         model_manager: Pre-configured ModelManager (optional, creates new if None)
         runtime_config: Runtime configuration with timeout overrides (optional)
+        dashboard: Launch browser dashboard alongside chat (requires websockets).
+        no_browser: If True, print dashboard URL but do not open the browser.
+        dashboard_port: Preferred dashboard port (0 = auto-select).
 
     Returns:
         True if session ended normally, False on failure
     """
     ui: ChatUIManager | None = None
+    ctx = None
 
     try:
         # Initialize configuration manager
@@ -116,6 +123,39 @@ async def handle_chat_mode(
 
         # Update global context with initialized data
         await app_context.initialize()
+
+        # Start dashboard if requested
+        if dashboard:
+            try:
+                from mcp_cli.dashboard.launcher import launch_dashboard
+                from mcp_cli.dashboard.bridge import DashboardBridge
+
+                _dash_server, _dash_port = await launch_dashboard(
+                    dashboard_port, no_browser
+                )
+                output.info(f"Dashboard: http://localhost:{_dash_port}")
+                ctx.dashboard_bridge = DashboardBridge(_dash_server)
+
+                # Wire REQUEST_TOOL from browser → tool_manager, result back to browser
+                _bridge_ref = ctx.dashboard_bridge
+
+                async def _dashboard_execute_tool(
+                    tool_name: str, arguments: dict
+                ) -> None:
+                    result = await tool_manager.execute_tool(tool_name, arguments)
+                    await _bridge_ref.on_tool_result(
+                        tool_name=tool_name,
+                        server_name="",
+                        result=result.result,
+                        success=result.success,
+                        error=result.error,
+                    )
+
+                ctx.dashboard_bridge.set_tool_call_callback(_dashboard_execute_tool)
+            except ImportError:
+                output.warning(
+                    "Dashboard requires 'websockets'. Install with: pip install mcp-cli[dashboard]"
+                )
 
         # Welcome banner
         # Clear screen unless in debug mode
@@ -183,6 +223,13 @@ async def handle_chat_mode(
         # Cleanup
         if ui:
             await _safe_cleanup(ui)
+
+        # Stop dashboard server if running
+        if ctx is not None and ctx.dashboard_bridge is not None:
+            try:
+                await ctx.dashboard_bridge.server.stop()
+            except Exception as exc:
+                logger.warning("Error stopping dashboard server: %s", exc)
 
         # Close tool manager
         try:
@@ -258,6 +305,39 @@ async def handle_chat_mode_for_testing(
         gc.collect()
 
 
+# Sentinel placed on the input queue when the reader catches a KeyboardInterrupt.
+# Allows the main loop to handle Ctrl+C that originated inside get_user_input().
+_INTERRUPT = object()
+
+
+async def _terminal_reader(ui: ChatUIManager, queue: asyncio.Queue) -> None:
+    """Background task: reads terminal input and puts it on the shared queue."""
+    while True:
+        try:
+            msg = await ui.get_user_input()
+            await queue.put(msg)
+        except EOFError:
+            await queue.put("exit")
+            break
+        except asyncio.CancelledError:
+            # Re-raise only when this task itself was explicitly cancelled
+            # (reader_task.cancel()). If CancelledError came from get_user_input()
+            # directly (e.g. in tests), treat it as an interrupt signal instead.
+            if asyncio.current_task().cancelling():  # type: ignore[union-attr]
+                raise
+            await queue.put(_INTERRUPT)
+        except KeyboardInterrupt:
+            # Forward the interrupt to the main loop via the sentinel so the
+            # reader keeps running (allows subsequent input after Ctrl+C).
+            await queue.put(_INTERRUPT)
+        except Exception as exc:
+            logger.debug("Terminal reader error: %s", exc)
+        # Yield to the event loop each iteration so that task.cancel() can
+        # deliver CancelledError even when get_user_input() resolves instantly
+        # (e.g. in tests with AsyncMock).
+        await asyncio.sleep(0)
+
+
 async def _run_enhanced_chat_loop(
     ui: ChatUIManager,
     ctx: ChatContext,
@@ -273,71 +353,118 @@ async def _run_enhanced_chat_loop(
         convo: Conversation processor with streaming support
         max_turns: Maximum conversation turns before forcing exit (default: 100)
     """
-    while True:
-        try:
-            user_msg = await ui.get_user_input()
+    # Shared queue: terminal reader task and browser WebSocket both put messages here.
+    # This lets browser input arrive during the terminal prompt wait.
+    # Type is Any because we also put _INTERRUPT sentinel objects on the queue.
+    input_queue: asyncio.Queue = asyncio.Queue()
 
-            # Skip empty messages
-            if not user_msg:
-                continue
+    # Wire dashboard bridge so browser USER_MESSAGE/USER_COMMAND go into the queue.
+    if bridge := getattr(ctx, "dashboard_bridge", None):
+        bridge.set_input_queue(input_queue)
 
-            # Handle plain exit commands (without slash)
-            if user_msg.lower() in ("exit", "quit"):
-                output.panel("Exiting chat mode.", style="red", title="Goodbye")
-                break
+    # Background task: reads terminal input and forwards to the queue.
+    reader_task = asyncio.create_task(_terminal_reader(ui, input_queue))
 
-            # Handle slash commands
-            if user_msg.startswith("/"):
-                # Special handling for interrupt command during streaming
-                if user_msg.lower() in ("/interrupt", "/stop", "/cancel"):
+    try:
+        while True:
+            try:
+                user_msg = await input_queue.get()
+
+                # Handle interrupt sentinel forwarded from _terminal_reader
+                if user_msg is _INTERRUPT:
+                    logger.info(
+                        "Interrupt forwarded from reader — streaming=%s, tools_running=%s",
+                        ui.is_streaming_response,
+                        ui.tools_running,
+                    )
                     if ui.is_streaming_response:
+                        output.warning("\nStreaming interrupted - type 'exit' to quit.")
                         ui.interrupt_streaming()
-                        output.warning("Streaming response interrupted.")
-                        continue
                     elif ui.tools_running:
+                        output.warning(
+                            "\nTool execution interrupted - type 'exit' to quit."
+                        )
                         ui._interrupt_now()
-                        continue
                     else:
-                        output.info("Nothing to interrupt.")
-                        continue
-
-                handled = await ui.handle_command(user_msg)
-                if ctx.exit_requested:
-                    break
-                if handled:
+                        output.warning("\nInterrupted - type 'exit' to quit.")
                     continue
 
-            # Normal conversation turn with streaming support
-            if ui.verbose_mode:
-                ui.print_user_message(user_msg)
-            await ctx.add_user_message(user_msg)
+                # Skip empty messages
+                if not user_msg:
+                    continue
 
-            # Use the enhanced conversation processor that handles streaming
-            await convo.process_conversation(max_turns=max_turns)
+                # Handle plain exit commands (without slash)
+                if user_msg.lower() in ("exit", "quit"):
+                    output.panel("Exiting chat mode.", style="red", title="Goodbye")
+                    break
 
-        except (KeyboardInterrupt, asyncio.CancelledError):
-            # Handle Ctrl+C gracefully (KeyboardInterrupt or asyncio.CancelledError in async code)
-            logger.info(
-                f"Interrupt in chat loop - streaming={ui.is_streaming_response}, tools_running={ui.tools_running}"
-            )
-            if ui.is_streaming_response:
-                output.warning("\nStreaming interrupted - type 'exit' to quit.")
-                ui.interrupt_streaming()
-            elif ui.tools_running:
-                output.warning("\nTool execution interrupted - type 'exit' to quit.")
-                ui._interrupt_now()
-            else:
-                output.warning("\nInterrupted - type 'exit' to quit.")
-            # CRITICAL: Continue the loop instead of exiting
-            logger.info("Continuing chat loop after interrupt...")
-            continue
-        except EOFError:
-            output.panel("EOF detected - exiting chat.", style="red", title="Exit")
-            break
-        except Exception as exc:
-            logger.exception("Error processing message")
-            output.error(f"Error processing message: {exc}")
-            continue
+                # Handle slash commands
+                if user_msg.startswith("/"):
+                    # Special handling for interrupt command during streaming
+                    if user_msg.lower() in ("/interrupt", "/stop", "/cancel"):
+                        if ui.is_streaming_response:
+                            ui.interrupt_streaming()
+                            output.warning("Streaming response interrupted.")
+                            continue
+                        elif ui.tools_running:
+                            ui._interrupt_now()
+                            continue
+                        else:
+                            output.info("Nothing to interrupt.")
+                            continue
+
+                    handled = await ui.handle_command(user_msg)
+                    if ctx.exit_requested:
+                        break
+                    if handled:
+                        continue
+
+                # Normal conversation turn with streaming support
+                if ui.verbose_mode:
+                    ui.print_user_message(user_msg)
+                await ctx.add_user_message(user_msg)
+
+                # Dashboard: broadcast user message
+                if _dash := getattr(ctx, "dashboard_bridge", None):
+                    try:
+                        await _dash.on_message("user", user_msg)
+                    except Exception as _e:
+                        logger.debug("Dashboard on_message(user) error: %s", _e)
+
+                # Use the enhanced conversation processor that handles streaming
+                await convo.process_conversation(max_turns=max_turns)
+
+            except (KeyboardInterrupt, asyncio.CancelledError):
+                # Handle Ctrl+C gracefully
+                logger.info(
+                    f"Interrupt in chat loop - streaming={ui.is_streaming_response}, tools_running={ui.tools_running}"
+                )
+                if ui.is_streaming_response:
+                    output.warning("\nStreaming interrupted - type 'exit' to quit.")
+                    ui.interrupt_streaming()
+                elif ui.tools_running:
+                    output.warning(
+                        "\nTool execution interrupted - type 'exit' to quit."
+                    )
+                    ui._interrupt_now()
+                else:
+                    output.warning("\nInterrupted - type 'exit' to quit.")
+                # CRITICAL: Continue the loop instead of exiting
+                logger.info("Continuing chat loop after interrupt...")
+                continue
+            except EOFError:
+                output.panel("EOF detected - exiting chat.", style="red", title="Exit")
+                break
+            except Exception as exc:
+                logger.exception("Error processing message")
+                output.error(f"Error processing message: {exc}")
+                continue
+    finally:
+        reader_task.cancel()
+        try:
+            await reader_task
+        except asyncio.CancelledError:
+            pass
 
 
 async def _safe_cleanup(ui: ChatUIManager) -> None:
