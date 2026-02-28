@@ -804,3 +804,95 @@ class TestBridgeWithRouter:
         bridge, router, server = self._make_router_bridge()
         # bridge.server should point to the DashboardServer, not the router
         assert bridge.server is server
+
+
+# ---------------------------------------------------------------------------
+# Browser file staging via _on_browser_message
+# ---------------------------------------------------------------------------
+
+
+class TestBrowserFileStaging:
+    """Tests for file attachment handling in _on_browser_message."""
+
+    @staticmethod
+    def _make_ctx_with_staging():
+        from mcp_cli.chat.attachments import AttachmentStaging
+
+        ctx = MagicMock()
+        ctx.attachment_staging = AttachmentStaging()
+        return ctx
+
+    @pytest.mark.asyncio
+    async def test_files_staged_on_context(self):
+        import base64
+
+        bridge, _server = _make_bridge()
+        ctx = self._make_ctx_with_staging()
+        bridge._ctx = ctx
+        bridge._input_queue = asyncio.Queue()
+
+        raw = b"hello world"
+        b64 = base64.b64encode(raw).decode()
+        msg = {
+            "type": "USER_MESSAGE",
+            "content": "describe this",
+            "files": [{"name": "test.txt", "data": b64, "mime_type": "text/plain"}],
+        }
+        await bridge._on_browser_message(msg)
+
+        # File should be staged
+        assert ctx.attachment_staging.count == 1
+        att = ctx.attachment_staging.peek()[0]
+        assert att.display_name == "test.txt"
+        assert att.source == "browser:test.txt"
+        # Text should have been queued
+        assert bridge._input_queue.qsize() == 1
+        assert await bridge._input_queue.get() == "describe this"
+
+    @pytest.mark.asyncio
+    async def test_files_only_queues_space(self):
+        import base64
+
+        bridge, _server = _make_bridge()
+        ctx = self._make_ctx_with_staging()
+        bridge._ctx = ctx
+        bridge._input_queue = asyncio.Queue()
+
+        raw = b"\x89PNG\r\n\x1a\n" + b"\x00" * 50
+        b64 = base64.b64encode(raw).decode()
+        msg = {
+            "type": "USER_MESSAGE",
+            "content": "",
+            "files": [{"name": "img.png", "data": b64, "mime_type": "image/png"}],
+        }
+        await bridge._on_browser_message(msg)
+
+        # Space should be queued to trigger chat loop
+        assert bridge._input_queue.qsize() == 1
+        assert await bridge._input_queue.get() == " "
+        assert ctx.attachment_staging.count == 1
+
+    @pytest.mark.asyncio
+    async def test_bad_file_logged_not_crashed(self):
+        bridge, _server = _make_bridge()
+        ctx = self._make_ctx_with_staging()
+        bridge._ctx = ctx
+        bridge._input_queue = asyncio.Queue()
+
+        msg = {
+            "type": "USER_MESSAGE",
+            "content": "hi",
+            "files": [
+                {
+                    "name": "bad.xyz",
+                    "data": "aGVsbG8=",
+                    "mime_type": "application/octet-stream",
+                }
+            ],
+        }
+        # Should not raise
+        await bridge._on_browser_message(msg)
+        # Bad file should not be staged
+        assert ctx.attachment_staging.count == 0
+        # Text should still be queued
+        assert bridge._input_queue.qsize() == 1

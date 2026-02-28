@@ -1141,7 +1141,7 @@ window.addEventListener('message', (evt) => {
       sendToBridge({ type: 'REQUEST_TOOL', view_id: viewId, ...msg.payload });
       break;
     case 'USER_MESSAGE':
-      sendToBridge({ type: 'USER_MESSAGE', content: msg.payload.content });
+      sendToBridge({ type: 'USER_MESSAGE', content: msg.payload.content, files: msg.payload.files || undefined });
       break;
     case 'USER_COMMAND':
       sendToBridge({ type: 'USER_COMMAND', command: msg.payload.command });

@@ -268,6 +268,69 @@ body {
 }
 #send-btn:hover { opacity: 0.9; }
 
+/* ── Attach button & staging ─────────────────────────────────── */
+#attach-btn {
+  background: none;
+  border: 1px solid var(--dash-border);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  font-size: 18px;
+  cursor: pointer;
+  color: var(--dash-fg);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+#attach-btn:hover { background: var(--dash-bg-hover); }
+
+#staging-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 12px;
+}
+#staging-strip:empty { display: none; }
+.staged-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--dash-bg-hover);
+  border-radius: 12px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--dash-fg);
+}
+.staged-file .remove-staged {
+  cursor: pointer;
+  opacity: 0.6;
+  margin-left: 2px;
+}
+.staged-file .remove-staged:hover { opacity: 1; }
+.staged-thumb {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+#drop-overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 3px dashed var(--dash-accent);
+  pointer-events: none;
+}
+
 /* Scroll container — must be flex to constrain #messages height */
 #messages-wrapper {
   flex: 1;
@@ -328,10 +391,14 @@ body {
   <span id="token-count"></span>
 </div>
 
+<div id="staging-strip"></div>
 <div id="input-area">
+  <button id="attach-btn" title="Attach file (+)">+</button>
+  <input type="file" id="file-input" multiple accept="image/*,audio/*,.txt,.md,.csv,.json,.py,.js,.ts,.html,.xml,.yaml,.yml,.sh,.rs,.go,.java,.c,.cpp,.h,.rb,.swift,.sql,.toml,.ini,.cfg,.log" hidden>
   <textarea id="chat-input" placeholder="Type a message… (Enter to send, Shift+Enter for newline)" rows="1"></textarea>
   <button id="send-btn">Send</button>
 </div>
+<div id="drop-overlay">Drop files here</div>
 
 <script>
 'use strict';
@@ -347,8 +414,14 @@ const tokenCount  = document.getElementById('token-count');
 const scrollBtn   = document.getElementById('scroll-btn');
 const wrapper     = document.getElementById('messages-wrapper');
 
+const attachBtn   = document.getElementById('attach-btn');
+const fileInput   = document.getElementById('file-input');
+const stagingStrip = document.getElementById('staging-strip');
+const dropOverlay = document.getElementById('drop-overlay');
+
 let autoScroll      = true;
 let streamingBubble = null; // current streaming message bubble
+let stagedFiles     = [];   // [{name, data (base64), mime_type, thumb?}]
 let streamingContent = '';
 let _hadStreamingTokens = false; // true when CONVERSATION_TOKEN events built current response
 let _agentName      = '';   // agent_id from INIT (shown in status bar when not "default")
@@ -664,21 +737,110 @@ function scrollIfAuto() {
   if (autoScroll) wrapper.scrollTop = wrapper.scrollHeight;
 }
 
+// ── File staging ─────────────────────────────────────────────────
+function stageFile(file) {
+  if (file.size > 20 * 1024 * 1024) {
+    showNotification('File too large: ' + file.name + ' (max 20 MB)', 'error');
+    return;
+  }
+  if (stagedFiles.length >= 10) {
+    showNotification('Max 10 attachments per message', 'error');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const b64 = reader.result.split(',')[1];
+    const entry = { name: file.name, data: b64, mime_type: file.type || 'application/octet-stream' };
+    if (file.type.startsWith('image/')) entry.thumb = reader.result;
+    stagedFiles.push(entry);
+    renderStagingStrip();
+  };
+  reader.readAsDataURL(file);
+}
+
+function renderStagingStrip() {
+  stagingStrip.innerHTML = '';
+  stagedFiles.forEach((f, i) => {
+    const badge = document.createElement('span');
+    badge.className = 'staged-file';
+    if (f.thumb) {
+      const img = document.createElement('img');
+      img.src = f.thumb;
+      img.className = 'staged-thumb';
+      badge.appendChild(img);
+    }
+    badge.appendChild(document.createTextNode(f.name));
+    const rm = document.createElement('span');
+    rm.className = 'remove-staged';
+    rm.textContent = '\u2715';
+    rm.onclick = () => { stagedFiles.splice(i, 1); renderStagingStrip(); };
+    badge.appendChild(rm);
+    stagingStrip.appendChild(badge);
+  });
+}
+
+function showNotification(message, level) {
+  const shell = getShell();
+  if (shell) {
+    shell.postMessage({ protocol: PROTOCOL, version: VERSION, type: 'NOTIFY', payload: { message, level: level || 'info', duration_ms: 4000 } }, '*');
+  }
+}
+
+attachBtn.addEventListener('click', () => fileInput.click());
+
+fileInput.addEventListener('change', (e) => {
+  for (const file of e.target.files) stageFile(file);
+  e.target.value = '';
+});
+
+// ── Drag and drop ───────────────────────────────────────────────
+document.documentElement.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  dropOverlay.style.display = 'flex';
+});
+document.documentElement.addEventListener('dragleave', (e) => {
+  if (!e.relatedTarget) dropOverlay.style.display = 'none';
+});
+document.documentElement.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropOverlay.style.display = 'none';
+  for (const file of e.dataTransfer.files) stageFile(file);
+});
+
+// ── Clipboard paste (images) ────────────────────────────────────
+inputEl.addEventListener('paste', (e) => {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.kind === 'file') {
+      e.preventDefault();
+      stageFile(item.getAsFile());
+    }
+  }
+});
+
 // ── Input ────────────────────────────────────────────────────────
 function sendMessage() {
   const text = inputEl.value.trim();
-  if (!text) return;
+  if (!text && stagedFiles.length === 0) return;
   inputEl.value = '';
   inputEl.style.height = '';
 
   const shell = getShell();
   if (!shell) return;
+
+  const files = stagedFiles.length > 0 ? stagedFiles.map(f => ({
+    name: f.name, data: f.data, mime_type: f.mime_type
+  })) : undefined;
+
   if (text.startsWith('/')) {
     shell.postMessage({ protocol: PROTOCOL, version: VERSION, type: 'USER_COMMAND', payload: { command: text } }, '*');
   } else {
-    // Don't echo locally — the bridge echoes back via CONVERSATION_MESSAGE(role=user)
-    shell.postMessage({ protocol: PROTOCOL, version: VERSION, type: 'USER_MESSAGE', payload: { content: text } }, '*');
+    shell.postMessage({ protocol: PROTOCOL, version: VERSION, type: 'USER_MESSAGE', payload: { content: text || '', files: files } }, '*');
   }
+
+  stagedFiles = [];
+  renderStagingStrip();
 }
 
 inputEl.addEventListener('keydown', (e) => {

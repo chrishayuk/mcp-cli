@@ -191,9 +191,8 @@ def process_local_file(path: str | Path) -> Attachment:
     )
 
 
-def _build_image_blocks(path: Path, mime: str) -> list[dict[str, Any]]:
-    raw = path.read_bytes()
-    b64 = base64.b64encode(raw).decode("ascii")
+def _image_blocks_from_b64(b64: str, mime: str) -> list[dict[str, Any]]:
+    """Build image content blocks from base64-encoded data."""
     return [
         {
             "type": "image_url",
@@ -205,11 +204,32 @@ def _build_image_blocks(path: Path, mime: str) -> list[dict[str, Any]]:
     ]
 
 
+def _audio_blocks_from_b64(b64: str, ext: str) -> list[dict[str, Any]]:
+    """Build audio content blocks from base64-encoded data."""
+    fmt = _AUDIO_FORMAT.get(ext, "mp3")
+    return [{"type": "input_audio", "input_audio": {"data": b64, "format": fmt}}]
+
+
+def _text_blocks_from_string(text: str, label: str) -> list[dict[str, Any]]:
+    """Build text content blocks from a string."""
+    return [
+        {
+            "type": "text",
+            "text": f"--- {label} ---\n{text}\n--- end {label} ---",
+        }
+    ]
+
+
+def _build_image_blocks(path: Path, mime: str) -> list[dict[str, Any]]:
+    raw = path.read_bytes()
+    b64 = base64.b64encode(raw).decode("ascii")
+    return _image_blocks_from_b64(b64, mime)
+
+
 def _build_audio_blocks(path: Path, ext: str) -> list[dict[str, Any]]:
     raw = path.read_bytes()
     b64 = base64.b64encode(raw).decode("ascii")
-    fmt = _AUDIO_FORMAT.get(ext, "mp3")
-    return [{"type": "input_audio", "input_audio": {"data": b64, "format": fmt}}]
+    return _audio_blocks_from_b64(b64, ext)
 
 
 def _build_text_blocks(path: Path) -> list[dict[str, Any]]:
@@ -217,12 +237,77 @@ def _build_text_blocks(path: Path) -> list[dict[str, Any]]:
         text = path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
         text = path.read_text(encoding="latin-1")
-    return [
-        {
-            "type": "text",
-            "text": f"--- {path.name} ---\n{text}\n--- end {path.name} ---",
-        }
-    ]
+    return _text_blocks_from_string(text, path.name)
+
+
+# ------------------------------------------------------------------ #
+#  Browser file processing                                             #
+# ------------------------------------------------------------------ #
+
+
+def process_browser_file(
+    filename: str,
+    data_b64: str,
+    mime_type: str,
+) -> Attachment:
+    """Build an ``Attachment`` from browser-uploaded file data.
+
+    Parameters
+    ----------
+    filename:
+        Original filename from the browser ``File`` object.
+    data_b64:
+        Base64-encoded file contents.
+    mime_type:
+        MIME type reported by the browser (e.g. ``image/png``).
+
+    Raises
+    ------
+    ValueError
+        If the file is too large or has an unsupported extension.
+    """
+    raw = base64.b64decode(data_b64)
+    size = len(raw)
+    if size > DEFAULT_MAX_ATTACHMENT_SIZE_BYTES:
+        raise ValueError(
+            f"File too large: {size:,} bytes "
+            f"(max {DEFAULT_MAX_ATTACHMENT_SIZE_BYTES:,})"
+        )
+
+    ext = Path(filename).suffix.lower()
+    # Fall back to provided mime_type if extension not in our map
+    mime = MIME_MAP.get(ext, mime_type)
+
+    if ext in IMAGE_EXTENSIONS:
+        b64 = base64.b64encode(raw).decode("ascii")
+        blocks = _image_blocks_from_b64(b64, mime)
+    elif ext in AUDIO_EXTENSIONS:
+        b64 = base64.b64encode(raw).decode("ascii")
+        blocks = _audio_blocks_from_b64(b64, ext)
+    elif ext in TEXT_EXTENSIONS:
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            text = raw.decode("latin-1")
+        blocks = _text_blocks_from_string(text, filename)
+    else:
+        raise ValueError(
+            f"Unsupported file type: {ext or '(none)'}. "
+            f"Supported: images ({', '.join(sorted(IMAGE_EXTENSIONS))}), "
+            f"audio ({', '.join(sorted(AUDIO_EXTENSIONS))}), "
+            f"text ({', '.join(sorted(TEXT_EXTENSIONS))})"
+        )
+
+    logger.debug(
+        "Processed browser attachment: %s (%s, %d bytes)", filename, mime, size
+    )
+    return Attachment(
+        source=f"browser:{filename}",
+        content_blocks=blocks,
+        display_name=filename,
+        size_bytes=size,
+        mime_type=mime,
+    )
 
 
 # ------------------------------------------------------------------ #

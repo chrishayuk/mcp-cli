@@ -17,6 +17,7 @@ from mcp_cli.chat.attachments import (
     detect_image_urls,
     detect_mime_type,
     parse_inline_refs,
+    process_browser_file,
     process_local_file,
     process_url,
 )
@@ -478,3 +479,51 @@ class TestAttachmentDescriptor:
         desc = attachment_descriptor(att)
         assert desc["kind"] == "audio"
         assert desc["audio_data_uri"].startswith("data:audio/mpeg;base64,")
+
+
+# ---------------------------------------------------------------------------
+# process_browser_file
+# ---------------------------------------------------------------------------
+
+
+class TestProcessBrowserFile:
+    """Tests for process_browser_file (browser-uploaded files)."""
+
+    def test_image(self):
+        import base64
+
+        raw = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+        b64 = base64.b64encode(raw).decode()
+        att = process_browser_file("photo.png", b64, "image/png")
+        assert att.source == "browser:photo.png"
+        assert att.display_name == "photo.png"
+        assert att.mime_type == "image/png"
+        assert att.size_bytes == len(raw)
+        assert len(att.content_blocks) == 1
+        assert att.content_blocks[0]["type"] == "image_url"
+
+    def test_text(self):
+        import base64
+
+        raw = b"hello world"
+        b64 = base64.b64encode(raw).decode()
+        att = process_browser_file("readme.txt", b64, "text/plain")
+        assert att.source == "browser:readme.txt"
+        assert att.mime_type == "text/plain"
+        assert att.content_blocks[0]["type"] == "text"
+        assert "hello world" in att.content_blocks[0]["text"]
+
+    def test_too_large(self):
+        import base64
+
+        raw = b"\x00" * (DEFAULT_MAX_ATTACHMENT_SIZE_BYTES + 1)
+        b64 = base64.b64encode(raw).decode()
+        with pytest.raises(ValueError, match="too large"):
+            process_browser_file("big.bin", b64, "image/png")
+
+    def test_unsupported_extension(self):
+        import base64
+
+        b64 = base64.b64encode(b"data").decode()
+        with pytest.raises(ValueError, match="Unsupported"):
+            process_browser_file("file.xyz", b64, "application/octet-stream")

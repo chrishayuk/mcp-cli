@@ -72,6 +72,7 @@ class DashboardServer:
             "localhost",
             bound_port,
             process_request=self._process_request,
+            max_size=25 * 1024 * 1024,  # 25 MB for file attachments
         )
         logger.info("Dashboard server started on port %d", bound_port)
         return bound_port

@@ -300,6 +300,25 @@ class DashboardBridge:
         msg_type = msg.get("type")
         if msg_type in ("USER_MESSAGE", "USER_COMMAND"):
             content = msg.get("content") or msg.get("command", "")
+            files = msg.get("files")  # list of {name, data, mime_type}
+
+            # Stage browser-uploaded files on ChatContext
+            if files and self._ctx is not None:
+                from mcp_cli.chat.attachments import process_browser_file
+
+                for f in files:
+                    try:
+                        att = process_browser_file(f["name"], f["data"], f["mime_type"])
+                        self._ctx.attachment_staging.stage(att)
+                    except (ValueError, KeyError) as exc:
+                        logger.warning(
+                            "Bad browser file %s: %s", f.get("name", "?"), exc
+                        )
+
+            # If files attached but no text, queue a space so the chat loop iterates
+            if not content and files:
+                content = " "
+
             if content and self._input_queue is not None:
                 try:
                     await self._input_queue.put(content)
