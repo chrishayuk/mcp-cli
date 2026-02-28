@@ -41,6 +41,10 @@ def _make_ctx(exit_requested=False):
     ctx.model = "gpt-4"
     ctx.exit_requested = exit_requested
     ctx.add_user_message = AsyncMock()
+    # Real staging so multi-modal processing works correctly (drain returns [])
+    from mcp_cli.chat.attachments import AttachmentStaging
+
+    ctx.attachment_staging = AttachmentStaging()
     return ctx
 
 

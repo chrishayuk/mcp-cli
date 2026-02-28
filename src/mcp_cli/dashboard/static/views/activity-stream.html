@@ -649,6 +649,26 @@ function buildMessageCard(ev) {
     return card;
   }
 
+  // User messages with attachments
+  if (role === 'user' && p.attachments && p.attachments.length > 0) {
+    card.className = 'event-card user-att';
+    card.dataset.evId = ev.id;
+    const attNames = p.attachments.map(a => a.display_name || '?').join(', ');
+    const totalSize = p.attachments.reduce((s, a) => s + (a.size_bytes || 0), 0);
+    const contentPreview = (p.content || '').slice(0, 80);
+    card.innerHTML = `
+      <div class="event-header">
+        ${agentBadgeHtml(p.agent_id)}
+        <span class="event-tool" style="color:var(--dash-success)">&#128206; Attachments: ${esc(attNames)}</span>
+        <span class="event-dur">${_formatBytes(totalSize)}</span>
+        <span class="event-ts" style="margin-left:auto">${tsStr}</span>
+      </div>
+      <div class="event-header" style="margin-top:2px">
+        <span style="font-size:11px;color:var(--dash-fg-muted)">${esc(contentPreview)}</span>
+      </div>`;
+    return card;
+  }
+
   // Skip other message types (user input, plain assistant text without reasoning)
   // Return an empty non-rendered card
   card.style.display = 'none';
@@ -684,6 +704,13 @@ function summariseResult(result) {
 
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function _formatBytes(bytes) {
+  if (!bytes || bytes === 0) return '';
+  if (bytes < 1024) return bytes + 'B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + 'KB';
+  return (bytes / 1048576).toFixed(1) + 'MB';
 }
 
 function trimDom() {

@@ -139,6 +139,11 @@ class ChatContext:
         # Agent manager (set by chat_handler when multi-agent enabled, else None)
         self.agent_manager: Any = None
 
+        # Attachment staging for multi-modal input (/attach command)
+        from mcp_cli.chat.attachments import AttachmentStaging
+
+        self.attachment_staging = AttachmentStaging()
+
         # Tool state (filled during initialization)
         self.tools: list[ToolInfo] = []
         self.internal_tools: list[ToolInfo] = []
@@ -653,10 +658,28 @@ class ChatContext:
         return await self.tool_manager.get_server_for_tool(tool_name) or "Unknown"
 
     # ── Conversation management ───────────────────────────────────────────
-    async def add_user_message(self, content: str) -> None:
-        """Add user message to conversation."""
-        await self.session.user_says(content)
-        logger.debug(f"User message added: {content[:50]}...")
+    async def add_user_message(self, content: str | list[dict[str, Any]]) -> None:
+        """Add user message to conversation.
+
+        Accepts plain text (str) or multi-modal content blocks (list[dict]).
+        Multi-modal content is injected as a raw event since
+        SessionManager.user_says() only accepts strings.
+        """
+        if isinstance(content, str):
+            await self.session.user_says(content)
+            logger.debug(f"User message added: {content[:50]}...")
+        else:
+            # Multi-modal: inject as dict event (same pattern as inject_tool_message)
+            msg = HistoryMessage(role=MessageRole.USER, content=content)
+            event = SessionEvent(
+                message=msg.to_dict(),
+                source=EventSource.USER,
+                type=EventType.TOOL_CALL,
+            )
+            self.session._session.events.append(event)
+            logger.debug(
+                f"Multi-modal user message added: {len(content)} content blocks"
+            )
 
     async def add_assistant_message(self, content: str) -> None:
         """Add assistant message to conversation."""

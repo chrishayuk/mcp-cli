@@ -189,6 +189,7 @@ class DashboardBridge:
         streaming: bool = False,
         reasoning: str | None = None,
         tool_calls: list[dict[str, Any]] | None = None,
+        attachments: list[dict[str, Any]] | None = None,
     ) -> None:
         """Called when a complete conversation message is emitted."""
         payload: dict[str, Any] = {
@@ -198,6 +199,7 @@ class DashboardBridge:
             "streaming": streaming,
             "tool_calls": tool_calls,
             "reasoning": reasoning,
+            "attachments": attachments,
         }
         await self._broadcast(_envelope("CONVERSATION_MESSAGE", payload))
 
@@ -787,6 +789,69 @@ class DashboardBridge:
             logger.debug("Error building CONFIG_STATE: %s", exc)
             return None
 
+    @staticmethod
+    def _content_block_to_descriptor(block: dict[str, Any]) -> dict[str, Any]:
+        """Convert a raw content block dict into a dashboard-safe descriptor.
+
+        Used during conversation history replay when we have raw content
+        blocks but not ``Attachment`` objects.
+        """
+        from mcp_cli.config.defaults import (
+            DEFAULT_DASHBOARD_INLINE_IMAGE_THRESHOLD,
+            DEFAULT_DASHBOARD_TEXT_PREVIEW_CHARS,
+        )
+
+        btype = block.get("type", "")
+        desc: dict[str, Any] = {"kind": "unknown", "display_name": "", "size_bytes": 0}
+
+        if btype == "image_url":
+            url = block.get("image_url", {}).get("url", "")
+            desc["kind"] = "image"
+            desc["mime_type"] = "image/unknown"
+            if url.startswith("http"):
+                desc["preview_url"] = url
+                desc["display_name"] = url.rsplit("/", 1)[-1][:60]
+            elif url.startswith("data:"):
+                # Estimate raw size from data URI length (base64 ≈ 4/3 of raw)
+                data_part = url.split(",", 1)[-1] if "," in url else ""
+                est_size = len(data_part) * 3 // 4
+                if est_size <= DEFAULT_DASHBOARD_INLINE_IMAGE_THRESHOLD:
+                    desc["preview_url"] = url
+                else:
+                    desc["preview_url"] = None
+                desc["size_bytes"] = est_size
+                desc["display_name"] = "image"
+            else:
+                desc["preview_url"] = None
+
+        elif btype == "text":
+            text = block.get("text", "")
+            desc["kind"] = "text"
+            desc["mime_type"] = "text/plain"
+            desc["text_preview"] = text[:DEFAULT_DASHBOARD_TEXT_PREVIEW_CHARS]
+            desc["text_truncated"] = len(text) > DEFAULT_DASHBOARD_TEXT_PREVIEW_CHARS
+            # Try to extract filename from "--- filename ---" wrapper
+            if text.startswith("--- ") and " ---\n" in text:
+                name = text[4 : text.index(" ---\n")]
+                desc["display_name"] = name
+
+        elif btype == "input_audio":
+            audio = block.get("input_audio", {})
+            fmt = audio.get("format", "mp3")
+            data = audio.get("data", "")
+            est_size = len(data) * 3 // 4
+            desc["kind"] = "audio"
+            desc["mime_type"] = "audio/mpeg" if fmt == "mp3" else f"audio/{fmt}"
+            desc["size_bytes"] = est_size
+            desc["display_name"] = f"audio.{fmt}"
+            if est_size <= DEFAULT_DASHBOARD_INLINE_IMAGE_THRESHOLD:
+                mime = desc["mime_type"]
+                desc["audio_data_uri"] = f"data:{mime};base64,{data}"
+            else:
+                desc["audio_data_uri"] = None
+
+        return desc
+
     def _build_conversation_history(self) -> list[dict[str, Any]] | None:
         """Build conversation history payload from ChatContext.
 
@@ -805,12 +870,34 @@ class DashboardBridge:
                 # tool results belong in the activity stream, not chat
                 if role in ("system", "tool"):
                     continue
+
+                raw_content = d.get("content")
+                attachments = None
+
+                # Handle multimodal content blocks
+                if isinstance(raw_content, list):
+                    text_parts: list[str] = []
+                    att_descriptors: list[dict[str, Any]] = []
+                    for block in raw_content:
+                        if block.get("type") == "text":
+                            text_parts.append(block.get("text", ""))
+                        else:
+                            att_descriptors.append(
+                                self._content_block_to_descriptor(block)
+                            )
+                    content_str = "\n".join(text_parts)
+                    if att_descriptors:
+                        attachments = att_descriptors
+                else:
+                    content_str = raw_content or ""
+
                 messages.append(
                     {
                         "role": role,
-                        "content": d.get("content") or "",
+                        "content": content_str,
                         "tool_calls": d.get("tool_calls"),
                         "reasoning": d.get("reasoning_content"),
+                        "attachments": attachments,
                     }
                 )
             return messages if messages else None
@@ -841,6 +928,32 @@ class DashboardBridge:
             events: list[dict[str, Any]] = []
             for d in raw:
                 role = d.get("role", "")
+
+                # User messages with attachments (multimodal content)
+                if role == "user":
+                    raw_content = d.get("content")
+                    if isinstance(raw_content, list):
+                        text_parts: list[str] = []
+                        att_descs: list[dict[str, Any]] = []
+                        for block in raw_content:
+                            if block.get("type") == "text":
+                                text_parts.append(block.get("text", ""))
+                            else:
+                                att_descs.append(
+                                    self._content_block_to_descriptor(block)
+                                )
+                        if att_descs:
+                            events.append(
+                                {
+                                    "type": "CONVERSATION_MESSAGE",
+                                    "payload": {
+                                        "role": "user",
+                                        "content": "\n".join(text_parts),
+                                        "attachments": att_descs,
+                                    },
+                                }
+                            )
+
                 if role == "assistant":
                     tool_calls = d.get("tool_calls") or []
                     reasoning = d.get("reasoning_content")

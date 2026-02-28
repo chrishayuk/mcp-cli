@@ -170,6 +170,11 @@ def main_callback(
         "--multi-agent",
         help="Enable multi-agent orchestration tools (agent_spawn, agent_stop, etc.). Implies --dashboard.",
     ),
+    attach: list[str] | None = typer.Option(
+        None,
+        "--attach",
+        help="Attach files to the first message (repeatable: --attach img.png --attach code.py).",
+    ),
 ) -> None:
     """MCP CLI - If no subcommand is given, start chat mode."""
 
@@ -401,6 +406,7 @@ def main_callback(
                 no_browser=no_browser,
                 dashboard_port=dashboard_port,
                 multi_agent=multi_agent,
+                initial_attachments=attach,
             )
             logger.debug(f"Chat mode completed with success: {success}")
         except asyncio.TimeoutError:
@@ -524,6 +530,11 @@ def _chat_command(
         False,
         "--multi-agent",
         help="Enable multi-agent orchestration tools (agent_spawn, agent_stop, etc.). Implies --dashboard.",
+    ),
+    attach: list[str] | None = typer.Option(
+        None,
+        "--attach",
+        help="Attach files to the first message (repeatable: --attach img.png --attach code.py).",
     ),
 ) -> None:
     """Start chat mode (same as default behavior without subcommand)."""
@@ -664,6 +675,7 @@ def _chat_command(
                 no_browser=no_browser,
                 dashboard_port=dashboard_port,
                 multi_agent=multi_agent,
+                initial_attachments=attach,
             )
             logger.debug(f"Chat mode completed with success: {success}")
         except asyncio.TimeoutError:

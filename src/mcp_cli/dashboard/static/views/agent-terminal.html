@@ -277,6 +277,36 @@ body {
   flex-direction: column;
   overflow: hidden;
 }
+
+/* ── Attachment UI ─────────────────────────────────────────────── */
+.attachment-strip { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.att-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--dash-bg); border: 1px solid var(--dash-border);
+  border-radius: 4px; padding: 3px 8px; font-size: 11px;
+  color: var(--dash-fg-muted); cursor: default;
+}
+.att-badge .att-icon { font-size: 13px; }
+.att-badge .att-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.att-badge .att-size { font-size: 10px; opacity: 0.7; }
+.att-image-preview {
+  max-width: 200px; max-height: 150px; border-radius: var(--dash-radius);
+  border: 1px solid var(--dash-border); margin-top: 4px; cursor: pointer;
+}
+.att-image-preview:hover { opacity: 0.85; }
+.att-text-preview {
+  background: var(--dash-bg); border: 1px solid var(--dash-border);
+  border-radius: var(--dash-radius); padding: 6px 8px; margin-top: 4px;
+  font-family: var(--dash-font-mono); font-size: 11px; white-space: pre-wrap;
+  max-height: 80px; overflow: hidden; cursor: pointer; position: relative;
+}
+.att-text-preview.expanded { max-height: none; }
+.att-text-preview .att-text-fade {
+  position: absolute; bottom: 0; left: 0; right: 0; height: 30px;
+  background: linear-gradient(transparent, var(--dash-bg)); pointer-events: none;
+}
+.att-text-preview.expanded .att-text-fade { display: none; }
+.att-audio-player { margin-top: 4px; width: 100%; max-width: 280px; height: 32px; }
 </style>
 </head>
 <body>
@@ -425,9 +455,15 @@ function handleConversationMessage(payload) {
     return; // tool_calls shown as cards; content usually empty
   }
 
-  if (!content) return;
+  if (!content && !(payload.attachments && payload.attachments.length)) return;
 
-  const bubble = addMessageBubble(role, content, streaming);
+  const bubble = addMessageBubble(role, content || '', streaming);
+
+  // Render attachment badges / previews if present
+  if (payload.attachments && payload.attachments.length > 0) {
+    renderAttachments(bubble, payload.attachments);
+  }
+
   if (streaming) {
     streamingBubble = bubble;
     streamingContent = content || '';
@@ -756,6 +792,62 @@ function closeSearch() {
   clearHighlights();
   searchCount.textContent = '';
   searchInput.value = '';
+}
+
+// ── Attachment rendering ──────────────────────────────────────────────
+function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return '';
+  if (bytes < 1024) return bytes + 'B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + 'KB';
+  return (bytes / 1048576).toFixed(1) + 'MB';
+}
+
+function renderAttachments(bubble, attachments) {
+  const strip = document.createElement('div');
+  strip.className = 'attachment-strip';
+  for (const att of attachments) {
+    const kind = att.kind || 'unknown';
+    const icon = kind === 'image' ? '\uD83D\uDDBC\uFE0F' :
+                 kind === 'audio' ? '\uD83C\uDFB5' :
+                 kind === 'text'  ? '\uD83D\uDCC4' : '\uD83D\uDCCE';
+    const badge = document.createElement('div');
+    badge.className = 'att-badge';
+    badge.innerHTML = '<span class="att-icon">' + icon + '</span>' +
+      '<span class="att-name" title="' + esc(att.display_name || '') + '">' + esc(att.display_name || '') + '</span>' +
+      '<span class="att-size">' + formatBytes(att.size_bytes) + '</span>';
+    strip.appendChild(badge);
+
+    if (kind === 'image' && att.preview_url) {
+      const img = document.createElement('img');
+      img.className = 'att-image-preview';
+      img.src = att.preview_url;
+      img.alt = att.display_name || 'image';
+      img.loading = 'lazy';
+      img.addEventListener('click', function() { window.open(att.preview_url, '_blank'); });
+      strip.appendChild(img);
+    }
+    if (kind === 'text' && att.text_preview) {
+      const pre = document.createElement('div');
+      pre.className = 'att-text-preview';
+      pre.textContent = att.text_preview;
+      if (att.text_truncated) {
+        const fade = document.createElement('div');
+        fade.className = 'att-text-fade';
+        pre.appendChild(fade);
+      }
+      pre.addEventListener('click', function() { pre.classList.toggle('expanded'); });
+      strip.appendChild(pre);
+    }
+    if (kind === 'audio' && att.audio_data_uri) {
+      const audio = document.createElement('audio');
+      audio.className = 'att-audio-player';
+      audio.controls = true;
+      audio.src = att.audio_data_uri;
+      strip.appendChild(audio);
+    }
+  }
+  const contentEl = bubble.querySelector('.msg-content');
+  if (contentEl) { contentEl.after(strip); } else { bubble.appendChild(strip); }
 }
 
 // Register hljs languages if available

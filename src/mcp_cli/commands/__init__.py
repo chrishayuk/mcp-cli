@@ -109,6 +109,7 @@ def register_all_commands() -> None:
     from mcp_cli.commands.apps import AppsCommand
     from mcp_cli.commands.memory import MemoryCommand
     from mcp_cli.commands.plan import PlanCommand
+    from mcp_cli.commands.attach import AttachCommand
 
     # Register basic commands
     registry.register(HelpCommand())
@@ -159,6 +160,9 @@ def register_all_commands() -> None:
 
     # Register plan command
     registry.register(PlanCommand())
+
+    # Register attach command (multi-modal file staging)
+    registry.register(AttachCommand())
 
     # All commands have been migrated!
     # - tools (with subcommands: list, call, confirm)

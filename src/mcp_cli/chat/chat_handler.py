@@ -54,6 +54,7 @@ async def handle_chat_mode(
     dashboard_port: int = 0,
     agent_id: str = "default",
     multi_agent: bool = False,
+    initial_attachments: list[str] | None = None,
 ) -> bool:
     """
     Launch the interactive chat loop with streaming support.
@@ -129,6 +130,18 @@ async def handle_chat_mode(
         if not await ctx.initialize(on_progress=on_progress):
             output.error("Failed to initialize chat context.")
             return False
+
+        # Stage initial attachments from --attach CLI flag
+        if initial_attachments:
+            from mcp_cli.chat.attachments import process_local_file
+
+            for path in initial_attachments:
+                try:
+                    att = process_local_file(path)
+                    ctx.attachment_staging.stage(att)
+                    logger.info("Staged initial attachment: %s", att.display_name)
+                except (FileNotFoundError, ValueError) as exc:
+                    output.error(f"Cannot attach {path}: {exc}")
 
         # Update global context with initialized data
         await app_context.initialize()
@@ -249,9 +262,9 @@ async def handle_chat_mode(
         # Auto-save session on exit
         if ctx is not None and ctx.conversation_history:
             try:
-                path = ctx.save_session()
-                if path:
-                    logger.info("Session auto-saved: %s", path)
+                saved = ctx.save_session()
+                if saved:
+                    logger.info("Session auto-saved: %s", saved)
             except Exception as exc:
                 logger.warning("Failed to auto-save session: %s", exc)
 
@@ -494,12 +507,59 @@ async def _run_enhanced_chat_loop(
                 # Normal conversation turn with streaming support
                 if ui.verbose_mode:
                     ui.print_user_message(user_msg)
-                await ctx.add_user_message(user_msg)
 
-                # Dashboard: broadcast user message
+                # Multi-modal processing: inline refs, staged attachments, image URLs
+                from mcp_cli.chat.attachments import (
+                    parse_inline_refs,
+                    process_local_file,
+                    detect_image_urls,
+                    build_multimodal_content,
+                )
+
+                cleaned_text, inline_paths = parse_inline_refs(user_msg)
+
+                # Process inline @file: references
+                inline_atts = []
+                for p in inline_paths:
+                    try:
+                        inline_atts.append(process_local_file(p))
+                    except (FileNotFoundError, ValueError) as exc:
+                        output.error(f"Cannot attach {p}: {exc}")
+
+                # Drain staged attachments from /attach command
+                staged = ctx.attachment_staging.drain()
+
+                # Detect image URLs in message text
+                image_urls = detect_image_urls(cleaned_text)
+
+                # Build content (str when text-only, list[dict] when multi-modal)
+                content = build_multimodal_content(
+                    cleaned_text, staged + inline_atts, image_urls
+                )
+
+                await ctx.add_user_message(content)
+
+                # Dashboard: broadcast user message with attachment metadata
                 if _dash := getattr(ctx, "dashboard_bridge", None):
                     try:
-                        await _dash.on_message("user", user_msg)
+                        att_descriptors = None
+                        all_atts = staged + inline_atts
+                        if all_atts or image_urls:
+                            from mcp_cli.chat.attachments import (
+                                attachment_descriptor,
+                                process_url as _process_url,
+                            )
+
+                            att_descriptors = [
+                                attachment_descriptor(a) for a in all_atts
+                            ]
+                            for _url in image_urls:
+                                att_descriptors.append(
+                                    attachment_descriptor(_process_url(_url))
+                                )
+                        await _dash.on_message(
+                            "user", user_msg, attachments=att_descriptors
+                        )
                     except Exception as _e:
                         logger.debug("Dashboard on_message(user) error: %s", _e)
 

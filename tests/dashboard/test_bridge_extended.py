@@ -540,6 +540,138 @@ class TestBuildActivityHistory:
 
 
 # ---------------------------------------------------------------------------
+# Attachment support
+# ---------------------------------------------------------------------------
+
+
+class TestOnMessageWithAttachments:
+    """Verify on_message passes attachments through to payload."""
+
+    @pytest.mark.asyncio
+    async def test_with_attachments(self):
+        bridge, server = _make_bridge()
+        atts = [
+            {"display_name": "photo.png", "kind": "image", "preview_url": "data:..."}
+        ]
+        await bridge.on_message("user", "describe this", attachments=atts)
+        msg = server.broadcast.call_args[0][0]
+        assert msg["payload"]["attachments"] == atts
+        assert msg["payload"]["content"] == "describe this"
+
+    @pytest.mark.asyncio
+    async def test_no_attachments_backward_compat(self):
+        bridge, server = _make_bridge()
+        await bridge.on_message("user", "hello")
+        msg = server.broadcast.call_args[0][0]
+        assert msg["payload"]["attachments"] is None
+
+
+class TestConversationHistoryWithAttachments:
+    """Verify multimodal user messages produce attachments in history."""
+
+    def _make_ctx_with_history(self, messages):
+        class FakeMsg:
+            def __init__(self, d):
+                self._d = d
+
+            def to_dict(self):
+                return self._d
+
+        ctx = MagicMock()
+        ctx.conversation_history = [FakeMsg(m) for m in messages]
+        return ctx
+
+    def test_multimodal_user_message(self):
+        bridge, _ = _make_bridge()
+        bridge.set_context(
+            self._make_ctx_with_history(
+                [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "describe this image"},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": "https://example.com/cat.png"},
+                            },
+                        ],
+                    },
+                    {"role": "assistant", "content": "It's a cat!"},
+                ]
+            )
+        )
+        history = bridge._build_conversation_history()
+        assert len(history) == 2
+        user_msg = history[0]
+        assert user_msg["content"] == "describe this image"
+        assert user_msg["attachments"] is not None
+        assert len(user_msg["attachments"]) == 1
+        assert user_msg["attachments"][0]["kind"] == "image"
+        # Assistant message has no attachments
+        assert history[1]["attachments"] is None
+
+    def test_text_only_no_attachments(self):
+        bridge, _ = _make_bridge()
+        bridge.set_context(
+            self._make_ctx_with_history([{"role": "user", "content": "hello"}])
+        )
+        history = bridge._build_conversation_history()
+        assert history[0]["attachments"] is None
+
+
+class TestActivityHistoryWithAttachments:
+    """Verify user attachment events appear in activity history."""
+
+    def _make_ctx_with_history(self, messages):
+        class FakeMsg:
+            def __init__(self, d):
+                self._d = d
+
+            def to_dict(self):
+                return self._d
+
+        ctx = MagicMock()
+        ctx.conversation_history = [FakeMsg(m) for m in messages]
+        return ctx
+
+    def test_user_attachments_in_activity(self):
+        bridge, _ = _make_bridge()
+        bridge.set_context(
+            self._make_ctx_with_history(
+                [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "look at this"},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": "https://example.com/img.png"},
+                            },
+                        ],
+                    },
+                ]
+            )
+        )
+        events = bridge._build_activity_history()
+        assert events is not None
+        assert len(events) == 1
+        assert events[0]["payload"]["role"] == "user"
+        assert events[0]["payload"]["attachments"] is not None
+
+    def test_no_attachments_no_user_event(self):
+        bridge, _ = _make_bridge()
+        bridge.set_context(
+            self._make_ctx_with_history(
+                [
+                    {"role": "user", "content": "hello"},
+                    {"role": "assistant", "content": "hi"},
+                ]
+            )
+        )
+        assert bridge._build_activity_history() is None
+
+
+# ---------------------------------------------------------------------------
 # agent_id plumbing
 # ---------------------------------------------------------------------------
 
