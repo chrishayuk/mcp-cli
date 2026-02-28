@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Activity Stream</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+:root {
+  --dash-bg: #1e1e2e; --dash-bg-surface: #262637; --dash-bg-hover: #2e2e42;
+  --dash-fg: #e0e0e0; --dash-fg-muted: #888899;
+  --dash-accent: #7aa2f7; --dash-success: #9ece6a; --dash-warning: #e0af68;
+  --dash-error: #f7768e; --dash-info: #7dcfff; --dash-border: #3b3b52;
+  --dash-font-mono: 'JetBrains Mono','Fira Code',monospace;
+  --dash-font-ui: 'Inter',-apple-system,sans-serif;
+  --dash-font-size: 13px; --dash-radius: 6px; --dash-spacing: 8px;
+}
+body {
+  background: var(--dash-bg);
+  color: var(--dash-fg);
+  font-family: var(--dash-font-ui);
+  font-size: var(--dash-font-size);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* Filter bar */
+#filter-bar {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--dash-bg-surface);
+  border-bottom: 1px solid var(--dash-border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+#filter-bar input, #filter-bar select {
+  background: var(--dash-bg);
+  border: 1px solid var(--dash-border);
+  border-radius: var(--dash-radius);
+  color: var(--dash-fg);
+  padding: 3px 7px;
+  font-size: 11px;
+  font-family: var(--dash-font-ui);
+}
+#filter-bar input { flex: 1; min-width: 80px; }
+
+/* Event list */
+#events {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+#events::-webkit-scrollbar { width: 6px; }
+#events::-webkit-scrollbar-track { background: transparent; }
+#events::-webkit-scrollbar-thumb { background: var(--dash-border); border-radius: 3px; }
+
+/* Event card */
+.event-card {
+  background: var(--dash-bg-surface);
+  border: 1px solid var(--dash-border);
+  border-radius: var(--dash-radius);
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: background 0.1s;
+  border-left-width: 3px;
+}
+.event-card:hover { background: var(--dash-bg-hover); }
+.event-card.tool-ok   { border-left-color: var(--dash-accent); }
+.event-card.tool-err  { border-left-color: var(--dash-error); }
+.event-card.state-chg { border-left-color: var(--dash-fg-muted); }
+.event-card.user-act  { border-left-color: var(--dash-success); }
+
+.event-header {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+}
+.event-tool   { font-weight: 600; font-family: var(--dash-font-mono); color: var(--dash-accent); }
+.event-server { color: var(--dash-fg-muted); font-size: 11px; }
+.event-dur    { color: var(--dash-fg-muted); font-size: 11px; margin-left: auto; }
+.event-ts     { color: var(--dash-fg-muted); font-size: 10px; }
+.event-status { font-size: 11px; }
+.event-status.ok  { color: var(--dash-success); }
+.event-status.err { color: var(--dash-error); }
+
+.event-detail {
+  display: none;
+  margin-top: 6px;
+  font-family: var(--dash-font-mono);
+  font-size: 11px;
+  color: var(--dash-fg-muted);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--dash-bg);
+  border-radius: var(--dash-radius);
+  padding: 6px;
+}
+.event-card.expanded .event-detail { display: block; }
+
+/* Scroll-to-bottom button + badge */
+#scroll-btn {
+  display: none;
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  background: var(--dash-accent);
+  color: var(--dash-bg);
+  border: none;
+  border-radius: 12px;
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  z-index: 10;
+}
+#events-wrapper { flex: 1; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+</style>
+</head>
+<body>
+
+<div id="filter-bar">
+  <input type="text" id="search-input" placeholder="Search…">
+  <select id="server-filter"><option value="">All servers</option></select>
+  <select id="status-filter">
+    <option value="">All</option>
+    <option value="ok">Success</option>
+    <option value="err">Error</option>
+  </select>
+</div>
+
+<div id="events-wrapper">
+  <div id="events"></div>
+  <button id="scroll-btn">↓ Scroll to bottom</button>
+</div>
+
+<script>
+'use strict';
+const PROTOCOL = 'mcp-dashboard';
+const VERSION  = 1;
+
+let allEvents   = [];
+let filterText  = '';
+let filterServer = '';
+let filterStatus = '';
+let autoScroll  = true;
+let newCount    = 0;
+let servers     = new Set();
+
+// Virtual scroll threshold
+const VIRT_THRESHOLD = 500;
+
+const eventsEl    = document.getElementById('events');
+const scrollBtn   = document.getElementById('scroll-btn');
+const searchInput = document.getElementById('search-input');
+const serverSel   = document.getElementById('server-filter');
+const statusSel   = document.getElementById('status-filter');
+
+// ── postMessage handler ─────────────────────────────────────────
+window.addEventListener('message', (evt) => {
+  const msg = evt.data;
+  if (!msg || msg.protocol !== PROTOCOL) return;
+
+  switch (msg.type) {
+    case 'INIT':
+      applyTheme(msg.payload.theme || {});
+      sendReady();
+      break;
+    case 'THEME':
+      applyTheme(msg.payload);
+      break;
+    case 'TOOL_RESULT':
+      addEvent('tool', msg.payload);
+      break;
+    case 'AGENT_STATE':
+      addEvent('state', msg.payload);
+      break;
+  }
+});
+
+// Works both as embedded iframe and as a popout window
+function getShell() {
+  if (window.parent !== window) return window.parent;
+  if (window.opener) return window.opener;
+  return null;
+}
+
+function sendReady() {
+  const shell = getShell();
+  if (!shell) return;
+  shell.postMessage({
+    protocol: PROTOCOL, version: VERSION,
+    type: 'READY',
+    payload: { name: 'Activity Stream', icon: 'activity', accepts: ['TOOL_RESULT', 'AGENT_STATE'], version: 1 }
+  }, '*');
+}
+
+// ── Theme ───────────────────────────────────────────────────────
+function applyTheme(t) {
+  const r = document.documentElement;
+  const set = (k, v) => v && r.style.setProperty(k, v);
+  set('--dash-bg', t.bg); set('--dash-bg-surface', t.bg_surface);
+  set('--dash-bg-hover', t.bg_hover); set('--dash-fg', t.fg);
+  set('--dash-fg-muted', t.fg_muted); set('--dash-accent', t.accent);
+  set('--dash-success', t.success); set('--dash-warning', t.warning);
+  set('--dash-error', t.error); set('--dash-info', t.info);
+  set('--dash-border', t.border); set('--dash-font-mono', t.font_mono);
+  set('--dash-font-ui', t.font_ui); set('--dash-font-size', t.font_size);
+  set('--dash-radius', t.radius); set('--dash-spacing', t.spacing);
+}
+
+// ── Events ──────────────────────────────────────────────────────
+function addEvent(kind, payload) {
+  const ev = { kind, payload, ts: Date.now(), id: allEvents.length };
+  allEvents.push(ev);
+
+  if (kind === 'tool' && payload.server_name) {
+    if (!servers.has(payload.server_name)) {
+      servers.add(payload.server_name);
+      const opt = document.createElement('option');
+      opt.value = payload.server_name;
+      opt.textContent = payload.server_name;
+      serverSel.appendChild(opt);
+    }
+  }
+
+  if (matchesFilter(ev)) {
+    renderEvent(ev);
+  }
+}
+
+function matchesFilter(ev) {
+  const p = ev.payload;
+  if (filterStatus === 'ok'  && p.success === false) return false;
+  if (filterStatus === 'err' && p.success !== false)  return false;
+  if (filterServer && p.server_name !== filterServer) return false;
+  if (filterText) {
+    const haystack = JSON.stringify(p).toLowerCase();
+    if (!haystack.includes(filterText)) return false;
+  }
+  return true;
+}
+
+function renderEvent(ev) {
+  const card = buildCard(ev);
+  eventsEl.appendChild(card);
+  trimDom();
+  if (autoScroll) {
+    eventsEl.scrollTop = eventsEl.scrollHeight;
+  } else {
+    newCount++;
+    updateScrollBtn();
+  }
+}
+
+function buildCard(ev) {
+  const p   = ev.payload;
+  const card = document.createElement('div');
+  const ok   = p.success !== false;
+
+  let cls = 'event-card ';
+  if (ev.kind === 'tool')  cls += ok ? 'tool-ok' : 'tool-err';
+  if (ev.kind === 'state') cls += 'state-chg';
+  card.className = cls;
+  card.dataset.evId = ev.id;
+
+  const tsStr = new Date(ev.ts).toLocaleTimeString();
+  const durStr = p.duration_ms != null ? `${p.duration_ms}ms` : '';
+
+  if (ev.kind === 'tool') {
+    const summary = summariseResult(p.result);
+    card.innerHTML = `
+      <div class="event-header">
+        <span class="event-tool">🔧 ${esc(p.tool_name || '')}</span>
+        <span class="event-server">${esc(p.server_name || '')}</span>
+        <span class="event-dur">${esc(durStr)}</span>
+      </div>
+      <div class="event-header" style="margin-top:2px">
+        <span class="event-status ${ok ? 'ok' : 'err'}">${ok ? '✓' : '✗'} ${ok ? summary : esc(p.error || 'error')}</span>
+        <span class="event-ts" style="margin-left:auto" title="${new Date(ev.ts).toISOString()}">${tsStr}</span>
+      </div>
+      <div class="event-detail">${esc(JSON.stringify(p, null, 2))}</div>`;
+  } else {
+    const status = p.status || 'unknown';
+    const tool   = p.current_tool ? ` → ${p.current_tool}` : '';
+    card.innerHTML = `
+      <div class="event-header">
+        <span class="event-tool" style="color:var(--dash-fg-muted)">◎ Agent: ${esc(status)}${esc(tool)}</span>
+        <span class="event-ts" style="margin-left:auto">${tsStr}</span>
+      </div>`;
+  }
+
+  card.addEventListener('click', () => card.classList.toggle('expanded'));
+  return card;
+}
+
+function summariseResult(result) {
+  if (result == null) return 'done';
+  if (typeof result === 'string') return result.slice(0, 60) + (result.length > 60 ? '…' : '');
+  if (Array.isArray(result)) return `${result.length} item${result.length !== 1 ? 's' : ''}`;
+  if (typeof result === 'object') {
+    const keys = Object.keys(result);
+    if (keys.length === 0) return '{}';
+    return keys.slice(0, 3).join(', ') + (keys.length > 3 ? '…' : '');
+  }
+  return String(result).slice(0, 60);
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function trimDom() {
+  // Keep at most VIRT_THRESHOLD cards in the DOM
+  const cards = eventsEl.querySelectorAll('.event-card');
+  if (cards.length > VIRT_THRESHOLD + 50) {
+    for (let i = 0; i < 50; i++) cards[i].remove();
+  }
+}
+
+// ── Scroll ──────────────────────────────────────────────────────
+eventsEl.parentElement.addEventListener('scroll', () => {
+  const el = eventsEl.parentElement;
+  const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  autoScroll = atBottom;
+  if (atBottom) { newCount = 0; }
+  updateScrollBtn();
+}, { passive: true });
+
+// Fix: scroll events are on the parent wrapper
+const wrapper = document.getElementById('events-wrapper');
+wrapper.style.overflowY = 'auto';
+eventsEl.style.minHeight = '100%';
+
+scrollBtn.addEventListener('click', () => {
+  wrapper.scrollTop = wrapper.scrollHeight;
+  autoScroll = true;
+  newCount = 0;
+  updateScrollBtn();
+});
+
+function updateScrollBtn() {
+  if (autoScroll || newCount === 0) {
+    scrollBtn.style.display = 'none';
+  } else {
+    scrollBtn.style.display = 'block';
+    scrollBtn.textContent = `↓ ${newCount} new`;
+  }
+}
+
+// ── Filters ─────────────────────────────────────────────────────
+searchInput.addEventListener('input', () => {
+  filterText = searchInput.value.toLowerCase();
+  rerender();
+});
+serverSel.addEventListener('change', () => {
+  filterServer = serverSel.value;
+  rerender();
+});
+statusSel.addEventListener('change', () => {
+  filterStatus = statusSel.value;
+  rerender();
+});
+
+function rerender() {
+  eventsEl.innerHTML = '';
+  for (const ev of allEvents) {
+    if (matchesFilter(ev)) renderEvent(ev);
+  }
+}
+
+// Send READY immediately (shell will send INIT back)
+sendReady();
+</script>
+</body>
+</html>

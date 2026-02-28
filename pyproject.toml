@@ -41,6 +41,9 @@ vault = [
 apps = [
   "websockets>=13.0"
 ]
+dashboard = [
+  "websockets>=13.0"
+]
 wasm = []
 dev = [
   "numpy>=2.2.3",
@@ -61,7 +64,7 @@ where = ["src"]
 include = ["mcp_cli*"]
 
 [tool.setuptools.package-data]
-mcp_cli = ["server_config.json"]
+mcp_cli = ["server_config.json", "dashboard/static/**/*"]
 [dependency-groups]
 dev = [
   "colorama>=0.4.6",

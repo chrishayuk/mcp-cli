@@ -1,0 +1,1267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>mcp-cli dashboard</title>
+<style>
+/* ── Reset ──────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+
+/* ── Theme variables (overwritten by JS) ────────────────────────── */
+:root {
+  --dash-bg: #1e1e2e;
+  --dash-bg-surface: #262637;
+  --dash-bg-hover: #2e2e42;
+  --dash-fg: #e0e0e0;
+  --dash-fg-muted: #888899;
+  --dash-accent: #7aa2f7;
+  --dash-success: #9ece6a;
+  --dash-warning: #e0af68;
+  --dash-error: #f7768e;
+  --dash-info: #7dcfff;
+  --dash-border: #3b3b52;
+  --dash-font-mono: 'JetBrains Mono','Fira Code','Cascadia Code',monospace;
+  --dash-font-ui: 'Inter',-apple-system,sans-serif;
+  --dash-font-size: 13px;
+  --dash-radius: 6px;
+  --dash-spacing: 8px;
+}
+
+body {
+  background: var(--dash-bg);
+  color: var(--dash-fg);
+  font-family: var(--dash-font-ui);
+  font-size: var(--dash-font-size);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ── Toolbar ────────────────────────────────────────────────────── */
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  height: 36px;
+  min-height: 36px;
+  background: var(--dash-bg-surface);
+  border-bottom: 1px solid var(--dash-border);
+  flex-shrink: 0;
+  user-select: none;
+}
+#toolbar .brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--dash-fg);
+}
+#conn-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--dash-error);
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+#conn-dot.connected { background: var(--dash-success); }
+
+#toolbar .spacer { flex: 1; }
+
+.tb-btn {
+  background: transparent;
+  border: 1px solid var(--dash-border);
+  color: var(--dash-fg);
+  padding: 2px 10px;
+  border-radius: var(--dash-radius);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: var(--dash-font-ui);
+  white-space: nowrap;
+}
+.tb-btn:hover { background: var(--dash-bg-hover); }
+
+/* Layout dropdown */
+.dropdown { position: relative; }
+.dropdown-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  background: var(--dash-bg-surface);
+  border: 1px solid var(--dash-border);
+  border-radius: var(--dash-radius);
+  min-width: 140px;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.dropdown-menu.open { display: block; }
+.dropdown-item {
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--dash-fg);
+}
+.dropdown-item:hover { background: var(--dash-bg-hover); }
+.dropdown-item.active { color: var(--dash-accent); }
+
+/* Settings panel */
+#settings-panel {
+  display: none;
+  position: fixed;
+  top: 40px; right: 8px;
+  width: 260px;
+  background: var(--dash-bg-surface);
+  border: 1px solid var(--dash-border);
+  border-radius: var(--dash-radius);
+  z-index: 200;
+  padding: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+#settings-panel.open { display: block; }
+#settings-panel h3 { font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--dash-fg-muted); text-transform: uppercase; letter-spacing: .05em; }
+#settings-panel label { font-size: 12px; display: block; margin-bottom: 4px; }
+#settings-panel select { width: 100%; padding: 4px 6px; background: var(--dash-bg); border: 1px solid var(--dash-border); border-radius: var(--dash-radius); color: var(--dash-fg); font-size: 12px; }
+
+/* ── Grid layout ────────────────────────────────────────────────── */
+#grid-root {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+.grid-row {
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  min-height: 150px;
+}
+.grid-row + .grid-row { border-top: 1px solid var(--dash-border); }
+
+/* Panel */
+.panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 200px;
+  position: relative;
+}
+.panel + .panel { border-left: 1px solid var(--dash-border); }
+.panel.minimized .panel-body { display: none; }
+.panel.minimized .panel-header { border-bottom: none; }
+
+/* Panel header */
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  height: 28px;
+  min-height: 28px;
+  background: var(--dash-bg-surface);
+  border-bottom: 1px solid var(--dash-border);
+  flex-shrink: 0;
+  cursor: grab;
+  user-select: none;
+  position: relative; /* for view-picker dropdown */
+}
+.panel-header:active { cursor: grabbing; }
+.panel-icon { font-size: 13px; flex-shrink: 0; }
+.panel-view-toggle {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: var(--dash-fg);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--dash-font-ui);
+  cursor: pointer;
+  text-align: left;
+  padding: 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.panel-view-toggle:hover { color: var(--dash-accent); }
+.panel-view-menu {
+  position: absolute;
+  top: 28px;
+  left: 0;
+  min-width: 180px;
+  z-index: 50;
+}
+.panel-btn {
+  background: transparent;
+  border: none;
+  color: var(--dash-fg-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1;
+}
+.panel-btn:hover { background: var(--dash-bg-hover); color: var(--dash-fg); }
+
+/* Panel body */
+.panel-body {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+.panel-body iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+
+/* Panel placeholder */
+.panel-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--dash-fg-muted);
+  font-size: 12px;
+  padding: 16px;
+  text-align: center;
+}
+
+/* Resize handles */
+.resize-handle-col {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+.resize-handle-col:hover, .resize-handle-col.dragging { background: var(--dash-accent); }
+.resize-handle-row {
+  height: 4px;
+  cursor: row-resize;
+  background: transparent;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+.resize-handle-row:hover, .resize-handle-row.dragging { background: var(--dash-accent); }
+
+/* Notification toast */
+#toast-container {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast {
+  background: var(--dash-bg-surface);
+  border: 1px solid var(--dash-border);
+  border-radius: var(--dash-radius);
+  padding: 8px 12px;
+  font-size: 12px;
+  max-width: 300px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  animation: slideIn 0.2s ease;
+}
+.toast.info { border-left: 3px solid var(--dash-info); }
+.toast.success { border-left: 3px solid var(--dash-success); }
+.toast.warning { border-left: 3px solid var(--dash-warning); }
+.toast.error { border-left: 3px solid var(--dash-error); }
+@keyframes slideIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+
+/* ── Responsive: stack panels vertically below 768px ─────────────── */
+@media (max-width: 768px) {
+  .grid-row { flex-direction: column; }
+  .panel { min-width: unset; min-height: 150px; }
+  .panel + .panel { border-left: none; border-top: 1px solid var(--dash-border); }
+  .resize-handle-col { display: none; }
+}
+
+/* ── View stash: keeps iframes in document to preserve state ──────── */
+#view-stash {
+  position: fixed;
+  left: -10000px;
+  top: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+</style>
+</head>
+<body>
+
+<!-- ── View stash: iframes park here between layout changes ─────── -->
+<div id="view-stash" aria-hidden="true"></div>
+
+<!-- ── Toolbar ──────────────────────────────────────────────────── -->
+<div id="toolbar">
+  <div class="brand">
+    <span id="conn-dot"></span>
+    <span>mcp-cli dashboard</span>
+  </div>
+
+  <div class="dropdown" id="layout-dropdown">
+    <button class="tb-btn" id="layout-btn">Layout ▾</button>
+    <div class="dropdown-menu" id="layout-menu"></div>
+  </div>
+
+  <button class="tb-btn" id="add-panel-btn">+ Add Panel</button>
+  <div class="dropdown" id="add-panel-dropdown">
+    <div class="dropdown-menu" id="add-panel-menu"></div>
+  </div>
+
+  <div class="spacer"></div>
+
+  <button class="tb-btn" id="settings-btn">⚙</button>
+</div>
+
+<!-- ── Settings panel ───────────────────────────────────────────── -->
+<div id="settings-panel">
+  <h3>Settings</h3>
+  <label for="theme-select">Theme</label>
+  <select id="theme-select"></select>
+  <br>
+  <button class="tb-btn" style="margin-top:8px;width:100%" id="save-layout-btn">Save Current Layout…</button>
+</div>
+
+<!-- ── Grid root ────────────────────────────────────────────────── -->
+<div id="grid-root"></div>
+
+<!-- ── Toast container ──────────────────────────────────────────── -->
+<div id="toast-container"></div>
+
+<script>
+'use strict';
+
+// ================================================================
+//  Constants
+// ================================================================
+const PROTOCOL = 'mcp-dashboard';
+const VERSION  = 1;
+const WS_URL   = `ws://${location.host}/ws`;
+const READY_TIMEOUT_MS = 5000;
+
+// ================================================================
+//  State
+// ================================================================
+let ws           = null;
+let connected    = false;
+let themes       = {};
+let activeTheme  = localStorage.getItem('dash-theme') || 'dark';
+let viewRegistry = [];
+let layoutConfig = null;
+let panels       = {};   // panelId → { panelId, el, viewId, rowEl }
+let panelCounter = 0;
+const viewPool      = new Map(); // viewId → { iframe, ready, accepts, _readyTimeout }
+const popoutWindows = new Map(); // viewId → { win, intervalId }
+
+// ================================================================
+//  WebSocket
+// ================================================================
+function connectWS() {
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    connected = true;
+    document.getElementById('conn-dot').classList.add('connected');
+  };
+
+  ws.onclose = () => {
+    connected = false;
+    document.getElementById('conn-dot').classList.remove('connected');
+    setTimeout(connectWS, 5000);
+  };
+
+  ws.onerror = () => {
+    ws.close();
+  };
+
+  ws.onmessage = (evt) => {
+    let msg;
+    try { msg = JSON.parse(evt.data); } catch { return; }
+    handleBridgeMessage(msg);
+  };
+}
+
+function sendToBridge(msg) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(msg));
+  }
+}
+
+// ================================================================
+//  Bridge message routing
+// ================================================================
+function handleBridgeMessage(msg) {
+  switch (msg.type) {
+    case 'VIEW_REGISTRY':
+      viewRegistry = msg.views || [];
+      rebuildAddPanelMenu();
+      break;
+
+    case 'TOOL_RESULT':
+      routeToViews('TOOL_RESULT', msg.payload);
+      break;
+
+    case 'AGENT_STATE':
+      broadcastToViews('AGENT_STATE', msg.payload);
+      break;
+
+    case 'CONVERSATION_MESSAGE':
+      broadcastToViewType('conversation', 'CONVERSATION_MESSAGE', msg.payload);
+      break;
+
+    case 'CONVERSATION_TOKEN':
+      broadcastToViewType('conversation', 'CONVERSATION_TOKEN', msg.payload);
+      break;
+
+    case 'THEME':
+      applyTheme(msg.payload);
+      break;
+
+    default:
+      break;
+  }
+}
+
+// ================================================================
+//  View Pool — iframes persist across layout changes
+// ================================================================
+function srcForView(viewId) {
+  const vInfo = viewRegistry.find(v => v.id === viewId);
+  if (vInfo && vInfo.url) return vInfo.url;
+  if (viewId === 'builtin:agent-terminal') return '/views/agent-terminal.html';
+  if (viewId === 'builtin:activity-stream') return '/views/activity-stream.html';
+  return '';
+}
+
+function getOrCreateView(viewId) {
+  if (viewPool.has(viewId)) return viewPool.get(viewId);
+  const view = { iframe: null, ready: false, accepts: [], _readyTimeout: null };
+  const iframe = document.createElement('iframe');
+  iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
+  iframe.allow = '';
+  iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
+  iframe.src = srcForView(viewId);
+  iframe.dataset.viewId = viewId;
+  view.iframe = iframe;
+  viewPool.set(viewId, view);
+  // Park in stash immediately — iframe must stay in document to preserve browsing context
+  document.getElementById('view-stash').appendChild(iframe);
+  return view;
+}
+
+function attachViewToSlot(viewId, bodyEl) {
+  if (!viewId) return;
+  const view = getOrCreateView(viewId);
+  // Detach from any current parent without destroying the iframe
+  if (view.iframe.parentNode) view.iframe.parentNode.removeChild(view.iframe);
+  bodyEl.appendChild(view.iframe);
+  // Start ready timeout only for first load
+  if (!view.ready && !view._readyTimeout) {
+    view._readyTimeout = setTimeout(() => {
+      if (!view.ready) {
+        const p = findPanelHostingView(viewId);
+        const body = p?.el.querySelector('.panel-body');
+        if (body) showPanelError(body, 'View did not respond in time.');
+      }
+    }, READY_TIMEOUT_MS);
+  }
+}
+
+function findViewIdByWindow(win) {
+  for (const [viewId, view] of viewPool) {
+    if (view.iframe && view.iframe.contentWindow === win) return viewId;
+  }
+  return null;
+}
+
+function findPanelHostingView(viewId) {
+  for (const panel of Object.values(panels)) {
+    if (panel.viewId === viewId) return panel;
+  }
+  return null;
+}
+
+function sendInitToView(viewId, panel) {
+  const view = viewPool.get(viewId);
+  if (!view || !view.iframe) return;
+  const themeObj = themes[activeTheme] || themes['dark'] || {};
+  const bodyEl = panel.el.querySelector('.panel-body');
+  const dims = bodyEl
+    ? { width: bodyEl.clientWidth, height: bodyEl.clientHeight }
+    : { width: 800, height: 450 };
+  postToIframe(view.iframe, 'INIT', {
+    view_id: viewId,
+    panel_id: panel.panelId,
+    agent_id: null,
+    theme: themeToCSS(themeObj),
+    dimensions: dims,
+  });
+}
+
+function updatePanelHeader(panel) {
+  const iconEl = panel.el.querySelector('.panel-icon');
+  const nameEl = panel.el.querySelector('.panel-view-toggle');
+  if (iconEl) iconEl.textContent = iconForView(panel.viewId);
+  if (nameEl) nameEl.textContent = labelForView(panel.viewId) + ' ▾';
+}
+
+function switchPanelView(panelId, newViewId) {
+  const panel = panels[panelId];
+  if (!panel || panel.viewId === newViewId) return;
+  const body = panel.el.querySelector('.panel-body');
+  if (!body) return;
+  // Detach current view (keeps it alive in pool)
+  if (panel.viewId) {
+    const oldView = viewPool.get(panel.viewId);
+    if (oldView?.iframe.parentNode === body) body.removeChild(oldView.iframe);
+  }
+  panel.viewId = newViewId;
+  attachViewToSlot(newViewId, body);
+  updatePanelHeader(panel);
+  // If already ready, send INIT with current dimensions
+  const view = viewPool.get(newViewId);
+  if (view?.ready) sendInitToView(newViewId, panel);
+}
+
+// ================================================================
+//  Message routing
+// ================================================================
+function routeToViews(type, payload) {
+  const serverName = payload.server_name;
+  const metaView   = payload.meta_ui?.view;
+  for (const panel of Object.values(panels)) {
+    const view = viewPool.get(panel.viewId);
+    if (!view?.ready || !view.iframe) continue;
+    const vid = panel.viewId;
+    if (vid === 'builtin:activity-stream') { postToIframe(view.iframe, type, payload); continue; }
+    if (metaView && vid === metaView)       { postToIframe(view.iframe, type, payload); continue; }
+    const vInfo = viewRegistry.find(v => v.id === vid);
+    if (vInfo && vInfo.source === serverName) postToIframe(view.iframe, type, payload);
+  }
+  for (const [viewId, entry] of popoutWindows) {
+    if (entry.win.closed) continue;
+    if (viewId === 'builtin:activity-stream' ||
+        (metaView && viewId === metaView) ||
+        viewRegistry.find(v => v.id === viewId && v.source === serverName)) {
+      postToPopout(entry.win, type, payload);
+    }
+  }
+}
+
+function broadcastToViews(type, payload) {
+  for (const panel of Object.values(panels)) {
+    const view = viewPool.get(panel.viewId);
+    if (view?.ready && view.iframe) postToIframe(view.iframe, type, payload);
+  }
+  for (const [, entry] of popoutWindows) {
+    if (!entry.win.closed) postToPopout(entry.win, type, payload);
+  }
+}
+
+function broadcastToViewType(viewType, type, payload) {
+  for (const panel of Object.values(panels)) {
+    const view = viewPool.get(panel.viewId);
+    if (!view?.ready || !view.iframe) continue;
+    const vInfo = viewRegistry.find(v => v.id === panel.viewId);
+    if (vInfo && vInfo.type === viewType) {
+      postToIframe(view.iframe, type, payload);
+    } else if (!vInfo && panel.viewId === 'builtin:agent-terminal' && viewType === 'conversation') {
+      // Fallback before viewRegistry is populated
+      postToIframe(view.iframe, type, payload);
+    }
+  }
+  for (const [viewId, entry] of popoutWindows) {
+    if (entry.win.closed) continue;
+    const vInfo = viewRegistry.find(v => v.id === viewId);
+    const matches = (vInfo && vInfo.type === viewType) ||
+                    (!vInfo && viewId === 'builtin:agent-terminal' && viewType === 'conversation');
+    if (matches) postToPopout(entry.win, type, payload);
+  }
+}
+
+function postToIframe(iframe, type, payload) {
+  try {
+    iframe.contentWindow.postMessage({ protocol: PROTOCOL, version: VERSION, type, payload }, '*');
+  } catch (e) { /* ignore — iframe may not be ready */ }
+}
+
+function populateViewMenu(menu, panelId) {
+  menu.innerHTML = '';
+  const currentViewId = panels[panelId]?.viewId;
+  for (const v of viewRegistry) {
+    const item = document.createElement('div');
+    item.className = 'dropdown-item' + (v.id === currentViewId ? ' active' : '');
+    item.textContent = (v.icon ? v.icon + ' ' : '') + v.name;
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menu.classList.remove('open');
+      if (v.id !== currentViewId) switchPanelView(panelId, v.id);
+    });
+    menu.appendChild(item);
+  }
+  if (!menu.children.length) {
+    const item = document.createElement('div');
+    item.className = 'dropdown-item';
+    item.style.color = 'var(--dash-fg-muted)';
+    item.textContent = 'No views available';
+    menu.appendChild(item);
+  }
+}
+
+// ================================================================
+//  View → Shell postMessage handler
+// ================================================================
+window.addEventListener('message', (evt) => {
+  const msg = evt.data;
+  if (!msg || msg.protocol !== PROTOCOL) return;
+  const viewId = findViewIdByWindow(evt.source);
+  const panel  = viewId ? findPanelHostingView(viewId) : null;
+
+  switch (msg.type) {
+    case 'READY': {
+      if (viewId) {
+        handleViewReady(viewId, msg.payload);
+      } else {
+        const popId = findPopoutViewIdByWindow(evt.source);
+        if (popId) handlePopoutReady(popId, msg.payload, evt.source);
+      }
+      break;
+    }
+    case 'USER_ACTION':
+      sendToBridge({ type: 'USER_ACTION', view_id: viewId, ...msg.payload });
+      break;
+    case 'REQUEST_TOOL':
+      sendToBridge({ type: 'REQUEST_TOOL', view_id: viewId, ...msg.payload });
+      break;
+    case 'USER_MESSAGE':
+      sendToBridge({ type: 'USER_MESSAGE', content: msg.payload.content });
+      break;
+    case 'USER_COMMAND':
+      sendToBridge({ type: 'USER_COMMAND', command: msg.payload.command });
+      break;
+    case 'NOTIFY':
+      showToast(msg.payload.level || 'info', msg.payload.message, msg.payload.duration_ms);
+      break;
+    default:
+      break;
+  }
+});
+
+function handleViewReady(viewId, payload) {
+  const view = viewPool.get(viewId);
+  if (!view) return;
+  const wasReady = view.ready;
+  view.ready = true;
+  view.accepts = payload.accepts || [];
+  if (view._readyTimeout) { clearTimeout(view._readyTimeout); view._readyTimeout = null; }
+  const panel = findPanelHostingView(viewId);
+  if (!panel) return;
+  updatePanelHeader(panel);
+  if (!wasReady) {
+    sendInitToView(viewId, panel);
+  } else {
+    // View reattached to a slot — update its dimensions
+    notifyResize(panel.panelId);
+  }
+}
+
+// ================================================================
+//  Theme management
+// ================================================================
+async function loadThemes() {
+  try {
+    const resp = await fetch('/themes/themes.json');
+    themes = await resp.json();
+  } catch {
+    themes = {};
+  }
+  buildThemeSelect();
+  applyTheme(themes[activeTheme] || themes['dark'] || {});
+}
+
+function themeToCSS(t) {
+  return {
+    name: t.name,
+    bg: t.bg, bg_surface: t.bg_surface, bg_hover: t.bg_hover,
+    fg: t.fg, fg_muted: t.fg_muted,
+    accent: t.accent, success: t.success, warning: t.warning,
+    error: t.error, info: t.info, border: t.border,
+    font_mono: t.font_mono, font_ui: t.font_ui,
+    font_size: t.font_size, radius: t.radius, spacing: t.spacing,
+  };
+}
+
+function applyTheme(t) {
+  if (!t || !t.bg) return;
+  activeTheme = t.name || 'dark';
+  localStorage.setItem('dash-theme', activeTheme);
+
+  const root = document.documentElement;
+  root.style.setProperty('--dash-bg',         t.bg || '');
+  root.style.setProperty('--dash-bg-surface',  t.bg_surface || t.bg_surface || '');
+  root.style.setProperty('--dash-bg-hover',    t.bg_hover || '');
+  root.style.setProperty('--dash-fg',          t.fg || '');
+  root.style.setProperty('--dash-fg-muted',    t.fg_muted || '');
+  root.style.setProperty('--dash-accent',      t.accent || '');
+  root.style.setProperty('--dash-success',     t.success || '');
+  root.style.setProperty('--dash-warning',     t.warning || '');
+  root.style.setProperty('--dash-error',       t.error || '');
+  root.style.setProperty('--dash-info',        t.info || '');
+  root.style.setProperty('--dash-border',      t.border || '');
+  root.style.setProperty('--dash-font-mono',   t.font_mono || '');
+  root.style.setProperty('--dash-font-ui',     t.font_ui || '');
+  root.style.setProperty('--dash-font-size',   t.font_size || '');
+  root.style.setProperty('--dash-radius',      t.radius || '');
+  root.style.setProperty('--dash-spacing',     t.spacing || '');
+
+  // Update theme select
+  const sel = document.getElementById('theme-select');
+  if (sel) sel.value = activeTheme;
+
+  // Propagate THEME to all views
+  broadcastToViews('THEME', themeToCSS(t));
+}
+
+function buildThemeSelect() {
+  const sel = document.getElementById('theme-select');
+  sel.innerHTML = '';
+  for (const name of Object.keys(themes)) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name.charAt(0).toUpperCase() + name.slice(1);
+    sel.appendChild(opt);
+  }
+  sel.value = activeTheme;
+  sel.addEventListener('change', () => {
+    applyTheme(themes[sel.value] || {});
+  });
+}
+
+// ================================================================
+//  Layout rendering
+// ================================================================
+function defaultLayout() {
+  return {
+    rows: [
+      {
+        height: '100%',
+        columns: [
+          { width: '70%', view: 'builtin:agent-terminal' },
+          { width: '30%', view: 'builtin:activity-stream' },
+        ],
+      },
+    ],
+  };
+}
+
+function renderLayout(layout) {
+  const root  = document.getElementById('grid-root');
+  const stash = document.getElementById('view-stash');
+  // Move all pool iframes to the stash — they stay in the document so their
+  // browsing context (and all JS state) is preserved across layout changes.
+  for (const [, view] of viewPool) {
+    if (view.iframe && view.iframe.parentNode !== stash) {
+      stash.appendChild(view.iframe);
+    }
+  }
+  root.innerHTML = '';
+  panels = {};
+
+  const rows = layout.rows || [];
+  rows.forEach((row, ri) => {
+    if (ri > 0) root.appendChild(makeRowHandle(root, ri));
+    const rowEl = document.createElement('div');
+    rowEl.className = 'grid-row';
+    rowEl.style.flex = parseFlex(row.height || '100%');
+    root.appendChild(rowEl);
+    (row.columns || []).forEach((col, ci) => {
+      if (ci > 0) rowEl.appendChild(makeColHandle(rowEl, ci));
+      const panelEl = createPanelSlot(col.view || 'auto', rowEl);
+      panelEl.style.flex = parseFlex(col.width || '100%');
+      rowEl.appendChild(panelEl);
+    });
+  });
+}
+
+function parseFlex(pct) {
+  const n = parseFloat(pct);
+  return isNaN(n) ? '1' : String(n);
+}
+
+function createPanelSlot(viewId, rowEl) {
+  const panelId = 'panel_' + (++panelCounter);
+  const resolvedViewId = resolveAutoView(viewId);
+
+  const panelEl = document.createElement('div');
+  panelEl.className = 'panel';
+  panelEl.dataset.panelId = panelId;
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'panel-header';
+  header.draggable = true;
+  header.innerHTML = `
+    <span class="panel-icon">${iconForView(resolvedViewId)}</span>
+    <button class="panel-view-toggle" title="Switch view">${labelForView(resolvedViewId)} ▾</button>
+    <div class="panel-view-menu dropdown-menu"></div>
+    <button class="panel-btn" title="Pop out" data-action="popout">⤢</button>
+    <button class="panel-btn" title="Minimize" data-action="minimize">−</button>
+    <button class="panel-btn" title="Close" data-action="close">×</button>
+  `;
+  panelEl.appendChild(header);
+
+  const body = document.createElement('div');
+  body.className = 'panel-body';
+  panelEl.appendChild(body);
+
+  const panel = { panelId, el: panelEl, viewId: resolvedViewId, rowEl };
+  panels[panelId] = panel;
+
+  if (resolvedViewId) {
+    attachViewToSlot(resolvedViewId, body);
+  } else {
+    const ph = document.createElement('div');
+    ph.className = 'panel-placeholder';
+    ph.textContent = 'Connect an MCP server with views to populate this panel.';
+    body.appendChild(ph);
+  }
+
+  // Button + view-picker click handler
+  header.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (btn) {
+      e.stopPropagation();
+      const action = btn.dataset.action;
+      if (action === 'minimize') panelEl.classList.toggle('minimized');
+      else if (action === 'close') closePanel(panelId);
+      else if (action === 'popout') popoutPanel(panel);
+      return;
+    }
+    if (e.target.classList.contains('panel-view-toggle')) {
+      e.stopPropagation();
+      const menu = header.querySelector('.panel-view-menu');
+      if (!menu.classList.contains('open')) populateViewMenu(menu, panelId);
+      menu.classList.toggle('open');
+    }
+  });
+
+  // Drag-to-swap
+  header.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', panelId));
+  panelEl.addEventListener('dragover', (e) => e.preventDefault());
+  panelEl.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const srcId = e.dataTransfer.getData('text/plain');
+    if (srcId && srcId !== panelId) swapPanels(srcId, panelId);
+  });
+
+  return panelEl;
+}
+
+function resolveAutoView(viewId) {
+  if (viewId !== 'auto') return viewId;
+  const placed = new Set(Object.values(panels).map(p => p.viewId));
+  const builtins = new Set(['builtin:agent-terminal', 'builtin:activity-stream']);
+  for (const v of viewRegistry) {
+    if (!builtins.has(v.id) && !placed.has(v.id)) return v.id;
+  }
+  return null;
+}
+
+function iconForView(viewId) {
+  if (!viewId) return '□';
+  if (viewId === 'builtin:agent-terminal') return '⌨';
+  if (viewId === 'builtin:activity-stream') return '◈';
+  const v = viewRegistry.find(v => v.id === viewId);
+  return v?.icon || '◻';
+}
+
+function labelForView(viewId) {
+  if (!viewId) return 'Empty';
+  if (viewId === 'builtin:agent-terminal') return 'Agent Terminal';
+  if (viewId === 'builtin:activity-stream') return 'Activity Stream';
+  const v = viewRegistry.find(v => v.id === viewId);
+  return v ? v.name : viewId;
+}
+
+// ================================================================
+//  Panel operations
+// ================================================================
+function closePanel(panelId) {
+  const panel = panels[panelId];
+  if (!panel) return;
+  // Detach view without destroying — keeps it alive in pool
+  if (panel.viewId) {
+    const view = viewPool.get(panel.viewId);
+    if (view?.iframe.parentNode) view.iframe.parentNode.removeChild(view.iframe);
+  }
+  const rowEl = panel.rowEl;
+  panel.el.remove();
+  delete panels[panelId];
+  if (rowEl && rowEl.querySelectorAll('.panel').length === 0) rowEl.remove();
+  rebuildAddPanelMenu();
+}
+
+function popoutPanel(panel) {
+  const url = srcForView(panel.viewId);
+  if (!url) return;
+  // Reuse existing popup if still open
+  const existing = popoutWindows.get(panel.viewId);
+  if (existing && !existing.win.closed) { existing.win.focus(); return; }
+  const win = window.open(url, `dash-pop-${panel.viewId}`, 'width=900,height=600,menubar=no,toolbar=no,location=no');
+  if (!win) return;
+  const intervalId = setInterval(() => {
+    if (win.closed) { popoutWindows.delete(panel.viewId); clearInterval(intervalId); }
+  }, 1000);
+  popoutWindows.set(panel.viewId, { win, intervalId });
+}
+
+function findPopoutViewIdByWindow(win) {
+  for (const [viewId, entry] of popoutWindows) {
+    if (entry.win === win) return viewId;
+  }
+  return null;
+}
+
+function handlePopoutReady(viewId, payload, win) {
+  const themeObj = themes[activeTheme] || themes['dark'] || {};
+  try {
+    win.postMessage({
+      protocol: PROTOCOL, version: VERSION, type: 'INIT',
+      payload: {
+        view_id: viewId, panel_id: null, agent_id: null,
+        theme: themeToCSS(themeObj),
+        dimensions: { width: win.innerWidth || 900, height: win.innerHeight || 600 },
+      },
+    }, '*');
+  } catch (e) { /* ignore */ }
+}
+
+function postToPopout(win, type, payload) {
+  try { win.postMessage({ protocol: PROTOCOL, version: VERSION, type, payload }, '*'); } catch (e) { /* ignore */ }
+}
+
+function swapPanels(aId, bId) {
+  const a = panels[aId], b = panels[bId];
+  if (!a || !b || a.viewId === b.viewId) return;
+  const aBody = a.el.querySelector('.panel-body');
+  const bBody = b.el.querySelector('.panel-body');
+  const aViewId = a.viewId, bViewId = b.viewId;
+  // Detach both views first
+  for (const vId of [aViewId, bViewId]) {
+    if (!vId) continue;
+    const v = viewPool.get(vId);
+    if (v?.iframe.parentNode) v.iframe.parentNode.removeChild(v.iframe);
+  }
+  // Cross-attach
+  a.viewId = bViewId;
+  b.viewId = aViewId;
+  if (bViewId && aBody) attachViewToSlot(bViewId, aBody);
+  if (aViewId && bBody) attachViewToSlot(aViewId, bBody);
+  updatePanelHeader(a);
+  updatePanelHeader(b);
+}
+
+function showPanelError(bodyEl, msg) {
+  const ph = document.createElement('div');
+  ph.className = 'panel-placeholder';
+  ph.style.color = 'var(--dash-error)';
+  ph.textContent = msg;
+  const existing = bodyEl.querySelector('iframe');
+  if (existing) existing.replaceWith(ph);
+  else bodyEl.appendChild(ph);
+}
+
+// ================================================================
+//  Resize handles
+// ================================================================
+function makeColHandle(rowEl, idx) {
+  const handle = document.createElement('div');
+  handle.className = 'resize-handle-col';
+  handle.dataset.handleType = 'col';
+
+  let startX, panels_before, panels_after, startBefore, startAfter;
+
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    handle.classList.add('dragging');
+    startX = e.clientX;
+
+    // Siblings around the handle
+    const siblings = Array.from(rowEl.children).filter(c => c.classList.contains('panel'));
+    const handleIdx = Array.from(rowEl.children).indexOf(handle);
+    const panelsBefore = Array.from(rowEl.children).slice(0, handleIdx).filter(c => c.classList.contains('panel'));
+    const panelsAfter  = Array.from(rowEl.children).slice(handleIdx + 1).filter(c => c.classList.contains('panel'));
+
+    panels_before = panelsBefore.at(-1);
+    panels_after  = panelsAfter[0];
+    if (!panels_before || !panels_after) return;
+
+    startBefore = panels_before.getBoundingClientRect().width;
+    startAfter  = panels_after.getBoundingClientRect().width;
+
+    function onMove(e) {
+      const dx = e.clientX - startX;
+      const nb = Math.max(200, startBefore + dx);
+      const na = Math.max(200, startAfter  - dx);
+      panels_before.style.flex = `0 0 ${nb}px`;
+      panels_after.style.flex  = `0 0 ${na}px`;
+      notifyResize(panels_before.dataset.panelId);
+      notifyResize(panels_after.dataset.panelId);
+    }
+
+    function onUp() {
+      handle.classList.remove('dragging');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  handle.addEventListener('dblclick', () => {
+    // Reset: remove inline flex overrides from all siblings
+    Array.from(rowEl.children).filter(c => c.classList.contains('panel')).forEach(p => {
+      p.style.flex = '';
+    });
+  });
+
+  return handle;
+}
+
+function makeRowHandle(root, idx) {
+  const handle = document.createElement('div');
+  handle.className = 'resize-handle-row';
+
+  let startY, rows, rowBefore, rowAfter, startBefore, startAfter;
+
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    handle.classList.add('dragging');
+    startY = e.clientY;
+
+    rows = Array.from(root.children).filter(c => c.classList.contains('grid-row'));
+    const handleIdx = Array.from(root.children).indexOf(handle);
+    const rowsBefore = Array.from(root.children).slice(0, handleIdx).filter(c => c.classList.contains('grid-row'));
+    const rowsAfter  = Array.from(root.children).slice(handleIdx + 1).filter(c => c.classList.contains('grid-row'));
+
+    rowBefore = rowsBefore.at(-1);
+    rowAfter  = rowsAfter[0];
+    if (!rowBefore || !rowAfter) return;
+
+    startBefore = rowBefore.getBoundingClientRect().height;
+    startAfter  = rowAfter.getBoundingClientRect().height;
+
+    function onMove(e) {
+      const dy = e.clientY - startY;
+      const nb = Math.max(150, startBefore + dy);
+      const na = Math.max(150, startAfter  - dy);
+      rowBefore.style.flex = `0 0 ${nb}px`;
+      rowAfter.style.flex  = `0 0 ${na}px`;
+    }
+
+    function onUp() {
+      handle.classList.remove('dragging');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  handle.addEventListener('dblclick', () => {
+    Array.from(root.children).filter(c => c.classList.contains('grid-row')).forEach(r => {
+      r.style.flex = '';
+    });
+  });
+
+  return handle;
+}
+
+function notifyResize(panelId) {
+  const panel = panels[panelId];
+  if (!panel?.viewId) return;
+  const view = viewPool.get(panel.viewId);
+  if (!view?.ready || !view.iframe) return;
+  const body = panel.el.querySelector('.panel-body');
+  if (!body) return;
+  postToIframe(view.iframe, 'RESIZE', { width: body.clientWidth, height: body.clientHeight });
+}
+
+// ================================================================
+//  Layout dropdown
+// ================================================================
+const BUILTIN_PRESETS = ['Minimal', 'Standard', 'Full'];
+
+function buildLayoutMenu() {
+  const menu = document.getElementById('layout-menu');
+  menu.innerHTML = '';
+
+  for (const name of BUILTIN_PRESETS) {
+    const item = document.createElement('div');
+    item.className = 'dropdown-item';
+    item.textContent = name;
+    item.addEventListener('click', () => {
+      applyPreset(name);
+      menu.classList.remove('open');
+    });
+    menu.appendChild(item);
+  }
+}
+
+function applyPreset(name) {
+  const presets = {
+    'Minimal': { rows: [{ height: '100%', columns: [{ width: '100%', view: 'builtin:agent-terminal' }] }] },
+    'Standard': { rows: [{ height: '100%', columns: [{ width: '70%', view: 'builtin:agent-terminal' }, { width: '30%', view: 'builtin:activity-stream' }] }] },
+    'Full': { rows: [{ height: '60%', columns: [{ width: '65%', view: 'builtin:agent-terminal' }, { width: '35%', view: 'builtin:activity-stream' }] }, { height: '40%', columns: [{ width: '100%', view: 'auto' }] }] },
+  };
+  const layout = presets[name];
+  if (layout) { layoutConfig = layout; renderLayout(layout); }
+}
+
+// + Add Panel menu
+function rebuildAddPanelMenu() {
+  const menu = document.getElementById('add-panel-menu');
+  menu.innerHTML = '';
+  const placed = new Set(Object.values(panels).map(p => p.viewId));
+
+  for (const v of viewRegistry) {
+    if (placed.has(v.id)) continue;
+    const item = document.createElement('div');
+    item.className = 'dropdown-item';
+    item.textContent = v.name;
+    item.addEventListener('click', () => {
+      addPanelWithView(v.id);
+      menu.classList.remove('open');
+    });
+    menu.appendChild(item);
+  }
+
+  if (!menu.children.length) {
+    const item = document.createElement('div');
+    item.className = 'dropdown-item';
+    item.style.color = 'var(--dash-fg-muted)';
+    item.textContent = 'No additional views';
+    menu.appendChild(item);
+  }
+}
+
+function addPanelWithView(viewId) {
+  const root = document.getElementById('grid-root');
+  let lastRow = root.querySelector('.grid-row:last-child');
+  if (!lastRow) {
+    lastRow = document.createElement('div');
+    lastRow.className = 'grid-row';
+    lastRow.style.flex = '1';
+    root.appendChild(lastRow);
+  }
+  const existingPanels = lastRow.querySelectorAll('.panel');
+  if (existingPanels.length > 0) lastRow.appendChild(makeColHandle(lastRow, existingPanels.length));
+  const panelEl = createPanelSlot(viewId, lastRow);
+  panelEl.style.flex = '1';
+  lastRow.appendChild(panelEl);
+  rebuildAddPanelMenu();
+}
+
+// ================================================================
+//  Toast notifications
+// ================================================================
+function showToast(level, message, duration) {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast ${level}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), duration || 5000);
+}
+
+// ================================================================
+//  Toolbar event wiring
+// ================================================================
+document.getElementById('layout-btn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const menu = document.getElementById('layout-menu');
+  menu.classList.toggle('open');
+});
+
+document.getElementById('add-panel-btn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  rebuildAddPanelMenu();
+  const menu = document.getElementById('add-panel-menu');
+  const btn  = document.getElementById('add-panel-btn');
+  const rect = btn.getBoundingClientRect();
+  menu.style.left = rect.left + 'px';
+  menu.style.top  = (rect.bottom + 4) + 'px';
+  menu.style.position = 'fixed';
+  menu.classList.toggle('open');
+});
+
+document.getElementById('settings-btn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  document.getElementById('settings-panel').classList.toggle('open');
+});
+
+document.getElementById('save-layout-btn').addEventListener('click', () => {
+  try {
+    localStorage.setItem('dash-layout', JSON.stringify(layoutConfig));
+    showToast('success', 'Layout saved');
+  } catch (e) {
+    showToast('error', 'Could not save layout');
+  }
+});
+
+// Close all dropdowns/menus on outside click
+document.addEventListener('click', () => {
+  document.getElementById('layout-menu').classList.remove('open');
+  document.getElementById('add-panel-menu').classList.remove('open');
+  document.getElementById('settings-panel').classList.remove('open');
+  document.querySelectorAll('.panel-view-menu.open').forEach(m => m.classList.remove('open'));
+});
+
+// ================================================================
+//  Initialisation
+// ================================================================
+async function init() {
+  await loadThemes();
+  buildLayoutMenu();
+
+  // Bootstrap view registry with builtins
+  viewRegistry = [
+    { id: 'builtin:agent-terminal', name: 'Agent Terminal', source: 'builtin', icon: '⌨', type: 'conversation', url: '/views/agent-terminal.html' },
+    { id: 'builtin:activity-stream', name: 'Activity Stream', source: 'builtin', icon: '◈', type: 'stream', url: '/views/activity-stream.html' },
+  ];
+  rebuildAddPanelMenu();
+
+  // Render Standard layout by default (guard against corrupted localStorage)
+  try {
+    const stored = localStorage.getItem('dash-layout');
+    layoutConfig = stored ? JSON.parse(stored) : null;
+  } catch (e) {
+    console.warn('Could not parse stored layout, using default:', e);
+    layoutConfig = null;
+  }
+  layoutConfig = layoutConfig || defaultLayout();
+  renderLayout(layoutConfig);
+
+  // Connect WebSocket
+  connectWS();
+}
+
+init();
+</script>
+</body>
+</html>

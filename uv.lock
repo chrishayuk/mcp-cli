@@ -1661,6 +1661,9 @@ dependencies = [
 apps = [
     { name = "websockets" },
 ]
+dashboard = [
+    { name = "websockets" },
+]
 dev = [
     { name = "asyncio" },
     { name = "numpy" },
@@ -1703,8 +1706,9 @@ requires-dist = [
     { name = "rich", specifier = ">=13.9.4" },
     { name = "typer", specifier = ">=0.15.2" },
     { name = "websockets", marker = "extra == 'apps'", specifier = ">=13.0" },
+    { name = "websockets", marker = "extra == 'dashboard'", specifier = ">=13.0" },
 ]
-provides-extras = ["vault", "apps", "wasm", "dev"]
+provides-extras = ["vault", "apps", "dashboard", "wasm", "dev"]
 
 [package.metadata.requires-dev]
 dev = [

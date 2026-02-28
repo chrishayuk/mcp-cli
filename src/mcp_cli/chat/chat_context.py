@@ -131,6 +131,9 @@ class ChatContext:
         # ToolProcessor back-reference (set by ToolProcessor.__init__)
         self.tool_processor: Any = None
 
+        # Dashboard bridge (set by chat_handler when --dashboard is active, else None)
+        self.dashboard_bridge: Any = None
+
         # Tool state (filled during initialization)
         self.tools: list[ToolInfo] = []
         self.internal_tools: list[ToolInfo] = []

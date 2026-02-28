@@ -330,6 +330,23 @@ DEFAULT_APP_INIT_TIMEOUT = 30
 
 
 # ================================================================
+# Dashboard Defaults
+# ================================================================
+
+DEFAULT_DASHBOARD_PORT_START = 9120
+"""Starting port for the dashboard HTTP+WebSocket server."""
+
+DEFAULT_DASHBOARD_AUTO_OPEN_BROWSER = True
+"""Automatically open browser when dashboard is launched."""
+
+DEFAULT_DASHBOARD_RECONNECT_INTERVAL = 5.0
+"""Seconds between WebSocket reconnect attempts."""
+
+DEFAULT_DASHBOARD_LAYOUTS_FILE = "~/.config/mcp-cli/dashboard-layouts.json"
+"""Path to user-saved dashboard layout configurations."""
+
+
+# ================================================================
 # Memory Scope Defaults (Tier 8)
 # ================================================================
 
