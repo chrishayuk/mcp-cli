@@ -153,6 +153,48 @@ body {
 }
 .reasoning-block.expanded .reasoning-content { display: block; }
 
+/* Search bar */
+#search-bar {
+  display: none;
+  position: absolute;
+  top: 4px;
+  right: 12px;
+  z-index: 20;
+  background: var(--dash-bg-surface);
+  border: 1px solid var(--dash-border);
+  border-radius: var(--dash-radius);
+  padding: 4px 8px;
+  gap: 6px;
+  align-items: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+#search-bar.open { display: flex; }
+#search-bar input {
+  background: var(--dash-bg);
+  border: 1px solid var(--dash-border);
+  border-radius: 3px;
+  color: var(--dash-fg);
+  font-size: 12px;
+  padding: 2px 6px;
+  width: 180px;
+  outline: none;
+  font-family: var(--dash-font-ui);
+}
+#search-bar input:focus { border-color: var(--dash-accent); }
+#search-bar .search-count { font-size: 11px; color: var(--dash-fg-muted); min-width: 40px; text-align: center; }
+#search-bar button {
+  background: transparent;
+  border: 1px solid var(--dash-border);
+  border-radius: 3px;
+  color: var(--dash-fg-muted);
+  cursor: pointer;
+  padding: 1px 6px;
+  font-size: 12px;
+}
+#search-bar button:hover { background: var(--dash-bg-hover); color: var(--dash-fg); }
+.search-highlight { background: rgba(255, 200, 50, 0.3); border-radius: 2px; }
+.search-highlight.current { background: rgba(255, 200, 50, 0.6); }
+
 /* Scroll-to-bottom */
 #scroll-btn {
   display: none;
@@ -240,6 +282,13 @@ body {
 <body>
 
 <div id="messages-wrapper">
+  <div id="search-bar">
+    <input type="text" id="search-input" placeholder="Search messages…">
+    <span class="search-count" id="search-count"></span>
+    <button id="search-prev" title="Previous">↑</button>
+    <button id="search-next" title="Next">↓</button>
+    <button id="search-close" title="Close">×</button>
+  </div>
   <div id="messages"></div>
   <button id="scroll-btn">↓</button>
 </div>
@@ -297,8 +346,14 @@ window.addEventListener('message', (evt) => {
     case 'CONVERSATION_TOKEN':
       handleToken(msg.payload);
       break;
+    case 'CONVERSATION_HISTORY':
+      handleConversationHistory(msg.payload);
+      break;
     case 'AGENT_STATE':
       updateStatus(msg.payload);
+      break;
+    case 'CONFIG_STATE':
+      handleConfigState(msg.payload);
       break;
     case 'TOOL_RESULT':
       // Tool results are shown inline as tool cards
@@ -320,7 +375,7 @@ function sendReady() {
   shell.postMessage({
     protocol: PROTOCOL, version: VERSION,
     type: 'READY',
-    payload: { name: 'Agent Terminal', icon: 'terminal', accepts: ['CONVERSATION_MESSAGE', 'CONVERSATION_TOKEN', 'AGENT_STATE'], version: 1 }
+    payload: { name: 'Agent Terminal', icon: 'terminal', accepts: ['CONVERSATION_MESSAGE', 'CONVERSATION_TOKEN', 'CONVERSATION_HISTORY', 'AGENT_STATE', 'CONFIG_STATE'], version: 1 }
   }, '*');
 }
 
@@ -344,6 +399,10 @@ function handleConversationMessage(payload) {
   if (streamingBubble) finaliseStreaming();
 
   const { role, content, streaming, tool_calls, reasoning } = payload;
+
+  // Tool-role messages are raw results — they belong in the activity stream, not chat
+  if (role === 'tool') return;
+
   const wasTokenStreamed = _hadStreamingTokens;
   _hadStreamingTokens = false;
 
@@ -430,7 +489,16 @@ function renderBubbleContent(bubble, text, streaming) {
   const contentEl = bubble.querySelector('.msg-content');
   if (!contentEl) return;
   if (typeof marked !== 'undefined' && !streaming) {
-    try { contentEl.innerHTML = marked.parse(text); return; } catch (e) {
+    try {
+      const html = marked.parse(text);
+      // Sanitize: strip <script>, event handlers, and dangerous URIs
+      const sanitized = html
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/\son\w+\s*=/gi, ' data-removed=')
+        .replace(/href\s*=\s*["']javascript:/gi, 'href="');
+      contentEl.innerHTML = sanitized;
+      return;
+    } catch (e) {
       console.error('Markdown parse error:', e);
     }
   }
@@ -487,6 +555,9 @@ function esc(s) {
 }
 
 // ── Status ──────────────────────────────────────────────────────
+let _currentModel = '';
+let _totalTokens = 0;
+
 function updateStatus(payload) {
   const { status, current_tool, tokens_used, turn_number } = payload;
   let text = status || 'idle';
@@ -494,8 +565,46 @@ function updateStatus(payload) {
   else if (status === 'thinking') text = 'thinking…';
   else if (status === 'idle') text = 'idle';
   statusText.textContent = text;
-  if (tokens_used) tokenCount.textContent = `${tokens_used.toLocaleString()} tokens`;
-  if (turn_number) tokenCount.textContent += ` · turn ${turn_number}`;
+
+  if (tokens_used) _totalTokens += tokens_used;
+
+  let countParts = [];
+  if (_currentModel) countParts.push(_currentModel);
+  if (_totalTokens) countParts.push(`${_totalTokens.toLocaleString()} tokens`);
+  if (turn_number) countParts.push(`turn ${turn_number}`);
+  tokenCount.textContent = countParts.join(' · ');
+}
+
+// ── Config state (model display) ─────────────────────────────────
+function handleConfigState(payload) {
+  _currentModel = payload.model || '';
+  // Update status bar with model name
+  const parts = [];
+  if (_currentModel) parts.push(_currentModel);
+  const existing = tokenCount.textContent;
+  // Preserve token/turn info if present
+  if (existing) {
+    const segments = existing.split(' · ').filter(s => !s.match(/^[a-z]/i) || s.includes('token') || s.includes('turn'));
+    parts.push(...segments);
+  }
+  tokenCount.textContent = parts.join(' · ');
+}
+
+// ── Conversation history replay ──────────────────────────────────
+function handleConversationHistory(payload) {
+  const messages = payload.messages || [];
+  // Clear current messages and replay history (empty array = clear all)
+  messagesEl.innerHTML = '';
+  streamingBubble = null;
+  streamingContent = '';
+  _hadStreamingTokens = false;
+
+  for (const msg of messages) {
+    handleConversationMessage(msg);
+  }
+  // Scroll to bottom after replay
+  wrapper.scrollTop = wrapper.scrollHeight;
+  autoScroll = true;
 }
 
 // ── Scroll ──────────────────────────────────────────────────────
@@ -544,6 +653,105 @@ inputEl.addEventListener('input', () => {
 });
 
 sendBtn.addEventListener('click', sendMessage);
+
+// ── Search in chat ───────────────────────────────────────────────
+const searchBar   = document.getElementById('search-bar');
+const searchInput = document.getElementById('search-input');
+const searchCount = document.getElementById('search-count');
+let _searchMatches = [];
+let _searchIdx = -1;
+
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+    e.preventDefault();
+    searchBar.classList.add('open');
+    searchInput.focus();
+    searchInput.select();
+  }
+  if (e.key === 'Escape' && searchBar.classList.contains('open')) {
+    closeSearch();
+  }
+});
+
+searchInput.addEventListener('input', () => performSearch(searchInput.value));
+document.getElementById('search-prev').addEventListener('click', () => navigateSearch(-1));
+document.getElementById('search-next').addEventListener('click', () => navigateSearch(1));
+document.getElementById('search-close').addEventListener('click', closeSearch);
+searchInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); navigateSearch(e.shiftKey ? -1 : 1); }
+});
+
+function performSearch(query) {
+  clearHighlights();
+  _searchMatches = [];
+  _searchIdx = -1;
+  if (!query.trim()) { searchCount.textContent = ''; return; }
+
+  const q = query.toLowerCase();
+  const contentEls = messagesEl.querySelectorAll('.msg-content');
+  for (const el of contentEls) {
+    const text = el.textContent || '';
+    if (text.toLowerCase().includes(q)) {
+      // Highlight matches in this element
+      highlightInElement(el, q);
+    }
+  }
+  _searchMatches = Array.from(messagesEl.querySelectorAll('.search-highlight'));
+  searchCount.textContent = _searchMatches.length ? `${_searchMatches.length} found` : 'none';
+  if (_searchMatches.length) navigateSearch(1);
+}
+
+function highlightInElement(el, query) {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+  const textNodes = [];
+  while (walker.nextNode()) textNodes.push(walker.currentNode);
+  for (const node of textNodes) {
+    const text = node.textContent;
+    const lower = text.toLowerCase();
+    const idx = lower.indexOf(query);
+    if (idx === -1) continue;
+    const before = text.slice(0, idx);
+    const match  = text.slice(idx, idx + query.length);
+    const after  = text.slice(idx + query.length);
+    const span = document.createElement('span');
+    span.className = 'search-highlight';
+    span.textContent = match;
+    const parent = node.parentNode;
+    if (before) parent.insertBefore(document.createTextNode(before), node);
+    parent.insertBefore(span, node);
+    if (after) parent.insertBefore(document.createTextNode(after), node);
+    parent.removeChild(node);
+  }
+}
+
+function navigateSearch(dir) {
+  if (!_searchMatches.length) return;
+  if (_searchIdx >= 0 && _searchIdx < _searchMatches.length) {
+    _searchMatches[_searchIdx].classList.remove('current');
+  }
+  _searchIdx = (_searchIdx + dir + _searchMatches.length) % _searchMatches.length;
+  const el = _searchMatches[_searchIdx];
+  el.classList.add('current');
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  searchCount.textContent = `${_searchIdx + 1}/${_searchMatches.length}`;
+}
+
+function clearHighlights() {
+  for (const span of messagesEl.querySelectorAll('.search-highlight')) {
+    const parent = span.parentNode;
+    parent.replaceChild(document.createTextNode(span.textContent), span);
+    parent.normalize();
+  }
+  _searchMatches = [];
+  _searchIdx = -1;
+}
+
+function closeSearch() {
+  searchBar.classList.remove('open');
+  clearHighlights();
+  searchCount.textContent = '';
+  searchInput.value = '';
+}
 
 // Register hljs languages if available
 if (typeof hljs !== 'undefined') {

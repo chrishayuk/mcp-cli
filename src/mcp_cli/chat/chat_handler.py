@@ -135,6 +135,7 @@ async def handle_chat_mode(
                 )
                 output.info(f"Dashboard: http://localhost:{_dash_port}")
                 ctx.dashboard_bridge = DashboardBridge(_dash_server)
+                ctx.dashboard_bridge.set_context(ctx)
 
                 # Wire REQUEST_TOOL from browser → tool_manager, result back to browser
                 _bridge_ref = ctx.dashboard_bridge
@@ -220,6 +221,15 @@ async def handle_chat_mode(
         return False
 
     finally:
+        # Auto-save session on exit
+        if ctx is not None and ctx.conversation_history:
+            try:
+                path = ctx.save_session()
+                if path:
+                    logger.info("Session auto-saved: %s", path)
+            except Exception as exc:
+                logger.warning("Failed to auto-save session: %s", exc)
+
         # Cleanup
         if ui:
             await _safe_cleanup(ui)
@@ -227,6 +237,7 @@ async def handle_chat_mode(
         # Stop dashboard server if running
         if ctx is not None and ctx.dashboard_bridge is not None:
             try:
+                await ctx.dashboard_bridge.on_shutdown()
                 await ctx.dashboard_bridge.server.stop()
             except Exception as exc:
                 logger.warning("Error stopping dashboard server: %s", exc)

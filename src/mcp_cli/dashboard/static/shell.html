@@ -108,12 +108,40 @@ body {
 .dropdown-item:hover { background: var(--dash-bg-hover); }
 .dropdown-item.active { color: var(--dash-accent); }
 
+/* Toolbar selects (model/provider) */
+.tb-select {
+  background: var(--dash-bg);
+  border: 1px solid var(--dash-border);
+  color: var(--dash-fg);
+  padding: 2px 6px;
+  border-radius: var(--dash-radius);
+  font-size: 11px;
+  font-family: var(--dash-font-ui);
+  cursor: pointer;
+  max-width: 140px;
+  outline: none;
+}
+.tb-select:hover { border-color: var(--dash-accent); }
+.tb-label {
+  font-size: 10px;
+  color: var(--dash-fg-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.tb-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 /* Settings panel */
 #settings-panel {
   display: none;
   position: fixed;
   top: 40px; right: 8px;
-  width: 260px;
+  width: 320px;
+  max-height: calc(100vh - 56px);
+  overflow-y: auto;
   background: var(--dash-bg-surface);
   border: 1px solid var(--dash-border);
   border-radius: var(--dash-radius);
@@ -125,14 +153,104 @@ body {
 #settings-panel h3 { font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--dash-fg-muted); text-transform: uppercase; letter-spacing: .05em; }
 #settings-panel label { font-size: 12px; display: block; margin-bottom: 4px; }
 #settings-panel select { width: 100%; padding: 4px 6px; background: var(--dash-bg); border: 1px solid var(--dash-border); border-radius: var(--dash-radius); color: var(--dash-fg); font-size: 12px; }
+#settings-panel .section { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--dash-border); }
+#settings-panel .section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+#settings-panel textarea {
+  width: 100%; padding: 6px 8px; background: var(--dash-bg); border: 1px solid var(--dash-border);
+  border-radius: var(--dash-radius); color: var(--dash-fg); font-family: var(--dash-font-mono);
+  font-size: 11px; line-height: 1.4; resize: vertical; min-height: 80px; max-height: 300px;
+}
+#settings-panel textarea:focus { border-color: var(--dash-accent); outline: none; }
+#settings-panel .btn-row { display: flex; gap: 6px; margin-top: 6px; }
+#settings-panel .btn-sm {
+  background: transparent; border: 1px solid var(--dash-border); color: var(--dash-fg);
+  padding: 3px 10px; border-radius: var(--dash-radius); cursor: pointer; font-size: 11px;
+  font-family: var(--dash-font-ui);
+}
+#settings-panel .btn-sm:hover { background: var(--dash-bg-hover); }
+#settings-panel .btn-sm.primary { background: var(--dash-accent); color: var(--dash-bg); border-color: var(--dash-accent); }
+#settings-panel .btn-sm.primary:hover { opacity: 0.9; }
+.server-list { list-style: none; padding: 0; margin: 4px 0 0 0; }
+.server-item {
+  display: flex; align-items: center; gap: 6px; padding: 4px 0;
+  font-size: 12px; border-bottom: 1px solid var(--dash-border);
+}
+.server-item:last-child { border-bottom: none; }
+.server-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.server-dot.on { background: var(--dash-success); }
+.server-dot.off { background: var(--dash-error); }
+.server-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.server-tools { font-size: 10px; color: var(--dash-fg-muted); }
+
+/* ── Session drawer ────────────────────────────────────────────── */
+#session-drawer {
+  display: none;
+  position: fixed;
+  top: 40px; left: 8px;
+  width: 300px;
+  max-height: calc(100vh - 56px);
+  overflow-y: auto;
+  background: var(--dash-bg-surface);
+  border: 1px solid var(--dash-border);
+  border-radius: var(--dash-radius);
+  z-index: 200;
+  padding: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+#session-drawer.open { display: block; }
+#session-drawer h3 {
+  font-size: 12px; font-weight: 600; margin-bottom: 8px;
+  color: var(--dash-fg-muted); text-transform: uppercase; letter-spacing: .05em;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.session-list { list-style: none; padding: 0; margin: 0; }
+.session-item {
+  display: flex; align-items: center; gap: 6px; padding: 8px 6px;
+  font-size: 12px; border-bottom: 1px solid var(--dash-border);
+  cursor: pointer; border-radius: var(--dash-radius); transition: background 0.15s;
+}
+.session-item:last-child { border-bottom: none; }
+.session-item:hover { background: var(--dash-bg-hover); }
+.session-item.active { background: var(--dash-bg-hover); border-left: 2px solid var(--dash-accent); }
+.session-info { flex: 1; min-width: 0; }
+.session-id { font-family: var(--dash-font-mono); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-desc { font-size: 10px; color: var(--dash-fg-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-meta { font-size: 10px; color: var(--dash-fg-muted); display: flex; gap: 8px; margin-top: 2px; }
+.session-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.session-actions button {
+  background: transparent; border: none; color: var(--dash-fg-muted);
+  cursor: pointer; font-size: 11px; padding: 2px 4px; border-radius: 3px;
+}
+.session-actions button:hover { color: var(--dash-fg); background: var(--dash-bg-hover); }
+.session-actions button.delete:hover { color: var(--dash-error); }
+.session-empty { color: var(--dash-fg-muted); font-size: 12px; text-align: center; padding: 16px 0; }
 
 /* ── Grid layout ────────────────────────────────────────────────── */
-#grid-root {
+#grid-wrapper {
   flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+#grid-root {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  position: relative;
+}
+#view-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: 5;
+  overflow: hidden;
+}
+#view-overlay iframe {
+  position: absolute;
+  pointer-events: auto;
+  border: none;
+  display: none;
 }
 .grid-row {
   display: flex;
@@ -207,17 +325,11 @@ body {
 }
 .panel-btn:hover { background: var(--dash-bg-hover); color: var(--dash-fg); }
 
-/* Panel body */
+/* Panel body (empty slot — iframes are positioned over it from #view-overlay) */
 .panel-body {
   flex: 1;
   overflow: hidden;
   position: relative;
-}
-.panel-body iframe {
-  width: 100%;
-  height: 100%;
-  border: none;
-  display: block;
 }
 
 /* Panel placeholder */
@@ -278,31 +390,102 @@ body {
 .toast.error { border-left: 3px solid var(--dash-error); }
 @keyframes slideIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
 
+/* Tool approval dialog */
+#approval-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 600;
+  align-items: center;
+  justify-content: center;
+}
+#approval-overlay.open { display: flex; }
+#approval-dialog {
+  background: var(--dash-bg-surface);
+  border: 1px solid var(--dash-border);
+  border-radius: var(--dash-radius);
+  padding: 16px;
+  max-width: 500px;
+  width: 90%;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+}
+#approval-dialog h3 {
+  font-size: 14px;
+  color: var(--dash-warning);
+  margin-bottom: 8px;
+}
+#approval-dialog .approval-tool {
+  font-family: var(--dash-font-mono);
+  font-size: 13px;
+  color: var(--dash-accent);
+  margin-bottom: 8px;
+}
+#approval-dialog .approval-args {
+  background: var(--dash-bg);
+  border: 1px solid var(--dash-border);
+  border-radius: var(--dash-radius);
+  padding: 8px;
+  font-family: var(--dash-font-mono);
+  font-size: 11px;
+  color: var(--dash-fg-muted);
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin-bottom: 12px;
+}
+#approval-dialog .approval-btns {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+#approval-dialog .approval-btns button {
+  padding: 6px 16px;
+  border-radius: var(--dash-radius);
+  border: 1px solid var(--dash-border);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: var(--dash-font-ui);
+}
+#approval-dialog .btn-approve {
+  background: var(--dash-success);
+  color: var(--dash-bg);
+  border-color: var(--dash-success);
+}
+#approval-dialog .btn-deny {
+  background: transparent;
+  color: var(--dash-error);
+  border-color: var(--dash-error);
+}
+#approval-dialog .btn-approve:hover { opacity: 0.9; }
+#approval-dialog .btn-deny:hover { background: var(--dash-bg-hover); }
+
 /* ── Responsive: stack panels vertically below 768px ─────────────── */
 @media (max-width: 768px) {
+  #toolbar { flex-wrap: wrap; height: auto; min-height: 36px; padding: 4px 8px; gap: 6px; }
+  #toolbar .spacer { display: none; }
+  #model-group { order: 10; width: 100%; justify-content: center; }
   .grid-row { flex-direction: column; }
   .panel { min-width: unset; min-height: 150px; }
   .panel + .panel { border-left: none; border-top: 1px solid var(--dash-border); }
   .resize-handle-col { display: none; }
+  #settings-panel { width: 100%; right: 0; left: 0; top: auto; bottom: 0; max-height: 60vh; border-radius: var(--dash-radius) var(--dash-radius) 0 0; }
+  #session-drawer { width: 100%; right: 0; left: 0; top: auto; bottom: 0; max-height: 60vh; border-radius: var(--dash-radius) var(--dash-radius) 0 0; }
+  #approval-dialog { max-width: 95%; }
+  .toast { max-width: 90vw; }
 }
 
-/* ── View stash: keeps iframes in document to preserve state ──────── */
-#view-stash {
-  position: fixed;
-  left: -10000px;
-  top: -10000px;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  opacity: 0;
-  pointer-events: none;
+@media (max-width: 480px) {
+  #toolbar .brand span:last-child { display: none; }
+  .tb-select { max-width: 100px; font-size: 10px; }
+  .tb-btn { font-size: 11px; padding: 2px 6px; }
 }
+
+/* (view-stash removed — iframes now live permanently in #view-overlay) */
 </style>
 </head>
 <body>
-
-<!-- ── View stash: iframes park here between layout changes ─────── -->
-<div id="view-stash" aria-hidden="true"></div>
 
 <!-- ── Toolbar ──────────────────────────────────────────────────── -->
 <div id="toolbar">
@@ -310,6 +493,9 @@ body {
     <span id="conn-dot"></span>
     <span>mcp-cli dashboard</span>
   </div>
+
+  <button class="tb-btn" id="new-session-btn" title="New chat session">+</button>
+  <button class="tb-btn" id="sessions-btn" title="Session history">Sessions</button>
 
   <div class="dropdown" id="layout-dropdown">
     <button class="tb-btn" id="layout-btn">Layout ▾</button>
@@ -323,20 +509,86 @@ body {
 
   <div class="spacer"></div>
 
+  <div class="tb-group" id="model-group" style="display:none">
+    <span class="tb-label">Provider</span>
+    <select class="tb-select" id="provider-select"></select>
+    <span class="tb-label">Model</span>
+    <select class="tb-select" id="model-select"></select>
+  </div>
+
+  <div class="dropdown" id="export-dropdown">
+    <button class="tb-btn" id="export-btn">Export ▾</button>
+    <div class="dropdown-menu" id="export-menu">
+      <div class="dropdown-item" data-format="markdown">Export as Markdown</div>
+      <div class="dropdown-item" data-format="json">Export as JSON</div>
+    </div>
+  </div>
+
   <button class="tb-btn" id="settings-btn">⚙</button>
 </div>
 
 <!-- ── Settings panel ───────────────────────────────────────────── -->
 <div id="settings-panel">
-  <h3>Settings</h3>
-  <label for="theme-select">Theme</label>
-  <select id="theme-select"></select>
-  <br>
-  <button class="tb-btn" style="margin-top:8px;width:100%" id="save-layout-btn">Save Current Layout…</button>
+  <div class="section">
+    <h3>Theme</h3>
+    <select id="theme-select"></select>
+  </div>
+
+  <div class="section">
+    <h3>System Prompt</h3>
+    <textarea id="system-prompt-editor" placeholder="Loading..."></textarea>
+    <div class="btn-row">
+      <button class="btn-sm primary" id="apply-prompt-btn">Apply</button>
+      <button class="btn-sm" id="reset-prompt-btn">Reset to Default</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>MCP Servers</h3>
+    <ul class="server-list" id="server-list">
+      <li style="font-size:12px;color:var(--dash-fg-muted)">No servers connected</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <button class="btn-sm" style="width:100%" id="save-layout-btn">Save Current Layout</button>
+  </div>
+
+  <div class="section">
+    <h3>Conversation</h3>
+    <button class="btn-sm" style="width:100%;color:var(--dash-error);border-color:var(--dash-error)" id="clear-history-btn">Clear Chat History</button>
+  </div>
 </div>
 
-<!-- ── Grid root ────────────────────────────────────────────────── -->
-<div id="grid-root"></div>
+<!-- ── Session drawer ──────────────────────────────────────────── -->
+<div id="session-drawer">
+  <h3>
+    <span>Sessions</span>
+    <button class="btn-sm" id="refresh-sessions-btn" style="font-size:10px;padding:2px 6px">Refresh</button>
+  </h3>
+  <ul class="session-list" id="session-list">
+    <li class="session-empty">Loading sessions...</li>
+  </ul>
+</div>
+
+<!-- ── Grid wrapper: grid-root for panel layout, view-overlay for iframes ── -->
+<div id="grid-wrapper">
+  <div id="grid-root"></div>
+  <div id="view-overlay"></div>
+</div>
+
+<!-- ── Tool approval dialog ─────────────────────────────────────── -->
+<div id="approval-overlay">
+  <div id="approval-dialog">
+    <h3>Tool Confirmation Required</h3>
+    <div class="approval-tool" id="approval-tool-name"></div>
+    <div class="approval-args" id="approval-args"></div>
+    <div class="approval-btns">
+      <button class="btn-deny" id="approval-deny">Deny</button>
+      <button class="btn-approve" id="approval-approve">Approve</button>
+    </div>
+  </div>
+</div>
 
 <!-- ── Toast container ──────────────────────────────────────────── -->
 <div id="toast-container"></div>
@@ -367,20 +619,38 @@ const viewPool      = new Map(); // viewId → { iframe, ready, accepts, _readyT
 const popoutWindows = new Map(); // viewId → { win, intervalId }
 
 // ================================================================
-//  WebSocket
+//  WebSocket (exponential backoff reconnect)
 // ================================================================
+let _wsBackoff = 1000;         // current backoff delay (ms)
+const _WS_BACKOFF_MAX = 30000; // cap at 30 s
+let _wsReconnectTimer = null;
+
 function connectWS() {
+  if (_wsReconnectTimer) { clearTimeout(_wsReconnectTimer); _wsReconnectTimer = null; }
+  // Close existing connection before creating a new one
+  if (ws) { try { ws.onclose = null; ws.close(); } catch(e) {} ws = null; }
   ws = new WebSocket(WS_URL);
 
   ws.onopen = () => {
     connected = true;
+    _wsBackoff = 1000; // reset on success
     document.getElementById('conn-dot').classList.add('connected');
+    showToast('success', 'Connected to dashboard server', 2000);
+    // Request current config (model, servers, system prompt)
+    sendToBridge({ type: 'REQUEST_CONFIG' });
+    // Request tool registry
+    sendToBridge({ type: 'REQUEST_TOOLS' });
   };
 
   ws.onclose = () => {
+    const wasConnected = connected;
     connected = false;
     document.getElementById('conn-dot').classList.remove('connected');
-    setTimeout(connectWS, 5000);
+    if (wasConnected) showToast('warning', `Disconnected — reconnecting in ${Math.round(_wsBackoff/1000)}s…`, _wsBackoff);
+    _wsReconnectTimer = setTimeout(() => {
+      _wsBackoff = Math.min(_wsBackoff * 2, _WS_BACKOFF_MAX);
+      connectWS();
+    }, _wsBackoff);
   };
 
   ws.onerror = () => {
@@ -403,10 +673,16 @@ function sendToBridge(msg) {
 // ================================================================
 //  Bridge message routing
 // ================================================================
+// Cached payloads for replaying to late-loading views
+let _cachedToolRegistry = null;
+let _cachedPlanUpdate = null;
+
 function handleBridgeMessage(msg) {
   switch (msg.type) {
     case 'VIEW_REGISTRY':
-      viewRegistry = msg.views || [];
+      // Merge dynamic views from bridge without clobbering builtins
+      // Envelope format: msg.payload.views; legacy format: msg.views
+      mergeViewRegistry((msg.payload && msg.payload.views) || msg.views || []);
       rebuildAddPanelMenu();
       break;
 
@@ -420,10 +696,47 @@ function handleBridgeMessage(msg) {
 
     case 'CONVERSATION_MESSAGE':
       broadcastToViewType('conversation', 'CONVERSATION_MESSAGE', msg.payload);
+      sendToActivityStream('CONVERSATION_MESSAGE', msg.payload);
       break;
 
     case 'CONVERSATION_TOKEN':
       broadcastToViewType('conversation', 'CONVERSATION_TOKEN', msg.payload);
+      break;
+
+    case 'CONVERSATION_HISTORY':
+      broadcastToViewType('conversation', 'CONVERSATION_HISTORY', msg.payload);
+      break;
+
+    case 'ACTIVITY_HISTORY':
+      sendToActivityStream('ACTIVITY_HISTORY', msg.payload);
+      break;
+
+    case 'CONFIG_STATE':
+      handleConfigState(msg.payload);
+      broadcastToViews('CONFIG_STATE', msg.payload);
+      break;
+
+    case 'TOOL_REGISTRY':
+      _cachedToolRegistry = msg.payload;
+      broadcastToViewType('tools', 'TOOL_REGISTRY', msg.payload);
+      break;
+
+    case 'TOOL_APPROVAL_REQUEST':
+      handleToolApprovalRequest(msg.payload);
+      break;
+
+    case 'PLAN_UPDATE':
+      _cachedPlanUpdate = msg.payload;
+      broadcastToViewType('plan', 'PLAN_UPDATE', msg.payload);
+      sendToActivityStream('PLAN_UPDATE', msg.payload);
+      break;
+
+    case 'SESSION_STATE':
+      handleSessionState(msg.payload);
+      break;
+
+    case 'SESSION_LIST':
+      handleSessionList(msg.payload);
       break;
 
     case 'THEME':
@@ -438,11 +751,23 @@ function handleBridgeMessage(msg) {
 // ================================================================
 //  View Pool — iframes persist across layout changes
 // ================================================================
+function mergeViewRegistry(dynamicViews) {
+  // Keep builtins, add/update dynamic views
+  const builtinIds = new Set(viewRegistry.filter(v => v.source === 'builtin').map(v => v.id));
+  const merged = viewRegistry.filter(v => v.source === 'builtin');
+  for (const v of dynamicViews) {
+    if (!builtinIds.has(v.id)) merged.push(v);
+  }
+  viewRegistry = merged;
+}
+
 function srcForView(viewId) {
   const vInfo = viewRegistry.find(v => v.id === viewId);
   if (vInfo && vInfo.url) return vInfo.url;
   if (viewId === 'builtin:agent-terminal') return '/views/agent-terminal.html';
   if (viewId === 'builtin:activity-stream') return '/views/activity-stream.html';
+  if (viewId === 'builtin:tool-browser')    return '/views/tool-browser.html';
+  if (viewId === 'builtin:plan-viewer')     return '/views/plan-viewer.html';
   return '';
 }
 
@@ -452,22 +777,23 @@ function getOrCreateView(viewId) {
   const iframe = document.createElement('iframe');
   iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
   iframe.allow = '';
-  iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
   iframe.src = srcForView(viewId);
   iframe.dataset.viewId = viewId;
   view.iframe = iframe;
   viewPool.set(viewId, view);
-  // Park in stash immediately — iframe must stay in document to preserve browsing context
-  document.getElementById('view-stash').appendChild(iframe);
+  // Append to view-overlay — iframes NEVER move between parents (reparenting
+  // destroys browsing context in all modern browsers).  They stay here
+  // permanently and are positioned over panel body slots via syncViewPositions().
+  document.getElementById('view-overlay').appendChild(iframe);
   return view;
 }
 
-function attachViewToSlot(viewId, bodyEl) {
+function attachViewToSlot(viewId) {
   if (!viewId) return;
   const view = getOrCreateView(viewId);
-  // Detach from any current parent without destroying the iframe
-  if (view.iframe.parentNode) view.iframe.parentNode.removeChild(view.iframe);
-  bodyEl.appendChild(view.iframe);
+  // No reparenting — iframe stays in #view-overlay.
+  // syncViewPositions() will position it over the panel body.
+  requestAnimationFrame(() => syncViewPositions());
   // Start ready timeout only for first load
   if (!view.ready && !view._readyTimeout) {
     view._readyTimeout = setTimeout(() => {
@@ -521,16 +847,13 @@ function updatePanelHeader(panel) {
 function switchPanelView(panelId, newViewId) {
   const panel = panels[panelId];
   if (!panel || panel.viewId === newViewId) return;
-  const body = panel.el.querySelector('.panel-body');
-  if (!body) return;
-  // Detach current view (keeps it alive in pool)
-  if (panel.viewId) {
-    const oldView = viewPool.get(panel.viewId);
-    if (oldView?.iframe.parentNode === body) body.removeChild(oldView.iframe);
-  }
+  // Just update the mapping — no iframe DOM manipulation needed.
+  // The old view's iframe hides automatically via syncViewPositions()
+  // (it will no longer be hosted by any panel).
   panel.viewId = newViewId;
-  attachViewToSlot(newViewId, body);
+  getOrCreateView(newViewId); // ensure iframe exists
   updatePanelHeader(panel);
+  requestAnimationFrame(() => syncViewPositions());
   // If already ready, send INIT with current dimensions
   const view = viewPool.get(newViewId);
   if (view?.ready) sendInitToView(newViewId, panel);
@@ -568,6 +891,20 @@ function broadcastToViews(type, payload) {
   }
   for (const [, entry] of popoutWindows) {
     if (!entry.win.closed) postToPopout(entry.win, type, payload);
+  }
+}
+
+function sendToActivityStream(type, payload) {
+  // Send a message specifically to the activity stream view (embedded or popout)
+  for (const panel of Object.values(panels)) {
+    if (panel.viewId !== 'builtin:activity-stream') continue;
+    const view = viewPool.get(panel.viewId);
+    if (view?.ready && view.iframe) postToIframe(view.iframe, type, payload);
+  }
+  for (const [viewId, entry] of popoutWindows) {
+    if (viewId === 'builtin:activity-stream' && !entry.win.closed) {
+      postToPopout(entry.win, type, payload);
+    }
   }
 }
 
@@ -672,9 +1009,34 @@ function handleViewReady(viewId, payload) {
   updatePanelHeader(panel);
   if (!wasReady) {
     sendInitToView(viewId, panel);
+    // Replay cached state to newly ready views
+    replayCachedState(viewId, view);
   } else {
     // View reattached to a slot — update its dimensions
     notifyResize(panel.panelId);
+  }
+}
+
+function replayCachedState(viewId, view) {
+  const vInfo = viewRegistry.find(v => v.id === viewId);
+  const viewType = vInfo?.type;
+
+  // Replay TOOL_REGISTRY to tools-type views
+  if (viewType === 'tools' && _cachedToolRegistry) {
+    postToIframe(view.iframe, 'TOOL_REGISTRY', _cachedToolRegistry);
+  }
+  // Replay PLAN_UPDATE to plan-type views and activity stream
+  if (_cachedPlanUpdate && (viewType === 'plan' || viewId === 'builtin:activity-stream')) {
+    postToIframe(view.iframe, 'PLAN_UPDATE', _cachedPlanUpdate);
+  }
+  // Replay CONFIG_STATE to all views
+  if (_configState) {
+    postToIframe(view.iframe, 'CONFIG_STATE', _configState);
+  }
+  // Replay CONVERSATION_HISTORY to conversation-type views
+  if (viewType === 'conversation') {
+    // Request fresh history from bridge
+    sendToBridge({ type: 'REQUEST_CONFIG' });
   }
 }
 
@@ -711,7 +1073,7 @@ function applyTheme(t) {
 
   const root = document.documentElement;
   root.style.setProperty('--dash-bg',         t.bg || '');
-  root.style.setProperty('--dash-bg-surface',  t.bg_surface || t.bg_surface || '');
+  root.style.setProperty('--dash-bg-surface',  t.bg_surface || '');
   root.style.setProperty('--dash-bg-hover',    t.bg_hover || '');
   root.style.setProperty('--dash-fg',          t.fg || '');
   root.style.setProperty('--dash-fg-muted',    t.fg_muted || '');
@@ -735,6 +1097,7 @@ function applyTheme(t) {
   broadcastToViews('THEME', themeToCSS(t));
 }
 
+let _themeChangeHandler = null;
 function buildThemeSelect() {
   const sel = document.getElementById('theme-select');
   sel.innerHTML = '';
@@ -745,9 +1108,10 @@ function buildThemeSelect() {
     sel.appendChild(opt);
   }
   sel.value = activeTheme;
-  sel.addEventListener('change', () => {
-    applyTheme(themes[sel.value] || {});
-  });
+  // Remove previous listener to avoid stacking
+  if (_themeChangeHandler) sel.removeEventListener('change', _themeChangeHandler);
+  _themeChangeHandler = () => { applyTheme(themes[sel.value] || {}); };
+  sel.addEventListener('change', _themeChangeHandler);
 }
 
 // ================================================================
@@ -768,15 +1132,9 @@ function defaultLayout() {
 }
 
 function renderLayout(layout) {
-  const root  = document.getElementById('grid-root');
-  const stash = document.getElementById('view-stash');
-  // Move all pool iframes to the stash — they stay in the document so their
-  // browsing context (and all JS state) is preserved across layout changes.
-  for (const [, view] of viewPool) {
-    if (view.iframe && view.iframe.parentNode !== stash) {
-      stash.appendChild(view.iframe);
-    }
-  }
+  const root = document.getElementById('grid-root');
+  // Iframes stay in #view-overlay — we only rebuild the panel grid.
+  // No iframe reparenting occurs, so browsing context is preserved.
   root.innerHTML = '';
   panels = {};
 
@@ -794,6 +1152,9 @@ function renderLayout(layout) {
       rowEl.appendChild(panelEl);
     });
   });
+
+  // Position iframes over their panel body slots after browser layout
+  requestAnimationFrame(() => syncViewPositions());
 }
 
 function parseFlex(pct) {
@@ -831,7 +1192,7 @@ function createPanelSlot(viewId, rowEl) {
   panels[panelId] = panel;
 
   if (resolvedViewId) {
-    attachViewToSlot(resolvedViewId, body);
+    attachViewToSlot(resolvedViewId);
   } else {
     const ph = document.createElement('div');
     ph.className = 'panel-placeholder';
@@ -845,7 +1206,7 @@ function createPanelSlot(viewId, rowEl) {
     if (btn) {
       e.stopPropagation();
       const action = btn.dataset.action;
-      if (action === 'minimize') panelEl.classList.toggle('minimized');
+      if (action === 'minimize') { panelEl.classList.toggle('minimized'); requestAnimationFrame(() => syncViewPositions()); }
       else if (action === 'close') closePanel(panelId);
       else if (action === 'popout') popoutPanel(panel);
       return;
@@ -884,6 +1245,8 @@ function iconForView(viewId) {
   if (!viewId) return '□';
   if (viewId === 'builtin:agent-terminal') return '⌨';
   if (viewId === 'builtin:activity-stream') return '◈';
+  if (viewId === 'builtin:tool-browser')    return '🔧';
+  if (viewId === 'builtin:plan-viewer')     return '📋';
   const v = viewRegistry.find(v => v.id === viewId);
   return v?.icon || '◻';
 }
@@ -892,6 +1255,8 @@ function labelForView(viewId) {
   if (!viewId) return 'Empty';
   if (viewId === 'builtin:agent-terminal') return 'Agent Terminal';
   if (viewId === 'builtin:activity-stream') return 'Activity Stream';
+  if (viewId === 'builtin:tool-browser')    return 'Tool Browser';
+  if (viewId === 'builtin:plan-viewer')     return 'Plan Viewer';
   const v = viewRegistry.find(v => v.id === viewId);
   return v ? v.name : viewId;
 }
@@ -902,16 +1267,14 @@ function labelForView(viewId) {
 function closePanel(panelId) {
   const panel = panels[panelId];
   if (!panel) return;
-  // Detach view without destroying — keeps it alive in pool
-  if (panel.viewId) {
-    const view = viewPool.get(panel.viewId);
-    if (view?.iframe.parentNode) view.iframe.parentNode.removeChild(view.iframe);
-  }
+  // Don't touch the iframe — it stays alive in #view-overlay.
+  // syncViewPositions() will hide it since no panel hosts it.
   const rowEl = panel.rowEl;
   panel.el.remove();
   delete panels[panelId];
   if (rowEl && rowEl.querySelectorAll('.panel').length === 0) rowEl.remove();
   rebuildAddPanelMenu();
+  requestAnimationFrame(() => syncViewPositions());
 }
 
 function popoutPanel(panel) {
@@ -956,22 +1319,14 @@ function postToPopout(win, type, payload) {
 function swapPanels(aId, bId) {
   const a = panels[aId], b = panels[bId];
   if (!a || !b || a.viewId === b.viewId) return;
-  const aBody = a.el.querySelector('.panel-body');
-  const bBody = b.el.querySelector('.panel-body');
-  const aViewId = a.viewId, bViewId = b.viewId;
-  // Detach both views first
-  for (const vId of [aViewId, bViewId]) {
-    if (!vId) continue;
-    const v = viewPool.get(vId);
-    if (v?.iframe.parentNode) v.iframe.parentNode.removeChild(v.iframe);
-  }
-  // Cross-attach
-  a.viewId = bViewId;
-  b.viewId = aViewId;
-  if (bViewId && aBody) attachViewToSlot(bViewId, aBody);
-  if (aViewId && bBody) attachViewToSlot(aViewId, bBody);
+  // Just swap the viewId mappings — no iframe DOM manipulation.
+  // syncViewPositions() repositions iframes over the correct panel bodies.
+  const tmp = a.viewId;
+  a.viewId = b.viewId;
+  b.viewId = tmp;
   updatePanelHeader(a);
   updatePanelHeader(b);
+  requestAnimationFrame(() => syncViewPositions());
 }
 
 function showPanelError(bodyEl, msg) {
@@ -979,9 +1334,8 @@ function showPanelError(bodyEl, msg) {
   ph.className = 'panel-placeholder';
   ph.style.color = 'var(--dash-error)';
   ph.textContent = msg;
-  const existing = bodyEl.querySelector('iframe');
-  if (existing) existing.replaceWith(ph);
-  else bodyEl.appendChild(ph);
+  bodyEl.innerHTML = '';
+  bodyEl.appendChild(ph);
 }
 
 // ================================================================
@@ -1005,7 +1359,7 @@ function makeColHandle(rowEl, idx) {
     const panelsBefore = Array.from(rowEl.children).slice(0, handleIdx).filter(c => c.classList.contains('panel'));
     const panelsAfter  = Array.from(rowEl.children).slice(handleIdx + 1).filter(c => c.classList.contains('panel'));
 
-    panels_before = panelsBefore.at(-1);
+    panels_before = panelsBefore[panelsBefore.length - 1];
     panels_after  = panelsAfter[0];
     if (!panels_before || !panels_after) return;
 
@@ -1018,6 +1372,7 @@ function makeColHandle(rowEl, idx) {
       const na = Math.max(200, startAfter  - dx);
       panels_before.style.flex = `0 0 ${nb}px`;
       panels_after.style.flex  = `0 0 ${na}px`;
+      syncViewPositions();
       notifyResize(panels_before.dataset.panelId);
       notifyResize(panels_after.dataset.panelId);
     }
@@ -1037,6 +1392,7 @@ function makeColHandle(rowEl, idx) {
     Array.from(rowEl.children).filter(c => c.classList.contains('panel')).forEach(p => {
       p.style.flex = '';
     });
+    requestAnimationFrame(() => syncViewPositions());
   });
 
   return handle;
@@ -1058,7 +1414,7 @@ function makeRowHandle(root, idx) {
     const rowsBefore = Array.from(root.children).slice(0, handleIdx).filter(c => c.classList.contains('grid-row'));
     const rowsAfter  = Array.from(root.children).slice(handleIdx + 1).filter(c => c.classList.contains('grid-row'));
 
-    rowBefore = rowsBefore.at(-1);
+    rowBefore = rowsBefore[rowsBefore.length - 1];
     rowAfter  = rowsAfter[0];
     if (!rowBefore || !rowAfter) return;
 
@@ -1071,6 +1427,7 @@ function makeRowHandle(root, idx) {
       const na = Math.max(150, startAfter  - dy);
       rowBefore.style.flex = `0 0 ${nb}px`;
       rowAfter.style.flex  = `0 0 ${na}px`;
+      syncViewPositions();
     }
 
     function onUp() {
@@ -1087,6 +1444,7 @@ function makeRowHandle(root, idx) {
     Array.from(root.children).filter(c => c.classList.contains('grid-row')).forEach(r => {
       r.style.flex = '';
     });
+    requestAnimationFrame(() => syncViewPositions());
   });
 
   return handle;
@@ -1101,6 +1459,45 @@ function notifyResize(panelId) {
   if (!body) return;
   postToIframe(view.iframe, 'RESIZE', { width: body.clientWidth, height: body.clientHeight });
 }
+
+// ================================================================
+//  View overlay positioning — positions iframes over panel body slots
+// ================================================================
+function syncViewPositions() {
+  const overlay = document.getElementById('view-overlay');
+  if (!overlay) return;
+  const overlayRect = overlay.getBoundingClientRect();
+
+  // Build set of viewIds currently hosted by a visible panel
+  const hostedViews = new Set();
+  for (const panel of Object.values(panels)) {
+    if (panel.viewId) hostedViews.add(panel.viewId);
+  }
+
+  for (const [viewId, view] of viewPool) {
+    if (!view.iframe) continue;
+    const panel = findPanelHostingView(viewId);
+    if (panel && !panel.el.classList.contains('minimized')) {
+      const body = panel.el.querySelector('.panel-body');
+      if (body) {
+        const rect = body.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          view.iframe.style.display = 'block';
+          view.iframe.style.left   = (rect.left   - overlayRect.left) + 'px';
+          view.iframe.style.top    = (rect.top    - overlayRect.top)  + 'px';
+          view.iframe.style.width  = rect.width  + 'px';
+          view.iframe.style.height = rect.height + 'px';
+          continue;
+        }
+      }
+    }
+    // Not placed, minimized, or zero-size — hide
+    view.iframe.style.display = 'none';
+  }
+}
+
+// Re-sync on window resize
+window.addEventListener('resize', () => requestAnimationFrame(() => syncViewPositions()));
 
 // ================================================================
 //  Layout dropdown
@@ -1127,7 +1524,7 @@ function applyPreset(name) {
   const presets = {
     'Minimal': { rows: [{ height: '100%', columns: [{ width: '100%', view: 'builtin:agent-terminal' }] }] },
     'Standard': { rows: [{ height: '100%', columns: [{ width: '70%', view: 'builtin:agent-terminal' }, { width: '30%', view: 'builtin:activity-stream' }] }] },
-    'Full': { rows: [{ height: '60%', columns: [{ width: '65%', view: 'builtin:agent-terminal' }, { width: '35%', view: 'builtin:activity-stream' }] }, { height: '40%', columns: [{ width: '100%', view: 'auto' }] }] },
+    'Full': { rows: [{ height: '60%', columns: [{ width: '65%', view: 'builtin:agent-terminal' }, { width: '35%', view: 'builtin:activity-stream' }] }, { height: '40%', columns: [{ width: '50%', view: 'builtin:tool-browser' }, { width: '50%', view: 'builtin:plan-viewer' }] }] },
   };
   const layout = presets[name];
   if (layout) { layoutConfig = layout; renderLayout(layout); }
@@ -1175,6 +1572,7 @@ function addPanelWithView(viewId) {
   panelEl.style.flex = '1';
   lastRow.appendChild(panelEl);
   rebuildAddPanelMenu();
+  requestAnimationFrame(() => syncViewPositions());
 }
 
 // ================================================================
@@ -1188,6 +1586,45 @@ function showToast(level, message, duration) {
   container.appendChild(toast);
   setTimeout(() => toast.remove(), duration || 5000);
 }
+
+// ================================================================
+//  Tool approval dialog
+// ================================================================
+let _pendingApprovalCallId = null;
+let _approvalQueue = [];
+
+function handleToolApprovalRequest(payload) {
+  // If another approval is already showing, deny it first (auto-deny stale)
+  if (_pendingApprovalCallId) {
+    sendToBridge({ type: 'TOOL_APPROVAL_RESPONSE', call_id: _pendingApprovalCallId, approved: false });
+  }
+  _pendingApprovalCallId = payload.call_id || '';
+  document.getElementById('approval-tool-name').textContent = payload.tool_name || 'unknown';
+  try {
+    document.getElementById('approval-args').textContent =
+      JSON.stringify(payload.arguments, null, 2);
+  } catch {
+    document.getElementById('approval-args').textContent = String(payload.arguments || '{}');
+  }
+  document.getElementById('approval-overlay').classList.add('open');
+  showToast('warning', `Approval needed: ${payload.tool_name}`);
+}
+
+document.getElementById('approval-approve').addEventListener('click', () => {
+  if (_pendingApprovalCallId) {
+    sendToBridge({ type: 'TOOL_APPROVAL_RESPONSE', call_id: _pendingApprovalCallId, approved: true });
+  }
+  document.getElementById('approval-overlay').classList.remove('open');
+  _pendingApprovalCallId = null;
+});
+
+document.getElementById('approval-deny').addEventListener('click', () => {
+  if (_pendingApprovalCallId) {
+    sendToBridge({ type: 'TOOL_APPROVAL_RESPONSE', call_id: _pendingApprovalCallId, approved: false });
+  }
+  document.getElementById('approval-overlay').classList.remove('open');
+  _pendingApprovalCallId = null;
+});
 
 // ================================================================
 //  Toolbar event wiring
@@ -1224,12 +1661,350 @@ document.getElementById('save-layout-btn').addEventListener('click', () => {
   }
 });
 
-// Close all dropdowns/menus on outside click
-document.addEventListener('click', () => {
+document.getElementById('clear-history-btn').addEventListener('click', () => {
+  if (!confirm('Clear all chat history and start a new session?')) return;
+  sendToBridge({ type: 'CLEAR_HISTORY' });
+  showToast('info', 'Chat history cleared');
+});
+
+document.getElementById('new-session-btn').addEventListener('click', () => {
+  if (!confirm('Save current session and start a new one?')) return;
+  sendToBridge({ type: 'NEW_SESSION' });
+  showToast('success', 'New session started');
+  // Close session drawer if open
+  document.getElementById('session-drawer').classList.remove('open');
+});
+
+document.getElementById('sessions-btn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const drawer = document.getElementById('session-drawer');
+  drawer.classList.toggle('open');
+  if (drawer.classList.contains('open')) {
+    sendToBridge({ type: 'REQUEST_SESSIONS' });
+  }
+});
+
+document.getElementById('refresh-sessions-btn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  sendToBridge({ type: 'REQUEST_SESSIONS' });
+});
+
+// ================================================================
+//  Session list management
+// ================================================================
+let _sessionList = [];
+
+function handleSessionList(payload) {
+  _sessionList = payload.sessions || [];
+  const currentId = payload.current_session_id || _currentSessionId;
+  renderSessionList(_sessionList, currentId);
+}
+
+function renderSessionList(sessions, currentId) {
+  const ul = document.getElementById('session-list');
+  if (!sessions.length) {
+    ul.innerHTML = '<li class="session-empty">No saved sessions</li>';
+    return;
+  }
+  ul.innerHTML = '';
+  for (const s of sessions) {
+    const li = document.createElement('li');
+    li.className = 'session-item' + (s.session_id === currentId ? ' active' : '');
+
+    const info = document.createElement('div');
+    info.className = 'session-info';
+
+    const idEl = document.createElement('div');
+    idEl.className = 'session-id';
+    idEl.textContent = s.description || s.session_id.slice(0, 12);
+    info.appendChild(idEl);
+
+    const meta = document.createElement('div');
+    meta.className = 'session-meta';
+    const msgs = document.createElement('span');
+    msgs.textContent = s.message_count + ' msgs';
+    meta.appendChild(msgs);
+    if (s.model) {
+      const model = document.createElement('span');
+      model.textContent = s.model;
+      meta.appendChild(model);
+    }
+    const time = document.createElement('span');
+    time.textContent = formatSessionTime(s.updated_at);
+    meta.appendChild(time);
+    info.appendChild(meta);
+
+    li.appendChild(info);
+
+    const actions = document.createElement('div');
+    actions.className = 'session-actions';
+
+    if (s.session_id !== currentId) {
+      const loadBtn = document.createElement('button');
+      loadBtn.textContent = 'Load';
+      loadBtn.title = 'Switch to this session';
+      loadBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sendToBridge({ type: 'SWITCH_SESSION', session_id: s.session_id });
+        showToast('info', 'Switching session...');
+      });
+      actions.appendChild(loadBtn);
+
+      const delBtn = document.createElement('button');
+      delBtn.textContent = 'Del';
+      delBtn.className = 'delete';
+      delBtn.title = 'Delete this session';
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm('Delete this session permanently?')) {
+          sendToBridge({ type: 'DELETE_SESSION', session_id: s.session_id });
+        }
+      });
+      actions.appendChild(delBtn);
+    } else {
+      const cur = document.createElement('span');
+      cur.textContent = 'current';
+      cur.style.cssText = 'font-size:10px;color:var(--dash-accent)';
+      actions.appendChild(cur);
+    }
+
+    li.appendChild(actions);
+    ul.appendChild(li);
+  }
+}
+
+function formatSessionTime(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    const now = new Date();
+    const diff = now - d;
+    if (diff < 60000) return 'just now';
+    if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+    if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+    return d.toLocaleDateString();
+  } catch { return ''; }
+}
+
+// ================================================================
+//  Config state (model, provider, servers, system prompt)
+// ================================================================
+let _configState = null; // cached CONFIG_STATE payload
+let _availableProviders = []; // [{name, models: [...]}]
+
+function handleConfigState(payload) {
+  _configState = payload;
+  _availableProviders = payload.available_providers || [];
+  updateProviderSelect(payload.provider);
+  updateModelSelect(payload.provider, payload.model);
+  updateServerList(payload.servers || []);
+  updateSystemPromptEditor(payload.system_prompt || '');
+  // Show model group once we have config
+  document.getElementById('model-group').style.display = 'flex';
+}
+
+// ── Session state ─────────────────────────────────────────────────
+let _currentSessionId = null;
+
+function handleSessionState(payload) {
+  _currentSessionId = payload.session_id || null;
+  // Could update a session indicator in toolbar later
+}
+
+// ── Provider / Model selectors ────────────────────────────────────
+function updateProviderSelect(activeProvider) {
+  const sel = document.getElementById('provider-select');
+  const prev = sel.value;
+  sel.innerHTML = '';
+  for (const p of _availableProviders) {
+    const opt = document.createElement('option');
+    opt.value = p.name;
+    opt.textContent = p.name;
+    sel.appendChild(opt);
+  }
+  sel.value = activeProvider || prev;
+}
+
+function updateModelSelect(provider, activeModel) {
+  const sel = document.getElementById('model-select');
+  sel.innerHTML = '';
+  const pInfo = _availableProviders.find(p => p.name === provider);
+  const models = pInfo ? pInfo.models : [];
+  if (models.length === 0) {
+    const opt = document.createElement('option');
+    opt.value = activeModel || '';
+    opt.textContent = activeModel || '(unknown)';
+    sel.appendChild(opt);
+  } else {
+    for (const m of models) {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m;
+      sel.appendChild(opt);
+    }
+  }
+  sel.value = activeModel || '';
+  // If active model not in list, add it
+  if (sel.value !== activeModel && activeModel) {
+    const opt = document.createElement('option');
+    opt.value = activeModel;
+    opt.textContent = activeModel;
+    sel.insertBefore(opt, sel.firstChild);
+    sel.value = activeModel;
+  }
+}
+
+document.getElementById('provider-select').addEventListener('change', (e) => {
+  const provider = e.target.value;
+  const pInfo = _availableProviders.find(p => p.name === provider);
+  const models = pInfo ? pInfo.models : [];
+  const model = models[0] || '';
+  updateModelSelect(provider, model);
+  if (model) sendToBridge({ type: 'SWITCH_MODEL', provider, model });
+});
+
+document.getElementById('model-select').addEventListener('change', (e) => {
+  const model = e.target.value;
+  const provider = document.getElementById('provider-select').value;
+  if (provider && model) sendToBridge({ type: 'SWITCH_MODEL', provider, model });
+});
+
+// ── Server list ───────────────────────────────────────────────────
+function updateServerList(servers) {
+  const list = document.getElementById('server-list');
+  list.innerHTML = '';
+  if (!servers.length) {
+    list.innerHTML = '<li style="font-size:12px;color:var(--dash-fg-muted)">No servers connected</li>';
+    return;
+  }
+  for (const s of servers) {
+    const li = document.createElement('li');
+    li.className = 'server-item';
+    li.innerHTML = `
+      <span class="server-dot ${s.connected ? 'on' : 'off'}"></span>
+      <span class="server-name" title="${esc(s.namespace || s.name)}">${esc(s.name)}</span>
+      <span class="server-tools">${esc(String(s.tool_count))} tools</span>
+    `;
+    list.appendChild(li);
+  }
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── System prompt editor ──────────────────────────────────────────
+function updateSystemPromptEditor(prompt) {
+  const editor = document.getElementById('system-prompt-editor');
+  // Only update if not focused (avoid overwriting user edits)
+  if (document.activeElement !== editor) {
+    editor.value = prompt;
+  }
+}
+
+document.getElementById('apply-prompt-btn').addEventListener('click', () => {
+  const text = document.getElementById('system-prompt-editor').value;
+  sendToBridge({ type: 'UPDATE_SYSTEM_PROMPT', system_prompt: text });
+  showToast('info', 'System prompt updated');
+});
+
+document.getElementById('reset-prompt-btn').addEventListener('click', () => {
+  sendToBridge({ type: 'UPDATE_SYSTEM_PROMPT', system_prompt: '' });
+  showToast('info', 'System prompt reset to default');
+});
+
+// ================================================================
+//  Export conversation
+// ================================================================
+document.getElementById('export-btn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  document.getElementById('export-menu').classList.toggle('open');
+});
+
+document.getElementById('export-menu').addEventListener('click', (e) => {
+  const item = e.target.closest('[data-format]');
+  if (!item) return;
+  e.stopPropagation();
+  document.getElementById('export-menu').classList.remove('open');
+  exportConversation(item.dataset.format);
+});
+
+function exportConversation(format) {
+  // Collect messages from the agent-terminal iframe
+  const msgs = collectConversationMessages();
+  if (!msgs.length) { showToast('warning', 'No messages to export'); return; }
+
+  let content, ext, mime;
+  if (format === 'json') {
+    content = JSON.stringify({ exported: new Date().toISOString(), messages: msgs }, null, 2);
+    ext = 'json'; mime = 'application/json';
+  } else {
+    const lines = [`# Conversation Export\n_${new Date().toISOString()}_\n`];
+    for (const m of msgs) {
+      const label = m.role === 'user' ? '**You**' : m.role === 'assistant' ? '**Agent**' : `**${m.role}**`;
+      lines.push(`### ${label}\n${m.content}\n`);
+    }
+    content = lines.join('\n');
+    ext = 'md'; mime = 'text/markdown';
+  }
+
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `conversation-${Date.now()}.${ext}`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('success', `Exported as ${ext.toUpperCase()}`);
+}
+
+function collectConversationMessages() {
+  // Find the agent-terminal iframe and read its messages
+  for (const [viewId, view] of viewPool) {
+    if (viewId !== 'builtin:agent-terminal' || !view.iframe) continue;
+    try {
+      const doc = view.iframe.contentDocument || view.iframe.contentWindow.document;
+      const msgEls = doc.querySelectorAll('.msg');
+      const messages = [];
+      for (const el of msgEls) {
+        const role = el.classList.contains('user') ? 'user' :
+                     el.classList.contains('tool-call') ? 'tool' : 'assistant';
+        const contentEl = el.querySelector('.msg-content');
+        const toolNameEl = el.querySelector('.tool-name');
+        let content = '';
+        if (contentEl) content = contentEl.textContent || '';
+        else if (toolNameEl) content = `[Tool: ${toolNameEl.textContent}]`;
+        if (content) messages.push({ role, content });
+      }
+      return messages;
+    } catch (e) {
+      // Cross-origin — fall back to asking the bridge
+      sendToBridge({ type: 'REQUEST_EXPORT' });
+      showToast('info', 'Export requested from server');
+      return [];
+    }
+  }
+  return [];
+}
+
+// Close dropdowns/menus on outside click (but NOT settings panel when clicking inside it)
+document.addEventListener('click', (e) => {
   document.getElementById('layout-menu').classList.remove('open');
   document.getElementById('add-panel-menu').classList.remove('open');
-  document.getElementById('settings-panel').classList.remove('open');
+  document.getElementById('export-menu').classList.remove('open');
   document.querySelectorAll('.panel-view-menu.open').forEach(m => m.classList.remove('open'));
+  // Only close settings panel if click was outside both the panel and the settings button
+  const settingsPanel = document.getElementById('settings-panel');
+  const settingsBtn   = document.getElementById('settings-btn');
+  if (!settingsPanel.contains(e.target) && e.target !== settingsBtn) {
+    settingsPanel.classList.remove('open');
+  }
+  // Only close session drawer if click was outside both the drawer and the sessions button
+  const sessionDrawer = document.getElementById('session-drawer');
+  const sessionsBtn   = document.getElementById('sessions-btn');
+  if (!sessionDrawer.contains(e.target) && e.target !== sessionsBtn) {
+    sessionDrawer.classList.remove('open');
+  }
 });
 
 // ================================================================
@@ -1243,6 +2018,8 @@ async function init() {
   viewRegistry = [
     { id: 'builtin:agent-terminal', name: 'Agent Terminal', source: 'builtin', icon: '⌨', type: 'conversation', url: '/views/agent-terminal.html' },
     { id: 'builtin:activity-stream', name: 'Activity Stream', source: 'builtin', icon: '◈', type: 'stream', url: '/views/activity-stream.html' },
+    { id: 'builtin:tool-browser',    name: 'Tool Browser',    source: 'builtin', icon: '🔧', type: 'tools',        url: '/views/tool-browser.html' },
+    { id: 'builtin:plan-viewer',     name: 'Plan Viewer',     source: 'builtin', icon: '📋', type: 'plan',         url: '/views/plan-viewer.html' },
   ];
   rebuildAddPanelMenu();
 

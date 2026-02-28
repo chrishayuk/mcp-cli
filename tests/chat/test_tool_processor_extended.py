@@ -73,7 +73,7 @@ class DummyUIManager:
     async def finish_tool_execution(self, result=None, success=True):
         self._finish_calls.append((result, success))
 
-    def do_confirm_tool_execution(self, tool_name, arguments):
+    async def do_confirm_tool_execution(self, tool_name, arguments):
         return True
 
     async def start_tool_execution(self, tool_name, arguments):
@@ -99,7 +99,7 @@ class DummyUIManagerNoFinish:
     async def finish_tool_execution(self, result=None, success=True):
         pass
 
-    def do_confirm_tool_execution(self, tool_name, arguments):
+    async def do_confirm_tool_execution(self, tool_name, arguments):
         return True
 
     async def start_tool_execution(self, tool_name, arguments):
@@ -109,7 +109,7 @@ class DummyUIManagerNoFinish:
 class ConfirmDenyUIManager(DummyUIManager):
     """UI manager that denies tool confirmation."""
 
-    def do_confirm_tool_execution(self, tool_name, arguments):
+    async def do_confirm_tool_execution(self, tool_name, arguments):
         return False
 
 

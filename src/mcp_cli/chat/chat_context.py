@@ -875,27 +875,35 @@ class ChatContext:
                     continue  # System prompt is regenerated
                 elif role == MessageRole.USER:
                     event = SessionEvent(
-                        event_type=EventType.USER_MESSAGE,
+                        type=EventType.MESSAGE,
                         source=EventSource.USER,
-                        content=content,
+                        message=content,
                     )
                 elif role == MessageRole.ASSISTANT:
-                    event = SessionEvent(
-                        event_type=EventType.ASSISTANT_MESSAGE,
-                        source=EventSource.ASSISTANT,
-                        content=content,
-                    )
+                    # Assistant messages with tool_calls need full dict
+                    if msg_dict.get("tool_calls"):
+                        event = SessionEvent(
+                            type=EventType.TOOL_CALL,
+                            source=EventSource.SYSTEM,
+                            message=msg_dict,
+                        )
+                    else:
+                        event = SessionEvent(
+                            type=EventType.MESSAGE,
+                            source=EventSource.LLM,
+                            message=content,
+                        )
                 elif role == MessageRole.TOOL:
+                    # Tool result messages stored as full dict for reconstruction
                     event = SessionEvent(
-                        event_type=EventType.TOOL_RESULT,
-                        source=EventSource.TOOL,
-                        content=content,
-                        metadata={"tool_call_id": msg_dict.get("tool_call_id", "")},
+                        type=EventType.TOOL_CALL,
+                        source=EventSource.SYSTEM,
+                        message=msg_dict,
                     )
                 else:
                     continue
 
-                self.session.add_event(event)
+                self.session._session.events.append(event)
 
             logger.info(
                 f"Loaded session {session_id} with {len(data.messages)} messages"

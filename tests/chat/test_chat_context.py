@@ -1962,7 +1962,7 @@ class TestLoadSession:
 
     @pytest.mark.asyncio
     async def test_load_session_exception_returns_false(self, monkeypatch, tmp_path):
-        """load_session returns False when add_event (or similar) raises."""
+        """load_session returns False when event injection raises."""
         from unittest.mock import Mock
         from mcp_cli.chat.session_store import SessionData, SessionMetadata
 
@@ -1986,8 +1986,11 @@ class TestLoadSession:
         mock_store.load.return_value = data
         ctx._session_store = mock_store
 
-        # load_session calls self.session.add_event which doesn't exist
-        # This triggers the except block -> returns False
+        # Make session._session.events raise on append to trigger the except block
+        mock_events = Mock()
+        mock_events.append.side_effect = RuntimeError("injection error")
+        ctx.session._session.events = mock_events
+
         result = ctx.load_session("fake-session")
         assert result is False
 

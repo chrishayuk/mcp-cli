@@ -46,6 +46,13 @@ class DashboardServer:
         self.on_browser_message: Callable[[dict[str, Any]], Any] | None = None
         # Called when a new WebSocket client connects (before message loop starts)
         self.on_client_connected: Callable[[Any], Any] | None = None
+        # Called when a WebSocket client disconnects
+        self.on_client_disconnected: Callable[[], Any] | None = None
+
+    @property
+    def has_clients(self) -> bool:
+        """Return True if at least one browser client is connected."""
+        return bool(self._clients)
 
     # ------------------------------------------------------------------ #
     #  Public API                                                          #
@@ -117,6 +124,13 @@ class DashboardServer:
                 "Dashboard WebSocket client disconnected (%d remain)",
                 len(self._clients),
             )
+            if self.on_client_disconnected is not None:
+                try:
+                    result = self.on_client_disconnected()
+                    if asyncio.iscoroutine(result):
+                        await result
+                except Exception as exc:
+                    logger.debug("Error in client disconnected callback: %s", exc)
 
     async def _handle_browser_message(self, raw: str) -> None:
         try:

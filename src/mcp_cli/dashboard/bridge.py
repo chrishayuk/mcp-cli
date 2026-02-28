@@ -9,18 +9,22 @@ zero performance impact on normal usage.
 Hook call sites:
   tool_processor._on_tool_result()    → bridge.on_tool_result()
   conversation.process_user_input()   → bridge.on_agent_state(), bridge.on_message()
-  streaming_handler._process_chunk()  → bridge.on_token()          (Phase 4)
+  streaming_handler._process_chunk()  → bridge.on_token()
 """
 
 from __future__ import annotations
 
 import asyncio
 import datetime
+import json as _json
 import logging
 from collections.abc import Awaitable, Callable
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from mcp_cli.dashboard.server import DashboardServer
+
+if TYPE_CHECKING:
+    from mcp_cli.chat.chat_context import ChatContext
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +51,7 @@ class DashboardBridge:
     def __init__(self, server: DashboardServer) -> None:
         self.server = server
         self._turn_number: int = 0
+        self._ctx: ChatContext | None = None
         # Set this to inject user messages from the browser back into the chat engine
         self._user_message_callback: Callable[[str], None] | None = None
         # Queue for injecting browser messages into the chat loop
@@ -58,9 +63,35 @@ class DashboardBridge:
         # View registry discovered from _meta.ui fields in tool results
         self._view_registry: list[dict[str, Any]] = []
         self._seen_view_ids: set[str] = set()
+        # Pending tool approval futures keyed by call_id
+        self._pending_approvals: dict[str, asyncio.Future[bool]] = {}
         # Wire server callbacks
         server.on_browser_message = self._on_browser_message
         server.on_client_connected = self._on_client_connected
+        server.on_client_disconnected = self.on_client_disconnected
+
+    def set_context(self, ctx: ChatContext) -> None:
+        """Store a back-reference to ChatContext for history/config queries."""
+        self._ctx = ctx
+
+    async def on_shutdown(self) -> None:
+        """Cancel all pending approval futures. Call before stopping server."""
+        for call_id, fut in list(self._pending_approvals.items()):
+            if not fut.done():
+                fut.set_result(False)
+        self._pending_approvals.clear()
+
+    async def on_client_disconnected(self) -> None:
+        """Called when a browser client disconnects.
+
+        If no clients remain, cancel all pending approval futures so the
+        tool processor doesn't hang waiting for a response that will never come.
+        """
+        if not self.server.has_clients:
+            for call_id, fut in list(self._pending_approvals.items()):
+                if not fut.done():
+                    fut.set_result(False)
+            self._pending_approvals.clear()
 
     # ------------------------------------------------------------------ #
     #  Outbound hooks (chat engine → browser)                            #
@@ -76,6 +107,7 @@ class DashboardBridge:
         duration_ms: int | None = None,
         meta_ui: Any = None,
         call_id: str | None = None,
+        arguments: dict[str, Any] | None = None,
     ) -> None:
         """Called after every tool execution completes."""
         payload: dict[str, Any] = {
@@ -88,6 +120,7 @@ class DashboardBridge:
             "result": self._serialise(result),
             "error": error,
             "success": success,
+            "arguments": self._serialise(arguments) if arguments else None,
         }
         if meta_ui is not None:
             payload["meta_ui"] = self._serialise(meta_ui)
@@ -141,7 +174,7 @@ class DashboardBridge:
 
     async def on_view_registry_update(self, views: list[dict[str, Any]]) -> None:
         """Called when the set of available views changes (server connect/disconnect)."""
-        await self.server.broadcast({"type": "VIEW_REGISTRY", "views": views})
+        await self.server.broadcast(_envelope("VIEW_REGISTRY", {"views": views}))
 
     async def _discover_view(self, meta_ui: dict[str, Any], server_name: str) -> None:
         """Register a new view from a _meta.ui block and broadcast VIEW_REGISTRY."""
@@ -164,17 +197,39 @@ class DashboardBridge:
         await self.on_view_registry_update(self._view_registry)
 
     async def _on_client_connected(self, ws: Any) -> None:
-        """Send current VIEW_REGISTRY to a newly connected browser client."""
-        if not self._view_registry:
-            return
-        import json as _json
-
+        """Send current state to a newly connected browser client."""
         try:
-            await ws.send(
-                _json.dumps({"type": "VIEW_REGISTRY", "views": self._view_registry})
-            )
+            # VIEW_REGISTRY
+            if self._view_registry:
+                await ws.send(
+                    _json.dumps(
+                        _envelope("VIEW_REGISTRY", {"views": self._view_registry})
+                    )
+                )
+            # CONFIG_STATE (model, provider, servers, system prompt preview)
+            config = self._build_config_state()
+            if config:
+                await ws.send(_json.dumps(_envelope("CONFIG_STATE", config)))
+            # TOOL_REGISTRY
+            tools = await self._build_tool_registry()
+            if tools is not None:
+                await ws.send(_json.dumps(_envelope("TOOL_REGISTRY", {"tools": tools})))
+            # CONVERSATION_HISTORY replay (chat view)
+            history = self._build_conversation_history()
+            if history:
+                await ws.send(
+                    _json.dumps(
+                        _envelope("CONVERSATION_HISTORY", {"messages": history})
+                    )
+                )
+            # ACTIVITY_HISTORY replay (activity stream)
+            activity = self._build_activity_history()
+            if activity:
+                await ws.send(
+                    _json.dumps(_envelope("ACTIVITY_HISTORY", {"events": activity}))
+                )
         except Exception as exc:
-            logger.debug("Error sending VIEW_REGISTRY to new client: %s", exc)
+            logger.debug("Error sending initial state to new client: %s", exc)
 
     # ------------------------------------------------------------------ #
     #  Inbound messages (browser → chat engine)                          #
@@ -239,7 +294,6 @@ class DashboardBridge:
         elif msg_type == "USER_ACTION":
             action = msg.get("action") or ""
             content = msg.get("content") or ""
-            # Prefer explicit content; fall back to slash-command form of action name
             text = content or (f"/{action}" if action else "")
             if text and self._input_queue is not None:
                 try:
@@ -248,31 +302,583 @@ class DashboardBridge:
                     logger.warning("Error queuing USER_ACTION: %s", exc)
             else:
                 logger.debug("Dashboard USER_ACTION not routed: %s", msg)
+        elif msg_type == "REQUEST_CONFIG":
+            await self._handle_request_config()
+        elif msg_type == "REQUEST_TOOLS":
+            await self._handle_request_tools()
+        elif msg_type == "SWITCH_MODEL":
+            await self._handle_switch_model(msg)
+        elif msg_type == "UPDATE_SYSTEM_PROMPT":
+            await self._handle_update_system_prompt(msg)
+        elif msg_type == "TOOL_APPROVAL_RESPONSE":
+            await self._handle_tool_approval_response(msg)
+        elif msg_type == "CLEAR_HISTORY":
+            await self._handle_clear_history()
+        elif msg_type == "NEW_SESSION":
+            await self._handle_new_session(msg)
+        elif msg_type == "REQUEST_SESSIONS":
+            await self._handle_request_sessions()
+        elif msg_type == "SWITCH_SESSION":
+            await self._handle_switch_session(msg)
+        elif msg_type == "DELETE_SESSION":
+            await self._handle_delete_session(msg)
+        elif msg_type == "RENAME_SESSION":
+            await self._handle_rename_session(msg)
         else:
             logger.debug("Dashboard received unknown message type: %s", msg_type)
+
+    # ------------------------------------------------------------------ #
+    #  Config / Model / System-prompt handlers                            #
+    # ------------------------------------------------------------------ #
+
+    async def _handle_request_config(self) -> None:
+        """Browser requested current config — broadcast CONFIG_STATE."""
+        config = self._build_config_state()
+        if config:
+            await self.server.broadcast(_envelope("CONFIG_STATE", config))
+
+    async def _handle_switch_model(self, msg: dict[str, Any]) -> None:
+        """Browser requested a model switch."""
+        ctx = self._ctx
+        if not ctx:
+            logger.debug("SWITCH_MODEL: no context set")
+            return
+        provider = msg.get("provider") or ""
+        model = msg.get("model") or ""
+        if not provider or not model:
+            logger.debug("SWITCH_MODEL: missing provider or model")
+            return
+        try:
+            ctx.model_manager.switch_model(provider, model)
+            await ctx.refresh_after_model_change()
+            logger.info("Dashboard: switched to %s/%s", provider, model)
+        except Exception as exc:
+            logger.warning("Dashboard SWITCH_MODEL failed: %s", exc)
+        # Broadcast updated state
+        config = self._build_config_state()
+        if config:
+            await self.server.broadcast(_envelope("CONFIG_STATE", config))
+
+    async def _handle_update_system_prompt(self, msg: dict[str, Any]) -> None:
+        """Browser updated the system prompt."""
+        ctx = self._ctx
+        if not ctx:
+            logger.debug("UPDATE_SYSTEM_PROMPT: no context set")
+            return
+        new_prompt = msg.get("system_prompt")
+        if new_prompt is None:
+            return
+        try:
+            if new_prompt == "":
+                # Empty string → regenerate default prompt
+                await ctx.regenerate_system_prompt()
+            else:
+                ctx._system_prompt = new_prompt
+                await ctx.session.update_system_prompt(new_prompt)
+            logger.info(
+                "Dashboard: system prompt updated (%d chars)", len(ctx._system_prompt)
+            )
+        except Exception as exc:
+            logger.warning("Dashboard UPDATE_SYSTEM_PROMPT failed: %s", exc)
+        config = self._build_config_state()
+        if config:
+            await self.server.broadcast(_envelope("CONFIG_STATE", config))
+
+    # ------------------------------------------------------------------ #
+    #  Clear history handler                                              #
+    # ------------------------------------------------------------------ #
+
+    async def _handle_clear_history(self) -> None:
+        """Browser requested conversation history clear."""
+        ctx = self._ctx
+        if not ctx:
+            logger.debug("CLEAR_HISTORY: no context set")
+            return
+        try:
+            await ctx.clear_conversation_history(keep_system_prompt=True)
+            logger.info("Dashboard: conversation history cleared")
+        except Exception as exc:
+            logger.warning("Dashboard CLEAR_HISTORY failed: %s", exc)
+        # Broadcast empty history + clear activity stream
+        await self.server.broadcast(_envelope("CONVERSATION_HISTORY", {"messages": []}))
+        await self.server.broadcast(_envelope("ACTIVITY_HISTORY", {"events": []}))
+        config = self._build_config_state()
+        if config:
+            await self.server.broadcast(_envelope("CONFIG_STATE", config))
+
+    # ------------------------------------------------------------------ #
+    #  New session handler                                                #
+    # ------------------------------------------------------------------ #
+
+    async def _handle_new_session(self, msg: dict[str, Any]) -> None:
+        """Browser requested a new session (save current + start fresh)."""
+        ctx = self._ctx
+        if not ctx:
+            logger.debug("NEW_SESSION: no context set")
+            return
+        description = msg.get("description", "")
+
+        # Save current session first (if there's history)
+        if hasattr(ctx, "save_session") and ctx.conversation_history:
+            try:
+                path = ctx.save_session()
+                if path:
+                    logger.info("Dashboard: previous session saved: %s", path)
+            except Exception as exc:
+                logger.warning("Dashboard: could not save previous session: %s", exc)
+
+        # Clear history and start fresh
+        try:
+            await ctx.clear_conversation_history(keep_system_prompt=True)
+            logger.info("Dashboard: new session started: %s", ctx.session_id)
+        except Exception as exc:
+            logger.warning("Dashboard NEW_SESSION failed: %s", exc)
+            return
+
+        # Broadcast fresh state to all clients + clear activity stream
+        await self.server.broadcast(_envelope("CONVERSATION_HISTORY", {"messages": []}))
+        await self.server.broadcast(_envelope("ACTIVITY_HISTORY", {"events": []}))
+        config = self._build_config_state()
+        if config:
+            await self.server.broadcast(_envelope("CONFIG_STATE", config))
+        await self.server.broadcast(
+            _envelope(
+                "SESSION_STATE",
+                {
+                    "session_id": ctx.session_id,
+                    "description": description,
+                },
+            )
+        )
+
+    # ------------------------------------------------------------------ #
+    #  Session management handlers                                         #
+    # ------------------------------------------------------------------ #
+
+    async def _handle_request_sessions(self) -> None:
+        """Browser requested list of saved sessions."""
+        ctx = self._ctx
+        if not ctx:
+            return
+        try:
+            store = getattr(ctx, "_session_store", None)
+            if not store:
+                return
+            sessions = store.list_sessions()
+            payload = {
+                "sessions": [
+                    {
+                        "session_id": s.session_id,
+                        "created_at": s.created_at,
+                        "updated_at": s.updated_at,
+                        "provider": s.provider,
+                        "model": s.model,
+                        "message_count": s.message_count,
+                        "description": s.description,
+                        "is_current": s.session_id == ctx.session_id,
+                    }
+                    for s in sessions
+                ],
+                "current_session_id": ctx.session_id,
+            }
+            await self.server.broadcast(_envelope("SESSION_LIST", payload))
+        except Exception as exc:
+            logger.warning("Error building session list: %s", exc)
+
+    async def _handle_switch_session(self, msg: dict[str, Any]) -> None:
+        """Browser requested to switch to a different session."""
+        ctx = self._ctx
+        if not ctx:
+            return
+        session_id = msg.get("session_id", "")
+        if not session_id:
+            return
+
+        # Save current session first
+        if ctx.conversation_history:
+            try:
+                ctx.save_session()
+            except Exception:
+                pass
+
+        # Clear and load the target session
+        try:
+            await ctx.clear_conversation_history(keep_system_prompt=True)
+            loaded = ctx.load_session(session_id)
+            if not loaded:
+                logger.warning("Failed to load session %s", session_id)
+                return
+            # Override session_id to match loaded session
+            ctx.session_id = session_id
+            logger.info("Dashboard: switched to session %s", session_id)
+        except Exception as exc:
+            logger.warning("Dashboard SWITCH_SESSION failed: %s", exc)
+            return
+
+        # Broadcast updated state
+        history = self._build_conversation_history()
+        await self.server.broadcast(
+            _envelope("CONVERSATION_HISTORY", {"messages": history or []})
+        )
+        # Activity stream replay for loaded session
+        activity = self._build_activity_history()
+        await self.server.broadcast(
+            _envelope("ACTIVITY_HISTORY", {"events": activity or []})
+        )
+        config = self._build_config_state()
+        if config:
+            await self.server.broadcast(_envelope("CONFIG_STATE", config))
+        await self.server.broadcast(
+            _envelope("SESSION_STATE", {"session_id": session_id})
+        )
+        # Refresh session list
+        await self._handle_request_sessions()
+
+    async def _handle_delete_session(self, msg: dict[str, Any]) -> None:
+        """Browser requested to delete a saved session."""
+        ctx = self._ctx
+        if not ctx:
+            return
+        session_id = msg.get("session_id", "")
+        if not session_id:
+            return
+        # Don't allow deleting the current session
+        if session_id == ctx.session_id:
+            logger.debug("Cannot delete the current active session")
+            return
+        try:
+            store = getattr(ctx, "_session_store", None)
+            if store:
+                store.delete(session_id)
+                logger.info("Dashboard: deleted session %s", session_id)
+        except Exception as exc:
+            logger.warning("Dashboard DELETE_SESSION failed: %s", exc)
+        # Refresh session list
+        await self._handle_request_sessions()
+
+    async def _handle_rename_session(self, msg: dict[str, Any]) -> None:
+        """Browser requested to rename/describe a session."""
+        ctx = self._ctx
+        if not ctx:
+            return
+        session_id = msg.get("session_id", "")
+        description = msg.get("description", "")
+        if not session_id:
+            return
+        try:
+            store = getattr(ctx, "_session_store", None)
+            if not store:
+                return
+            data = store.load(session_id)
+            if data:
+                data.metadata.description = description
+                store.save(data)
+                logger.info(
+                    "Dashboard: renamed session %s → %s", session_id, description
+                )
+        except Exception as exc:
+            logger.warning("Dashboard RENAME_SESSION failed: %s", exc)
+        # Refresh session list
+        await self._handle_request_sessions()
+
+    # ------------------------------------------------------------------ #
+    #  Tool registry handler                                              #
+    # ------------------------------------------------------------------ #
+
+    async def _handle_request_tools(self) -> None:
+        """Browser requested current tool list — broadcast TOOL_REGISTRY."""
+        tools = await self._build_tool_registry()
+        if tools is not None:
+            await self.server.broadcast(_envelope("TOOL_REGISTRY", {"tools": tools}))
+
+    async def _build_tool_registry(self) -> list[dict[str, Any]] | None:
+        """Build tool registry payload from ChatContext's tool_manager."""
+        ctx = self._ctx
+        if not ctx:
+            return None
+        try:
+            tm = getattr(ctx, "tool_manager", None)
+            if not tm:
+                return None
+            all_tools = await tm.get_all_tools()
+            return [
+                {
+                    "name": t.name,
+                    "namespace": t.namespace,
+                    "description": t.description,
+                    "parameters": t.parameters,
+                    "is_async": t.is_async,
+                    "tags": t.tags,
+                    "supports_streaming": t.supports_streaming,
+                }
+                for t in all_tools
+            ]
+        except Exception as exc:
+            logger.debug("Error building tool registry: %s", exc)
+            return None
+
+    # ------------------------------------------------------------------ #
+    #  Tool approval (dashboard ↔ tool_processor)                         #
+    # ------------------------------------------------------------------ #
+
+    async def request_tool_approval(
+        self,
+        tool_name: str,
+        arguments: Any,
+        call_id: str,
+    ) -> asyncio.Future[bool]:
+        """Send a tool approval request to the dashboard.
+
+        The browser will show an approve/deny dialog and respond with
+        TOOL_APPROVAL_RESPONSE.  Returns a Future that resolves to True/False.
+        """
+        payload: dict[str, Any] = {
+            "tool_name": tool_name,
+            "arguments": self._serialise(arguments),
+            "call_id": call_id,
+            "timestamp": _now(),
+        }
+        # Create a future that the tool processor can await
+        fut: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
+        self._pending_approvals[call_id] = fut
+        await self.server.broadcast(_envelope("TOOL_APPROVAL_REQUEST", payload))
+        return fut
+
+    async def _handle_tool_approval_response(self, msg: dict[str, Any]) -> None:
+        """Handle approval/denial response from the dashboard."""
+        call_id = msg.get("call_id", "")
+        approved = msg.get("approved", False)
+        fut = self._pending_approvals.pop(call_id, None)
+        if fut and not fut.done():
+            fut.set_result(approved)
+
+    # ------------------------------------------------------------------ #
+    #  Plan updates (chat engine → browser)                               #
+    # ------------------------------------------------------------------ #
+
+    async def on_plan_update(
+        self,
+        plan_id: str,
+        title: str,
+        steps: list[dict[str, Any]],
+        status: str = "running",
+        current_step: int | None = None,
+        error: str | None = None,
+    ) -> None:
+        """Broadcast a plan update to the dashboard."""
+        payload: dict[str, Any] = {
+            "plan_id": plan_id,
+            "title": title,
+            "steps": steps,
+            "status": status,
+            "current_step": current_step,
+            "error": error,
+            "timestamp": _now(),
+        }
+        await self.server.broadcast(_envelope("PLAN_UPDATE", payload))
+
+    # ------------------------------------------------------------------ #
+    #  State builders                                                     #
+    # ------------------------------------------------------------------ #
+
+    def _build_config_state(self) -> dict[str, Any] | None:
+        """Build CONFIG_STATE payload from current ChatContext."""
+        ctx = self._ctx
+        if not ctx:
+            return None
+        try:
+            provider = ctx.provider
+            model = ctx.model
+            mm = ctx.model_manager
+
+            # Build provider → models map
+            available_providers: list[dict[str, Any]] = []
+            for pname in mm.get_available_providers():
+                try:
+                    models = mm.get_available_models(pname)
+                except Exception:
+                    models = []
+                available_providers.append({"name": pname, "models": models})
+
+            # Server info
+            servers: list[dict[str, Any]] = []
+            for si in getattr(ctx, "server_info", []) or []:
+                servers.append(
+                    {
+                        "id": si.id,
+                        "name": si.name,
+                        "namespace": si.namespace,
+                        "status": si.status,
+                        "tool_count": si.tool_count,
+                        "connected": si.connected,
+                        "transport": str(si.transport),
+                    }
+                )
+
+            # System prompt preview (first 500 chars)
+            sys_prompt = getattr(ctx, "_system_prompt", "") or ""
+
+            return {
+                "provider": provider,
+                "model": model,
+                "available_providers": available_providers,
+                "servers": servers,
+                "system_prompt": sys_prompt,
+            }
+        except Exception as exc:
+            logger.debug("Error building CONFIG_STATE: %s", exc)
+            return None
+
+    def _build_conversation_history(self) -> list[dict[str, Any]] | None:
+        """Build conversation history payload from ChatContext.
+
+        Returns only user/assistant messages — tool-role messages are excluded
+        from the chat view and instead served via ``_build_activity_history()``.
+        """
+        ctx = self._ctx
+        if not ctx:
+            return None
+        try:
+            messages: list[dict[str, Any]] = []
+            for msg in ctx.conversation_history:
+                d = msg.to_dict()
+                role = d.get("role", "")
+                # Skip system and tool messages — system isn't shown,
+                # tool results belong in the activity stream, not chat
+                if role in ("system", "tool"):
+                    continue
+                messages.append(
+                    {
+                        "role": role,
+                        "content": d.get("content") or "",
+                        "tool_calls": d.get("tool_calls"),
+                        "reasoning": d.get("reasoning_content"),
+                    }
+                )
+            return messages if messages else None
+        except Exception as exc:
+            logger.debug("Error building conversation history: %s", exc)
+            return None
+
+    def _build_activity_history(self) -> list[dict[str, Any]] | None:
+        """Build activity stream events from conversation history.
+
+        Pairs assistant ``tool_calls`` with their corresponding ``tool``-role
+        result messages to synthesize TOOL_RESULT-like payloads for the
+        activity stream.  Also includes assistant messages that carry
+        reasoning or tool_calls (for the "Calling …" cards).
+        """
+        ctx = self._ctx
+        if not ctx:
+            return None
+        try:
+            raw = [m.to_dict() for m in ctx.conversation_history]
+
+            # Index tool-role results by tool_call_id for fast lookup
+            tool_results: dict[str, dict[str, Any]] = {}
+            for d in raw:
+                if d.get("role") == "tool" and d.get("tool_call_id"):
+                    tool_results[d["tool_call_id"]] = d
+
+            events: list[dict[str, Any]] = []
+            for d in raw:
+                role = d.get("role", "")
+                if role == "assistant":
+                    tool_calls = d.get("tool_calls") or []
+                    reasoning = d.get("reasoning_content")
+
+                    # Emit a CONVERSATION_MESSAGE event for reasoning / tool_calls
+                    if reasoning or tool_calls:
+                        events.append(
+                            {
+                                "type": "CONVERSATION_MESSAGE",
+                                "payload": {
+                                    "role": "assistant",
+                                    "content": d.get("content") or "",
+                                    "tool_calls": tool_calls or None,
+                                    "reasoning": reasoning,
+                                },
+                            }
+                        )
+
+                    # For each tool_call, try to pair with its result
+                    for tc in tool_calls:
+                        call_id = tc.get("id", "")
+                        fn = tc.get("function") or {}
+                        tool_name = fn.get("name", "")
+                        args_str = fn.get("arguments", "")
+                        try:
+                            arguments = (
+                                _json.loads(args_str)
+                                if isinstance(args_str, str) and args_str
+                                else args_str
+                            )
+                        except _json.JSONDecodeError:
+                            arguments = args_str
+
+                        # Look up the matching tool result
+                        tr = tool_results.get(call_id)
+                        result_content = (tr.get("content") or "") if tr else None
+
+                        events.append(
+                            {
+                                "type": "TOOL_RESULT",
+                                "payload": {
+                                    "tool_name": tool_name,
+                                    "server_name": "",
+                                    "agent_id": "default",
+                                    "call_id": call_id,
+                                    "timestamp": None,
+                                    "duration_ms": None,
+                                    "result": result_content,
+                                    "error": None,
+                                    "success": True,
+                                    "arguments": self._serialise(arguments)
+                                    if arguments
+                                    else None,
+                                },
+                            }
+                        )
+
+            return events if events else None
+        except Exception as exc:
+            logger.debug("Error building activity history: %s", exc)
+            return None
 
     # ------------------------------------------------------------------ #
     #  Helpers                                                            #
     # ------------------------------------------------------------------ #
 
+    _SERIALISE_MAX_DEPTH = 20
+
     @staticmethod
-    def _serialise(value: Any) -> Any:
+    def _serialise(value: Any, _depth: int = 0) -> Any:
         """Convert a value to a JSON-safe representation."""
+        if _depth > DashboardBridge._SERIALISE_MAX_DEPTH:
+            return "<max depth exceeded>"
         if value is None or isinstance(value, (bool, int, float, str)):
             return value
         if isinstance(value, (list, tuple)):
-            return [DashboardBridge._serialise(v) for v in value]
+            return [DashboardBridge._serialise(v, _depth + 1) for v in value]
         if isinstance(value, dict):
-            return {k: DashboardBridge._serialise(v) for k, v in value.items()}
+            return {
+                k: DashboardBridge._serialise(v, _depth + 1) for k, v in value.items()
+            }
         # Objects with a to_dict / model_dump / __dict__
         if hasattr(value, "to_dict"):
             try:
-                return DashboardBridge._serialise(value.to_dict())
-            except Exception:
-                pass
+                return DashboardBridge._serialise(value.to_dict(), _depth + 1)
+            except Exception as exc:
+                logger.debug(
+                    "_serialise to_dict() failed for %s: %s", type(value).__name__, exc
+                )
         if hasattr(value, "model_dump"):
             try:
-                return DashboardBridge._serialise(value.model_dump())
-            except Exception:
-                pass
+                return DashboardBridge._serialise(value.model_dump(), _depth + 1)
+            except Exception as exc:
+                logger.debug(
+                    "_serialise model_dump() failed for %s: %s",
+                    type(value).__name__,
+                    exc,
+                )
         return str(value)

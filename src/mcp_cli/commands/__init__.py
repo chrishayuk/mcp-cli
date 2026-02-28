@@ -105,7 +105,7 @@ def register_all_commands() -> None:
     from mcp_cli.commands.conversation import ConversationCommand
     from mcp_cli.commands.usage import UsageCommand
     from mcp_cli.commands.export import ExportCommand
-    from mcp_cli.commands.sessions import SessionsCommand
+    from mcp_cli.commands.sessions import SessionsCommand, NewSessionCommand
     from mcp_cli.commands.apps import AppsCommand
     from mcp_cli.commands.memory import MemoryCommand
     from mcp_cli.commands.plan import PlanCommand
@@ -146,6 +146,7 @@ def register_all_commands() -> None:
     registry.register(UsageCommand())
     registry.register(ExportCommand())
     registry.register(SessionsCommand())
+    registry.register(NewSessionCommand())
 
     # Register tool execution command for interactive mode
     registry.register(ExecuteToolCommand())
