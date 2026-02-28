@@ -1651,7 +1651,7 @@ def cmd_command(
     )
 
 
-direct_registered.append("cmd")
+# "cmd" is registered via unified registry (CmdCommand), no need for direct_registered
 
 
 # Ping command - test connectivity
