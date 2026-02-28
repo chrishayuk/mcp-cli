@@ -148,6 +148,73 @@ class TestHandleBrowserMessage:
             await result
         assert fake_ws in connected
 
+    @pytest.mark.asyncio
+    async def test_handle_browser_message_passes_ws_to_two_arg_callback(self):
+        from mcp_cli.dashboard.server import DashboardServer
+
+        s = DashboardServer()
+        received = []
+
+        async def handler(msg, ws):
+            received.append((msg, ws))
+
+        s.on_browser_message = handler
+        fake_ws = AsyncMock()
+        await s._handle_browser_message(
+            '{"type":"USER_MESSAGE","content":"hi"}', fake_ws
+        )
+        assert len(received) == 1
+        assert received[0][0] == {"type": "USER_MESSAGE", "content": "hi"}
+        assert received[0][1] is fake_ws
+
+    @pytest.mark.asyncio
+    async def test_handle_browser_message_fallback_to_one_arg_callback(self):
+        from mcp_cli.dashboard.server import DashboardServer
+
+        s = DashboardServer()
+        received = []
+
+        async def handler(msg):
+            received.append(msg)
+
+        s.on_browser_message = handler
+        fake_ws = AsyncMock()
+        await s._handle_browser_message(
+            '{"type":"USER_MESSAGE","content":"hi"}', fake_ws
+        )
+        assert len(received) == 1
+        assert received[0] == {"type": "USER_MESSAGE", "content": "hi"}
+
+
+# ---------------------------------------------------------------------------
+# send_to_client
+# ---------------------------------------------------------------------------
+
+
+class TestSendToClient:
+    @pytest.mark.asyncio
+    async def test_send_to_client_basic(self):
+        from mcp_cli.dashboard.server import DashboardServer
+
+        s = DashboardServer()
+        ws = AsyncMock()
+        s._clients.add(ws)
+        await s.send_to_client(ws, {"type": "TEST"})
+        ws.send.assert_awaited_once()
+        payload = json.loads(ws.send.call_args[0][0])
+        assert payload["type"] == "TEST"
+
+    @pytest.mark.asyncio
+    async def test_send_to_client_dead_ws_discarded(self):
+        from mcp_cli.dashboard.server import DashboardServer
+
+        s = DashboardServer()
+        ws = AsyncMock()
+        ws.send.side_effect = Exception("connection closed")
+        s._clients.add(ws)
+        await s.send_to_client(ws, {"type": "TEST"})
+        assert ws not in s._clients
+
 
 # ---------------------------------------------------------------------------
 # _find_port

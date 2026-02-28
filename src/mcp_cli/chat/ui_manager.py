@@ -254,7 +254,7 @@ class ChatUIManager:
 
         # Route to dashboard if clients are connected
         bridge = getattr(self.context, "dashboard_bridge", None)
-        if bridge is not None and bridge.server.has_clients:
+        if bridge is not None and bridge.has_clients:
             try:
                 call_id = f"confirm-{id(arguments)}-{time.time_ns()}"
                 fut = await bridge.request_tool_approval(

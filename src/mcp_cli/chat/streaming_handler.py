@@ -438,22 +438,19 @@ class StreamingResponseHandler:
                         f"(first_chunk={not first_chunk_received}, "
                         f"after_tools={after_tool_calls})"
                     )
-                    # Display user-friendly error message
-                    from chuk_term.ui import output
-
                     if not first_chunk_received and after_tool_calls:
-                        output.error(
-                            f"\n⏱️  Streaming timeout after {effective_timeout:.0f}s waiting for first response after tool calls.\n"
-                            "The model may need more time to process tool results.\n"
-                            f"You can increase this with: MCP_STREAMING_FIRST_CHUNK_TIMEOUT={effective_timeout * 2:.0f}\n"
-                            f"Or set in config: timeouts.streamingFirstChunk = {effective_timeout * 2:.0f}"
+                        logger.warning(
+                            "Streaming timeout after %.0fs waiting for first response after tool calls. "
+                            "Increase with MCP_STREAMING_FIRST_CHUNK_TIMEOUT=%.0f",
+                            effective_timeout,
+                            effective_timeout * 2,
                         )
                     else:
-                        output.error(
-                            f"\n⏱️  Streaming timeout after {effective_timeout:.0f}s waiting for response.\n"
-                            "The model may be taking longer than expected to respond.\n"
-                            f"You can increase this timeout with: --tool-timeout {effective_timeout * 2:.0f}\n"
-                            f"Or set in config file: timeouts.streamingChunkTimeout = {effective_timeout * 2:.0f}"
+                        logger.warning(
+                            "Streaming timeout after %.0fs waiting for response. "
+                            "Increase with --tool-timeout %.0f",
+                            effective_timeout,
+                            effective_timeout * 2,
                         )
                     break
 
@@ -461,15 +458,12 @@ class StreamingResponseHandler:
         try:
             await asyncio.wait_for(stream_chunks(), timeout=global_timeout)
         except asyncio.TimeoutError:
-            logger.error(f"Global streaming timeout after {global_timeout}s")
-            # Display user-friendly error message
-            from chuk_term.ui import output
-
-            output.error(
-                f"\n⏱️  Global streaming timeout after {global_timeout:.0f}s.\n"
-                f"The total streaming time exceeded the maximum allowed.\n"
-                f"You can increase this timeout with: --tool-timeout {global_timeout * 2:.0f}\n"
-                f"Or set MCP_STREAMING_GLOBAL_TIMEOUT={global_timeout * 2:.0f}"
+            logger.error(
+                "Global streaming timeout after %.0fs. "
+                "Increase with --tool-timeout %.0f or MCP_STREAMING_GLOBAL_TIMEOUT=%.0f",
+                global_timeout,
+                global_timeout * 2,
+                global_timeout * 2,
             )
             self._interrupted = True
 
@@ -519,16 +513,13 @@ class StreamingResponseHandler:
         **kwargs,
     ) -> dict[str, Any]:
         """Fallback for non-streaming clients."""
-        from chuk_term.ui import output
-
         start_time = time.time()
 
-        with output.loading("Generating response..."):
-            # Try to call client
-            if hasattr(client, "complete"):
-                result = await client.complete(messages=messages, tools=tools, **kwargs)
-            else:
-                raise RuntimeError("Client has no streaming or completion method")
+        logger.debug("Non-streaming fallback: generating response...")
+        if hasattr(client, "complete"):
+            result = await client.complete(messages=messages, tools=tools, **kwargs)
+        else:
+            raise RuntimeError("Client has no streaming or completion method")
 
         elapsed = time.time() - start_time
 

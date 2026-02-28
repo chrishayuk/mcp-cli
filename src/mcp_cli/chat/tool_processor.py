@@ -30,9 +30,11 @@ from mcp_cli.config.defaults import (
     DEFAULT_MAX_CONSECUTIVE_TRANSPORT_FAILURES,
     TRANSPORT_ERROR_PATTERNS,
 )
-from chuk_ai_session_manager.guards import get_tool_state, SoftBlockReason
+from chuk_ai_session_manager.guards import SoftBlockReason
+from mcp_cli.chat.agent_tool_state import get_agent_tool_state
 from chuk_tool_processor.discovery import get_search_engine
 from mcp_cli.llm.content_models import ContentBlockType
+from mcp_cli.agents.tools import _AGENT_TOOL_NAMES
 from mcp_cli.memory.tools import _MEMORY_TOOL_NAMES
 from mcp_cli.planning.tools import _PLAN_TOOL_NAMES
 from mcp_cli.utils.preferences import get_preference_manager
@@ -45,6 +47,7 @@ logger = logging.getLogger(__name__)
 # VM tools handled locally via MemoryManager, not routed to MCP ToolManager
 _VM_TOOL_NAMES = frozenset({"page_fault", "search_pages"})
 
+# _AGENT_TOOL_NAMES imported from mcp_cli.agents.tools (single source of truth)
 # _MEMORY_TOOL_NAMES imported from mcp_cli.memory.tools (single source of truth)
 # _PLAN_TOOL_NAMES imported from mcp_cli.planning.tools (single source of truth)
 
@@ -223,6 +226,15 @@ class ToolProcessor:
                     )
                     continue
 
+                # ── Agent tool interception ────────────────────────────
+                # agent_spawn, agent_stop, etc. are orchestration tools
+                # handled by AgentManager — not routed to MCP ToolManager.
+                if actual_tool in _AGENT_TOOL_NAMES:
+                    await self._handle_agent_tool(
+                        actual_tool, arguments, llm_tool_name, call_id
+                    )
+                    continue
+
                 # DEBUG: Log exactly what the model sent for this tool call
                 logger.info(f"TOOL CALL FROM MODEL: {llm_tool_name} id={call_id}")
                 logger.info(f"  raw_arguments: {raw_arguments}")
@@ -255,7 +267,9 @@ class ToolProcessor:
                     continue
 
                 # Check $vN references in arguments (dataflow validation)
-                tool_state = get_tool_state()
+                tool_state = get_agent_tool_state(
+                    getattr(self.context, "agent_id", "default")
+                )
                 ref_check = tool_state.check_references(arguments)
                 if not ref_check.valid:
                     logger.warning(
@@ -467,7 +481,7 @@ class ToolProcessor:
             f"Tool result ({actual_tool_name}): success={success}, error='{result.error}'"
         )
 
-        tool_state = get_tool_state()
+        tool_state = get_agent_tool_state(getattr(self.context, "agent_id", "default"))
         value_binding = None
 
         # Cache successful results and create value bindings
@@ -792,6 +806,37 @@ class ToolProcessor:
                 )
             except Exception as _e:
                 logger.debug("Dashboard plan update error: %s", _e)
+
+        self._add_tool_result_to_history(llm_tool_name, call_id, result_text)
+
+    async def _handle_agent_tool(
+        self,
+        tool_name: str,
+        arguments: dict,
+        llm_tool_name: str,
+        call_id: str,
+    ) -> None:
+        """Execute an agent orchestration tool (agent_spawn, agent_stop, etc.).
+
+        Agent tools are internal operations that bypass the MCP ToolManager
+        and all guard checks.  They delegate to the AgentManager stored on
+        the ChatContext.
+        """
+        agent_manager = getattr(self.context, "agent_manager", None)
+        if agent_manager is None:
+            self._add_tool_result_to_history(
+                llm_tool_name, call_id, "Agent tools are not enabled."
+            )
+            return
+
+        logger.info("Agent tool %s called with args: %s", tool_name, arguments)
+
+        from mcp_cli.agents.tools import handle_agent_tool
+
+        caller_id = getattr(self.context, "agent_id", "default")
+        result_text = await handle_agent_tool(
+            tool_name, arguments, agent_manager, caller_agent_id=caller_id
+        )
 
         self._add_tool_result_to_history(llm_tool_name, call_id, result_text)
 

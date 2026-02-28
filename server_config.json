@@ -72,8 +72,7 @@
       "args": ["--directory", "/Users/christopherhay/chris-source/chuk-ai/mcp-servers/chuk-mcp-stac", "run", "chuk-mcp-stac", "stdio"]
     },
     "dem": {
-      "command": "uv",
-      "args": ["--directory", "/Users/christopherhay/chris-source/chuk-ai/mcp-servers/chuk-mcp-dem", "run", "chuk-mcp-dem", "stdio"]
+      "url": "https://dem.chukai.io/mcp"
     },
     "maritime": {
       "url": "https://maritime-archives.chukai.io/mcp"

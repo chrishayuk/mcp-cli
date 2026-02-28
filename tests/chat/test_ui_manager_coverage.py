@@ -372,8 +372,7 @@ class TestDoConfirmDashboardPath:
         fut.set_result(True)
 
         bridge = MagicMock()
-        bridge.server = MagicMock()
-        bridge.server.has_clients = True
+        bridge.has_clients = True
         bridge.request_tool_approval = AsyncMock(return_value=fut)
         ui_manager.context.dashboard_bridge = bridge
 
@@ -385,8 +384,7 @@ class TestDoConfirmDashboardPath:
     async def test_falls_back_to_terminal_when_no_clients(self, ui_manager):
         """When dashboard has no clients, fall back to terminal input."""
         bridge = MagicMock()
-        bridge.server = MagicMock()
-        bridge.server.has_clients = False
+        bridge.has_clients = False
         ui_manager.context.dashboard_bridge = bridge
 
         with (

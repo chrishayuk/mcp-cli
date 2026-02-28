@@ -321,6 +321,7 @@ let autoScroll      = true;
 let streamingBubble = null; // current streaming message bubble
 let streamingContent = '';
 let _hadStreamingTokens = false; // true when CONVERSATION_TOKEN events built current response
+let _agentName      = '';   // agent_id from INIT (shown in status bar when not "default")
 
 // Configure marked
 if (typeof marked !== 'undefined') {
@@ -335,6 +336,9 @@ window.addEventListener('message', (evt) => {
   switch (msg.type) {
     case 'INIT':
       applyTheme(msg.payload.theme || {});
+      if (msg.payload.agent_id && msg.payload.agent_id !== 'default') {
+        _agentName = msg.payload.agent_id;
+      }
       sendReady();
       break;
     case 'THEME':
@@ -564,6 +568,7 @@ function updateStatus(payload) {
   if (status === 'tool_calling' && current_tool) text = `calling ${current_tool}…`;
   else if (status === 'thinking') text = 'thinking…';
   else if (status === 'idle') text = 'idle';
+  if (_agentName) text = `[${_agentName}] ${text}`;
   statusText.textContent = text;
 
   if (tokens_used) _totalTokens += tokens_used;

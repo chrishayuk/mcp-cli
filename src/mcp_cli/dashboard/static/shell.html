@@ -482,6 +482,52 @@ body {
   .tb-btn { font-size: 11px; padding: 2px 6px; }
 }
 
+/* ── Agent tab bar ─────────────────────────────────────────────── */
+#agent-tabs {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px;
+  height: 28px;
+  min-height: 28px;
+  background: var(--dash-bg);
+  border-bottom: 1px solid var(--dash-border);
+  flex-shrink: 0;
+  user-select: none;
+  overflow-x: auto;
+}
+#agent-tabs.visible { display: flex; }
+.agent-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--dash-radius);
+  background: transparent;
+  color: var(--dash-fg-muted);
+  font-size: 11px;
+  font-family: var(--dash-font-ui);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.agent-tab:hover { background: var(--dash-bg-hover); color: var(--dash-fg); }
+.agent-tab.focused {
+  background: var(--dash-bg-surface);
+  color: var(--dash-fg);
+  border-color: var(--dash-accent);
+}
+.agent-tab-indicator {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.agent-tab-indicator.active    { background: var(--dash-success); }
+.agent-tab-indicator.paused    { background: var(--dash-warning); }
+.agent-tab-indicator.completed { background: var(--dash-fg-muted); }
+.agent-tab-indicator.failed    { background: var(--dash-error); }
+
 /* (view-stash removed — iframes now live permanently in #view-overlay) */
 </style>
 </head>
@@ -526,6 +572,9 @@ body {
 
   <button class="tb-btn" id="settings-btn">⚙</button>
 </div>
+
+<!-- ── Agent tab bar (hidden when ≤1 agent) ─────────────────────── -->
+<div id="agent-tabs"></div>
 
 <!-- ── Settings panel ───────────────────────────────────────────── -->
 <div id="settings-panel">
@@ -618,6 +667,12 @@ let panelCounter = 0;
 const viewPool      = new Map(); // viewId → { iframe, ready, accepts, _readyTimeout }
 const popoutWindows = new Map(); // viewId → { win, intervalId }
 
+// Multi-agent state
+let agentList       = [];        // array of agent descriptors from AGENT_LIST
+let focusedAgentId  = null;      // currently focused agent id
+const AGENT_COLORS  = ['#7aa2f7','#9ece6a','#e0af68','#f7768e','#7dcfff','#bb9af7','#ff9e64','#73daca'];
+const agentColorMap = new Map(); // agent_id → stable color
+
 // ================================================================
 //  WebSocket (exponential backoff reconnect)
 // ================================================================
@@ -636,6 +691,8 @@ function connectWS() {
     _wsBackoff = 1000; // reset on success
     document.getElementById('conn-dot').classList.add('connected');
     showToast('success', 'Connected to dashboard server', 2000);
+    // Request agent list (router will send AGENT_LIST)
+    sendToBridge({ type: 'REQUEST_AGENT_LIST' });
     // Request current config (model, servers, system prompt)
     sendToBridge({ type: 'REQUEST_CONFIG' });
     // Request tool registry
@@ -671,6 +728,82 @@ function sendToBridge(msg) {
 }
 
 // ================================================================
+//  Multi-agent helpers
+// ================================================================
+function agentColor(agentId) {
+  if (!agentColorMap.has(agentId)) {
+    agentColorMap.set(agentId, AGENT_COLORS[agentColorMap.size % AGENT_COLORS.length]);
+  }
+  return agentColorMap.get(agentId);
+}
+
+function renderAgentTabs() {
+  const bar = document.getElementById('agent-tabs');
+  bar.innerHTML = '';
+  if (agentList.length <= 1) { bar.classList.remove('visible'); return; }
+  bar.classList.add('visible');
+  for (const agent of agentList) {
+    const btn = document.createElement('button');
+    btn.className = 'agent-tab' + (agent.agent_id === focusedAgentId ? ' focused' : '');
+    const dot = document.createElement('span');
+    dot.className = 'agent-tab-indicator ' + (agent.status || 'active');
+    btn.appendChild(dot);
+    const label = document.createElement('span');
+    label.textContent = agent.name || agent.agent_id;
+    btn.appendChild(label);
+    btn.addEventListener('click', () => focusAgent(agent.agent_id));
+    bar.appendChild(btn);
+  }
+}
+
+function focusAgent(agentId) {
+  if (agentId === focusedAgentId) return;
+  focusedAgentId = agentId;
+  renderAgentTabs();
+  sendToBridge({ type: 'FOCUS_AGENT', agent_id: agentId });
+  // Update subscription to include focused agent + global
+  sendToBridge({ type: 'SUBSCRIBE', agents: [agentId], global: true });
+}
+
+function handleAgentList(payload) {
+  agentList = payload.agents || [];
+  if (!focusedAgentId && agentList.length > 0) {
+    focusedAgentId = agentList[0].agent_id;
+  }
+  renderAgentTabs();
+}
+
+function handleAgentRegistered(payload) {
+  const existing = agentList.find(a => a.agent_id === payload.agent_id);
+  if (!existing) agentList.push(payload);
+  if (!focusedAgentId && agentList.length > 0) {
+    focusedAgentId = agentList[0].agent_id;
+  }
+  renderAgentTabs();
+}
+
+function handleAgentUnregistered(payload) {
+  agentList = agentList.filter(a => a.agent_id !== payload.agent_id);
+  if (focusedAgentId === payload.agent_id) {
+    focusedAgentId = agentList.length > 0 ? agentList[0].agent_id : null;
+  }
+  renderAgentTabs();
+}
+
+function handleAgentStatus(payload) {
+  const agent = agentList.find(a => a.agent_id === payload.agent_id);
+  if (agent) agent.status = payload.status;
+  renderAgentTabs();
+}
+
+function isMultiAgent() { return agentList.length > 1; }
+function isFocusedAgent(msg) {
+  if (!isMultiAgent()) return true;
+  const aid = (msg.payload && msg.payload.agent_id) || msg.agent_id;
+  return !aid || aid === focusedAgentId;
+}
+
+// ================================================================
 //  Bridge message routing
 // ================================================================
 // Cached payloads for replaying to late-loading views
@@ -686,25 +819,49 @@ function handleBridgeMessage(msg) {
       rebuildAddPanelMenu();
       break;
 
+    // ── Agent lifecycle messages ───────────────────────────────
+    case 'AGENT_LIST':
+      handleAgentList(msg.payload);
+      broadcastToViewType('agents', 'AGENT_LIST', msg.payload);
+      break;
+
+    case 'AGENT_REGISTERED':
+      handleAgentRegistered(msg.payload);
+      broadcastToViewType('agents', 'AGENT_REGISTERED', msg.payload);
+      break;
+
+    case 'AGENT_UNREGISTERED':
+      handleAgentUnregistered(msg.payload);
+      broadcastToViewType('agents', 'AGENT_UNREGISTERED', msg.payload);
+      break;
+
+    case 'AGENT_STATUS':
+      handleAgentStatus(msg.payload);
+      broadcastToViewType('agents', 'AGENT_STATUS', msg.payload);
+      break;
+
+    // ── Agent-scoped messages ────────────────────────────────
     case 'TOOL_RESULT':
-      routeToViews('TOOL_RESULT', msg.payload);
+      sendToActivityStream('TOOL_RESULT', msg.payload);
+      if (isFocusedAgent(msg)) routeToViews('TOOL_RESULT', msg.payload);
       break;
 
     case 'AGENT_STATE':
-      broadcastToViews('AGENT_STATE', msg.payload);
+      if (isFocusedAgent(msg)) broadcastToViews('AGENT_STATE', msg.payload);
+      broadcastToViewType('agents', 'AGENT_STATE', msg.payload);
       break;
 
     case 'CONVERSATION_MESSAGE':
-      broadcastToViewType('conversation', 'CONVERSATION_MESSAGE', msg.payload);
       sendToActivityStream('CONVERSATION_MESSAGE', msg.payload);
+      if (isFocusedAgent(msg)) broadcastToViewType('conversation', 'CONVERSATION_MESSAGE', msg.payload);
       break;
 
     case 'CONVERSATION_TOKEN':
-      broadcastToViewType('conversation', 'CONVERSATION_TOKEN', msg.payload);
+      if (isFocusedAgent(msg)) broadcastToViewType('conversation', 'CONVERSATION_TOKEN', msg.payload);
       break;
 
     case 'CONVERSATION_HISTORY':
-      broadcastToViewType('conversation', 'CONVERSATION_HISTORY', msg.payload);
+      if (isFocusedAgent(msg)) broadcastToViewType('conversation', 'CONVERSATION_HISTORY', msg.payload);
       break;
 
     case 'ACTIVITY_HISTORY':
@@ -831,7 +988,7 @@ function sendInitToView(viewId, panel) {
   postToIframe(view.iframe, 'INIT', {
     view_id: viewId,
     panel_id: panel.panelId,
-    agent_id: null,
+    agent_id: focusedAgentId,
     theme: themeToCSS(themeObj),
     dimensions: dims,
   });
@@ -1003,6 +1160,7 @@ function handleViewReady(viewId, payload) {
   const wasReady = view.ready;
   view.ready = true;
   view.accepts = payload.accepts || [];
+  view.agent_scope = payload.agent_scope || null; // "focused" | "all" | specific agent_id
   if (view._readyTimeout) { clearTimeout(view._readyTimeout); view._readyTimeout = null; }
   const panel = findPanelHostingView(viewId);
   if (!panel) return;
@@ -1247,6 +1405,7 @@ function iconForView(viewId) {
   if (viewId === 'builtin:activity-stream') return '◈';
   if (viewId === 'builtin:tool-browser')    return '🔧';
   if (viewId === 'builtin:plan-viewer')     return '📋';
+  if (viewId === 'builtin:agent-overview')  return '👥';
   const v = viewRegistry.find(v => v.id === viewId);
   return v?.icon || '◻';
 }
@@ -1257,6 +1416,7 @@ function labelForView(viewId) {
   if (viewId === 'builtin:activity-stream') return 'Activity Stream';
   if (viewId === 'builtin:tool-browser')    return 'Tool Browser';
   if (viewId === 'builtin:plan-viewer')     return 'Plan Viewer';
+  if (viewId === 'builtin:agent-overview')  return 'Agent Overview';
   const v = viewRegistry.find(v => v.id === viewId);
   return v ? v.name : viewId;
 }
@@ -1304,7 +1464,7 @@ function handlePopoutReady(viewId, payload, win) {
     win.postMessage({
       protocol: PROTOCOL, version: VERSION, type: 'INIT',
       payload: {
-        view_id: viewId, panel_id: null, agent_id: null,
+        view_id: viewId, panel_id: null, agent_id: focusedAgentId,
         theme: themeToCSS(themeObj),
         dimensions: { width: win.innerWidth || 900, height: win.innerHeight || 600 },
       },
@@ -2020,6 +2180,7 @@ async function init() {
     { id: 'builtin:activity-stream', name: 'Activity Stream', source: 'builtin', icon: '◈', type: 'stream', url: '/views/activity-stream.html' },
     { id: 'builtin:tool-browser',    name: 'Tool Browser',    source: 'builtin', icon: '🔧', type: 'tools',        url: '/views/tool-browser.html' },
     { id: 'builtin:plan-viewer',     name: 'Plan Viewer',     source: 'builtin', icon: '📋', type: 'plan',         url: '/views/plan-viewer.html' },
+    { id: 'builtin:agent-overview',  name: 'Agent Overview',  source: 'builtin', icon: '👥', type: 'agents',       url: '/views/agent-overview.html' },
   ];
   rebuildAddPanelMenu();
 

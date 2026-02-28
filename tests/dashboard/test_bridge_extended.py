@@ -24,7 +24,7 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
-def _make_bridge():
+def _make_bridge(agent_id: str = "test-agent"):
     from mcp_cli.dashboard.bridge import DashboardBridge
     from mcp_cli.dashboard.server import DashboardServer
 
@@ -34,7 +34,7 @@ def _make_bridge():
     server.on_client_connected = None
     server.on_client_disconnected = None
     server.has_clients = True
-    bridge = DashboardBridge(server)
+    bridge = DashboardBridge(server, agent_id=agent_id)
     return bridge, server
 
 
@@ -254,7 +254,7 @@ class TestViewRegistryEnvelope:
         msg = server.broadcast.call_args[0][0]
         # Should be wrapped in envelope format
         assert msg["protocol"] == "mcp-dashboard"
-        assert msg["version"] == 1
+        assert msg["version"] == 2
         assert msg["type"] == "VIEW_REGISTRY"
         assert msg["payload"]["views"] == bridge._view_registry
 
@@ -537,3 +537,138 @@ class TestBuildActivityHistory:
         assert len(tool_events) == 2
         names = {e["payload"]["tool_name"] for e in tool_events}
         assert names == {"tool_a", "tool_b"}
+
+
+# ---------------------------------------------------------------------------
+# agent_id plumbing
+# ---------------------------------------------------------------------------
+
+
+class TestAgentIdInPayloads:
+    """Verify agent_id from bridge constructor appears in all payloads."""
+
+    @pytest.mark.asyncio
+    async def test_agent_id_in_tool_result_payload(self):
+        bridge, server = _make_bridge(agent_id="agent-x")
+        await bridge.on_tool_result(
+            tool_name="test_tool",
+            server_name="srv",
+            result="ok",
+            success=True,
+        )
+        msg = server.broadcast.call_args[0][0]
+        assert msg["payload"]["agent_id"] == "agent-x"
+
+    @pytest.mark.asyncio
+    async def test_agent_id_in_agent_state_payload(self):
+        bridge, server = _make_bridge(agent_id="agent-y")
+        await bridge.on_agent_state(status="thinking")
+        msg = server.broadcast.call_args[0][0]
+        assert msg["payload"]["agent_id"] == "agent-y"
+
+    @pytest.mark.asyncio
+    async def test_agent_id_in_message_payload(self):
+        bridge, server = _make_bridge(agent_id="agent-z")
+        await bridge.on_message(role="user", content="hello")
+        msg = server.broadcast.call_args[0][0]
+        assert msg["payload"]["agent_id"] == "agent-z"
+
+    @pytest.mark.asyncio
+    async def test_agent_id_in_plan_update_payload(self):
+        bridge, server = _make_bridge(agent_id="planner")
+        await bridge.on_plan_update(
+            plan_id="p1", title="Test", steps=[], status="running"
+        )
+        msg = server.broadcast.call_args[0][0]
+        assert msg["payload"]["agent_id"] == "planner"
+
+    def test_agent_id_in_activity_history(self):
+        bridge, _ = _make_bridge(agent_id="replay-agent")
+
+        class FakeMsg:
+            def __init__(self, d):
+                self._d = d
+
+            def to_dict(self):
+                return self._d
+
+        ctx = MagicMock()
+        ctx.conversation_history = [
+            FakeMsg(
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "c1",
+                            "function": {"name": "tool_a", "arguments": "{}"},
+                        }
+                    ],
+                }
+            ),
+            FakeMsg(
+                {
+                    "role": "tool",
+                    "content": "result",
+                    "tool_call_id": "c1",
+                }
+            ),
+        ]
+        bridge.set_context(ctx)
+        events = bridge._build_activity_history()
+        tool_events = [e for e in events if e["type"] == "TOOL_RESULT"]
+        assert len(tool_events) == 1
+        assert tool_events[0]["payload"]["agent_id"] == "replay-agent"
+
+    def test_protocol_version_is_2(self):
+        from mcp_cli.dashboard.bridge import _VERSION
+
+        assert _VERSION == 2
+
+
+# ---------------------------------------------------------------------------
+# Bridge with AgentRouter
+# ---------------------------------------------------------------------------
+
+
+class TestBridgeWithRouter:
+    """Verify bridge works correctly when constructed with an AgentRouter."""
+
+    def _make_router_bridge(self, agent_id: str = "routed-agent"):
+        from mcp_cli.dashboard.bridge import DashboardBridge
+        from mcp_cli.dashboard.router import AgentRouter
+        from mcp_cli.dashboard.server import DashboardServer
+
+        server = MagicMock(spec=DashboardServer)
+        server.broadcast = AsyncMock()
+        server.send_to_client = AsyncMock()
+        server.has_clients = True
+        server.on_browser_message = None
+        server.on_client_connected = None
+        server.on_client_disconnected = None
+
+        router = AgentRouter(server)
+        bridge = DashboardBridge(router, agent_id=agent_id)
+        return bridge, router, server
+
+    @pytest.mark.asyncio
+    async def test_broadcast_goes_through_router(self):
+        bridge, router, server = self._make_router_bridge("agent-r")
+        await bridge.on_agent_state(status="thinking")
+        # Should ultimately reach server.broadcast via router
+        server.broadcast.assert_awaited_once()
+        msg = server.broadcast.call_args[0][0]
+        assert msg["type"] == "AGENT_STATE"
+        assert msg["payload"]["agent_id"] == "agent-r"
+
+    def test_has_clients_proxies_through_router(self):
+        bridge, router, server = self._make_router_bridge()
+        server.has_clients = True
+        assert bridge.has_clients is True
+        server.has_clients = False
+        assert bridge.has_clients is False
+
+    def test_server_attribute_still_accessible(self):
+        bridge, router, server = self._make_router_bridge()
+        # bridge.server should point to the DashboardServer, not the router
+        assert bridge.server is server

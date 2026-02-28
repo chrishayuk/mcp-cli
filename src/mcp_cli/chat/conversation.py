@@ -24,7 +24,7 @@ from mcp_cli.chat.response_models import (
 from mcp_cli.chat.tool_processor import ToolProcessor
 from mcp_cli.chat.token_tracker import TokenTracker, TurnUsage
 from mcp_cli.config.defaults import DEFAULT_MAX_CONSECUTIVE_DUPLICATES
-from chuk_ai_session_manager.guards import get_tool_state
+from mcp_cli.chat.agent_tool_state import get_agent_tool_state
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ class ConversationProcessor:
         # Store runtime_config for passing to streaming handler
         self.runtime_config = runtime_config
         # Tool state manager for caching and variable binding
-        self._tool_state = get_tool_state()
+        self._tool_state = get_agent_tool_state(getattr(context, "agent_id", "default"))
         # Counter for consecutive duplicate detections (for escalation)
         self._consecutive_duplicate_count = 0
         self._max_consecutive_duplicates = DEFAULT_MAX_CONSECUTIVE_DUPLICATES
@@ -890,6 +890,29 @@ class ConversationProcessor:
                     logger.info(f"Injected {len(new_plan)} plan tools")
             except Exception as exc:
                 logger.warning(f"Could not load plan tools: {exc}")
+
+        # Inject agent orchestration tools when agent_manager is set
+        if (
+            getattr(self.context, "agent_manager", None) is not None
+            and "agent_spawn" not in existing
+        ):
+            try:
+                from mcp_cli.agents.tools import get_agent_tools_as_dicts
+
+                agent_tools = get_agent_tools_as_dicts()
+                new_agent = [
+                    t
+                    for t in agent_tools
+                    if t.get("function", {}).get("name", "") not in existing
+                ]
+                if new_agent:
+                    self.context.openai_tools.extend(new_agent)
+                    existing.update(
+                        t.get("function", {}).get("name", "") for t in new_agent
+                    )
+                    logger.info(f"Injected {len(new_agent)} agent tools")
+            except Exception as exc:
+                logger.warning(f"Could not load agent tools: {exc}")
 
         # Inject persistent memory scope tools
         store = getattr(self.context, "memory_store", None)

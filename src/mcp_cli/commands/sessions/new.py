@@ -79,16 +79,21 @@ Usage:
             try:
                 from mcp_cli.dashboard.bridge import _envelope
 
-                await bridge.server.broadcast(
-                    _envelope("CONVERSATION_HISTORY", {"messages": []})
+                _aid = bridge.agent_id
+                await bridge.broadcast(
+                    _envelope(
+                        "CONVERSATION_HISTORY",
+                        {"agent_id": _aid, "messages": []},
+                    )
                 )
                 config = bridge._build_config_state()
                 if config:
-                    await bridge.server.broadcast(_envelope("CONFIG_STATE", config))
-                await bridge.server.broadcast(
+                    await bridge.broadcast(_envelope("CONFIG_STATE", config))
+                await bridge.broadcast(
                     _envelope(
                         "SESSION_STATE",
                         {
+                            "agent_id": _aid,
                             "session_id": chat_context.session_id,
                             "description": description,
                         },

@@ -21,15 +21,17 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Literal
 
+from mcp_cli.config.defaults import DEFAULT_AGENT_ID
 from mcp_cli.dashboard.server import DashboardServer
 
 if TYPE_CHECKING:
     from mcp_cli.chat.chat_context import ChatContext
+    from mcp_cli.dashboard.router import AgentRouter
 
 logger = logging.getLogger(__name__)
 
 _PROTOCOL = "mcp-dashboard"
-_VERSION = 1
+_VERSION = 2
 
 
 def _envelope(msg_type: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -48,8 +50,12 @@ def _now() -> str:
 class DashboardBridge:
     """Routes chat-engine events to connected browser dashboard clients."""
 
-    def __init__(self, server: DashboardServer) -> None:
-        self.server = server
+    def __init__(
+        self, server: DashboardServer | AgentRouter, agent_id: str = DEFAULT_AGENT_ID
+    ) -> None:
+        from mcp_cli.dashboard.router import AgentRouter
+
+        self.agent_id = agent_id
         self._turn_number: int = 0
         self._ctx: ChatContext | None = None
         # Set this to inject user messages from the browser back into the chat engine
@@ -65,10 +71,19 @@ class DashboardBridge:
         self._seen_view_ids: set[str] = set()
         # Pending tool approval futures keyed by call_id
         self._pending_approvals: dict[str, asyncio.Future[bool]] = {}
-        # Wire server callbacks
-        server.on_browser_message = self._on_browser_message
-        server.on_client_connected = self._on_client_connected
-        server.on_client_disconnected = self.on_client_disconnected
+
+        # Dual-mode: router-managed vs direct-wiring
+        if isinstance(server, AgentRouter):
+            self._router: AgentRouter | None = server
+            self.server: DashboardServer = server.server
+            # Router owns the server callbacks — do NOT wire them here
+        else:
+            self._router = None
+            self.server = server
+            # Legacy direct-wiring path
+            server.on_browser_message = self._on_browser_message
+            server.on_client_connected = self._on_client_connected
+            server.on_client_disconnected = self.on_client_disconnected
 
     def set_context(self, ctx: ChatContext) -> None:
         """Store a back-reference to ChatContext for history/config queries."""
@@ -81,13 +96,31 @@ class DashboardBridge:
                 fut.set_result(False)
         self._pending_approvals.clear()
 
+    @property
+    def has_clients(self) -> bool:
+        """Whether any browser clients are connected."""
+        if self._router is not None:
+            return self._router.has_clients
+        return self.server.has_clients
+
+    async def _broadcast(self, envelope: dict[str, Any]) -> None:
+        """Dispatch a broadcast through the router or directly to the server."""
+        if self._router is not None:
+            await self._router.broadcast_from_agent(self.agent_id, envelope)
+        else:
+            await self.server.broadcast(envelope)
+
+    async def broadcast(self, envelope: dict[str, Any]) -> None:
+        """Public broadcast method for external callers (e.g. commands)."""
+        await self._broadcast(envelope)
+
     async def on_client_disconnected(self) -> None:
         """Called when a browser client disconnects.
 
         If no clients remain, cancel all pending approval futures so the
         tool processor doesn't hang waiting for a response that will never come.
         """
-        if not self.server.has_clients:
+        if not self.has_clients:
             for call_id, fut in list(self._pending_approvals.items()):
                 if not fut.done():
                     fut.set_result(False)
@@ -113,7 +146,7 @@ class DashboardBridge:
         payload: dict[str, Any] = {
             "tool_name": tool_name,
             "server_name": server_name,
-            "agent_id": "default",
+            "agent_id": self.agent_id,
             "call_id": call_id or "",
             "timestamp": _now(),
             "duration_ms": duration_ms,
@@ -127,7 +160,7 @@ class DashboardBridge:
             # Discover new views declared in _meta.ui before broadcasting
             if isinstance(meta_ui, dict) and meta_ui.get("view"):
                 await self._discover_view(meta_ui, server_name)
-        await self.server.broadcast(_envelope("TOOL_RESULT", payload))
+        await self._broadcast(_envelope("TOOL_RESULT", payload))
 
     async def on_agent_state(
         self,
@@ -140,14 +173,14 @@ class DashboardBridge:
         if turn_number is not None:
             self._turn_number = turn_number
         payload: dict[str, Any] = {
-            "agent_id": "default",
+            "agent_id": self.agent_id,
             "status": status,
             "current_tool": current_tool,
             "turn_number": self._turn_number,
             "tokens_used": tokens_used,
             "budget_remaining": None,
         }
-        await self.server.broadcast(_envelope("AGENT_STATE", payload))
+        await self._broadcast(_envelope("AGENT_STATE", payload))
 
     async def on_message(
         self,
@@ -159,22 +192,29 @@ class DashboardBridge:
     ) -> None:
         """Called when a complete conversation message is emitted."""
         payload: dict[str, Any] = {
+            "agent_id": self.agent_id,
             "role": role,
             "content": content,
             "streaming": streaming,
             "tool_calls": tool_calls,
             "reasoning": reasoning,
         }
-        await self.server.broadcast(_envelope("CONVERSATION_MESSAGE", payload))
+        await self._broadcast(_envelope("CONVERSATION_MESSAGE", payload))
 
     async def on_token(self, token: str, done: bool = False) -> None:
         """Called for each streamed LLM token (high-volume — only used by agent terminal)."""
-        payload: dict[str, Any] = {"token": token, "done": done}
-        await self.server.broadcast(_envelope("CONVERSATION_TOKEN", payload))
+        payload: dict[str, Any] = {
+            "agent_id": self.agent_id,
+            "token": token,
+            "done": done,
+        }
+        await self._broadcast(_envelope("CONVERSATION_TOKEN", payload))
 
     async def on_view_registry_update(self, views: list[dict[str, Any]]) -> None:
         """Called when the set of available views changes (server connect/disconnect)."""
-        await self.server.broadcast(_envelope("VIEW_REGISTRY", {"views": views}))
+        await self._broadcast(
+            _envelope("VIEW_REGISTRY", {"agent_id": self.agent_id, "views": views})
+        )
 
     async def _discover_view(self, meta_ui: dict[str, Any], server_name: str) -> None:
         """Register a new view from a _meta.ui block and broadcast VIEW_REGISTRY."""
@@ -335,7 +375,7 @@ class DashboardBridge:
         """Browser requested current config — broadcast CONFIG_STATE."""
         config = self._build_config_state()
         if config:
-            await self.server.broadcast(_envelope("CONFIG_STATE", config))
+            await self._broadcast(_envelope("CONFIG_STATE", config))
 
     async def _handle_switch_model(self, msg: dict[str, Any]) -> None:
         """Browser requested a model switch."""
@@ -357,7 +397,7 @@ class DashboardBridge:
         # Broadcast updated state
         config = self._build_config_state()
         if config:
-            await self.server.broadcast(_envelope("CONFIG_STATE", config))
+            await self._broadcast(_envelope("CONFIG_STATE", config))
 
     async def _handle_update_system_prompt(self, msg: dict[str, Any]) -> None:
         """Browser updated the system prompt."""
@@ -382,7 +422,7 @@ class DashboardBridge:
             logger.warning("Dashboard UPDATE_SYSTEM_PROMPT failed: %s", exc)
         config = self._build_config_state()
         if config:
-            await self.server.broadcast(_envelope("CONFIG_STATE", config))
+            await self._broadcast(_envelope("CONFIG_STATE", config))
 
     # ------------------------------------------------------------------ #
     #  Clear history handler                                              #
@@ -400,11 +440,17 @@ class DashboardBridge:
         except Exception as exc:
             logger.warning("Dashboard CLEAR_HISTORY failed: %s", exc)
         # Broadcast empty history + clear activity stream
-        await self.server.broadcast(_envelope("CONVERSATION_HISTORY", {"messages": []}))
-        await self.server.broadcast(_envelope("ACTIVITY_HISTORY", {"events": []}))
+        await self._broadcast(
+            _envelope(
+                "CONVERSATION_HISTORY", {"agent_id": self.agent_id, "messages": []}
+            )
+        )
+        await self._broadcast(
+            _envelope("ACTIVITY_HISTORY", {"agent_id": self.agent_id, "events": []})
+        )
         config = self._build_config_state()
         if config:
-            await self.server.broadcast(_envelope("CONFIG_STATE", config))
+            await self._broadcast(_envelope("CONFIG_STATE", config))
 
     # ------------------------------------------------------------------ #
     #  New session handler                                                #
@@ -436,15 +482,22 @@ class DashboardBridge:
             return
 
         # Broadcast fresh state to all clients + clear activity stream
-        await self.server.broadcast(_envelope("CONVERSATION_HISTORY", {"messages": []}))
-        await self.server.broadcast(_envelope("ACTIVITY_HISTORY", {"events": []}))
+        await self._broadcast(
+            _envelope(
+                "CONVERSATION_HISTORY", {"agent_id": self.agent_id, "messages": []}
+            )
+        )
+        await self._broadcast(
+            _envelope("ACTIVITY_HISTORY", {"agent_id": self.agent_id, "events": []})
+        )
         config = self._build_config_state()
         if config:
-            await self.server.broadcast(_envelope("CONFIG_STATE", config))
-        await self.server.broadcast(
+            await self._broadcast(_envelope("CONFIG_STATE", config))
+        await self._broadcast(
             _envelope(
                 "SESSION_STATE",
                 {
+                    "agent_id": self.agent_id,
                     "session_id": ctx.session_id,
                     "description": description,
                 },
@@ -466,6 +519,7 @@ class DashboardBridge:
                 return
             sessions = store.list_sessions()
             payload = {
+                "agent_id": self.agent_id,
                 "sessions": [
                     {
                         "session_id": s.session_id,
@@ -481,7 +535,7 @@ class DashboardBridge:
                 ],
                 "current_session_id": ctx.session_id,
             }
-            await self.server.broadcast(_envelope("SESSION_LIST", payload))
+            await self._broadcast(_envelope("SESSION_LIST", payload))
         except Exception as exc:
             logger.warning("Error building session list: %s", exc)
 
@@ -517,19 +571,20 @@ class DashboardBridge:
 
         # Broadcast updated state
         history = self._build_conversation_history()
-        await self.server.broadcast(
+        await self._broadcast(
             _envelope("CONVERSATION_HISTORY", {"messages": history or []})
         )
         # Activity stream replay for loaded session
         activity = self._build_activity_history()
-        await self.server.broadcast(
-            _envelope("ACTIVITY_HISTORY", {"events": activity or []})
-        )
+        await self._broadcast(_envelope("ACTIVITY_HISTORY", {"events": activity or []}))
         config = self._build_config_state()
         if config:
-            await self.server.broadcast(_envelope("CONFIG_STATE", config))
-        await self.server.broadcast(
-            _envelope("SESSION_STATE", {"session_id": session_id})
+            await self._broadcast(_envelope("CONFIG_STATE", config))
+        await self._broadcast(
+            _envelope(
+                "SESSION_STATE",
+                {"agent_id": self.agent_id, "session_id": session_id},
+            )
         )
         # Refresh session list
         await self._handle_request_sessions()
@@ -589,7 +644,7 @@ class DashboardBridge:
         """Browser requested current tool list — broadcast TOOL_REGISTRY."""
         tools = await self._build_tool_registry()
         if tools is not None:
-            await self.server.broadcast(_envelope("TOOL_REGISTRY", {"tools": tools}))
+            await self._broadcast(_envelope("TOOL_REGISTRY", {"tools": tools}))
 
     async def _build_tool_registry(self) -> list[dict[str, Any]] | None:
         """Build tool registry payload from ChatContext's tool_manager."""
@@ -633,6 +688,7 @@ class DashboardBridge:
         TOOL_APPROVAL_RESPONSE.  Returns a Future that resolves to True/False.
         """
         payload: dict[str, Any] = {
+            "agent_id": self.agent_id,
             "tool_name": tool_name,
             "arguments": self._serialise(arguments),
             "call_id": call_id,
@@ -641,7 +697,7 @@ class DashboardBridge:
         # Create a future that the tool processor can await
         fut: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
         self._pending_approvals[call_id] = fut
-        await self.server.broadcast(_envelope("TOOL_APPROVAL_REQUEST", payload))
+        await self._broadcast(_envelope("TOOL_APPROVAL_REQUEST", payload))
         return fut
 
     async def _handle_tool_approval_response(self, msg: dict[str, Any]) -> None:
@@ -667,6 +723,7 @@ class DashboardBridge:
     ) -> None:
         """Broadcast a plan update to the dashboard."""
         payload: dict[str, Any] = {
+            "agent_id": self.agent_id,
             "plan_id": plan_id,
             "title": title,
             "steps": steps,
@@ -675,7 +732,7 @@ class DashboardBridge:
             "error": error,
             "timestamp": _now(),
         }
-        await self.server.broadcast(_envelope("PLAN_UPDATE", payload))
+        await self._broadcast(_envelope("PLAN_UPDATE", payload))
 
     # ------------------------------------------------------------------ #
     #  State builders                                                     #
@@ -719,6 +776,7 @@ class DashboardBridge:
             sys_prompt = getattr(ctx, "_system_prompt", "") or ""
 
             return {
+                "agent_id": self.agent_id,
                 "provider": provider,
                 "model": model,
                 "available_providers": available_providers,
@@ -826,7 +884,7 @@ class DashboardBridge:
                                 "payload": {
                                     "tool_name": tool_name,
                                     "server_name": "",
-                                    "agent_id": "default",
+                                    "agent_id": self.agent_id,
                                     "call_id": call_id,
                                     "timestamp": None,
                                     "duration_ms": None,

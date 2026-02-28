@@ -180,6 +180,25 @@ body {
   cursor: pointer;
   z-index: 10;
 }
+/* Agent badge */
+.event-agent-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 10px;
+  background: var(--dash-bg);
+  border: 1px solid var(--dash-border);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.event-agent-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 #events-wrapper { flex: 1; position: relative; overflow: hidden; display: flex; flex-direction: column; }
 </style>
 </head>
@@ -193,6 +212,7 @@ body {
     <option value="ok">Success</option>
     <option value="err">Error</option>
   </select>
+  <select id="agent-filter" style="display:none"><option value="">All agents</option></select>
 </div>
 
 <div id="events-wrapper">
@@ -209,9 +229,14 @@ let allEvents   = [];
 let filterText  = '';
 let filterServer = '';
 let filterStatus = '';
+let filterAgent  = '';
 let autoScroll  = true;
 let newCount    = 0;
 let servers     = new Set();
+let agents      = new Set();
+let _multiAgent = false;
+const AGENT_COLORS  = ['#7aa2f7','#9ece6a','#e0af68','#f7768e','#7dcfff','#bb9af7','#ff9e64','#73daca'];
+const agentColorMap = new Map();
 
 // Virtual scroll threshold
 const VIRT_THRESHOLD = 500;
@@ -221,6 +246,20 @@ const scrollBtn   = document.getElementById('scroll-btn');
 const searchInput = document.getElementById('search-input');
 const serverSel   = document.getElementById('server-filter');
 const statusSel   = document.getElementById('status-filter');
+const agentSel    = document.getElementById('agent-filter');
+
+function agentColor(agentId) {
+  if (!agentColorMap.has(agentId)) {
+    agentColorMap.set(agentId, AGENT_COLORS[agentColorMap.size % AGENT_COLORS.length]);
+  }
+  return agentColorMap.get(agentId);
+}
+
+function agentBadgeHtml(agentId) {
+  if (!_multiAgent || !agentId) return '';
+  const color = agentColor(agentId);
+  return `<span class="event-agent-badge"><span class="event-agent-dot" style="background:${color}"></span>${esc(agentId)}</span>`;
+}
 
 // ── postMessage handler ─────────────────────────────────────────
 window.addEventListener('message', (evt) => {
@@ -319,6 +358,21 @@ function addEvent(kind, payload) {
     }
   }
 
+  // Track agents for filter + badge
+  const aid = payload.agent_id;
+  if (aid && !agents.has(aid)) {
+    agents.add(aid);
+    const opt = document.createElement('option');
+    opt.value = aid;
+    opt.textContent = aid;
+    agentSel.appendChild(opt);
+    if (agents.size > 1 && !_multiAgent) {
+      _multiAgent = true;
+      agentSel.style.display = '';
+      rerender(); // re-render to add badges to existing cards
+    }
+  }
+
   if (matchesFilter(ev)) {
     renderEvent(ev);
   }
@@ -329,6 +383,7 @@ function matchesFilter(ev) {
   if (filterStatus === 'ok'  && p.success === false) return false;
   if (filterStatus === 'err' && p.success !== false && ev.kind === 'tool')  return false;
   if (filterServer && p.server_name !== filterServer) return false;
+  if (filterAgent && p.agent_id !== filterAgent) return false;
   if (filterText) {
     const haystack = JSON.stringify(p).toLowerCase();
     if (!haystack.includes(filterText)) return false;
@@ -403,6 +458,7 @@ function buildToolCard(ev) {
 
   card.innerHTML = `
     <div class="event-header">
+      ${agentBadgeHtml(p.agent_id)}
       <span class="event-tool">${esc(p.tool_name || '')}</span>
       <span class="event-server">${esc(p.server_name || '')}</span>
       <span class="event-dur">${esc(durStr)}</span>
@@ -435,6 +491,7 @@ function buildStateCard(ev) {
 
   card.innerHTML = `
     <div class="event-header">
+      ${agentBadgeHtml(p.agent_id)}
       <span class="event-tool" style="color:${isThinking ? 'var(--dash-warning)' : 'var(--dash-fg-muted)'}">${icon} ${esc(status)}${tool}</span>
       <span class="event-ts" style="margin-left:auto">${tsStr}${tokens}</span>
     </div>`;
@@ -501,6 +558,7 @@ function buildPlanCard(ev) {
 
   card.innerHTML = `
     <div class="event-header">
+      ${agentBadgeHtml(p.agent_id)}
       <span class="event-tool" style="color:${statusColor}">${icon} Plan: ${esc(p.title || 'Untitled')}</span>
       <span class="event-dur">${progress}</span>
     </div>
@@ -546,6 +604,7 @@ function buildMessageCard(ev) {
 
     card.innerHTML = `
       <div class="event-header">
+        ${agentBadgeHtml(p.agent_id)}
         <span class="event-tool" style="color:var(--dash-warning)">&#128161; Thinking</span>
         <span class="event-ts" style="margin-left:auto">${tsStr}</span>
       </div>
@@ -579,6 +638,7 @@ function buildMessageCard(ev) {
 
     card.innerHTML = `
       <div class="event-header">
+        ${agentBadgeHtml(p.agent_id)}
         <span class="event-tool">&#9881; Calling: ${esc(toolNames)}</span>
         <span class="event-ts" style="margin-left:auto">${tsStr}</span>
       </div>
@@ -677,6 +737,10 @@ statusSel.addEventListener('change', () => {
   filterStatus = statusSel.value;
   rerender();
 });
+agentSel.addEventListener('change', () => {
+  filterAgent = agentSel.value;
+  rerender();
+});
 
 function rerender() {
   eventsEl.innerHTML = '';
@@ -691,12 +755,16 @@ function handleActivityHistory(payload) {
   // Clear current state and replay
   allEvents = [];
   servers = new Set();
+  agents = new Set();
+  _multiAgent = false;
   eventsEl.innerHTML = '';
   autoScroll = true;
   newCount = 0;
 
-  // Rebuild server filter options
+  // Rebuild filter options
   serverSel.innerHTML = '<option value="">All servers</option>';
+  agentSel.innerHTML = '<option value="">All agents</option>';
+  agentSel.style.display = 'none';
 
   for (const ev of events) {
     // Each event has { type: 'TOOL_RESULT'|'CONVERSATION_MESSAGE', payload: {...} }

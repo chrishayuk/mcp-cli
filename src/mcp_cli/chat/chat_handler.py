@@ -52,6 +52,8 @@ async def handle_chat_mode(
     dashboard: bool = False,
     no_browser: bool = False,
     dashboard_port: int = 0,
+    agent_id: str = "default",
+    multi_agent: bool = False,
 ) -> bool:
     """
     Launch the interactive chat loop with streaming support.
@@ -74,12 +76,18 @@ async def handle_chat_mode(
         dashboard: Launch browser dashboard alongside chat (requires websockets).
         no_browser: If True, print dashboard URL but do not open the browser.
         dashboard_port: Preferred dashboard port (0 = auto-select).
+        multi_agent: Enable multi-agent orchestration tools (implies dashboard).
 
     Returns:
         True if session ended normally, False on failure
     """
+    # Multi-agent implies dashboard (needs the router for agent bridges)
+    if multi_agent:
+        dashboard = True
+
     ui: ChatUIManager | None = None
     ctx = None
+    agent_manager = None
 
     try:
         # Initialize configuration manager
@@ -115,6 +123,7 @@ async def handle_chat_mode(
             vm_budget=vm_budget,
             health_interval=health_interval,
             enable_plan_tools=enable_plan_tools,
+            agent_id=agent_id,
         )
 
         if not await ctx.initialize(on_progress=on_progress):
@@ -130,12 +139,15 @@ async def handle_chat_mode(
                 from mcp_cli.dashboard.launcher import launch_dashboard
                 from mcp_cli.dashboard.bridge import DashboardBridge
 
-                _dash_server, _dash_port = await launch_dashboard(
+                _dash_server, _dash_router, _dash_port = await launch_dashboard(
                     dashboard_port, no_browser
                 )
                 output.info(f"Dashboard: http://localhost:{_dash_port}")
-                ctx.dashboard_bridge = DashboardBridge(_dash_server)
+                ctx.dashboard_bridge = DashboardBridge(
+                    _dash_router, agent_id=ctx.agent_id
+                )
                 ctx.dashboard_bridge.set_context(ctx)
+                _dash_router.register_agent(ctx.agent_id, ctx.dashboard_bridge)
 
                 # Wire REQUEST_TOOL from browser → tool_manager, result back to browser
                 _bridge_ref = ctx.dashboard_bridge
@@ -153,6 +165,19 @@ async def handle_chat_mode(
                     )
 
                 ctx.dashboard_bridge.set_tool_call_callback(_dashboard_execute_tool)
+
+                # Multi-agent: create AgentManager and set on context
+                if multi_agent:
+                    from mcp_cli.agents.manager import AgentManager as _AM
+
+                    agent_manager = _AM(
+                        tool_manager=tool_manager,
+                        router=_dash_router,
+                        model_manager=app_context.model_manager,
+                    )
+                    ctx.agent_manager = agent_manager
+                    logger.info("Multi-agent mode enabled (%s)", ctx.agent_id)
+
             except ImportError:
                 output.warning(
                     "Dashboard requires 'websockets'. Install with: pip install mcp-cli[dashboard]"
@@ -233,6 +258,13 @@ async def handle_chat_mode(
         # Cleanup
         if ui:
             await _safe_cleanup(ui)
+
+        # Stop all managed agents before tearing down dashboard
+        if agent_manager is not None:
+            try:
+                await agent_manager.stop_all()
+            except Exception as exc:
+                logger.warning("Error stopping agents: %s", exc)
 
         # Stop dashboard server if running
         if ctx is not None and ctx.dashboard_bridge is not None:
@@ -321,10 +353,26 @@ async def handle_chat_mode_for_testing(
 _INTERRUPT = object()
 
 
-async def _terminal_reader(ui: ChatUIManager, queue: asyncio.Queue) -> None:
-    """Background task: reads terminal input and puts it on the shared queue."""
+async def _terminal_reader(
+    ui: ChatUIManager,
+    queue: asyncio.Queue,
+    ready: asyncio.Event | None = None,
+) -> None:
+    """Background task: reads terminal input and puts it on the shared queue.
+
+    When *ready* is provided the reader waits for it before showing the prompt.
+    This prevents the prompt from being overwritten by streaming / tool output.
+    The reader clears the event immediately (one-shot) so it won't re-enter
+    ``get_user_input`` until the main loop explicitly re-sets the event.
+    """
     while True:
         try:
+            # Wait until the main loop signals it's ready for new input.
+            # Clear immediately so we only get ONE prompt per signal.
+            if ready is not None:
+                await ready.wait()
+                ready.clear()
+
             msg = await ui.get_user_input()
             await queue.put(msg)
         except EOFError:
@@ -373,8 +421,15 @@ async def _run_enhanced_chat_loop(
     if bridge := getattr(ctx, "dashboard_bridge", None):
         bridge.set_input_queue(input_queue)
 
+    # Gate the prompt display: the reader waits for this event before showing
+    # the "💬 You:" prompt, preventing streaming / tool output from overwriting it.
+    prompt_ready = asyncio.Event()
+    prompt_ready.set()  # Ready immediately for the first prompt
+
     # Background task: reads terminal input and forwards to the queue.
-    reader_task = asyncio.create_task(_terminal_reader(ui, input_queue))
+    reader_task = asyncio.create_task(
+        _terminal_reader(ui, input_queue, ready=prompt_ready)
+    )
 
     try:
         while True:
@@ -398,10 +453,12 @@ async def _run_enhanced_chat_loop(
                         ui._interrupt_now()
                     else:
                         output.warning("\nInterrupted - type 'exit' to quit.")
+                    prompt_ready.set()
                     continue
 
                 # Skip empty messages
                 if not user_msg:
+                    prompt_ready.set()
                     continue
 
                 # Handle plain exit commands (without slash)
@@ -416,18 +473,22 @@ async def _run_enhanced_chat_loop(
                         if ui.is_streaming_response:
                             ui.interrupt_streaming()
                             output.warning("Streaming response interrupted.")
+                            prompt_ready.set()
                             continue
                         elif ui.tools_running:
                             ui._interrupt_now()
+                            prompt_ready.set()
                             continue
                         else:
                             output.info("Nothing to interrupt.")
+                            prompt_ready.set()
                             continue
 
                     handled = await ui.handle_command(user_msg)
                     if ctx.exit_requested:
                         break
                     if handled:
+                        prompt_ready.set()
                         continue
 
                 # Normal conversation turn with streaming support
@@ -442,8 +503,12 @@ async def _run_enhanced_chat_loop(
                     except Exception as _e:
                         logger.debug("Dashboard on_message(user) error: %s", _e)
 
-                # Use the enhanced conversation processor that handles streaming
-                await convo.process_conversation(max_turns=max_turns)
+                # Process the conversation. The reader already cleared
+                # prompt_ready so no new prompt is shown during streaming.
+                try:
+                    await convo.process_conversation(max_turns=max_turns)
+                finally:
+                    prompt_ready.set()
 
             except (KeyboardInterrupt, asyncio.CancelledError):
                 # Handle Ctrl+C gracefully
@@ -462,6 +527,7 @@ async def _run_enhanced_chat_loop(
                     output.warning("\nInterrupted - type 'exit' to quit.")
                 # CRITICAL: Continue the loop instead of exiting
                 logger.info("Continuing chat loop after interrupt...")
+                prompt_ready.set()
                 continue
             except EOFError:
                 output.panel("EOF detected - exiting chat.", style="red", title="Exit")
@@ -469,6 +535,7 @@ async def _run_enhanced_chat_loop(
             except Exception as exc:
                 logger.exception("Error processing message")
                 output.error(f"Error processing message: {exc}")
+                prompt_ready.set()
                 continue
     finally:
         reader_task.cancel()

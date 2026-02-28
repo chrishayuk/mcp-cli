@@ -63,6 +63,7 @@ class ChatContext:
         vm_budget: int = 128_000,
         health_interval: int = 0,
         enable_plan_tools: bool = False,
+        agent_id: str = "default",
     ):
         """
         Create chat context with required managers.
@@ -84,6 +85,7 @@ class ChatContext:
         self.tool_manager = tool_manager
         self.model_manager = model_manager
         self.session_id = session_id or self._generate_session_id()
+        self.agent_id = agent_id
 
         # Context management
         self._max_history_messages = max_history_messages
@@ -125,7 +127,7 @@ class ChatContext:
         self.token_tracker = TokenTracker()
 
         # Session persistence
-        self._session_store = SessionStore()
+        self._session_store = SessionStore(agent_id=self.agent_id)
         self._auto_save_counter = 0
 
         # ToolProcessor back-reference (set by ToolProcessor.__init__)
@@ -133,6 +135,9 @@ class ChatContext:
 
         # Dashboard bridge (set by chat_handler when --dashboard is active, else None)
         self.dashboard_bridge: Any = None
+
+        # Agent manager (set by chat_handler when multi-agent enabled, else None)
+        self.agent_manager: Any = None
 
         # Tool state (filled during initialization)
         self.tools: list[ToolInfo] = []
@@ -169,6 +174,7 @@ class ChatContext:
         vm_budget: int = 128_000,
         health_interval: int = 0,
         enable_plan_tools: bool = False,
+        agent_id: str = "default",
     ) -> "ChatContext":
         """
         Factory method for convenient creation.
@@ -223,6 +229,7 @@ class ChatContext:
             vm_budget=vm_budget,
             health_interval=health_interval,
             enable_plan_tools=enable_plan_tools,
+            agent_id=agent_id,
         )
 
     # ── Properties ────────────────────────────────────────────────────────
@@ -838,6 +845,7 @@ class ChatContext:
             data = SessionData(
                 metadata=SessionMetadata(
                     session_id=self.session_id,
+                    agent_id=self.agent_id,
                     provider=self.provider,
                     model=self.model,
                     message_count=len(message_dicts),
@@ -957,6 +965,7 @@ class ChatContext:
             "tool_to_server_map": self.tool_to_server_map,
             "tool_manager": self.tool_manager,
             "session_id": self.session_id,
+            "agent_id": self.agent_id,
         }
 
     def update_from_dict(self, context_dict: dict[str, Any]) -> None:
