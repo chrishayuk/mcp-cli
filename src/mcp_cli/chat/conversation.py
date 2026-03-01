@@ -201,6 +201,8 @@ class ConversationProcessor:
                     )
                     if last_msg:
                         content = last_msg.content or ""
+                        if isinstance(content, list):
+                            content = ""
                         if last_msg.role == MessageRole.USER and content.startswith(
                             "/"
                         ):
@@ -1081,7 +1083,18 @@ class ConversationProcessor:
         # Scan recent messages for user content
         for msg in reversed(self.context.conversation_history):
             if msg.role == MessageRole.USER and msg.content:
-                count = self._tool_state.register_user_literals(msg.content)
+                # Extract text from multimodal content blocks
+                if isinstance(msg.content, list):
+                    text = " ".join(
+                        b.get("text", "")
+                        for b in msg.content
+                        if isinstance(b, dict) and b.get("type") == "text"
+                    )
+                else:
+                    text = msg.content
+                if not text:
+                    break
+                count = self._tool_state.register_user_literals(text)
                 total_registered += count
                 logger.debug(f"Registered {count} user literals from message")
                 # Only process the most recent user message

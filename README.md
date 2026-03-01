@@ -51,9 +51,27 @@ A powerful, feature-rich command-line interface for interacting with Model Conte
 - **Session Persistence**: Save/load/list conversation sessions with auto-save every 10 turns (`/sessions`)
 - **Conversation Export**: Export conversations as Markdown or JSON with metadata (`/export`)
 
+### Dashboard (Real-Time Browser UI)
+- **`--dashboard` flag**: Launch a real-time browser dashboard alongside chat mode
+- **Agent Terminal**: Live conversation view with message bubbles, streaming tokens, and attachment rendering
+- **Activity Stream**: Tool call/result pairs, reasoning steps, and user attachment events
+- **Plan Viewer**: Visual execution plan progress with DAG rendering
+- **Tool Registry**: Browse discovered tools, trigger execution from the browser
+- **Config Panel**: View and switch providers, models, and system prompt
+- **File Attachments**: "+" button for browser file upload, drag-and-drop, and clipboard paste
+
+### Multi-Modal Attachments
+- **`/attach` command**: Stage files for the next message — images, text/code, and audio (aliases: `/file`, `/image`)
+- **`--attach` CLI flag**: Attach files to the first message (repeatable: `--attach img.png --attach code.py`)
+- **Inline `@file:` references**: Mention `@file:path/to/file` anywhere in a message to attach it
+- **Image URL detection**: HTTP/HTTPS image URLs in messages are automatically sent as vision content
+- **Supported formats**: PNG, JPEG, GIF, WebP, HEIC (images), MP3, WAV (audio), plus 25+ text/code extensions
+- **Dashboard rendering**: Image thumbnails, expandable text previews, audio players, file badges
+- **Browser upload**: "+" button in dashboard chat input with drag-and-drop and clipboard paste support
+
 ### Code Quality
 - **Core/UI Separation**: Core modules use `logging` only — no UI imports
-- **3,800+ tests**: Comprehensive test suite with branch coverage, integration tests, and 60% minimum threshold
+- **4,300+ tests**: Comprehensive test suite with branch coverage, integration tests, and 60% minimum threshold
 - **15 Architecture Principles**: Documented and enforced (see [architecture.md](architecture.md))
 - **Full [Roadmap](roadmap.md)**: Tiers 1-6 complete, Tiers 7-12 planned (traces, memory scopes, skills, scheduling, multi-agent)
 
@@ -82,6 +100,7 @@ The MCP CLI is built on a modular architecture with clean separation of concerns
 - **Performance Metrics**: Response timing, words/second, and execution statistics
 - **Rich Formatting**: Markdown rendering, syntax highlighting, and progress indicators
 - **Token Usage Tracking**: Per-turn and cumulative API token usage with `/usage` command
+- **Multi-Modal Attachments**: Attach images, text files, and audio to messages via `/attach`, `--attach`, `@file:` refs, or browser upload
 - **Session Persistence**: Auto-save and manual save/load of conversation sessions
 - **Conversation Export**: Export to Markdown or JSON with metadata and token usage
 
@@ -161,6 +180,8 @@ Comprehensive documentation is available in the `docs/` directory:
 
 ### Specialized Documentation
 - **[Execution Plans](docs/PLANNING.md)** - Plan creation, parallel execution, variable resolution, checkpointing, guards, and re-planning
+- **[Dashboard](docs/DASHBOARD.md)** - Real-time browser UI with agent terminal, activity stream, and file uploads
+- **[Attachments](docs/ATTACHMENTS.md)** - Multi-modal file attachments: images, text, audio, and browser upload
 - **[MCP Apps](docs/MCP_APPS.md)** - Interactive browser UIs served by MCP servers (SEP-1865)
 - **[OAuth Authentication](docs/OAUTH.md)** - OAuth flows, storage backends, and MCP server integration
 - **[Streaming Integration](docs/STREAMING.md)** - Real-time response streaming architecture
@@ -290,6 +311,9 @@ Global options available for all modes and commands:
 - `--vm`: [Experimental] Enable AI virtual memory for context management
 - `--vm-budget`: Token budget for conversation events in VM mode (default: 128000, on top of system prompt)
 - `--vm-mode`: VM mode — `passive` (default), `relaxed`, or `strict`
+- `--dashboard`: Launch a real-time browser dashboard UI alongside chat mode
+- `--attach`: Attach files to the first message (repeatable: `--attach img.png --attach code.py`)
+- `--plan-tools`: Enable model-driven planning — the LLM autonomously creates and executes multi-step plans
 
 ### Environment Variables
 
@@ -332,6 +356,12 @@ mcp-cli --server sqlite --model qwen2.5-coder
 # Switch to cloud providers (requires API keys)
 mcp-cli chat --server sqlite --provider openai --model gpt-5
 mcp-cli chat --server sqlite --provider anthropic --model claude-4-5-sonnet
+
+# Launch with real-time browser dashboard
+mcp-cli --server sqlite --dashboard
+
+# Attach files to the first message
+mcp-cli --server sqlite --attach image.png --attach data.csv
 ```
 
 ### 2. Interactive Mode
@@ -527,6 +557,23 @@ mcp-cli --server sqlite --provider anthropic --model claude-4-5-opus
 
 **Note**: Servers added via `/server add` are stored in `~/.mcp-cli/preferences.json` and persist across sessions. Project servers remain in `server_config.json`.
 
+#### Multi-Modal Attachments
+```bash
+/attach image.png                  # Stage an image for the next message
+/attach code.py                    # Stage a text file
+/attach list                       # Show currently staged files
+/attach clear                      # Clear staged files
+/file data.csv                     # Alias for /attach
+/image screenshot.heic             # Alias for /attach
+
+# Inline file references (in any message)
+@file:screenshot.png describe what you see
+@file:data.csv summarize this data
+
+# Image URLs are auto-detected
+https://example.com/photo.jpg what is in this image?
+```
+
 #### Conversation Management
 ```bash
 /conversation                      # Show conversation history
@@ -612,6 +659,14 @@ See [Token Management Guide](docs/TOKEN_MANAGEMENT.md) for comprehensive documen
 - Concurrent execution with progress indicators
 - Verbose and compact display modes
 - Complete execution history and timing
+
+#### Multi-Modal Attachments
+- Attach images, text files, and audio to any message
+- `/attach` command with staging, list, and clear (aliases: `/file`, `/image`)
+- Inline `@file:path` references in any message
+- `--attach` CLI flag for first-message attachments
+- Browser "+" button with drag-and-drop and clipboard paste (with `--dashboard`)
+- Dashboard renders thumbnails, text previews, and audio players
 
 #### Provider Integration
 - Seamless switching between providers

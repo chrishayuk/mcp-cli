@@ -35,6 +35,7 @@ MIME_MAP: dict[str, str] = {
     ".jpeg": "image/jpeg",
     ".gif": "image/gif",
     ".webp": "image/webp",
+    ".heic": "image/heic",
     # Audio
     ".mp3": "audio/mpeg",
     ".wav": "audio/wav",
@@ -73,7 +74,7 @@ MIME_MAP: dict[str, str] = {
     ".log": "text/plain",
 }
 
-IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp"})
+IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic"})
 AUDIO_EXTENSIONS = frozenset({".mp3", ".wav"})
 TEXT_EXTENSIONS = frozenset(MIME_MAP.keys()) - IMAGE_EXTENSIONS - AUDIO_EXTENSIONS
 

@@ -377,6 +377,50 @@ Save and restore conversation sessions:
 
 Sessions are stored as JSON in `~/.mcp-cli/sessions/`. Auto-save triggers every 10 turns by default.
 
+### Multi-Modal Attachments
+
+Stage files to include in your next message. Supports images, text/code files, and audio.
+
+**Stage Files:**
+```bash
+/attach photo.png                  # Stage an image
+/attach code.py                    # Stage a text/code file
+/attach clip.mp3                   # Stage an audio file
+/file data.csv                     # Alias for /attach
+/image screenshot.heic             # Alias for /attach
+```
+
+**Manage Staging:**
+```bash
+/attach list                       # Show currently staged files
+/attach clear                      # Clear all staged files
+```
+
+**Inline References (in any message):**
+```bash
+@file:screenshot.png describe what you see in this image
+@file:report.txt @file:data.csv compare these two files
+```
+
+Image URLs in messages are automatically detected and sent as vision content.
+
+**Supported File Types:**
+- **Images:** `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.heic`
+- **Audio:** `.mp3`, `.wav`
+- **Text/Code:** `.txt`, `.md`, `.csv`, `.json`, `.html`, `.xml`, `.yaml`, `.yml`, `.py`, `.js`, `.ts`, `.jsx`, `.tsx`, `.sh`, `.bash`, `.rs`, `.go`, `.java`, `.c`, `.cpp`, `.h`, `.hpp`, `.rb`, `.swift`, `.kt`, `.sql`, `.toml`, `.ini`, `.cfg`, `.env`, `.log`
+
+**Size Limits:**
+- Maximum file size: 20 MB per file
+- Maximum attachments per message: 10
+
+**CLI Flag:**
+```bash
+# Attach files to the first message (repeatable)
+mcp-cli --server sqlite --attach image.png --attach data.csv
+```
+
+See [ATTACHMENTS.md](./ATTACHMENTS.md) for comprehensive attachments documentation.
+
 ### Conversation Export
 
 Export conversations in structured formats:
