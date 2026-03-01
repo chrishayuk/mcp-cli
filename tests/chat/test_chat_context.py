@@ -1918,7 +1918,9 @@ class TestSaveSession:
         # Verify the saved file has token_usage
         import json
 
-        saved = json.loads(tmp_path.joinpath(f"{ctx.session_id}.json").read_text())
+        saved = json.loads(
+            tmp_path.joinpath("default", f"{ctx.session_id}.json").read_text()
+        )
         assert saved.get("token_usage") is not None
 
     @pytest.mark.asyncio
@@ -1962,7 +1964,7 @@ class TestLoadSession:
 
     @pytest.mark.asyncio
     async def test_load_session_exception_returns_false(self, monkeypatch, tmp_path):
-        """load_session returns False when add_event (or similar) raises."""
+        """load_session returns False when event injection raises."""
         from unittest.mock import Mock
         from mcp_cli.chat.session_store import SessionData, SessionMetadata
 
@@ -1986,8 +1988,11 @@ class TestLoadSession:
         mock_store.load.return_value = data
         ctx._session_store = mock_store
 
-        # load_session calls self.session.add_event which doesn't exist
-        # This triggers the except block -> returns False
+        # Make session._session.events raise on append to trigger the except block
+        mock_events = Mock()
+        mock_events.append.side_effect = RuntimeError("injection error")
+        ctx.session._session.events = mock_events
+
         result = ctx.load_session("fake-session")
         assert result is False
 
@@ -2137,7 +2142,7 @@ class TestAutoSaveCheck:
             ctx.auto_save_check()
 
         # Nothing saved yet
-        assert list(tmp_path.glob("*.json")) == []
+        assert list(tmp_path.glob("**/*.json")) == []
 
     @pytest.mark.asyncio
     async def test_auto_save_check_triggers_save(self, monkeypatch, tmp_path):
@@ -2154,8 +2159,8 @@ class TestAutoSaveCheck:
         for _ in range(DEFAULT_AUTO_SAVE_INTERVAL):
             ctx.auto_save_check()
 
-        # Should have saved
-        saved_files = list(tmp_path.glob("*.json"))
+        # Should have saved (files are in tmp_path/default/)
+        saved_files = list(tmp_path.glob("**/*.json"))
         assert len(saved_files) == 1
         # Counter should be reset to 0
         assert ctx._auto_save_counter == 0
@@ -2662,3 +2667,60 @@ class TestRemainingBranches:
         assert "user" in roles
         assert "assistant" in roles
         assert "tool" in roles
+
+
+# ---------------------------------------------------------------------------
+# agent_id plumbing
+# ---------------------------------------------------------------------------
+
+
+class TestAgentId:
+    """Verify agent_id is stored, propagated, and serialized."""
+
+    def test_agent_id_default(self, monkeypatch):
+        ctx = _make_initialized_ctx(monkeypatch)
+        assert ctx.agent_id == "default"
+
+    def test_agent_id_custom(self, monkeypatch):
+        ctx = _make_initialized_ctx(monkeypatch, agent_id="my-agent")
+        assert ctx.agent_id == "my-agent"
+
+    def test_to_dict_includes_agent_id(self, monkeypatch):
+        ctx = _make_initialized_ctx(monkeypatch, agent_id="export-agent")
+        d = ctx.to_dict()
+        assert d["agent_id"] == "export-agent"
+
+    def test_save_session_writes_agent_id(self, monkeypatch, tmp_path):
+        ctx = _make_initialized_ctx(monkeypatch, agent_id="save-agent")
+        # Point session store to tmp_path
+        from mcp_cli.chat.session_store import SessionStore
+
+        ctx._session_store = SessionStore(sessions_dir=tmp_path, agent_id="save-agent")
+        ctx._system_prompt = "SYS"
+
+        path = ctx.save_session()
+        assert path is not None
+
+        loaded = ctx._session_store.load(ctx.session_id)
+        assert loaded is not None
+        assert loaded.metadata.agent_id == "save-agent"
+
+    def test_create_forwards_agent_id(self, monkeypatch):
+        monkeypatch.setattr(
+            "mcp_cli.chat.chat_context.generate_system_prompt",
+            lambda tools=None, **kw: "SYS_PROMPT",
+        )
+        from unittest.mock import Mock
+        from mcp_cli.model_management import ModelManager
+
+        mock_mm = Mock(spec=ModelManager)
+        mock_mm.get_client.return_value = None
+        mock_mm.get_active_provider.return_value = "mock"
+        mock_mm.get_active_model.return_value = "mock-model"
+
+        ctx = ChatContext.create(
+            tool_manager=DummyToolManager(),
+            model_manager=mock_mm,
+            agent_id="factory-agent",
+        )
+        assert ctx.agent_id == "factory-agent"

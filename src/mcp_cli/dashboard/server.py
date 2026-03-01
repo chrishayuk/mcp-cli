@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import http
+import inspect
 import json
 import logging
 import mimetypes
@@ -43,9 +44,20 @@ class DashboardServer:
         self._clients: set[ServerConnection] = set()
         self._server: Any = None
         # Called when a browser user sends USER_MESSAGE / USER_ACTION / REQUEST_TOOL
-        self.on_browser_message: Callable[[dict[str, Any]], Any] | None = None
+        self.on_browser_message: Callable[..., Any] | None = None
         # Called when a new WebSocket client connects (before message loop starts)
         self.on_client_connected: Callable[[Any], Any] | None = None
+        # Called when a WebSocket client disconnects (receives ws)
+        self.on_client_disconnected: Callable[..., Any] | None = None
+        # Cached arity of on_browser_message callback (None = not yet checked)
+        self._browser_msg_arity: int | None = None
+        # Track callback identity for arity cache invalidation
+        self._browser_msg_cb_id: int | None = None
+
+    @property
+    def has_clients(self) -> bool:
+        """Return True if at least one browser client is connected."""
+        return bool(self._clients)
 
     # ------------------------------------------------------------------ #
     #  Public API                                                          #
@@ -60,6 +72,7 @@ class DashboardServer:
             "localhost",
             bound_port,
             process_request=self._process_request,
+            max_size=25 * 1024 * 1024,  # 25 MB for file attachments
         )
         logger.info("Dashboard server started on port %d", bound_port)
         return bound_port
@@ -89,6 +102,16 @@ class DashboardServer:
         for c in dead:
             self._clients.discard(c)
 
+    async def send_to_client(self, ws: ServerConnection, msg: dict[str, Any]) -> None:
+        """Send a JSON message to a specific WebSocket client.
+
+        Discards the client from the active set if the send fails.
+        """
+        try:
+            await ws.send(json.dumps(msg))
+        except Exception:
+            self._clients.discard(ws)
+
     # ------------------------------------------------------------------ #
     #  WebSocket handler                                                  #
     # ------------------------------------------------------------------ #
@@ -108,7 +131,7 @@ class DashboardServer:
         try:
             async for raw in ws:
                 if isinstance(raw, str):
-                    await self._handle_browser_message(raw)
+                    await self._handle_browser_message(raw, ws)
         except websockets.ConnectionClosed:
             pass
         finally:
@@ -117,8 +140,17 @@ class DashboardServer:
                 "Dashboard WebSocket client disconnected (%d remain)",
                 len(self._clients),
             )
+            if self.on_client_disconnected is not None:
+                try:
+                    result = self.on_client_disconnected(ws)
+                    if asyncio.iscoroutine(result):
+                        await result
+                except Exception as exc:
+                    logger.debug("Error in client disconnected callback: %s", exc)
 
-    async def _handle_browser_message(self, raw: str) -> None:
+    async def _handle_browser_message(
+        self, raw: str, ws: ServerConnection | None = None
+    ) -> None:
         try:
             msg = json.loads(raw)
         except json.JSONDecodeError:
@@ -126,7 +158,19 @@ class DashboardServer:
             return
         if self.on_browser_message:
             try:
-                result = self.on_browser_message(msg)
+                # Detect callback arity: 2-arg (msg, ws) vs 1-arg (msg)
+                cb_id = id(self.on_browser_message)
+                if self._browser_msg_arity is None or self._browser_msg_cb_id != cb_id:
+                    self._browser_msg_cb_id = cb_id
+                    try:
+                        sig = inspect.signature(self.on_browser_message)
+                        self._browser_msg_arity = len(sig.parameters)
+                    except (ValueError, TypeError):
+                        self._browser_msg_arity = 1
+                if self._browser_msg_arity >= 2 and ws is not None:
+                    result = self.on_browser_message(msg, ws)
+                else:
+                    result = self.on_browser_message(msg)
                 if asyncio.iscoroutine(result):
                     await result
             except Exception as exc:

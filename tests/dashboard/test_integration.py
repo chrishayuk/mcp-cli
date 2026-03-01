@@ -165,7 +165,7 @@ class TestOnClientConnectedCallback:
 
         msg = json.loads(raw)
         assert msg["type"] == "VIEW_REGISTRY"
-        assert msg["views"][0]["id"] == "stats:main"
+        assert msg["payload"]["views"][0]["id"] == "stats:main"
 
 
 # ---------------------------------------------------------------------------
@@ -309,4 +309,4 @@ class TestBridgeEndToEnd:
         assert "VIEW_REGISTRY" in types
 
         registry_msg = next(m for m in msgs if m["type"] == "VIEW_REGISTRY")
-        assert any(v["id"] == "stats:main" for v in registry_msg["views"])
+        assert any(v["id"] == "stats:main" for v in registry_msg["payload"]["views"])

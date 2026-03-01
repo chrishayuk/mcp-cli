@@ -330,6 +330,14 @@ DEFAULT_APP_INIT_TIMEOUT = 30
 
 
 # ================================================================
+# Agent Identity Defaults
+# ================================================================
+
+DEFAULT_AGENT_ID = "default"
+"""Default agent identifier for multi-agent support."""
+
+
+# ================================================================
 # Dashboard Defaults
 # ================================================================
 
@@ -404,3 +412,23 @@ DEFAULT_LOG_MAX_BYTES = 10_485_760
 
 DEFAULT_LOG_BACKUP_COUNT = 3
 """Number of rotated log files to keep."""
+
+
+# ================================================================
+# Attachment Defaults
+# ================================================================
+
+DEFAULT_MAX_ATTACHMENT_SIZE_BYTES = 20_971_520
+"""Maximum attachment file size (20 MB). Base64 encoding adds ~33%."""
+
+DEFAULT_MAX_ATTACHMENTS_PER_MESSAGE = 10
+"""Maximum attachments per user message (staged + inline combined)."""
+
+DEFAULT_IMAGE_DETAIL_LEVEL = "auto"
+"""Default detail level for image_url content blocks (auto, low, high)."""
+
+DEFAULT_DASHBOARD_INLINE_IMAGE_THRESHOLD = 102_400
+"""Max base64 size (bytes) for inline image previews in dashboard (100 KB)."""
+
+DEFAULT_DASHBOARD_TEXT_PREVIEW_CHARS = 2000
+"""Max chars of text file content to send as preview in dashboard."""

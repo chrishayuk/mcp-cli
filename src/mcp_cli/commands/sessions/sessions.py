@@ -73,7 +73,11 @@ Usage:
         action = args[0] if args else SessionAction.LIST
         session_id = args[1] if len(args) > 1 else None
 
-        store = SessionStore()
+        store = SessionStore(
+            agent_id=getattr(chat_context, "agent_id", "default")
+            if chat_context
+            else "default"
+        )
 
         if action == SessionAction.LIST:
             sessions = store.list_sessions()

@@ -55,7 +55,7 @@ class DummyUIManager:
         # Add async method that tool processor expects
         pass
 
-    def do_confirm_tool_execution(self, tool_name, arguments):
+    async def do_confirm_tool_execution(self, tool_name, arguments):
         # Mock confirmation - always return True for tests
         return True
 
@@ -452,7 +452,7 @@ async def test_process_tool_calls_exception_in_call():
 class DenyConfirmUIManager(DummyUIManager):
     """UI manager that denies tool confirmation."""
 
-    def do_confirm_tool_execution(self, tool_name, arguments):
+    async def do_confirm_tool_execution(self, tool_name, arguments):
         return False
 
 
@@ -483,7 +483,7 @@ async def test_cancelled_tool_still_gets_result_for_remaining():
     class SelectiveDenyUI(DummyUIManager):
         """Denies the second tool call."""
 
-        def do_confirm_tool_execution(self, tool_name, arguments):
+        async def do_confirm_tool_execution(self, tool_name, arguments):
             call_count[0] += 1
             return call_count[0] <= 1  # Allow first, deny second
 

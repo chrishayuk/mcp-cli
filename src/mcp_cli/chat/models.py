@@ -350,7 +350,7 @@ class UIManagerProtocol(Protocol):
         """Print tool call info to console."""
         ...
 
-    def do_confirm_tool_execution(
+    async def do_confirm_tool_execution(
         self,
         tool_name: str,
         arguments: dict[str, Any],
@@ -358,6 +358,7 @@ class UIManagerProtocol(Protocol):
         """Ask user to confirm tool execution.
 
         Returns True if user confirms, False otherwise.
+        May route to dashboard if browser clients are connected.
         """
         ...
 

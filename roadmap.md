@@ -547,6 +547,255 @@ With 6.8: User asks a question → model decides it needs a plan → creates and
 
 ---
 
+## Dashboard & Multi-Modal ✅ COMPLETE
+
+> **Goal:** Give users a real-time browser UI for conversations and enable multi-modal input (images, text files, audio) across CLI and browser.
+
+### D.1 Dashboard Infrastructure ✅
+
+Real-time browser dashboard alongside chat mode via `--dashboard` flag.
+
+**Files:** `src/mcp_cli/dashboard/` — `server.py`, `bridge.py`, `launcher.py`, `config.py`, `router.py`
+
+- HTTP + WebSocket server on a single port (`server.py`)
+- Bridge integrates chat engine events → browser clients (`bridge.py`)
+- Router supports multi-agent coordination (`router.py`)
+- Shell host page manages view iframes and WebSocket connection (`shell.html`)
+- Session replay on connect: `CONVERSATION_HISTORY` + `ACTIVITY_HISTORY`
+
+### D.2 Dashboard Views ✅
+
+Five tabbed views in the browser UI.
+
+**Files:** `src/mcp_cli/dashboard/static/views/` — `agent-terminal.html`, `activity-stream.html`, `plan-viewer.html`, `tool-registry.html`, `config-panel.html`
+
+- **Agent Terminal**: Chat bubbles, streaming tokens, markdown rendering, syntax highlighting, search
+- **Activity Stream**: Tool call/result pairs, reasoning steps, state transitions
+- **Plan Viewer**: DAG visualization with real-time step progress
+- **Tool Registry**: Browse tools, trigger execution from browser
+- **Config Panel**: View/switch providers, models, system prompt
+
+### D.3 Multi-Modal Attachments ✅
+
+Attach images, text files, and audio to messages via CLI and browser.
+
+**Files:** `src/mcp_cli/chat/attachments.py`, `src/mcp_cli/chat/chat_handler.py`, `src/mcp_cli/chat/chat_context.py`, `src/mcp_cli/commands/attach/attach.py`, `src/mcp_cli/main.py`
+
+- `/attach` command with staging, list, clear (aliases: `/file`, `/image`)
+- `--attach` CLI flag (repeatable) for first-message attachments
+- Inline `@file:path` references parsed from message text
+- Image URL auto-detection (HTTP/HTTPS `.png`, `.jpg`, `.gif`, `.webp`)
+- `AttachmentStaging` on `ChatContext` — drain-on-send lifecycle
+- `build_multimodal_content()` assembles content block lists
+- Supported: PNG, JPEG, GIF, WebP, HEIC, MP3, WAV, 25+ text/code extensions
+- 20 MB max per file, 10 attachments per message
+
+### D.4 Dashboard Attachment Visualization ✅
+
+Render attachments in the browser UI.
+
+**Files:** `src/mcp_cli/dashboard/bridge.py`, `src/mcp_cli/dashboard/static/views/agent-terminal.html`, `src/mcp_cli/dashboard/static/views/activity-stream.html`
+
+- Lightweight attachment descriptors over WebSocket (no large base64 payloads)
+- Image thumbnails for files <100KB, metadata badges for larger files
+- Expandable text previews (first 2000 chars)
+- Audio players (HTML5 `<audio>`)
+- Activity stream shows attachment events with paperclip badges
+
+### D.5 Browser File Upload ✅
+
+Attach files directly from the dashboard browser UI.
+
+**Files:** `src/mcp_cli/dashboard/static/views/agent-terminal.html`, `src/mcp_cli/dashboard/static/shell.html`, `src/mcp_cli/dashboard/bridge.py`, `src/mcp_cli/dashboard/server.py`
+
+- "+" attach button in chat input area
+- Hidden file input with supported extension filter
+- Staging strip with removable badges and image thumbnails
+- Drag-and-drop overlay
+- Clipboard paste support (images)
+- `process_browser_file()` constructs `Attachment` from browser base64 data
+- Bridge stages files on `ChatContext.attachment_staging`
+- WebSocket `max_size` increased to 25 MB
+
+---
+
+## Dashboard v2: Intelligence Layer
+
+> **Goal:** Evolve the dashboard from a passive conversation viewer into an active operations console — memory visualization, token economics, tool analytics, session management, and multi-agent oversight.
+
+### Original Spec Compliance
+
+The v0.1.0 Dashboard Shell Specification is nearly fully implemented:
+
+| Spec Section | Status | Notes |
+|-------------|--------|-------|
+| §2 Launch (`--dashboard`, port, browser) | ✅ | Port auto-select from 9120, `--no-browser` flag |
+| §3 Architecture (server, bridge, shell, iframes) | ✅ | Exact architecture as specified |
+| §4 Shell page (CSS Grid, panel chrome, toolbar) | ✅ | Pop-out, minimize, close, drag-swap, resize handles |
+| §5 View protocol (postMessage, INIT, READY, TOOL_RESULT) | ✅ | Full protocol with 5s READY timeout |
+| §6.1 Agent terminal (markdown, streaming, /commands) | ✅ | Plus attachments, search, drag-drop |
+| §6.2 Activity stream (events, filters, virtual scroll) | ✅ | Plus agent badges, plan updates |
+| §7 View discovery (_meta.ui → VIEW_REGISTRY) | ✅ | Dynamic discovery + "+ Add Panel" |
+| §8 Themes (8 themes, CSS variables, THEME message) | ✅ | Full theme sync |
+| §9 Layout presets (Minimal, Standard, Full, custom) | ✅ | Save/load/delete in localStorage + JSON file |
+| §10 Module structure | ✅ | Exact structure as specified |
+| §11 Bridge protocol | ✅ | All message types + extras (sessions, config) |
+| §14 Design principles (dumb shell, no build, sandbox) | ✅ | All 8 principles followed |
+| Panel min-size enforcement during drag | ⚠️ | CSS min 200×200px but no runtime clamp in resize handlers |
+| Dashboard-only mode (`mcp-cli dashboard --config`) | ❌ | Spec §2 "future, Phase 5" — not started |
+
+**Beyond spec:** The implementation added features not in the original spec: multi-modal attachments ("+" button, drag-drop, paste), plan-viewer view, tool-registry/browser view, config-panel view, agent-overview view, multi-agent router, session management (new/switch/delete/rename), and the full multi-agent spec (MULTI_AGENT_SPEC.md).
+
+### D2.1 Memory Panel
+
+Visual representation of the AI Virtual Memory subsystem (mirrors `/memory` command). The CLI already exposes working set stats, page table, per-page content, and full subsystem stats — the panel makes this visual and live.
+
+**New view:** `memory-panel.html`
+
+- **Summary gauges**: Working set utilization bar (tokens used / budget), L0/L1 page counts, page fault and eviction counters
+- **Page table**: Sortable table of all pages — ID, type (text/image/tool), tier (L0–L4), token count, pinned status, age in turns
+- **Page inspector**: Click a page to see content preview, creation turn, access history, eviction score
+- **Live metrics**: Page faults, evictions, TLB hit rate — updating in real time as conversation progresses
+- **Tier distribution**: Visual breakdown of pages across storage tiers (stacked bar or treemap)
+- **Budget pressure indicator**: Warning state when utilization >80%, critical at >95%
+- **Page lifecycle animation**: Visual indication when pages are faulted in, evicted, or migrated between tiers
+
+**Bridge changes:** New `on_memory_event()` hook called from VM subsystem on page fault, eviction, and tier migration. New `MEMORY_STATE` WebSocket message type for full state broadcast on connect. `MEMORY_EVENT` for incremental updates (fault, evict, migrate).
+
+**Shell integration:** New tab in shell.html, only visible when `--vm` flag is active (bridge advertises `vm_enabled` in CONFIG_STATE).
+
+**Data source:** `vm.working_set.get_stats()`, `vm.page_table.get_stats()`, `vm.page_table.entries` — same data the `/memory` command already reads.
+
+### D2.2 Token Usage Dashboard
+
+Live token economics — per-turn and cumulative cost tracking.
+
+**New view:** `token-usage.html`
+
+- **Per-turn bar chart**: Input/output tokens per turn, stacked bars
+- **Cumulative line**: Running total with estimated cost (provider-specific pricing)
+- **Rate limit gauge**: Visual indicator showing proximity to provider rate limits
+- **Model comparison**: When model is switched mid-session, show cost delta at the switch point
+- **Context window utilization**: How much of the model's context window is in use
+- **Export**: Download token usage report as CSV
+
+**Bridge changes:** Extend `CONVERSATION_MESSAGE` payload to include `usage` (input_tokens, output_tokens) when available. New `TOKEN_USAGE_HISTORY` aggregate message on connect for replay.
+
+### D2.3 Tool Execution Timeline
+
+Visual Gantt-style view of tool calls with timing and concurrency.
+
+**New view:** `tool-timeline.html`
+
+- **Gantt chart**: Horizontal bars showing tool call start → end, color-coded by server
+- **Concurrent calls**: Overlapping bars visible when tools run in parallel (plan batch execution)
+- **Drill-down**: Click a bar to see arguments, result preview, error details
+- **Timing stats**: Min/max/avg/p95 execution time per tool
+- **Server health**: Aggregate success rate and latency per server
+
+**Bridge changes:** Add `started_at` timestamp to tool call initiation (new `on_tool_call()` hook alongside existing `on_tool_result()`). Activity history pairs start + end for timeline rendering.
+
+### D2.4 Session Management Panel
+
+Manage conversation sessions entirely from the browser.
+
+**Backend status:** Bridge already handles `REQUEST_SESSIONS`, `LOAD_SESSION`, `SAVE_SESSION`, `DELETE_SESSION`, `RENAME_SESSION`, `NEW_SESSION`, `SWITCH_SESSION` — all wired to ChatContext. What's missing is a dedicated view UI.
+
+**New view or config-panel extension:**
+
+- **Session list**: Browse saved sessions with preview (first message, turn count, date, model used)
+- **Load session**: Click to load — replays conversation and activity history in all views
+- **Save session**: Manual save button with optional name
+- **Delete/rename session**: Manage old sessions
+- **Session comparison**: Side-by-side diff of two session transcripts
+- **Auto-save indicator**: Show when auto-save triggers, link to saved file
+
+### D2.5 Tool Approval UI
+
+Interactive tool approval from the browser when confirmation is required.
+
+**Backend status:** Bridge already has `request_tool_approval()` and `TOOL_APPROVAL_RESPONSE` handler with pending futures. What's missing is the frontend modal.
+
+- **Approval modal**: Shows tool name, arguments (syntax-highlighted JSON), server — approve/deny buttons
+- **Approval queue**: Multiple pending approvals shown as stacked cards with countdown timer
+- **Auto-approve toggle**: Per-tool or global toggle for trusted tools
+- **Audit trail**: Log of approved/denied tool calls with timestamps
+- **CLI fallback**: If no browser clients connected, falls back to CLI confirmation (already implemented)
+
+### D2.6 Inline Tool Execution
+
+Execute tools directly from the tool browser view.
+
+**Backend status:** `REQUEST_TOOL` message type already handled by bridge. Needs frontend form UI.
+
+- **Run button**: Each tool card gets a "Run" button
+- **Argument form**: Auto-generated from JSON schema (text inputs, number spinners, dropdowns for enums, textarea for objects, checkbox for booleans)
+- **Validation**: Client-side validation against schema before sending
+- **Result display**: Inline result rendering below the tool card (syntax-highlighted JSON)
+- **History**: Recent executions per tool with timing and success/failure indicators
+
+### D2.7 Export from Browser
+
+Download conversations and data directly from the dashboard.
+
+- **Markdown export**: Download formatted conversation as `.md` (reuse existing export logic)
+- **JSON export**: Download structured conversation with metadata as `.json`
+- **Activity log export**: Download tool call history as CSV
+- **Screenshot**: Capture current view as PNG (via browser Canvas API)
+
+**Bridge changes:** New `REQUEST_EXPORT` message type. Bridge calls existing export logic (`/export` command internals) and returns file content as download.
+
+### D2.8 Dashboard-Only Mode
+
+Run the dashboard without a CLI terminal — browser-first experience.
+
+```bash
+# Future: standalone dashboard mode
+mcp-cli dashboard --server sqlite --config workspace.yaml
+```
+
+- Dashboard opens as the primary interface (no terminal chat loop)
+- Agent terminal view is the sole conversation input
+- All `/commands` work through the browser input
+- Workspace configs define layout + servers + default views
+- Useful for: demos, shared screens, non-technical users, remote operation
+
+**Requires:** Decoupling the chat loop from terminal stdin — the input queue already supports this (browser messages go through `_input_queue`), but startup assumes terminal mode.
+
+### D2.9 MCP Apps as Dashboard Panels
+
+Embed MCP App UIs (tool `_meta.ui.resourceUri` web apps) as panels within the dashboard, with the ability to maximize into a full browser window.
+
+**Current state:** MCP Apps run on separate `AppHostServer` instances (ports 9470+) using JSON-RPC protocol. Dashboard runs on `DashboardServer` (port 9120+) with mcp-dashboard envelope protocol v2. The two systems are fully independent — apps open in standalone browser tabs.
+
+**Integration approach:** Keep WebSocket servers separate; embed app iframes inside dashboard panels pointing to their existing `localhost:947X` endpoints.
+
+- **Apps panel**: New dashboard view listing all running MCP apps with name, description, status, and "Open" button
+- **Inline embedding**: Clicking "Open" adds the app as a resizable iframe panel in the current layout (same panel system as existing views)
+- **Maximize / pop-out**: Each embedded app panel gets a maximize button (full dashboard area) and a pop-out button (⤢) to open in a standalone browser window — reuses the shell's existing pop-out mechanism
+- **Suppress standalone launch**: When `--dashboard` is active, tools with `_meta.ui.resourceUri` route to an embedded dashboard panel instead of opening a new browser tab
+- **Auto-placement**: New apps triggered by tool execution appear as panels in the current layout automatically, with focus
+- **Tool result routing**: Tool calls that return `_meta.ui.resourceUri` in their result metadata display the app inline in the activity stream with an "Open in panel" action
+- **Lifecycle management**: Apps panel shows running/stopped status; closing a panel doesn't kill the app server (can re-open)
+- **Multi-app support**: Multiple app panels can be open simultaneously in the dashboard layout
+
+**Bridge changes:** New `APP_OPENED` / `APP_CLOSED` / `APP_LIST` message types. Dashboard bridge tracks active `AppHostServer` instances and their ports. Shell.html manages app iframe lifecycle.
+
+**Requires:** D2.8 (Dashboard-Only Mode) benefits from this — apps become first-class dashboard citizens.
+
+### D2.10 Dashboard Polish
+
+Quality-of-life improvements.
+
+- **Runtime panel min-size enforcement**: Clamp resize drag handlers to 200×200px minimum (spec gap — CSS minimums exist but no JS enforcement)
+- **Theme sync**: Dashboard matches CLI `/theme` selection live (THEME message exists, needs CLI→bridge hook)
+- **Keyboard shortcuts**: `Ctrl+1/2/3` for tab switching, `Ctrl+N` to focus chat input, `Ctrl+Shift+F` for global search
+- **Background notifications**: Browser Notification API when agent completes while tab is in background
+- **Mobile-responsive**: Single-column layout for narrow screens (<768px), collapsible sidebar
+- **Message queue during disconnect**: Buffer outbound messages while WebSocket reconnects (reconnection backoff already implemented)
+
+---
+
 ## Tier 7: Observability & Traces
 
 > **Goal:** Turn mcp-cli into a debugger for AI behavior. No other agent CLI has a proper observability layer yet.
@@ -1033,8 +1282,9 @@ mcp remote logs --follow
 | **5** | Production hardening | Observable, auditable | ✅ Complete |
 | **VM** | AI Virtual Memory | OS-style context management | ✅ Complete (Experimental) |
 | **Review** | Code review fixes | Silent exceptions, dead code, test gaps | ✅ Complete |
-| **6** | Plans & execution graphs | Reproducible workflows | ✅ Complete (6.0–6.7) |
-| **6.8** | Model-driven planning | Model creates & executes plans as tools | High |
+| **6** | Plans & execution graphs | Reproducible workflows | ✅ Complete (6.0–6.8) |
+| **Dashboard** | Dashboard & multi-modal | Real-time browser UI, file attachments | ✅ Complete |
+| **Dashboard v2** | Dashboard intelligence | Memory panel, token usage, tool timeline, session mgmt, approvals, MCP Apps panels, dashboard-only mode | High |
 | **7** | Observability & traces | Debugger for AI behavior | High |
 | **8** | Memory scopes | Long-running assistants | High |
 | **9** | Skills & capabilities | Portable behaviour layer | High |

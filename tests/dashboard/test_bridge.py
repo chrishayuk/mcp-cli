@@ -271,7 +271,7 @@ class TestOnClientConnected:
         ws.send.assert_awaited_once()
         sent = json.loads(ws.send.call_args[0][0])
         assert sent["type"] == "VIEW_REGISTRY"
-        assert len(sent["views"]) == 1
+        assert len(sent["payload"]["views"]) == 1
 
     @pytest.mark.asyncio
     async def test_no_send_when_registry_empty(self):

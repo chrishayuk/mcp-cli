@@ -89,6 +89,14 @@ BUILTIN_VIEWS: list[dict[str, Any]] = [
         "type": "stream",
         "url": "/views/activity-stream.html",
     },
+    {
+        "id": "builtin:agent-overview",
+        "name": "Agent Overview",
+        "source": "builtin",
+        "icon": "agents",
+        "type": "agents",
+        "url": "/views/agent-overview.html",
+    },
 ]
 
 # ------------------------------------------------------------------ #
