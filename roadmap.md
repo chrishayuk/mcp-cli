@@ -762,7 +762,28 @@ mcp-cli dashboard --server sqlite --config workspace.yaml
 
 **Requires:** Decoupling the chat loop from terminal stdin — the input queue already supports this (browser messages go through `_input_queue`), but startup assumes terminal mode.
 
-### D2.9 Dashboard Polish
+### D2.9 MCP Apps as Dashboard Panels
+
+Embed MCP App UIs (tool `_meta.ui.resourceUri` web apps) as panels within the dashboard, with the ability to maximize into a full browser window.
+
+**Current state:** MCP Apps run on separate `AppHostServer` instances (ports 9470+) using JSON-RPC protocol. Dashboard runs on `DashboardServer` (port 9120+) with mcp-dashboard envelope protocol v2. The two systems are fully independent — apps open in standalone browser tabs.
+
+**Integration approach:** Keep WebSocket servers separate; embed app iframes inside dashboard panels pointing to their existing `localhost:947X` endpoints.
+
+- **Apps panel**: New dashboard view listing all running MCP apps with name, description, status, and "Open" button
+- **Inline embedding**: Clicking "Open" adds the app as a resizable iframe panel in the current layout (same panel system as existing views)
+- **Maximize / pop-out**: Each embedded app panel gets a maximize button (full dashboard area) and a pop-out button (⤢) to open in a standalone browser window — reuses the shell's existing pop-out mechanism
+- **Suppress standalone launch**: When `--dashboard` is active, tools with `_meta.ui.resourceUri` route to an embedded dashboard panel instead of opening a new browser tab
+- **Auto-placement**: New apps triggered by tool execution appear as panels in the current layout automatically, with focus
+- **Tool result routing**: Tool calls that return `_meta.ui.resourceUri` in their result metadata display the app inline in the activity stream with an "Open in panel" action
+- **Lifecycle management**: Apps panel shows running/stopped status; closing a panel doesn't kill the app server (can re-open)
+- **Multi-app support**: Multiple app panels can be open simultaneously in the dashboard layout
+
+**Bridge changes:** New `APP_OPENED` / `APP_CLOSED` / `APP_LIST` message types. Dashboard bridge tracks active `AppHostServer` instances and their ports. Shell.html manages app iframe lifecycle.
+
+**Requires:** D2.8 (Dashboard-Only Mode) benefits from this — apps become first-class dashboard citizens.
+
+### D2.10 Dashboard Polish
 
 Quality-of-life improvements.
 
@@ -1263,7 +1284,7 @@ mcp remote logs --follow
 | **Review** | Code review fixes | Silent exceptions, dead code, test gaps | ✅ Complete |
 | **6** | Plans & execution graphs | Reproducible workflows | ✅ Complete (6.0–6.8) |
 | **Dashboard** | Dashboard & multi-modal | Real-time browser UI, file attachments | ✅ Complete |
-| **Dashboard v2** | Dashboard intelligence | Memory panel, token usage, tool timeline, session mgmt, approvals, dashboard-only mode | High |
+| **Dashboard v2** | Dashboard intelligence | Memory panel, token usage, tool timeline, session mgmt, approvals, MCP Apps panels, dashboard-only mode | High |
 | **7** | Observability & traces | Debugger for AI behavior | High |
 | **8** | Memory scopes | Long-running assistants | High |
 | **9** | Skills & capabilities | Portable behaviour layer | High |
