@@ -48,9 +48,21 @@ class TestResolveStatic:
         assert result is not None
         assert result.name == "themes.json"
 
+    def test_css_path_resolves(self):
+        s = self._server()
+        result = s._resolve_static("/css/variables.css")
+        assert result is not None
+        assert result.name == "variables.css"
+
+    def test_js_path_resolves(self):
+        s = self._server()
+        result = s._resolve_static("/js/state.js")
+        assert result is not None
+        assert result.name == "state.js"
+
     def test_unknown_path_returns_none(self):
         s = self._server()
-        assert s._resolve_static("/unknown/path.js") is None
+        assert s._resolve_static("/unknown/path") is None
 
     def test_path_traversal_rejected(self):
         s = self._server()

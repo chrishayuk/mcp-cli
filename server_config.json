@@ -86,6 +86,9 @@
     "chart": {
        "url": "https://chart.chukai.io/mcp"
     },
+    "map": {
+       "url": "https://map.chukai.io/mcp"
+    },
     "view_demo": {
        "url": "https://mcp-view-demo.fly.dev/mcp"
     }

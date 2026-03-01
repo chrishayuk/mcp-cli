@@ -1012,10 +1012,9 @@ class ToolProcessor:
                 server_name = tool_info.namespace
 
                 # Collect fallback viewUrl from definition and result meta
-                view_url = (
-                    getattr(tool_info, "app_view_url", None)
-                    or self._extract_result_view_url(result)
-                )
+                view_url = getattr(
+                    tool_info, "app_view_url", None
+                ) or self._extract_result_view_url(result)
 
                 # Reuse existing app — check by tool name, then by URI
                 bridge = app_host.get_bridge(tool_name)

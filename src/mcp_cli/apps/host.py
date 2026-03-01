@@ -311,9 +311,7 @@ class AppHostServer:
         if "</head>" in app_html:
             app_html = app_html.replace("</head>", _fill_css + "</head>", 1)
         elif "<body" in app_html:
-            app_html = app_html.replace(
-                "<body", _fill_css + "<body", 1
-            )
+            app_html = app_html.replace("<body", _fill_css + "<body", 1)
         else:
             app_html = _fill_css + app_html
         app_html_bytes = app_html.encode("utf-8")

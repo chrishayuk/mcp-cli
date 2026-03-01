@@ -145,6 +145,29 @@ body {
 /* Spinner animation for running step */
 @keyframes spin { to { transform: rotate(360deg); } }
 .step-card.running .step-icon { animation: spin 1s linear infinite; }
+
+/* ── Responsive: narrow panel / small screen ──────────────────── */
+#steps {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 400px) {
+  #plan-header { padding: 6px 8px; }
+  #plan-title { font-size: 13px; }
+  #plan-status { font-size: 10px; }
+  .plan-status-badge { font-size: 9px; padding: 1px 4px; }
+  .step-card { padding: 6px 8px; gap: 6px; }
+  .step-icon { font-size: 12px; width: 16px; }
+  .step-title { font-size: 11px; }
+  .step-meta { flex-direction: column; gap: 2px; font-size: 10px; }
+  .step-error { font-size: 10px; }
+  #steps { padding: 6px; gap: 3px; }
+}
+
+@media (max-width: 280px) {
+  .step-meta { display: none; }
+}
 </style>
 </head>
 <body>

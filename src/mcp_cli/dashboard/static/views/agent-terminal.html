@@ -370,6 +370,59 @@ body {
 }
 .att-text-preview.expanded .att-text-fade { display: none; }
 .att-audio-player { margin-top: 4px; width: 100%; max-width: 280px; height: 32px; }
+
+/* ── Responsive: narrow panel / small screen ──────────────────── */
+#messages {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 500px) {
+  .msg { max-width: 96%; }
+  .msg-bubble { padding: 6px 10px; }
+  .msg-content { font-size: 12px; line-height: 1.45; }
+  .msg-content pre { padding: 6px; font-size: 11px; }
+  .msg-content code { font-size: 11px; }
+  .msg-content h1,.msg-content h2,.msg-content h3 { font-size: 13px; }
+  .tool-card-header { padding: 4px 8px; gap: 4px; }
+  .tool-name { font-size: 11px; }
+  .tool-dur { font-size: 10px; }
+  .tool-body { font-size: 10px; max-height: 200px; }
+  .reasoning-header { font-size: 9px; }
+  .reasoning-content { font-size: 10px; }
+  #input-area { padding: 6px 8px; gap: 6px; }
+  #input-area textarea {
+    font-size: 16px; /* prevent iOS zoom */
+    padding: 8px 10px;
+    min-height: 40px;
+  }
+  #send-btn { padding: 8px 14px; height: 40px; }
+  #attach-btn { width: 40px; height: 40px; font-size: 20px; }
+  #status-bar { padding: 3px 8px; font-size: 10px; gap: 6px; }
+  #search-bar input { width: 120px; }
+  #scroll-btn { padding: 6px 12px; font-size: 12px; }
+  .staged-file { font-size: 11px; padding: 3px 8px; }
+  .staged-thumb { width: 28px; height: 28px; }
+  .att-badge { padding: 2px 6px; font-size: 10px; }
+  .att-badge .att-name { max-width: 100px; }
+  .att-image-preview { max-width: 150px; max-height: 100px; }
+}
+
+@media (max-width: 320px) {
+  #status-bar { display: none; }
+  .msg-role { display: none; }
+  .msg { max-width: 100%; }
+  .msg-content { font-size: 11px; }
+  #staging-strip { padding: 0 6px; }
+}
+
+/* Touch-friendly targets */
+@media (pointer: coarse) {
+  #send-btn { min-height: 44px; padding: 10px 16px; }
+  #attach-btn { width: 44px; height: 44px; }
+  #search-bar button { min-height: 36px; min-width: 36px; padding: 6px 10px; }
+  #scroll-btn { min-height: 40px; padding: 8px 14px; }
+}
 </style>
 </head>
 <body>

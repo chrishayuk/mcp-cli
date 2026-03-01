@@ -112,6 +112,31 @@ body {
   text-align: center;
   padding: 20px;
 }
+
+/* ── Responsive: narrow panel / small screen ──────────────────── */
+#agent-grid {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 400px) {
+  #agent-grid {
+    grid-template-columns: 1fr;
+    padding: 8px;
+    gap: 6px;
+  }
+  .agent-card { padding: 8px; }
+  .agent-card-name { font-size: 12px; }
+  .agent-card-role { font-size: 10px; }
+  .agent-card-meta { gap: 4px; font-size: 9px; }
+  .agent-card-meta span { padding: 1px 4px; }
+  .agent-card-action { font-size: 10px; }
+  .agent-card-header { gap: 6px; margin-bottom: 4px; }
+}
+
+@media (pointer: coarse) {
+  .agent-card { padding: 12px; min-height: 44px; }
+}
 </style>
 </head>
 <body>
