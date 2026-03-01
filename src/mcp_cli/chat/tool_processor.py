@@ -1026,14 +1026,27 @@ class ToolProcessor:
                     return
 
                 # No running app for this URI — launch a new one
+                has_dashboard = (
+                    getattr(self.context, "dashboard_bridge", None) is not None
+                )
                 logger.info("Tool %s has MCP App UI at %s", tool_name, resource_uri)
                 app_info = await app_host.launch_app(
                     tool_name=tool_name,
                     resource_uri=resource_uri,
                     server_name=server_name,
                     tool_result=result,
+                    open_browser=not has_dashboard,
                 )
                 logger.info("MCP App opened at %s", app_info.url)
+
+                # Notify dashboard to embed the app as a panel
+                if has_dashboard:
+                    dash_bridge = getattr(self.context, "dashboard_bridge", None)
+                    if dash_bridge is not None:
+                        try:
+                            await dash_bridge.on_app_launched(app_info)
+                        except Exception as exc:
+                            logger.debug("Dashboard on_app_launched error: %s", exc)
                 return
 
             # ── Case 2: no resourceUri — route ui_patch to running app ───

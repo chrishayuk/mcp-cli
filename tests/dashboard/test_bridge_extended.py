@@ -896,3 +896,94 @@ class TestBrowserFileStaging:
         assert ctx.attachment_staging.count == 0
         # Text should still be queued
         assert bridge._input_queue.qsize() == 1
+
+
+# ---------------------------------------------------------------------------
+# MCP App lifecycle (APP_LAUNCHED / APP_CLOSED)
+# ---------------------------------------------------------------------------
+
+
+class TestAppLifecycle:
+    """Tests for on_app_launched, on_app_closed, and replay on connect."""
+
+    @staticmethod
+    def _make_app_info():
+        info = MagicMock()
+        info.tool_name = "show_chart"
+        info.url = "http://localhost:9470"
+        info.port = 9470
+        info.server_name = "demo"
+        info.resource_uri = "ui://demo/chart.html"
+        info.state = MagicMock(value="ready")
+        return info
+
+    @pytest.mark.asyncio
+    async def test_on_app_launched_broadcasts(self):
+        bridge, server = _make_bridge()
+        app_info = self._make_app_info()
+
+        await bridge.on_app_launched(app_info)
+
+        server.broadcast.assert_awaited_once()
+        msg = server.broadcast.call_args[0][0]
+        assert msg["protocol"] == "mcp-dashboard"
+        assert msg["type"] == "APP_LAUNCHED"
+        assert msg["payload"]["tool_name"] == "show_chart"
+        assert msg["payload"]["url"] == "http://localhost:9470"
+        assert msg["payload"]["port"] == 9470
+        assert msg["payload"]["server_name"] == "demo"
+
+    @pytest.mark.asyncio
+    async def test_on_app_closed_broadcasts(self):
+        bridge, server = _make_bridge()
+        app_info = self._make_app_info()
+        await bridge.on_app_launched(app_info)
+
+        server.broadcast.reset_mock()
+        await bridge.on_app_closed("show_chart")
+
+        server.broadcast.assert_awaited_once()
+        msg = server.broadcast.call_args[0][0]
+        assert msg["type"] == "APP_CLOSED"
+        assert msg["payload"]["tool_name"] == "show_chart"
+
+    @pytest.mark.asyncio
+    async def test_on_app_closed_removes_from_running(self):
+        bridge, server = _make_bridge()
+        app_info = self._make_app_info()
+        await bridge.on_app_launched(app_info)
+        assert "show_chart" in bridge._running_apps
+
+        await bridge.on_app_closed("show_chart")
+        assert "show_chart" not in bridge._running_apps
+
+    @pytest.mark.asyncio
+    async def test_running_apps_replayed_on_connect(self):
+        bridge, server = _make_bridge()
+        app_info = self._make_app_info()
+        await bridge.on_app_launched(app_info)
+
+        # Simulate client connect
+        ws = AsyncMock()
+        await bridge._on_client_connected(ws)
+
+        # Parse all sent messages
+        sent = [json.loads(c.args[0]) for c in ws.send.call_args_list]
+        app_msgs = [m for m in sent if m.get("type") == "APP_LAUNCHED"]
+        assert len(app_msgs) == 1
+        assert app_msgs[0]["payload"]["tool_name"] == "show_chart"
+        assert app_msgs[0]["payload"]["url"] == "http://localhost:9470"
+
+    @pytest.mark.asyncio
+    async def test_request_app_list_replays_running(self):
+        bridge, server = _make_bridge()
+        app_info = self._make_app_info()
+        await bridge.on_app_launched(app_info)
+
+        server.broadcast.reset_mock()
+        await bridge._on_browser_message({"type": "REQUEST_APP_LIST"})
+
+        server.broadcast.assert_awaited_once()
+        msg = server.broadcast.call_args[0][0]
+        assert msg["type"] == "APP_LAUNCHED"
+        assert msg["payload"]["tool_name"] == "show_chart"

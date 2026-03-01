@@ -819,6 +819,14 @@ function handleBridgeMessage(msg) {
       rebuildAddPanelMenu();
       break;
 
+    // ── MCP App lifecycle ──────────────────────────────────────
+    case 'APP_LAUNCHED':
+      handleAppLaunched(msg.payload);
+      break;
+    case 'APP_CLOSED':
+      handleAppClosed(msg.payload);
+      break;
+
     // ── Agent lifecycle messages ───────────────────────────────
     case 'AGENT_LIST':
       handleAgentList(msg.payload);
@@ -932,9 +940,20 @@ function getOrCreateView(viewId) {
   if (viewPool.has(viewId)) return viewPool.get(viewId);
   const view = { iframe: null, ready: false, accepts: [], _readyTimeout: null };
   const iframe = document.createElement('iframe');
-  iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
+  // App iframes load cross-origin host pages — need permissive sandbox
+  if (viewId.startsWith('app:')) {
+    iframe.sandbox = 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox';
+  } else {
+    iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
+  }
   iframe.allow = '';
-  iframe.src = srcForView(viewId);
+  // App views: append ?embedded=1 to hide the host page header (dashboard panel
+  // already provides its own header).  srcForView returns the raw URL so pop-out
+  // still shows the standalone host header.
+  const viewUrl = srcForView(viewId);
+  iframe.src = viewId.startsWith('app:') && viewUrl
+    ? viewUrl + (viewUrl.includes('?') ? '&' : '?') + 'embedded=1'
+    : viewUrl;
   iframe.dataset.viewId = viewId;
   view.iframe = iframe;
   viewPool.set(viewId, view);
@@ -951,6 +970,8 @@ function attachViewToSlot(viewId) {
   // No reparenting — iframe stays in #view-overlay.
   // syncViewPositions() will position it over the panel body.
   requestAnimationFrame(() => syncViewPositions());
+  // App views use JSON-RPC, not mcp-dashboard READY — skip timeout
+  if (viewId.startsWith('app:')) { view.ready = true; return; }
   // Start ready timeout only for first load
   if (!view.ready && !view._readyTimeout) {
     view._readyTimeout = setTimeout(() => {
@@ -1745,6 +1766,74 @@ function showToast(level, message, duration) {
   toast.textContent = message;
   container.appendChild(toast);
   setTimeout(() => toast.remove(), duration || 5000);
+}
+
+// ================================================================
+//  MCP App panel handlers
+// ================================================================
+
+function handleAppLaunched(payload) {
+  const toolName = payload.tool_name;
+  const appUrl = payload.url;
+  const viewId = 'app:' + toolName;
+
+  // Already registered — update URL and refresh iframe
+  const existing = viewRegistry.find(v => v.id === viewId);
+  if (existing) {
+    existing.url = appUrl;
+    const view = viewPool.get(viewId);
+    if (view && view.iframe) {
+      view.iframe.src = appUrl + (appUrl.includes('?') ? '&' : '?') + 'embedded=1';
+    }
+    showToast('info', 'App updated: ' + toolName);
+    return;
+  }
+
+  // Register as new view
+  viewRegistry.push({
+    id: viewId,
+    name: toolName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+    source: payload.server_name || 'app',
+    icon: '\u{1F5A5}',
+    type: 'app',
+    url: appUrl,
+  });
+  rebuildAddPanelMenu();
+
+  // Auto-create panel
+  addPanelWithView(viewId);
+
+  // Mark auto-ready (app uses JSON-RPC, not mcp-dashboard READY)
+  const view = viewPool.get(viewId);
+  if (view) {
+    view.ready = true;
+    if (view._readyTimeout) { clearTimeout(view._readyTimeout); view._readyTimeout = null; }
+  }
+
+  showToast('success', 'App launched: ' + toolName);
+}
+
+function handleAppClosed(payload) {
+  const viewId = 'app:' + payload.tool_name;
+
+  viewRegistry = viewRegistry.filter(v => v.id !== viewId);
+
+  // Close hosting panel
+  for (const [panelId, panel] of Object.entries(panels)) {
+    if (panel.viewId === viewId) { closePanel(panelId); break; }
+  }
+
+  // Clean up iframe and popout
+  const view = viewPool.get(viewId);
+  if (view && view.iframe) view.iframe.remove();
+  viewPool.delete(viewId);
+
+  const popout = popoutWindows.get(viewId);
+  if (popout && !popout.win.closed) { popout.win.close(); clearInterval(popout.intervalId); }
+  popoutWindows.delete(viewId);
+
+  rebuildAddPanelMenu();
+  showToast('info', 'App closed: ' + payload.tool_name);
 }
 
 // ================================================================

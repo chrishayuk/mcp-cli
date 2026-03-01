@@ -8,11 +8,9 @@ version = "0.17"
 description = "A cli for the Model Context Provider"
 requires-python = ">=3.11"
 readme = "README.md"
-authors = [
-  { name = "Chris Hay", email = "chrishayuk@somejunkmailbox.com" }
-]
+authors = []
 keywords = ["llm", "openai", "claude", "mcp", "cli"]
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 dependencies = [
   "asyncio>=3.4.3",
   "chuk-ai-planner>=0.2",

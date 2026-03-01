@@ -289,6 +289,29 @@ HOST_PAGE_TEMPLATE = r"""<!DOCTYPE html>
     }}, INIT_TIMEOUT);
   }}
 
+  // ---- Embedded mode (hide host header when inside dashboard panel) ----
+  if (new URLSearchParams(window.location.search).has("embedded")) {{
+    document.getElementById("header").style.display = "none";
+    document.getElementById("app-container").style.height = "100vh";
+    document.body.style.background = "transparent";
+  }}
+
+  // ---- Relay viewport changes to inner app iframe ----
+  // When embedded in a dashboard panel the outer iframe may start hidden
+  // (display:none → 0×0 viewport).  Canvas-based apps (charts, maps)
+  // initialise at the wrong size and need an explicit resize kick once
+  // real dimensions arrive.  A ResizeObserver on the root element catches
+  // every viewport change — including the initial 0→actual transition.
+  if (typeof ResizeObserver !== "undefined") {{
+    new ResizeObserver(function() {{
+      try {{
+        if (iframe.contentWindow) {{
+          iframe.contentWindow.dispatchEvent(new Event("resize"));
+        }}
+      }} catch(e) {{}}
+    }}).observe(document.documentElement);
+  }}
+
   // ---- Boot ----
   connectWs();
   startInitTimer();

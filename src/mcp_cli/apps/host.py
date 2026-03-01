@@ -73,6 +73,7 @@ class AppHostServer:
         resource_uri: str,
         server_name: str,
         tool_result: Any = None,
+        open_browser: bool = True,
     ) -> AppInfo:
         """Launch an MCP App in the browser.
 
@@ -104,6 +105,17 @@ class AppHostServer:
                 resource_uri, server_name=server_name
             )
             html_content = self._extract_html(resource)
+
+            # Fallback: retry without server filter (server may be registered
+            # under a different transport name than the tool namespace).
+            if not html_content and server_name:
+                logger.debug(
+                    "Retrying resource %s without server filter (was: %s)",
+                    resource_uri,
+                    server_name,
+                )
+                resource = await self.tool_manager.read_resource(resource_uri)
+                html_content = self._extract_html(resource)
 
         if not html_content:
             raise RuntimeError(
@@ -138,7 +150,7 @@ class AppHostServer:
         await self._start_server(app_info, bridge, tool_result)
 
         # Open browser
-        if DEFAULT_APP_AUTO_OPEN_BROWSER:
+        if open_browser and DEFAULT_APP_AUTO_OPEN_BROWSER:
             try:
                 webbrowser.open(app_info.url)
                 logger.info("Opened MCP App for %s at %s", tool_name, app_info.url)
@@ -272,7 +284,10 @@ class AppHostServer:
         def process_request(
             connection: ServerConnection, request: Request
         ) -> Response | None:
-            if request.path == "/" or request.path == "":
+            # Strip query string for path matching (?embedded=1 etc.)
+            path = request.path.split("?", 1)[0]
+
+            if path == "/" or path == "":
                 return Response(
                     http.HTTPStatus.OK,
                     "OK",
@@ -284,7 +299,7 @@ class AppHostServer:
                     ),
                     host_page_bytes,
                 )
-            if request.path == "/app":
+            if path == "/app":
                 return Response(
                     http.HTTPStatus.OK,
                     "OK",
@@ -296,7 +311,7 @@ class AppHostServer:
                     ),
                     app_html_bytes,
                 )
-            if request.path != "/ws":
+            if path != "/ws":
                 body = b"Not Found"
                 return Response(
                     http.HTTPStatus.NOT_FOUND,
