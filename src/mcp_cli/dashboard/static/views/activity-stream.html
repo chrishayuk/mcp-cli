@@ -71,10 +71,15 @@ body {
   border-left-width: 3px;
 }
 .event-card:hover { background: var(--dash-bg-hover); }
-.event-card.tool-ok   { border-left-color: var(--dash-accent); }
-.event-card.tool-err  { border-left-color: var(--dash-error); }
-.event-card.state-chg { border-left-color: var(--dash-fg-muted); }
-.event-card.user-act  { border-left-color: var(--dash-success); }
+.event-card.tool-ok    { border-left-color: var(--dash-accent); }
+.event-card.tool-err   { border-left-color: var(--dash-error); }
+.event-card.state-chg  { border-left-color: var(--dash-fg-muted); }
+.event-card.user-act   { border-left-color: var(--dash-success); }
+.event-card.thinking   { border-left-color: var(--dash-warning); }
+.event-card.plan-run   { border-left-color: var(--dash-info); }
+.event-card.plan-done  { border-left-color: var(--dash-success); }
+.event-card.plan-fail  { border-left-color: var(--dash-error); }
+.event-card.msg-assist { border-left-color: var(--dash-accent); }
 
 .event-header {
   display: flex;
@@ -90,21 +95,75 @@ body {
 .event-status.ok  { color: var(--dash-success); }
 .event-status.err { color: var(--dash-error); }
 
+/* Expandable detail section */
 .event-detail {
   display: none;
   margin-top: 6px;
-  font-family: var(--dash-font-mono);
   font-size: 11px;
   color: var(--dash-fg-muted);
-  white-space: pre-wrap;
-  word-break: break-all;
-  max-height: 200px;
+  max-height: 300px;
   overflow-y: auto;
   background: var(--dash-bg);
   border-radius: var(--dash-radius);
-  padding: 6px;
+  padding: 8px;
 }
 .event-card.expanded .event-detail { display: block; }
+
+/* Detail subsections */
+.detail-section { margin-bottom: 8px; }
+.detail-section:last-child { margin-bottom: 0; }
+.detail-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--dash-fg-muted);
+  margin-bottom: 3px;
+  letter-spacing: 0.5px;
+}
+.detail-content {
+  font-family: var(--dash-font-mono);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--dash-fg);
+  line-height: 1.4;
+}
+.detail-content.reasoning {
+  color: var(--dash-warning);
+  font-family: var(--dash-font-ui);
+  font-style: italic;
+  word-break: break-word;
+}
+
+/* Plan steps in detail */
+.detail-step {
+  display: flex;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--dash-border);
+  align-items: baseline;
+}
+.detail-step:last-child { border-bottom: none; }
+.detail-step-icon { width: 14px; text-align: center; flex-shrink: 0; }
+.detail-step-title { flex: 1; font-size: 11px; }
+.detail-step-tool {
+  font-family: var(--dash-font-mono);
+  font-size: 10px;
+  color: var(--dash-accent);
+}
+.detail-step-status { font-size: 10px; }
+.detail-step-status.ok  { color: var(--dash-success); }
+.detail-step-status.err { color: var(--dash-error); }
+.detail-step-status.run { color: var(--dash-info); }
+
+/* Expand indicator */
+.expand-hint {
+  font-size: 10px;
+  color: var(--dash-fg-muted);
+  margin-top: 2px;
+  opacity: 0.6;
+}
+.event-card.expanded .expand-hint { display: none; }
 
 /* Scroll-to-bottom button + badge */
 #scroll-btn {
@@ -121,6 +180,25 @@ body {
   cursor: pointer;
   z-index: 10;
 }
+/* Agent badge */
+.event-agent-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 10px;
+  background: var(--dash-bg);
+  border: 1px solid var(--dash-border);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.event-agent-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 #events-wrapper { flex: 1; position: relative; overflow: hidden; display: flex; flex-direction: column; }
 </style>
 </head>
@@ -134,6 +212,7 @@ body {
     <option value="ok">Success</option>
     <option value="err">Error</option>
   </select>
+  <select id="agent-filter" style="display:none"><option value="">All agents</option></select>
 </div>
 
 <div id="events-wrapper">
@@ -150,9 +229,14 @@ let allEvents   = [];
 let filterText  = '';
 let filterServer = '';
 let filterStatus = '';
+let filterAgent  = '';
 let autoScroll  = true;
 let newCount    = 0;
 let servers     = new Set();
+let agents      = new Set();
+let _multiAgent = false;
+const AGENT_COLORS  = ['#7aa2f7','#9ece6a','#e0af68','#f7768e','#7dcfff','#bb9af7','#ff9e64','#73daca'];
+const agentColorMap = new Map();
 
 // Virtual scroll threshold
 const VIRT_THRESHOLD = 500;
@@ -162,6 +246,20 @@ const scrollBtn   = document.getElementById('scroll-btn');
 const searchInput = document.getElementById('search-input');
 const serverSel   = document.getElementById('server-filter');
 const statusSel   = document.getElementById('status-filter');
+const agentSel    = document.getElementById('agent-filter');
+
+function agentColor(agentId) {
+  if (!agentColorMap.has(agentId)) {
+    agentColorMap.set(agentId, AGENT_COLORS[agentColorMap.size % AGENT_COLORS.length]);
+  }
+  return agentColorMap.get(agentId);
+}
+
+function agentBadgeHtml(agentId) {
+  if (!_multiAgent || !agentId) return '';
+  const color = agentColor(agentId);
+  return `<span class="event-agent-badge"><span class="event-agent-dot" style="background:${color}"></span>${esc(agentId)}</span>`;
+}
 
 // ── postMessage handler ─────────────────────────────────────────
 window.addEventListener('message', (evt) => {
@@ -182,6 +280,15 @@ window.addEventListener('message', (evt) => {
     case 'AGENT_STATE':
       addEvent('state', msg.payload);
       break;
+    case 'PLAN_UPDATE':
+      addEvent('plan', msg.payload);
+      break;
+    case 'CONVERSATION_MESSAGE':
+      addEvent('message', msg.payload);
+      break;
+    case 'ACTIVITY_HISTORY':
+      handleActivityHistory(msg.payload);
+      break;
   }
 });
 
@@ -198,7 +305,7 @@ function sendReady() {
   shell.postMessage({
     protocol: PROTOCOL, version: VERSION,
     type: 'READY',
-    payload: { name: 'Activity Stream', icon: 'activity', accepts: ['TOOL_RESULT', 'AGENT_STATE'], version: 1 }
+    payload: { name: 'Activity Stream', icon: 'activity', accepts: ['TOOL_RESULT', 'AGENT_STATE', 'PLAN_UPDATE', 'CONVERSATION_MESSAGE', 'ACTIVITY_HISTORY'], version: 1 }
   }, '*');
 }
 
@@ -219,6 +326,26 @@ function applyTheme(t) {
 // ── Events ──────────────────────────────────────────────────────
 function addEvent(kind, payload) {
   const ev = { kind, payload, ts: Date.now(), id: allEvents.length };
+
+  // For plan updates, replace existing entry for the same plan_id (running→complete)
+  if (kind === 'plan' && payload.plan_id) {
+    const existIdx = allEvents.findIndex(e => e.kind === 'plan' && e.payload.plan_id === payload.plan_id);
+    if (existIdx !== -1) {
+      allEvents[existIdx] = ev;
+      ev.id = existIdx;
+      rerender();
+      return;
+    }
+  }
+
+  // Skip state events where status is the same as the previous state event
+  if (kind === 'state') {
+    const lastState = allEvents.filter(e => e.kind === 'state').pop();
+    if (lastState && lastState.payload.status === payload.status && lastState.payload.current_tool === payload.current_tool) {
+      return; // Deduplicate identical state transitions
+    }
+  }
+
   allEvents.push(ev);
 
   if (kind === 'tool' && payload.server_name) {
@@ -231,6 +358,21 @@ function addEvent(kind, payload) {
     }
   }
 
+  // Track agents for filter + badge
+  const aid = payload.agent_id;
+  if (aid && !agents.has(aid)) {
+    agents.add(aid);
+    const opt = document.createElement('option');
+    opt.value = aid;
+    opt.textContent = aid;
+    agentSel.appendChild(opt);
+    if (agents.size > 1 && !_multiAgent) {
+      _multiAgent = true;
+      agentSel.style.display = '';
+      rerender(); // re-render to add badges to existing cards
+    }
+  }
+
   if (matchesFilter(ev)) {
     renderEvent(ev);
   }
@@ -239,8 +381,9 @@ function addEvent(kind, payload) {
 function matchesFilter(ev) {
   const p = ev.payload;
   if (filterStatus === 'ok'  && p.success === false) return false;
-  if (filterStatus === 'err' && p.success !== false)  return false;
+  if (filterStatus === 'err' && p.success !== false && ev.kind === 'tool')  return false;
   if (filterServer && p.server_name !== filterServer) return false;
+  if (filterAgent && p.agent_id !== filterAgent) return false;
   if (filterText) {
     const haystack = JSON.stringify(p).toLowerCase();
     if (!haystack.includes(filterText)) return false;
@@ -260,43 +403,289 @@ function renderEvent(ev) {
   }
 }
 
+// ── Card builders by event kind ─────────────────────────────────
 function buildCard(ev) {
-  const p   = ev.payload;
+  switch (ev.kind) {
+    case 'tool':    return buildToolCard(ev);
+    case 'state':   return buildStateCard(ev);
+    case 'plan':    return buildPlanCard(ev);
+    case 'message': return buildMessageCard(ev);
+    default:        return buildGenericCard(ev);
+  }
+}
+
+function buildToolCard(ev) {
+  const p    = ev.payload;
   const card = document.createElement('div');
   const ok   = p.success !== false;
 
-  let cls = 'event-card ';
-  if (ev.kind === 'tool')  cls += ok ? 'tool-ok' : 'tool-err';
-  if (ev.kind === 'state') cls += 'state-chg';
-  card.className = cls;
+  card.className = `event-card ${ok ? 'tool-ok' : 'tool-err'}`;
   card.dataset.evId = ev.id;
 
-  const tsStr = new Date(ev.ts).toLocaleTimeString();
+  const tsStr  = new Date(ev.ts).toLocaleTimeString();
   const durStr = p.duration_ms != null ? `${p.duration_ms}ms` : '';
+  const summary = summariseResult(p.result);
 
-  if (ev.kind === 'tool') {
-    const summary = summariseResult(p.result);
-    card.innerHTML = `
-      <div class="event-header">
-        <span class="event-tool">🔧 ${esc(p.tool_name || '')}</span>
-        <span class="event-server">${esc(p.server_name || '')}</span>
-        <span class="event-dur">${esc(durStr)}</span>
-      </div>
-      <div class="event-header" style="margin-top:2px">
-        <span class="event-status ${ok ? 'ok' : 'err'}">${ok ? '✓' : '✗'} ${ok ? summary : esc(p.error || 'error')}</span>
-        <span class="event-ts" style="margin-left:auto" title="${new Date(ev.ts).toISOString()}">${tsStr}</span>
-      </div>
-      <div class="event-detail">${esc(JSON.stringify(p, null, 2))}</div>`;
-  } else {
-    const status = p.status || 'unknown';
-    const tool   = p.current_tool ? ` → ${p.current_tool}` : '';
-    card.innerHTML = `
-      <div class="event-header">
-        <span class="event-tool" style="color:var(--dash-fg-muted)">◎ Agent: ${esc(status)}${esc(tool)}</span>
-        <span class="event-ts" style="margin-left:auto">${tsStr}</span>
-      </div>`;
+  // Build structured detail
+  let detailHtml = '';
+
+  // Arguments section
+  if (p.arguments && Object.keys(p.arguments).length > 0) {
+    detailHtml += `<div class="detail-section">
+      <div class="detail-label">Arguments</div>
+      <div class="detail-content">${esc(JSON.stringify(p.arguments, null, 2))}</div>
+    </div>`;
   }
 
+  // Result section
+  if (p.result != null) {
+    const resultStr = typeof p.result === 'string' ? p.result : JSON.stringify(p.result, null, 2);
+    detailHtml += `<div class="detail-section">
+      <div class="detail-label">Result</div>
+      <div class="detail-content">${esc(resultStr)}</div>
+    </div>`;
+  }
+
+  // Error section
+  if (p.error) {
+    detailHtml += `<div class="detail-section">
+      <div class="detail-label">Error</div>
+      <div class="detail-content" style="color:var(--dash-error)">${esc(p.error)}</div>
+    </div>`;
+  }
+
+  const hasDetail = detailHtml.length > 0;
+
+  card.innerHTML = `
+    <div class="event-header">
+      ${agentBadgeHtml(p.agent_id)}
+      <span class="event-tool">${esc(p.tool_name || '')}</span>
+      <span class="event-server">${esc(p.server_name || '')}</span>
+      <span class="event-dur">${esc(durStr)}</span>
+    </div>
+    <div class="event-header" style="margin-top:2px">
+      <span class="event-status ${ok ? 'ok' : 'err'}">${ok ? '&#10003;' : '&#10007;'} ${ok ? summary : esc(p.error || 'error')}</span>
+      <span class="event-ts" style="margin-left:auto" title="${new Date(ev.ts).toISOString()}">${tsStr}</span>
+    </div>
+    ${hasDetail ? '<div class="expand-hint">click to expand</div>' : ''}
+    <div class="event-detail">${detailHtml}</div>`;
+
+  if (hasDetail) card.addEventListener('click', () => card.classList.toggle('expanded'));
+  return card;
+}
+
+function buildStateCard(ev) {
+  const p    = ev.payload;
+  const card = document.createElement('div');
+  const tsStr = new Date(ev.ts).toLocaleTimeString();
+
+  const status = p.status || 'unknown';
+  const isThinking = status === 'thinking';
+
+  card.className = `event-card ${isThinking ? 'thinking' : 'state-chg'}`;
+  card.dataset.evId = ev.id;
+
+  const icon = isThinking ? '&#128161;' : (status === 'tool_calling' ? '&#9881;' : '&#9678;');
+  const tool = p.current_tool ? ` &rarr; ${esc(p.current_tool)}` : '';
+  const tokens = p.tokens_used ? ` (${p.tokens_used} tokens)` : '';
+
+  card.innerHTML = `
+    <div class="event-header">
+      ${agentBadgeHtml(p.agent_id)}
+      <span class="event-tool" style="color:${isThinking ? 'var(--dash-warning)' : 'var(--dash-fg-muted)'}">${icon} ${esc(status)}${tool}</span>
+      <span class="event-ts" style="margin-left:auto">${tsStr}${tokens}</span>
+    </div>`;
+
+  return card;
+}
+
+function buildPlanCard(ev) {
+  const p    = ev.payload;
+  const card = document.createElement('div');
+  const tsStr = new Date(ev.ts).toLocaleTimeString();
+
+  const planStatus = p.status || 'running';
+  const isRunning = planStatus === 'running';
+  const isComplete = planStatus === 'complete';
+  const isFailed = planStatus === 'failed';
+
+  card.className = `event-card ${isFailed ? 'plan-fail' : (isComplete ? 'plan-done' : 'plan-run')}`;
+  card.dataset.evId = ev.id;
+
+  const steps = p.steps || [];
+  const completed = steps.filter(s => s.status === 'complete' || s.status === 'skipped').length;
+  const failed = steps.filter(s => s.status === 'failed').length;
+  const total = steps.length;
+
+  const icon = isRunning ? '&#9881;' : (isComplete ? '&#10003;' : '&#10007;');
+  const statusColor = isFailed ? 'var(--dash-error)' : (isComplete ? 'var(--dash-success)' : 'var(--dash-info)');
+  const progress = total > 0 ? ` ${completed}/${total} steps` : '';
+
+  // Build steps detail
+  let detailHtml = '';
+  if (steps.length > 0) {
+    let stepsHtml = '';
+    for (const s of steps) {
+      const st = s.status || 'pending';
+      let sIcon = '&#9675;'; // ○
+      let sCls = '';
+      if (st === 'running')  { sIcon = '&#9678;'; sCls = 'run'; }
+      if (st === 'complete') { sIcon = '&#10003;'; sCls = 'ok'; }
+      if (st === 'failed')   { sIcon = '&#10007;'; sCls = 'err'; }
+      if (st === 'skipped')  { sIcon = '&#8722;'; sCls = ''; }
+
+      stepsHtml += `<div class="detail-step">
+        <span class="detail-step-icon">${sIcon}</span>
+        <span class="detail-step-title">${esc(s.title || 'Step ' + (s.index || ''))}</span>
+        ${s.tool ? `<span class="detail-step-tool">${esc(s.tool)}</span>` : ''}
+        <span class="detail-step-status ${sCls}">${esc(st)}</span>
+      </div>`;
+    }
+    detailHtml += `<div class="detail-section">
+      <div class="detail-label">Steps</div>
+      ${stepsHtml}
+    </div>`;
+  }
+
+  if (p.error) {
+    detailHtml += `<div class="detail-section">
+      <div class="detail-label">Error</div>
+      <div class="detail-content" style="color:var(--dash-error)">${esc(p.error)}</div>
+    </div>`;
+  }
+
+  const hasDetail = detailHtml.length > 0;
+
+  card.innerHTML = `
+    <div class="event-header">
+      ${agentBadgeHtml(p.agent_id)}
+      <span class="event-tool" style="color:${statusColor}">${icon} Plan: ${esc(p.title || 'Untitled')}</span>
+      <span class="event-dur">${progress}</span>
+    </div>
+    <div class="event-header" style="margin-top:2px">
+      <span class="event-status" style="color:${statusColor}">${esc(planStatus)}</span>
+      <span class="event-ts" style="margin-left:auto">${tsStr}</span>
+    </div>
+    ${hasDetail ? '<div class="expand-hint">click to expand</div>' : ''}
+    <div class="event-detail">${detailHtml}</div>`;
+
+  if (hasDetail) card.addEventListener('click', () => card.classList.toggle('expanded'));
+  return card;
+}
+
+function buildMessageCard(ev) {
+  const p    = ev.payload;
+  const card = document.createElement('div');
+  const tsStr = new Date(ev.ts).toLocaleTimeString();
+
+  const role = p.role || 'unknown';
+  const hasReasoning = !!(p.reasoning);
+  const hasToolCalls = !!(p.tool_calls && p.tool_calls.length > 0);
+
+  // Only show thinking/reasoning cards — assistant text goes to terminal
+  if (role === 'assistant' && hasReasoning) {
+    card.className = 'event-card thinking';
+    card.dataset.evId = ev.id;
+
+    const preview = p.reasoning.slice(0, 80) + (p.reasoning.length > 80 ? '…' : '');
+
+    let detailHtml = `<div class="detail-section">
+      <div class="detail-label">Reasoning</div>
+      <div class="detail-content reasoning">${esc(p.reasoning)}</div>
+    </div>`;
+
+    if (p.content) {
+      const contentPreview = typeof p.content === 'string' ? p.content.slice(0, 200) : JSON.stringify(p.content).slice(0, 200);
+      detailHtml += `<div class="detail-section">
+        <div class="detail-label">Response</div>
+        <div class="detail-content">${esc(contentPreview)}${p.content.length > 200 ? '…' : ''}</div>
+      </div>`;
+    }
+
+    card.innerHTML = `
+      <div class="event-header">
+        ${agentBadgeHtml(p.agent_id)}
+        <span class="event-tool" style="color:var(--dash-warning)">&#128161; Thinking</span>
+        <span class="event-ts" style="margin-left:auto">${tsStr}</span>
+      </div>
+      <div class="event-header" style="margin-top:2px">
+        <span style="font-size:11px;color:var(--dash-fg-muted)">${esc(preview)}</span>
+      </div>
+      <div class="expand-hint">click to expand</div>
+      <div class="event-detail">${detailHtml}</div>`;
+
+    card.addEventListener('click', () => card.classList.toggle('expanded'));
+    return card;
+  }
+
+  // For non-reasoning messages, only show if they have tool_calls info
+  if (role === 'assistant' && hasToolCalls) {
+    card.className = 'event-card msg-assist';
+    card.dataset.evId = ev.id;
+
+    const toolNames = p.tool_calls.map(tc => tc.function?.name || tc.name || '?').join(', ');
+
+    let detailHtml = '';
+    for (const tc of p.tool_calls) {
+      const name = tc.function?.name || tc.name || '?';
+      const args = tc.function?.arguments || tc.arguments || {};
+      const argsStr = typeof args === 'string' ? args : JSON.stringify(args, null, 2);
+      detailHtml += `<div class="detail-section">
+        <div class="detail-label">${esc(name)}</div>
+        <div class="detail-content">${esc(argsStr)}</div>
+      </div>`;
+    }
+
+    card.innerHTML = `
+      <div class="event-header">
+        ${agentBadgeHtml(p.agent_id)}
+        <span class="event-tool">&#9881; Calling: ${esc(toolNames)}</span>
+        <span class="event-ts" style="margin-left:auto">${tsStr}</span>
+      </div>
+      <div class="expand-hint">click to expand</div>
+      <div class="event-detail">${detailHtml}</div>`;
+
+    card.addEventListener('click', () => card.classList.toggle('expanded'));
+    return card;
+  }
+
+  // User messages with attachments
+  if (role === 'user' && p.attachments && p.attachments.length > 0) {
+    card.className = 'event-card user-att';
+    card.dataset.evId = ev.id;
+    const attNames = p.attachments.map(a => a.display_name || '?').join(', ');
+    const totalSize = p.attachments.reduce((s, a) => s + (a.size_bytes || 0), 0);
+    const contentPreview = (p.content || '').slice(0, 80);
+    card.innerHTML = `
+      <div class="event-header">
+        ${agentBadgeHtml(p.agent_id)}
+        <span class="event-tool" style="color:var(--dash-success)">&#128206; Attachments: ${esc(attNames)}</span>
+        <span class="event-dur">${_formatBytes(totalSize)}</span>
+        <span class="event-ts" style="margin-left:auto">${tsStr}</span>
+      </div>
+      <div class="event-header" style="margin-top:2px">
+        <span style="font-size:11px;color:var(--dash-fg-muted)">${esc(contentPreview)}</span>
+      </div>`;
+    return card;
+  }
+
+  // Skip other message types (user input, plain assistant text without reasoning)
+  // Return an empty non-rendered card
+  card.style.display = 'none';
+  return card;
+}
+
+function buildGenericCard(ev) {
+  const card = document.createElement('div');
+  card.className = 'event-card state-chg';
+  card.dataset.evId = ev.id;
+  const tsStr = new Date(ev.ts).toLocaleTimeString();
+  card.innerHTML = `
+    <div class="event-header">
+      <span class="event-tool" style="color:var(--dash-fg-muted)">&#9678; ${esc(ev.kind)}</span>
+      <span class="event-ts" style="margin-left:auto">${tsStr}</span>
+    </div>
+    <div class="event-detail"><div class="detail-content">${esc(JSON.stringify(ev.payload, null, 2))}</div></div>`;
   card.addEventListener('click', () => card.classList.toggle('expanded'));
   return card;
 }
@@ -315,6 +704,13 @@ function summariseResult(result) {
 
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function _formatBytes(bytes) {
+  if (!bytes || bytes === 0) return '';
+  if (bytes < 1024) return bytes + 'B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + 'KB';
+  return (bytes / 1048576).toFixed(1) + 'MB';
 }
 
 function trimDom() {
@@ -368,12 +764,48 @@ statusSel.addEventListener('change', () => {
   filterStatus = statusSel.value;
   rerender();
 });
+agentSel.addEventListener('change', () => {
+  filterAgent = agentSel.value;
+  rerender();
+});
 
 function rerender() {
   eventsEl.innerHTML = '';
   for (const ev of allEvents) {
     if (matchesFilter(ev)) renderEvent(ev);
   }
+}
+
+// ── Activity history replay (session load) ───────────────────
+function handleActivityHistory(payload) {
+  const events = payload.events || [];
+  // Clear current state and replay
+  allEvents = [];
+  servers = new Set();
+  agents = new Set();
+  _multiAgent = false;
+  eventsEl.innerHTML = '';
+  autoScroll = true;
+  newCount = 0;
+
+  // Rebuild filter options
+  serverSel.innerHTML = '<option value="">All servers</option>';
+  agentSel.innerHTML = '<option value="">All agents</option>';
+  agentSel.style.display = 'none';
+
+  for (const ev of events) {
+    // Each event has { type: 'TOOL_RESULT'|'CONVERSATION_MESSAGE', payload: {...} }
+    const kind = ev.type === 'TOOL_RESULT' ? 'tool'
+               : ev.type === 'CONVERSATION_MESSAGE' ? 'message'
+               : ev.type === 'PLAN_UPDATE' ? 'plan'
+               : ev.type === 'AGENT_STATE' ? 'state'
+               : 'unknown';
+    if (kind === 'unknown') continue;
+    addEvent(kind, ev.payload);
+  }
+
+  // Scroll to bottom after replay
+  wrapper.scrollTop = wrapper.scrollHeight;
 }
 
 // Send READY immediately (shell will send INIT back)

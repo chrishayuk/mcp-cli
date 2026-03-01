@@ -30,9 +30,11 @@ from mcp_cli.config.defaults import (
     DEFAULT_MAX_CONSECUTIVE_TRANSPORT_FAILURES,
     TRANSPORT_ERROR_PATTERNS,
 )
-from chuk_ai_session_manager.guards import get_tool_state, SoftBlockReason
+from chuk_ai_session_manager.guards import SoftBlockReason
+from mcp_cli.chat.agent_tool_state import get_agent_tool_state
 from chuk_tool_processor.discovery import get_search_engine
 from mcp_cli.llm.content_models import ContentBlockType
+from mcp_cli.agents.tools import _AGENT_TOOL_NAMES
 from mcp_cli.memory.tools import _MEMORY_TOOL_NAMES
 from mcp_cli.planning.tools import _PLAN_TOOL_NAMES
 from mcp_cli.utils.preferences import get_preference_manager
@@ -45,6 +47,7 @@ logger = logging.getLogger(__name__)
 # VM tools handled locally via MemoryManager, not routed to MCP ToolManager
 _VM_TOOL_NAMES = frozenset({"page_fault", "search_pages"})
 
+# _AGENT_TOOL_NAMES imported from mcp_cli.agents.tools (single source of truth)
 # _MEMORY_TOOL_NAMES imported from mcp_cli.memory.tools (single source of truth)
 # _PLAN_TOOL_NAMES imported from mcp_cli.planning.tools (single source of truth)
 
@@ -175,7 +178,7 @@ class ToolProcessor:
                 # Handle user confirmation
                 server_url = self._get_server_url_for_tool(execution_tool_name)
                 if self._should_confirm_tool(execution_tool_name, server_url):
-                    confirmed = self.ui_manager.do_confirm_tool_execution(
+                    confirmed = await self.ui_manager.do_confirm_tool_execution(
                         tool_name=display_name, arguments=raw_arguments
                     )
                     if not confirmed:
@@ -189,30 +192,46 @@ class ToolProcessor:
                 # Parse arguments
                 arguments = self._parse_arguments(raw_arguments)
 
+                # Resolve actual tool name for call_tool proxy
+                actual_tool = execution_tool_name
+                if execution_tool_name == DYNAMIC_TOOL_PROXY_NAME:
+                    proxy_name = arguments.get("tool_name")
+                    if proxy_name and isinstance(proxy_name, str):
+                        actual_tool = proxy_name
+
                 # ── VM tool interception ────────────────────────────────
                 # page_fault and search_pages are internal VM operations,
                 # handled by MemoryManager — not routed to MCP ToolManager.
-                if execution_tool_name in _VM_TOOL_NAMES:
+                if actual_tool in _VM_TOOL_NAMES:
                     await self._handle_vm_tool(
-                        execution_tool_name, arguments, llm_tool_name, call_id
+                        actual_tool, arguments, llm_tool_name, call_id
                     )
                     continue
 
                 # ── Memory scope tool interception ─────────────────────
                 # remember, recall, forget are persistent memory ops,
                 # handled locally — not routed to MCP ToolManager.
-                if execution_tool_name in _MEMORY_TOOL_NAMES:
+                if actual_tool in _MEMORY_TOOL_NAMES:
                     await self._handle_memory_tool(
-                        execution_tool_name, arguments, llm_tool_name, call_id
+                        actual_tool, arguments, llm_tool_name, call_id
                     )
                     continue
 
                 # ── Plan tool interception ─────────────────────────────
                 # plan_create, plan_execute, plan_create_and_execute are
                 # internal planning ops — not routed to MCP ToolManager.
-                if execution_tool_name in _PLAN_TOOL_NAMES:
+                if actual_tool in _PLAN_TOOL_NAMES:
                     await self._handle_plan_tool(
-                        execution_tool_name, arguments, llm_tool_name, call_id
+                        actual_tool, arguments, llm_tool_name, call_id
+                    )
+                    continue
+
+                # ── Agent tool interception ────────────────────────────
+                # agent_spawn, agent_stop, etc. are orchestration tools
+                # handled by AgentManager — not routed to MCP ToolManager.
+                if actual_tool in _AGENT_TOOL_NAMES:
+                    await self._handle_agent_tool(
+                        actual_tool, arguments, llm_tool_name, call_id
                     )
                     continue
 
@@ -248,7 +267,9 @@ class ToolProcessor:
                     continue
 
                 # Check $vN references in arguments (dataflow validation)
-                tool_state = get_tool_state()
+                tool_state = get_agent_tool_state(
+                    getattr(self.context, "agent_id", "default")
+                )
                 ref_check = tool_state.check_references(arguments)
                 if not ref_check.valid:
                     logger.warning(
@@ -460,7 +481,7 @@ class ToolProcessor:
             f"Tool result ({actual_tool_name}): success={success}, error='{result.error}'"
         )
 
-        tool_state = get_tool_state()
+        tool_state = get_agent_tool_state(getattr(self.context, "agent_id", "default"))
         value_binding = None
 
         # Cache successful results and create value bindings
@@ -581,6 +602,7 @@ class ToolProcessor:
                     duration_ms=duration_ms,
                     meta_ui=meta_ui,
                     call_id=result.id,
+                    arguments=actual_arguments,
                 )
             except Exception as _bridge_exc:
                 logger.debug("Dashboard bridge on_tool_result error: %s", _bridge_exc)
@@ -733,6 +755,20 @@ class ToolProcessor:
         # Get model_manager for LLM-driven step execution
         model_manager = getattr(self.context, "model_manager", None)
 
+        # Broadcast plan start to dashboard
+        bridge = getattr(self.context, "dashboard_bridge", None)
+        plan_title = arguments.get("goal", "Plan")
+        if bridge is not None:
+            try:
+                await bridge.on_plan_update(
+                    plan_id=call_id,
+                    title=plan_title,
+                    steps=[],
+                    status="running",
+                )
+            except Exception as _e:
+                logger.debug("Dashboard plan start update error: %s", _e)
+
         # Pass the UI manager so handle_plan_tool can show step-by-step progress
         result_text = await handle_plan_tool(
             tool_name,
@@ -740,6 +776,66 @@ class ToolProcessor:
             planning_context,
             model_manager,
             ui_manager=self.ui_manager,
+        )
+
+        # Re-fetch bridge in case it changed during plan execution
+        bridge = getattr(self.context, "dashboard_bridge", None)
+        if bridge is not None:
+            try:
+                import json as _json
+
+                plan_result = (
+                    _json.loads(result_text) if isinstance(result_text, str) else {}
+                )
+                steps = plan_result.get("steps", [])
+                await bridge.on_plan_update(
+                    plan_id=plan_result.get("plan_id", call_id),
+                    title=plan_result.get("title", plan_title),
+                    steps=[
+                        {
+                            "index": s.get("index", i),
+                            "title": s.get("title", ""),
+                            "tool": s.get("tool", ""),
+                            "status": "complete" if s.get("success") else "failed",
+                            "error": s.get("error"),
+                        }
+                        for i, s in enumerate(steps)
+                    ],
+                    status="complete" if plan_result.get("success") else "failed",
+                    error=plan_result.get("error"),
+                )
+            except Exception as _e:
+                logger.debug("Dashboard plan update error: %s", _e)
+
+        self._add_tool_result_to_history(llm_tool_name, call_id, result_text)
+
+    async def _handle_agent_tool(
+        self,
+        tool_name: str,
+        arguments: dict,
+        llm_tool_name: str,
+        call_id: str,
+    ) -> None:
+        """Execute an agent orchestration tool (agent_spawn, agent_stop, etc.).
+
+        Agent tools are internal operations that bypass the MCP ToolManager
+        and all guard checks.  They delegate to the AgentManager stored on
+        the ChatContext.
+        """
+        agent_manager = getattr(self.context, "agent_manager", None)
+        if agent_manager is None:
+            self._add_tool_result_to_history(
+                llm_tool_name, call_id, "Agent tools are not enabled."
+            )
+            return
+
+        logger.info("Agent tool %s called with args: %s", tool_name, arguments)
+
+        from mcp_cli.agents.tools import handle_agent_tool
+
+        caller_id = getattr(self.context, "agent_id", "default")
+        result_text = await handle_agent_tool(
+            tool_name, arguments, agent_manager, caller_agent_id=caller_id
         )
 
         self._add_tool_result_to_history(llm_tool_name, call_id, result_text)

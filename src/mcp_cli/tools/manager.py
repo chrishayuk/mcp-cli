@@ -178,14 +178,12 @@ class ToolManager:
         """
         self._on_progress = on_progress
         try:
-            from chuk_term.ui import output
-
             self._report_progress("Loading server configuration...")
 
             # Load config and detect server types (file I/O → off event loop)
             config = await asyncio.to_thread(self._config_loader.load)
             if not config:
-                output.warning("No config found, initializing with empty toolset")
+                logger.warning("No config found, initializing with empty toolset")
                 return await self._setup_empty_toolset()
 
             self._config_loader.detect_server_types(config)

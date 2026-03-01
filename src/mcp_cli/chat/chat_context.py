@@ -63,6 +63,7 @@ class ChatContext:
         vm_budget: int = 128_000,
         health_interval: int = 0,
         enable_plan_tools: bool = False,
+        agent_id: str = "default",
     ):
         """
         Create chat context with required managers.
@@ -84,6 +85,7 @@ class ChatContext:
         self.tool_manager = tool_manager
         self.model_manager = model_manager
         self.session_id = session_id or self._generate_session_id()
+        self.agent_id = agent_id
 
         # Context management
         self._max_history_messages = max_history_messages
@@ -125,7 +127,7 @@ class ChatContext:
         self.token_tracker = TokenTracker()
 
         # Session persistence
-        self._session_store = SessionStore()
+        self._session_store = SessionStore(agent_id=self.agent_id)
         self._auto_save_counter = 0
 
         # ToolProcessor back-reference (set by ToolProcessor.__init__)
@@ -133,6 +135,14 @@ class ChatContext:
 
         # Dashboard bridge (set by chat_handler when --dashboard is active, else None)
         self.dashboard_bridge: Any = None
+
+        # Agent manager (set by chat_handler when multi-agent enabled, else None)
+        self.agent_manager: Any = None
+
+        # Attachment staging for multi-modal input (/attach command)
+        from mcp_cli.chat.attachments import AttachmentStaging
+
+        self.attachment_staging = AttachmentStaging()
 
         # Tool state (filled during initialization)
         self.tools: list[ToolInfo] = []
@@ -169,6 +179,7 @@ class ChatContext:
         vm_budget: int = 128_000,
         health_interval: int = 0,
         enable_plan_tools: bool = False,
+        agent_id: str = "default",
     ) -> "ChatContext":
         """
         Factory method for convenient creation.
@@ -223,6 +234,7 @@ class ChatContext:
             vm_budget=vm_budget,
             health_interval=health_interval,
             enable_plan_tools=enable_plan_tools,
+            agent_id=agent_id,
         )
 
     # ── Properties ────────────────────────────────────────────────────────
@@ -646,10 +658,28 @@ class ChatContext:
         return await self.tool_manager.get_server_for_tool(tool_name) or "Unknown"
 
     # ── Conversation management ───────────────────────────────────────────
-    async def add_user_message(self, content: str) -> None:
-        """Add user message to conversation."""
-        await self.session.user_says(content)
-        logger.debug(f"User message added: {content[:50]}...")
+    async def add_user_message(self, content: str | list[dict[str, Any]]) -> None:
+        """Add user message to conversation.
+
+        Accepts plain text (str) or multi-modal content blocks (list[dict]).
+        Multi-modal content is injected as a raw event since
+        SessionManager.user_says() only accepts strings.
+        """
+        if isinstance(content, str):
+            await self.session.user_says(content)
+            logger.debug(f"User message added: {content[:50]}...")
+        else:
+            # Multi-modal: inject as dict event (same pattern as inject_tool_message)
+            msg = HistoryMessage(role=MessageRole.USER, content=content)
+            event = SessionEvent(
+                message=msg.to_dict(),
+                source=EventSource.USER,
+                type=EventType.TOOL_CALL,
+            )
+            self.session._session.events.append(event)
+            logger.debug(
+                f"Multi-modal user message added: {len(content)} content blocks"
+            )
 
     async def add_assistant_message(self, content: str) -> None:
         """Add assistant message to conversation."""
@@ -838,6 +868,7 @@ class ChatContext:
             data = SessionData(
                 metadata=SessionMetadata(
                     session_id=self.session_id,
+                    agent_id=self.agent_id,
                     provider=self.provider,
                     model=self.model,
                     message_count=len(message_dicts),
@@ -875,27 +906,35 @@ class ChatContext:
                     continue  # System prompt is regenerated
                 elif role == MessageRole.USER:
                     event = SessionEvent(
-                        event_type=EventType.USER_MESSAGE,
+                        type=EventType.MESSAGE,
                         source=EventSource.USER,
-                        content=content,
+                        message=content,
                     )
                 elif role == MessageRole.ASSISTANT:
-                    event = SessionEvent(
-                        event_type=EventType.ASSISTANT_MESSAGE,
-                        source=EventSource.ASSISTANT,
-                        content=content,
-                    )
+                    # Assistant messages with tool_calls need full dict
+                    if msg_dict.get("tool_calls"):
+                        event = SessionEvent(
+                            type=EventType.TOOL_CALL,
+                            source=EventSource.SYSTEM,
+                            message=msg_dict,
+                        )
+                    else:
+                        event = SessionEvent(
+                            type=EventType.MESSAGE,
+                            source=EventSource.LLM,
+                            message=content,
+                        )
                 elif role == MessageRole.TOOL:
+                    # Tool result messages stored as full dict for reconstruction
                     event = SessionEvent(
-                        event_type=EventType.TOOL_RESULT,
-                        source=EventSource.TOOL,
-                        content=content,
-                        metadata={"tool_call_id": msg_dict.get("tool_call_id", "")},
+                        type=EventType.TOOL_CALL,
+                        source=EventSource.SYSTEM,
+                        message=msg_dict,
                     )
                 else:
                     continue
 
-                self.session.add_event(event)
+                self.session._session.events.append(event)
 
             logger.info(
                 f"Loaded session {session_id} with {len(data.messages)} messages"
@@ -949,6 +988,7 @@ class ChatContext:
             "tool_to_server_map": self.tool_to_server_map,
             "tool_manager": self.tool_manager,
             "session_id": self.session_id,
+            "agent_id": self.agent_id,
         }
 
     def update_from_dict(self, context_dict: dict[str, Any]) -> None:

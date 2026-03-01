@@ -150,26 +150,25 @@ def process_options(
 
     pref_manager = get_preference_manager()
 
-    # Lazy import: chuk_term.ui is a UI dependency, only needed for user-facing warnings
-    from chuk_term.ui import output
-
     # Filter out disabled servers
     if user_specified:
         # If user explicitly requested servers, check if they're disabled
         enabled_from_requested = []
         for server in user_specified:
             if pref_manager.is_server_disabled(server):
-                output.warning(f"Server '{server}' is disabled and cannot be used")
-                output.hint(
-                    f"To enable it, use: mcp-cli chat then /servers {server} enable"
+                logger.warning(
+                    "Server '%s' is disabled. To enable: mcp-cli chat then /servers %s enable",
+                    server,
+                    server,
                 )
             else:
                 enabled_from_requested.append(server)
         servers_list = enabled_from_requested
 
         if not servers_list and user_specified:
-            output.warning("All requested servers are disabled")
-            output.hint("Use 'mcp-cli servers' to see server status")
+            logger.warning(
+                "All requested servers are disabled. Use 'mcp-cli servers' to see status."
+            )
     else:
         # No specific servers requested - filter out disabled ones from preferences
         enabled_servers = []

@@ -7,25 +7,44 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from mcp_cli.dashboard.router import AgentRouter
+
 
 def _mock_server(port: int = 9120):
     """Return a mock DashboardServer whose start() resolves to the given port."""
     srv = AsyncMock()
     srv.start = AsyncMock(return_value=port)
+    # AgentRouter needs to set these attributes
+    srv.on_browser_message = None
+    srv.on_client_connected = None
+    srv.on_client_disconnected = None
+    srv.has_clients = False
     return srv
 
 
 class TestLaunchDashboard:
     @pytest.mark.asyncio
-    async def test_returns_server_and_port(self):
+    async def test_returns_server_router_and_port(self):
         from mcp_cli.dashboard import launcher
 
         srv = _mock_server(9120)
         with patch.object(launcher, "DashboardServer", return_value=srv):
-            server, port = await launcher.launch_dashboard()
+            server, router, port = await launcher.launch_dashboard()
 
         assert server is srv
+        assert isinstance(router, AgentRouter)
         assert port == 9120
+
+    @pytest.mark.asyncio
+    async def test_returns_router(self):
+        from mcp_cli.dashboard import launcher
+
+        srv = _mock_server(9120)
+        with patch.object(launcher, "DashboardServer", return_value=srv):
+            _, router, _ = await launcher.launch_dashboard()
+
+        assert isinstance(router, AgentRouter)
+        assert router.server is srv
 
     @pytest.mark.asyncio
     async def test_opens_browser_when_no_browser_false(self):
@@ -53,7 +72,7 @@ class TestLaunchDashboard:
 
         with patch.object(launcher, "DashboardServer", return_value=_mock_server(9120)):
             with patch("webbrowser.open", side_effect=Exception("no display")):
-                server, port = await launcher.launch_dashboard(no_browser=False)
+                server, router, port = await launcher.launch_dashboard(no_browser=False)
 
         assert port == 9120  # function completed successfully
 
@@ -64,7 +83,7 @@ class TestLaunchDashboard:
         srv = _mock_server(8080)
         with patch.object(launcher, "DashboardServer", return_value=srv):
             with patch("webbrowser.open"):
-                _, port = await launcher.launch_dashboard(port=8080)
+                _, _, port = await launcher.launch_dashboard(port=8080)
 
         srv.start.assert_called_once_with(8080)
         assert port == 8080
