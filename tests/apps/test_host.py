@@ -994,6 +994,36 @@ class TestStartServer:
         assert response.status_code == http.HTTPStatus.OK
 
     @pytest.mark.asyncio
+    async def test_process_request_serves_root_with_query_string(self):
+        """The process_request closure returns 200 for '/?embedded=1'."""
+        from unittest.mock import MagicMock, patch
+        from mcp_cli.apps.bridge import AppBridge
+        import http
+
+        host, info = self._make_host_and_app_info()
+        bridge = AppBridge(info, host.tool_manager)
+
+        captured_process_request = None
+
+        async def capture_serve(handler, host_addr, port, process_request=None):
+            nonlocal captured_process_request
+            captured_process_request = process_request
+            return MagicMock()
+
+        with patch("mcp_cli.apps.host.ws_serve", side_effect=capture_serve):
+            await host._start_server(info, bridge)
+
+        assert captured_process_request is not None
+
+        fake_conn = MagicMock()
+        fake_req = MagicMock()
+        fake_req.path = "/?embedded=1"
+
+        response = captured_process_request(fake_conn, fake_req)
+        assert response is not None
+        assert response.status_code == http.HTTPStatus.OK
+
+    @pytest.mark.asyncio
     async def test_process_request_serves_empty_path_as_root(self):
         """The process_request closure treats '' the same as '/'."""
         from unittest.mock import MagicMock, patch
@@ -1363,3 +1393,61 @@ class TestExtractHtmlBlobNone:
         """A dict entry with text=None and blob=None returns empty string."""
         resource = {"contents": [{"text": None, "blob": None}]}
         assert AppHostServer._extract_html(resource) == ""
+
+
+# ── LaunchApp browser control ────────────────────────────────────────────
+
+
+class TestLaunchAppBrowserControl:
+    """Verify the open_browser parameter controls webbrowser.open() calls."""
+
+    @pytest.mark.asyncio
+    async def test_open_browser_false_suppresses_webbrowser(self):
+        """When open_browser=False, webbrowser.open should not be called."""
+        from unittest.mock import AsyncMock, patch
+
+        host = AppHostServer(FakeToolManager())
+        browser_calls: list[str] = []
+
+        with (
+            patch.object(host, "_start_server", new=AsyncMock()),
+            patch.object(
+                host, "_find_available_port", new=AsyncMock(return_value=9999)
+            ),
+            patch("mcp_cli.apps.host.webbrowser") as mock_wb,
+        ):
+            mock_wb.open = lambda url: browser_calls.append(url)
+            app_info = await host.launch_app(
+                tool_name="test_tool",
+                resource_uri="ui://test/app.html",
+                server_name="test_server",
+                open_browser=False,
+            )
+
+        assert app_info.port == 9999
+        assert browser_calls == []
+
+    @pytest.mark.asyncio
+    async def test_open_browser_true_calls_webbrowser(self):
+        """When open_browser=True (default), webbrowser.open should be called."""
+        from unittest.mock import AsyncMock, patch
+
+        host = AppHostServer(FakeToolManager())
+        browser_calls: list[str] = []
+
+        with (
+            patch.object(host, "_start_server", new=AsyncMock()),
+            patch.object(
+                host, "_find_available_port", new=AsyncMock(return_value=9999)
+            ),
+            patch("mcp_cli.apps.host.webbrowser") as mock_wb,
+        ):
+            mock_wb.open = lambda url: browser_calls.append(url)
+            await host.launch_app(
+                tool_name="test_tool",
+                resource_uri="ui://test/app.html",
+                server_name="test_server",
+            )
+
+        assert len(browser_calls) == 1
+        assert "9999" in browser_calls[0]

@@ -337,24 +337,38 @@ Each event card gains an agent badge:
 └───────────────────────────────────────────┘
 ```
 
-### 6.4 Message routing changes in shell.html
+### 6.4 Message routing in js/dispatcher.js
+
+The shell UI is split into ES modules under `static/js/`. Message routing
+lives in `dispatcher.js` (`handleBridgeMessage`):
 
 ```javascript
-// Current: direct routing
+// Current (implemented): agent-aware routing
 case 'TOOL_RESULT':
-  routeToViews('TOOL_RESULT', msg.payload);
-  break;
-
-// Future: agent-aware routing
-case 'TOOL_RESULT':
-  const agentId = msg.payload.agent_id;
-  // Always send to activity stream (it filters internally)
   sendToActivityStream('TOOL_RESULT', msg.payload);
-  // Only send to agent-terminal if this is the focused agent
-  if (agentId === focusedAgentId) {
-    routeToFocusedViews('TOOL_RESULT', msg.payload);
-  }
+  if (isFocusedAgent(msg)) routeToViews('TOOL_RESULT', msg.payload);
   break;
+```
+
+Module layout:
+
+```
+static/js/
+├── state.js        — shared state, constants, SIDEBAR_VIEW_IDS
+├── utils.js        — esc(), showToast(), makeDraggable(), drawers
+├── theme.js        — loadThemes(), applyTheme()
+├── websocket.js    — connectWS(), sendToBridge(), agent tabs
+├── views.js        — iframe lifecycle, postMessage routing
+├── layout.js       — grid panels, resize handles, syncViewPositions
+├── sidebar.js      — collapsible sections, open/close, mobile mode
+├── apps.js         — handleAppLaunched(), handleAppClosed()
+├── config.js       — provider/model/server selects
+├── sessions.js     — session list, session switching
+├── export.js       — exportConversation()
+├── toolbar.js      — toolbar click handlers, overflow menu
+├── approval.js     — tool approval dialog
+├── dispatcher.js   — handleBridgeMessage() (big switch)
+└── init.js         — entry point, wires late-binding deps
 ```
 
 ---

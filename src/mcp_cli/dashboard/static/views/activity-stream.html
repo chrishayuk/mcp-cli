@@ -199,6 +199,42 @@ body {
   flex-shrink: 0;
 }
 
+/* ── Responsive: narrow panel / small screen ──────────────────── */
+#events {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 400px) {
+  #filter-bar { flex-direction: column; gap: 4px; padding: 4px 6px; }
+  #filter-bar input { min-width: unset; width: 100%; }
+  #filter-bar select { width: 100%; }
+  .event-header { flex-wrap: wrap; gap: 3px; }
+  .event-tool { font-size: 11px; }
+  .event-ts { font-size: 9px; }
+  .event-dur { font-size: 10px; }
+  .event-server { font-size: 10px; }
+  .event-card { padding: 5px 6px; }
+  .event-agent-badge { font-size: 9px; padding: 0 4px; }
+  .detail-content { font-size: 10px; }
+  .detail-label { font-size: 9px; }
+  .detail-step { gap: 4px; }
+  .detail-step-title { font-size: 10px; }
+  #scroll-btn { padding: 6px 12px; }
+}
+
+@media (max-width: 280px) {
+  .event-server { display: none; }
+  .event-dur { display: none; }
+  .expand-hint { display: none; }
+  .event-agent-badge { display: none; }
+}
+
+@media (pointer: coarse) {
+  .event-card { padding: 8px 10px; }
+  #scroll-btn { min-height: 40px; }
+}
+
 #events-wrapper { flex: 1; position: relative; overflow: hidden; display: flex; flex-direction: column; }
 </style>
 </head>

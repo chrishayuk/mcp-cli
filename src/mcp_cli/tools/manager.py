@@ -1284,12 +1284,17 @@ class ToolManager:
             Resource content dict from the server.
         """
         if not self.stream_manager:
+            logger.debug("read_resource: no stream_manager available")
             return {}
 
         try:
             result: dict[str, Any] = await self.stream_manager.read_resource(
                 uri, server_name
             )
+            if not result:
+                logger.debug(
+                    "read_resource returned empty for %s (server=%s)", uri, server_name
+                )
             return result
         except Exception as e:
             logger.error("Error reading resource %s from %s: %s", uri, server_name, e)

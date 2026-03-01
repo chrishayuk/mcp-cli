@@ -240,6 +240,12 @@ class DashboardServer:
         elif path.startswith("/themes/"):
             name = path[len("/themes/") :]
             candidate = _STATIC_DIR / "themes" / name
+        elif path.startswith("/css/"):
+            name = path[len("/css/") :]
+            candidate = _STATIC_DIR / "css" / name
+        elif path.startswith("/js/"):
+            name = path[len("/js/") :]
+            candidate = _STATIC_DIR / "js" / name
         else:
             # Reject unknown paths
             return None

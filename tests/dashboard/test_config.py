@@ -14,10 +14,10 @@ from unittest.mock import patch
 
 
 class TestConstants:
-    def test_layout_presets_contains_all_three(self):
+    def test_layout_presets_contains_all_expected(self):
         from mcp_cli.dashboard.config import LAYOUT_PRESETS
 
-        assert set(LAYOUT_PRESETS) == {"Minimal", "Standard", "Full"}
+        assert set(LAYOUT_PRESETS) == {"Mobile", "Minimal", "Standard", "Full"}
 
     def test_each_preset_has_layout_key(self):
         from mcp_cli.dashboard.config import LAYOUT_PRESETS

@@ -1011,6 +1011,11 @@ class ToolProcessor:
                 resource_uri = tool_info.app_resource_uri
                 server_name = tool_info.namespace
 
+                # Collect fallback viewUrl from definition and result meta
+                view_url = getattr(
+                    tool_info, "app_view_url", None
+                ) or self._extract_result_view_url(result)
+
                 # Reuse existing app — check by tool name, then by URI
                 bridge = app_host.get_bridge(tool_name)
                 if bridge is None and resource_uri:
@@ -1026,14 +1031,28 @@ class ToolProcessor:
                     return
 
                 # No running app for this URI — launch a new one
+                has_dashboard = (
+                    getattr(self.context, "dashboard_bridge", None) is not None
+                )
                 logger.info("Tool %s has MCP App UI at %s", tool_name, resource_uri)
                 app_info = await app_host.launch_app(
                     tool_name=tool_name,
                     resource_uri=resource_uri,
                     server_name=server_name,
                     tool_result=result,
+                    open_browser=not has_dashboard,
+                    view_url=view_url,
                 )
                 logger.info("MCP App opened at %s", app_info.url)
+
+                # Notify dashboard to embed the app as a panel
+                if has_dashboard:
+                    dash_bridge = getattr(self.context, "dashboard_bridge", None)
+                    if dash_bridge is not None:
+                        try:
+                            await dash_bridge.on_app_launched(app_info)
+                        except Exception as exc:
+                            logger.debug("Dashboard on_app_launched error: %s", exc)
                 return
 
             # ── Case 2: no resourceUri — route ui_patch to running app ───
@@ -1101,6 +1120,39 @@ class ToolProcessor:
         except Exception as e:
             logger.debug("Error checking UI result: %s", e)
         return False
+
+    @staticmethod
+    def _extract_result_view_url(result: Any) -> str | None:
+        """Extract viewUrl from a tool result's meta.ui if present.
+
+        The tool result (not the definition) may carry
+        ``meta.ui.viewUrl`` — a direct HTTPS URL for the app's UI.
+        """
+        try:
+            raw = result
+            seen: set[int] = set()
+            while hasattr(raw, "result") and not isinstance(raw, (dict, str)):
+                rid = id(raw)
+                if rid in seen:
+                    break
+                seen.add(rid)
+                raw = raw.result
+
+            meta: Any = None
+            if isinstance(raw, dict):
+                meta = raw.get("meta") or raw.get("_meta")
+            elif hasattr(raw, "meta"):
+                meta = raw.meta
+
+            if isinstance(meta, dict):
+                ui = meta.get("ui", {})
+                if isinstance(ui, dict):
+                    url = ui.get("viewUrl")
+                    if isinstance(url, str) and url.startswith(("http://", "https://")):
+                        return url
+        except Exception:
+            pass
+        return None
 
     def _track_transport_failures(self, success: bool, error: str | None) -> None:
         """Track transport failures for recovery detection."""

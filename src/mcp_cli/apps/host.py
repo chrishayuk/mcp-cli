@@ -73,6 +73,8 @@ class AppHostServer:
         resource_uri: str,
         server_name: str,
         tool_result: Any = None,
+        open_browser: bool = True,
+        view_url: str | None = None,
     ) -> AppInfo:
         """Launch an MCP App in the browser.
 
@@ -80,6 +82,9 @@ class AppHostServer:
         2. Start a local HTTP + WebSocket server
         3. Open the user's default browser
         4. Push the initial tool result once the WebSocket connects
+
+        ``view_url`` is an optional direct HTTPS fallback used when
+        ``resources/read`` for the ``resource_uri`` fails.
         """
         # Close any previous instance of this tool's app
         if tool_name in self._apps:
@@ -104,6 +109,27 @@ class AppHostServer:
                 resource_uri, server_name=server_name
             )
             html_content = self._extract_html(resource)
+
+            # Fallback: retry without server filter (server may be registered
+            # under a different transport name than the tool namespace).
+            if not html_content and server_name:
+                logger.debug(
+                    "Retrying resource %s without server filter (was: %s)",
+                    resource_uri,
+                    server_name,
+                )
+                resource = await self.tool_manager.read_resource(resource_uri)
+                html_content = self._extract_html(resource)
+
+        # Last resort: use viewUrl (direct HTTPS) if resources/read failed.
+        if not html_content and view_url:
+            logger.info(
+                "resources/read failed for %s, falling back to viewUrl %s",
+                resource_uri,
+                view_url,
+            )
+            html_content, resource = await self._fetch_http_resource(view_url)
+            resource_uri = view_url  # update URI for app info
 
         if not html_content:
             raise RuntimeError(
@@ -138,7 +164,7 @@ class AppHostServer:
         await self._start_server(app_info, bridge, tool_result)
 
         # Open browser
-        if DEFAULT_APP_AUTO_OPEN_BROWSER:
+        if open_browser and DEFAULT_APP_AUTO_OPEN_BROWSER:
             try:
                 webbrowser.open(app_info.url)
                 logger.info("Opened MCP App for %s at %s", tool_name, app_info.url)
@@ -266,13 +292,38 @@ class AppHostServer:
             init_timeout=DEFAULT_APP_INIT_TIMEOUT,
         )
         host_page_bytes = host_page.encode("utf-8")
-        app_html_bytes = app_info.html_content.encode("utf-8")
+
+        # Inject viewport-filling CSS into the app HTML.  MCP App views
+        # are often designed for Claude.ai's inline display (fixed aspect
+        # ratio).  When hosted inside an iframe panel, the root element
+        # chain needs to fill 100% height so canvas-based apps (Chart.js,
+        # Leaflet, D3) can use the available space.
+        app_html = app_info.html_content
+        _fill_css = (
+            "<style>"
+            "html,body{width:100%;height:100%;margin:0;overflow:auto}"
+            "#root,#app,[data-reactroot]{width:100%;height:100%}"
+            "#root>div,#app>div,[data-reactroot]>div"
+            "{width:100%;height:100%;display:flex;flex-direction:column}"
+            "canvas{max-width:100%!important;max-height:100%!important}"
+            "</style>"
+        )
+        if "</head>" in app_html:
+            app_html = app_html.replace("</head>", _fill_css + "</head>", 1)
+        elif "<body" in app_html:
+            app_html = app_html.replace("<body", _fill_css + "<body", 1)
+        else:
+            app_html = _fill_css + app_html
+        app_html_bytes = app_html.encode("utf-8")
 
         # HTTP handler — serves the host page and app HTML
         def process_request(
             connection: ServerConnection, request: Request
         ) -> Response | None:
-            if request.path == "/" or request.path == "":
+            # Strip query string for path matching (?embedded=1 etc.)
+            path = request.path.split("?", 1)[0]
+
+            if path == "/" or path == "":
                 return Response(
                     http.HTTPStatus.OK,
                     "OK",
@@ -284,7 +335,7 @@ class AppHostServer:
                     ),
                     host_page_bytes,
                 )
-            if request.path == "/app":
+            if path == "/app":
                 return Response(
                     http.HTTPStatus.OK,
                     "OK",
@@ -296,7 +347,7 @@ class AppHostServer:
                     ),
                     app_html_bytes,
                 )
-            if request.path != "/ws":
+            if path != "/ws":
                 body = b"Not Found"
                 return Response(
                     http.HTTPStatus.NOT_FOUND,

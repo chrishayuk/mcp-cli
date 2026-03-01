@@ -17,6 +17,19 @@ logger = logging.getLogger(__name__)
 # ------------------------------------------------------------------ #
 
 LAYOUT_PRESETS: dict[str, dict[str, Any]] = {
+    "Mobile": {
+        "name": "Mobile",
+        "layout": {
+            "rows": [
+                {
+                    "height": "100%",
+                    "columns": [
+                        {"width": "100%", "view": "builtin:agent-terminal"},
+                    ],
+                }
+            ]
+        },
+    },
     "Minimal": {
         "name": "Minimal",
         "layout": {

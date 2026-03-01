@@ -71,6 +71,8 @@ class DashboardBridge:
         self._seen_view_ids: set[str] = set()
         # Pending tool approval futures keyed by call_id
         self._pending_approvals: dict[str, asyncio.Future[bool]] = {}
+        # Running MCP Apps (for replay on client reconnect)
+        self._running_apps: dict[str, dict[str, Any]] = {}
 
         # Dual-mode: router-managed vs direct-wiring
         if isinstance(server, AgentRouter):
@@ -218,6 +220,39 @@ class DashboardBridge:
             _envelope("VIEW_REGISTRY", {"agent_id": self.agent_id, "views": views})
         )
 
+    async def on_app_launched(self, app_info: Any) -> None:
+        """Notify dashboard that an MCP App launched — embed as panel."""
+        payload: dict[str, Any] = {
+            "agent_id": self.agent_id,
+            "tool_name": app_info.tool_name,
+            "url": app_info.url,
+            "port": app_info.port,
+            "server_name": app_info.server_name,
+            "resource_uri": app_info.resource_uri,
+            "state": (
+                app_info.state.value
+                if hasattr(app_info.state, "value")
+                else str(app_info.state)
+            ),
+            "timestamp": _now(),
+        }
+        self._running_apps[app_info.tool_name] = payload
+        await self._broadcast(_envelope("APP_LAUNCHED", payload))
+
+    async def on_app_closed(self, tool_name: str) -> None:
+        """Notify dashboard that an MCP App closed."""
+        self._running_apps.pop(tool_name, None)
+        await self._broadcast(
+            _envelope(
+                "APP_CLOSED",
+                {
+                    "agent_id": self.agent_id,
+                    "tool_name": tool_name,
+                    "timestamp": _now(),
+                },
+            )
+        )
+
     async def _discover_view(self, meta_ui: dict[str, Any], server_name: str) -> None:
         """Register a new view from a _meta.ui block and broadcast VIEW_REGISTRY."""
         view_id: str = meta_ui["view"]
@@ -270,6 +305,9 @@ class DashboardBridge:
                 await ws.send(
                     _json.dumps(_envelope("ACTIVITY_HISTORY", {"events": activity}))
                 )
+            # APP replay for reconnecting clients
+            for app_payload in self._running_apps.values():
+                await ws.send(_json.dumps(_envelope("APP_LAUNCHED", app_payload)))
         except Exception as exc:
             logger.debug("Error sending initial state to new client: %s", exc)
 
@@ -385,6 +423,9 @@ class DashboardBridge:
             await self._handle_delete_session(msg)
         elif msg_type == "RENAME_SESSION":
             await self._handle_rename_session(msg)
+        elif msg_type == "REQUEST_APP_LIST":
+            for app_payload in self._running_apps.values():
+                await self._broadcast(_envelope("APP_LAUNCHED", app_payload))
         else:
             logger.debug("Dashboard received unknown message type: %s", msg_type)
 
