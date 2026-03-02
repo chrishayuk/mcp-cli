@@ -236,12 +236,25 @@ class DashboardBridge:
             ),
             "timestamp": _now(),
         }
-        self._running_apps[app_info.tool_name] = payload
+        # Key by resource_uri when available so different tools sharing
+        # the same resource replace each other rather than accumulating.
+        app_key = app_info.resource_uri or app_info.tool_name
+        self._running_apps[app_key] = payload
         await self._broadcast(_envelope("APP_LAUNCHED", payload))
 
     async def on_app_closed(self, tool_name: str) -> None:
         """Notify dashboard that an MCP App closed."""
-        self._running_apps.pop(tool_name, None)
+        # Try removing by tool_name first, then scan by resource_uri
+        if tool_name not in self._running_apps:
+            to_remove = [
+                k
+                for k, v in self._running_apps.items()
+                if v.get("tool_name") == tool_name
+            ]
+            for k in to_remove:
+                self._running_apps.pop(k, None)
+        else:
+            self._running_apps.pop(tool_name, None)
         await self._broadcast(
             _envelope(
                 "APP_CLOSED",
@@ -280,7 +293,10 @@ class DashboardBridge:
             if self._view_registry:
                 await ws.send(
                     _json.dumps(
-                        _envelope("VIEW_REGISTRY", {"views": self._view_registry})
+                        _envelope(
+                            "VIEW_REGISTRY",
+                            {"agent_id": self.agent_id, "views": self._view_registry},
+                        )
                     )
                 )
             # CONFIG_STATE (model, provider, servers, system prompt preview)
@@ -614,8 +630,8 @@ class DashboardBridge:
         if ctx.conversation_history:
             try:
                 ctx.save_session()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Failed to save current session before switch: %s", exc)
 
         # Clear and load the target session
         try:
@@ -757,9 +773,19 @@ class DashboardBridge:
             "timestamp": _now(),
         }
         # Create a future that the tool processor can await
-        fut: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
+        loop = asyncio.get_running_loop()
+        fut: asyncio.Future[bool] = loop.create_future()
         self._pending_approvals[call_id] = fut
         await self._broadcast(_envelope("TOOL_APPROVAL_REQUEST", payload))
+
+        # Auto-deny after 5 minutes if no response (prevents hanging forever)
+        def _timeout() -> None:
+            if not fut.done():
+                logger.warning("Tool approval for %s timed out after 5m", tool_name)
+                fut.set_result(False)
+                self._pending_approvals.pop(call_id, None)
+
+        loop.call_later(300, _timeout)
         return fut
 
     async def _handle_tool_approval_response(self, msg: dict[str, Any]) -> None:
@@ -1064,9 +1090,11 @@ class DashboardBridge:
                                     "result": result_content,
                                     "error": None,
                                     "success": True,
-                                    "arguments": self._serialise(arguments)
-                                    if arguments
-                                    else None,
+                                    "arguments": (
+                                        self._serialise(arguments)
+                                        if arguments
+                                        else None
+                                    ),
                                 },
                             }
                         )

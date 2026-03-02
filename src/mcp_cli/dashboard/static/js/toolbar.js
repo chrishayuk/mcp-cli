@@ -3,9 +3,9 @@
 // ================================================================
 'use strict';
 
-import { layoutConfig, _configState, setLayoutConfig } from './state.js';
+import { layoutConfig, _configState } from './state.js';
 import { sendToBridge } from './websocket.js';
-import { addPanelWithView, buildLayoutMenu, rebuildAddPanelMenu } from './layout.js';
+import { addPanelWithView, rebuildAddPanelMenu } from './layout.js';
 import { openDrawer, closeDrawer, closeAllDrawers, showToast } from './utils.js';
 import { exportConversation } from './export.js';
 

@@ -66,6 +66,7 @@ export function applyTheme(t) {
 let _themeChangeHandler = null;
 export function buildThemeSelect() {
   const sel = document.getElementById('theme-select');
+  if (!sel) return;
   sel.innerHTML = '';
   for (const name of Object.keys(themes)) {
     const opt = document.createElement('option');

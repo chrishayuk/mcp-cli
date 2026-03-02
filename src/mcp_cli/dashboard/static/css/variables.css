@@ -19,10 +19,8 @@ html, body { height: 100%; overflow: hidden; }
   --dash-font-ui: 'Inter',-apple-system,sans-serif;
   --dash-font-size: 13px;
   --dash-radius: 6px;
-  --dash-spacing: 8px;
   --dash-toolbar-height: 36px;
   --dash-touch-target: 44px;
-  --dash-panel-min-width: 200px;
   --dash-panel-min-height: 150px;
 }
 

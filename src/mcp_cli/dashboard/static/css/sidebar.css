@@ -186,7 +186,6 @@ body.mobile-sidebar #sidebar-resize-handle { display: none; }
 }
 .sidebar-section-btn:hover { background: var(--dash-bg-hover); color: var(--dash-fg); }
 .sidebar-section.maximized { flex: 100 !important; }
-.sidebar-section:not(.maximized):not(.expanded) { }
 /* When any section is maximized, collapse siblings */
 #sidebar-view-slot:has(.sidebar-section.maximized) .sidebar-section:not(.maximized) {
   flex: 0 0 auto !important;
@@ -236,6 +235,12 @@ body.mobile-sidebar #sidebar-panel {
 }
 body.mobile-sidebar #sidebar-panel.open { display: flex; }
 body.mobile-sidebar #sidebar-header { display: flex; }
+
+/* ── Focus styles ─────────────────────────────────────────────────── */
+#sidebar-toggle:focus-visible,
+#sidebar-close:focus-visible { outline: 2px solid var(--dash-accent); outline-offset: -2px; }
+.sidebar-section-header:focus-visible { outline: 2px solid var(--dash-accent); outline-offset: -2px; }
+.sidebar-section-btn:focus-visible { outline: 2px solid var(--dash-accent); outline-offset: -2px; }
 
 /* ── Container-aware layout (ResizeObserver classes for IDE embedding) */
 body.container-narrow .grid-row { flex-direction: column; }

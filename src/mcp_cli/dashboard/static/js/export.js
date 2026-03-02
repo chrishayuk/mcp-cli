@@ -4,8 +4,6 @@
 'use strict';
 
 import { viewPool } from './state.js';
-import { postToIframe } from './views.js';
-import { sendToBridge } from './websocket.js';
 import { showToast } from './utils.js';
 
 export function exportConversation(format) {
@@ -57,9 +55,8 @@ export function collectConversationMessages() {
       }
       return messages;
     } catch (e) {
-      // Cross-origin — fall back to asking the bridge
-      sendToBridge({ type: 'REQUEST_EXPORT' });
-      showToast('info', 'Export requested from server');
+      // Cross-origin iframe — cannot read messages directly
+      showToast('warning', 'Cannot export: cross-origin view');
       return [];
     }
   }

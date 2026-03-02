@@ -26,6 +26,7 @@ import { buildOverflowMenu, wireToolbarEvents } from './toolbar.js';
 import { wireConfigEvents } from './config.js';
 import { wireApprovalEvents } from './approval.js';
 import { setViewDeps, setupViewMessageListener } from './views.js';
+import { setAppDeps } from './apps.js';
 
 // ── Wire up late-binding deps to break circular imports ───────────
 
@@ -42,6 +43,11 @@ setViewDeps({
 
 // layout.js needs sidebar.js functions
 setLayoutDeps({
+  buildSidebarSections,
+});
+
+// apps.js needs sidebar.js functions
+setAppDeps({
   buildSidebarSections,
 });
 

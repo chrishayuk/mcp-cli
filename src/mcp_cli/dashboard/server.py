@@ -97,7 +97,8 @@ class DashboardServer:
         for client in list(self._clients):
             try:
                 await client.send(payload)
-            except Exception:
+            except Exception as exc:
+                logger.debug("Failed to send to client, removing: %s", exc)
                 dead.append(client)
         for c in dead:
             self._clients.discard(c)
