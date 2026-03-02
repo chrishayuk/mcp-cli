@@ -4,8 +4,8 @@
   align-items: center;
   gap: 12px;
   padding: 0 12px;
-  height: 36px;
-  min-height: 36px;
+  height: var(--dash-toolbar-height);
+  min-height: var(--dash-toolbar-height);
   background: var(--dash-bg-surface);
   border-bottom: 1px solid var(--dash-border);
   flex-shrink: 0;
@@ -78,7 +78,6 @@
   font-family: var(--dash-font-ui);
   cursor: pointer;
   max-width: 140px;
-  outline: none;
 }
 .tb-select:hover { border-color: var(--dash-accent); }
 .tb-label {
@@ -92,3 +91,8 @@
   align-items: center;
   gap: 4px;
 }
+
+/* ── Focus styles ─────────────────────────────────────────────────── */
+.tb-btn:focus-visible,
+.tb-select:focus-visible { outline: 2px solid var(--dash-accent); outline-offset: -2px; }
+.dropdown-item:focus-visible { outline: 2px solid var(--dash-accent); outline-offset: -2px; background: var(--dash-bg-hover); }

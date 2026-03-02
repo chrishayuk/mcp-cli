@@ -202,10 +202,9 @@ class TestWsHandlerEdgeCases:
         s.on_browser_message = handler
         ws = _FakeWS([b"binary frame", "text frame"])
         await s._ws_handler(ws)
-        # Only the str message should reach the handler
-        assert received == [{"type": None}] or len(received) <= 1
-        # bytes message was NOT forwarded (no JSON parse attempt on bytes)
-        assert not any(m == b"binary frame" for m in received)
+        # bytes message is silently dropped (only str goes to _handle_browser_message)
+        # "text frame" is str but invalid JSON, so handler is never called either
+        assert len(received) == 0
 
     @pytest.mark.asyncio
     async def test_connection_closed_handled_gracefully(self):

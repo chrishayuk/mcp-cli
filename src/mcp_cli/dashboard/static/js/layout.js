@@ -4,7 +4,7 @@
 'use strict';
 
 import {
-  panels, panelCounter, layoutConfig, viewRegistry, viewPool, popoutWindows,
+  panels, layoutConfig, viewRegistry, viewPool, popoutWindows,
   PROTOCOL, VERSION, focusedAgentId, themes, activeTheme,
   setPanels, incPanelCounter, setLayoutConfig,
   isSidebarView, _sidebarOpen,
@@ -16,6 +16,13 @@ import {
   broadcastToViews, findPanelHostingView,
 } from './views.js';
 import { themeToCSS } from './theme.js';
+
+// ── Cached overlay element ───────────────────────────────────────
+let _cachedOverlay = null;
+function getOverlay() {
+  if (!_cachedOverlay) _cachedOverlay = document.getElementById('view-overlay');
+  return _cachedOverlay;
+}
 
 // ── Late-binding for sidebar deps to avoid circular imports ───────
 let _buildSidebarSections = null;
@@ -235,7 +242,7 @@ export function makeColHandle(rowEl, idx) {
   const handle = document.createElement('div');
   handle.className = 'resize-handle-col';
   handle.dataset.handleType = 'col';
-  const overlay = document.getElementById('view-overlay');
+  const overlay = getOverlay();
 
   makeDraggable(handle, {
     onStart(x, _y) {
@@ -283,7 +290,7 @@ export function makeColHandle(rowEl, idx) {
 export function makeRowHandle(root, idx) {
   const handle = document.createElement('div');
   handle.className = 'resize-handle-row';
-  const overlay = document.getElementById('view-overlay');
+  const overlay = getOverlay();
 
   makeDraggable(handle, {
     onStart(_x, y) {
@@ -338,7 +345,7 @@ export function notifyResize(panelId) {
 
 // ── View overlay positioning — positions iframes over panel body slots ──
 export function syncViewPositions() {
-  const overlay = document.getElementById('view-overlay');
+  const overlay = getOverlay();
   if (!overlay) return;
   const overlayRect = overlay.getBoundingClientRect();
   const inMobileSidebar = document.body.classList.contains('mobile-sidebar');
@@ -414,11 +421,22 @@ export function buildLayoutMenu() {
 }
 
 export function applyPreset(name) {
-  // Grid presets control the left panel only; sidebar views (activity, tools, etc.) are always in the right sidebar
   const presets = {
     'Minimal': { rows: [{ height: '100%', columns: [{ width: '100%', view: 'builtin:agent-terminal' }] }] },
-    'Standard': { rows: [{ height: '100%', columns: [{ width: '100%', view: 'builtin:agent-terminal' }] }] },
-    'Full': { rows: [{ height: '100%', columns: [{ width: '100%', view: 'builtin:agent-terminal' }] }] },
+    'Standard': { rows: [{ height: '100%', columns: [
+      { width: '70%', view: 'builtin:agent-terminal' },
+      { width: '30%', view: 'builtin:tool-browser' },
+    ] }] },
+    'Full': { rows: [
+      { height: '70%', columns: [
+        { width: '70%', view: 'builtin:agent-terminal' },
+        { width: '30%', view: 'builtin:plan-viewer' },
+      ] },
+      { height: '30%', columns: [
+        { width: '50%', view: 'builtin:tool-browser' },
+        { width: '50%', view: 'builtin:activity-stream' },
+      ] },
+    ] },
   };
   const layout = presets[name];
   if (layout) { setLayoutConfig(layout); renderLayout(layout); }

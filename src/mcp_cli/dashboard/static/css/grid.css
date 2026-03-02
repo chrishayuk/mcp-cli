@@ -135,3 +135,7 @@
   z-index: 10;
 }
 .resize-handle-row:hover, .resize-handle-row.dragging { background: var(--dash-accent); }
+
+/* ── Focus styles ─────────────────────────────────────────────────── */
+.panel-btn:focus-visible,
+.panel-view-toggle:focus-visible { outline: 2px solid var(--dash-accent); outline-offset: -2px; }

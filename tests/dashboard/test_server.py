@@ -70,6 +70,24 @@ class TestResolveStatic:
         result = s._resolve_static("/views/../../server.py")
         assert result is None
 
+    def test_css_path_traversal_rejected(self):
+        s = self._server()
+        result = s._resolve_static("/css/../../server.py")
+        assert result is None
+
+    def test_js_path_traversal_rejected(self):
+        s = self._server()
+        result = s._resolve_static("/js/../../server.py")
+        assert result is None
+
+    def test_nonexistent_css_returns_none(self):
+        s = self._server()
+        assert s._resolve_static("/css/nonexistent.css") is None
+
+    def test_nonexistent_js_returns_none(self):
+        s = self._server()
+        assert s._resolve_static("/js/nonexistent.js") is None
+
 
 # ---------------------------------------------------------------------------
 # broadcast

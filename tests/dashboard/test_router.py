@@ -533,3 +533,38 @@ class TestRouterSubscriptions:
         msg2 = {"type": "SUBSCRIBE", "agents": ["c"], "global": True}
         await router._on_browser_message(msg2, ws)
         assert router._client_subscriptions[ws] == {"c", "*"}
+
+
+# ---------------------------------------------------------------------------
+# TestRouterFocusEdgeCases
+# ---------------------------------------------------------------------------
+
+
+class TestRouterFocusEdgeCases:
+    @pytest.mark.asyncio
+    async def test_focus_nonexistent_agent_no_crash(self):
+        """Focusing a nonexistent agent should not crash."""
+        server = _make_server()
+        router = AgentRouter(server)
+        ws = MagicMock()
+        # Focus an agent that doesn't exist
+        await router._handle_focus_agent({"agent_id": "nonexistent"}, ws)
+        # Should store focus but not crash
+        assert router._client_focus.get(ws) == "nonexistent"
+
+    @pytest.mark.asyncio
+    async def test_focus_switch_multiple_times(self):
+        """Client can switch focus multiple times."""
+        server = _make_server()
+        router = AgentRouter(server)
+        bridge_a = _make_bridge("a")
+        bridge_b = _make_bridge("b")
+        router.register_agent("a", bridge_a)
+        router.register_agent("b", bridge_b)
+        ws = MagicMock()
+
+        await router._handle_focus_agent({"agent_id": "a"}, ws)
+        assert router._client_focus[ws] == "a"
+
+        await router._handle_focus_agent({"agent_id": "b"}, ws)
+        assert router._client_focus[ws] == "b"

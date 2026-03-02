@@ -29,7 +29,8 @@ export function connectWS() {
   socket.onopen = () => {
     setConnected(true);
     setWsBackoff(1000); // reset on success
-    document.getElementById('conn-dot').classList.add('connected');
+    const dot = document.getElementById('conn-dot');
+    if (dot) dot.classList.add('connected');
     showToast('success', 'Connected to dashboard server', 2000);
     // Request agent list (router will send AGENT_LIST)
     sendToBridge({ type: 'REQUEST_AGENT_LIST' });
@@ -42,7 +43,8 @@ export function connectWS() {
   socket.onclose = () => {
     const wasConnected = connected;
     setConnected(false);
-    document.getElementById('conn-dot').classList.remove('connected');
+    const dot = document.getElementById('conn-dot');
+    if (dot) dot.classList.remove('connected');
     if (wasConnected) showToast('warning', `Disconnected — reconnecting in ${Math.round(_wsBackoff/1000)}s…`, _wsBackoff);
     setWsReconnectTimer(setTimeout(() => {
       setWsBackoff(Math.min(_wsBackoff * 2, _WS_BACKOFF_MAX));

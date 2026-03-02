@@ -56,7 +56,6 @@ export let _currentSessionId = null;
 
 // Tool approval
 export let _pendingApprovalCallId = null;
-export let _approvalQueue = [];
 
 // Sidebar
 export let _sidebarOpen = false;
@@ -69,7 +68,6 @@ export function setActiveTheme(val) { activeTheme = val; }
 export function setViewRegistry(val) { viewRegistry = val; }
 export function setLayoutConfig(val) { layoutConfig = val; }
 export function setPanels(val) { panels = val; }
-export function setPanelCounter(val) { panelCounter = val; }
 export function incPanelCounter() { return ++panelCounter; }
 export function setAgentList(val) { agentList = val; }
 export function setFocusedAgentId(val) { focusedAgentId = val; }
@@ -82,5 +80,4 @@ export function setAvailableProviders(val) { _availableProviders = val; }
 export function setSessionList(val) { _sessionList = val; }
 export function setCurrentSessionId(val) { _currentSessionId = val; }
 export function setPendingApprovalCallId(val) { _pendingApprovalCallId = val; }
-export function setApprovalQueue(val) { _approvalQueue = val; }
 export function setSidebarOpen(val) { _sidebarOpen = val; }

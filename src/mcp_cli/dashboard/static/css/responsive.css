@@ -81,8 +81,8 @@
     font-size: 14px;
   }
   .sidebar-section-btn {
-    min-width: 28px;
-    min-height: 28px;
+    min-width: 36px;
+    min-height: 36px;
     font-size: 13px;
     padding: 4px 6px;
   }
@@ -125,5 +125,14 @@
     min-height: 36px;
     min-width: 36px;
     font-size: 18px;
+  }
+}
+
+/* ── Reduced motion ───────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

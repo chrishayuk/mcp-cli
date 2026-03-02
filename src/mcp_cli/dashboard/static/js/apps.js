@@ -7,9 +7,14 @@ import {
   viewRegistry, viewPool, popoutWindows,
   setViewRegistry,
 } from './state.js';
-import { buildSidebarSections } from './sidebar.js';
 import { syncViewPositions, rebuildAddPanelMenu } from './layout.js';
 import { showToast } from './utils.js';
+
+// Late-binding for sidebar deps to avoid direct import from sidebar.js
+let _buildSidebarSections = null;
+export function setAppDeps(deps) {
+  _buildSidebarSections = deps.buildSidebarSections;
+}
 
 export function handleAppLaunched(payload) {
   const toolName = payload.tool_name;
@@ -64,7 +69,7 @@ export function handleAppLaunched(payload) {
       }
 
       // Rebuild sidebar sections so the data-view-id attributes update
-      buildSidebarSections();
+      if (_buildSidebarSections) _buildSidebarSections();
       rebuildAddPanelMenu();
       requestAnimationFrame(() => syncViewPositions());
       showToast('info', 'View updated: ' + prettyName);
@@ -85,7 +90,7 @@ export function handleAppLaunched(payload) {
   rebuildAddPanelMenu();
 
   // Add to sidebar as collapsible section (not a grid panel)
-  buildSidebarSections();
+  if (_buildSidebarSections) _buildSidebarSections();
 
   // Auto-expand the new app section
   const newSection = document.querySelector(`.sidebar-section[data-view-id="${viewId}"]`);
@@ -119,7 +124,7 @@ export function handleAppClosed(payload) {
   popoutWindows.delete(viewId);
 
   // Rebuild sidebar sections (app section disappears)
-  buildSidebarSections();
+  if (_buildSidebarSections) _buildSidebarSections();
   rebuildAddPanelMenu();
   requestAnimationFrame(() => syncViewPositions());
   showToast('info', 'App closed: ' + payload.tool_name);
