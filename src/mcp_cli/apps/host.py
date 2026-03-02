@@ -39,13 +39,12 @@ from mcp_cli.config.defaults import (
     DEFAULT_HTTP_REQUEST_TIMEOUT,
 )
 
+from mcp_cli.config import APP_VERSION
+
 if TYPE_CHECKING:
     from mcp_cli.tools.manager import ToolManager
 
 logger = logging.getLogger(__name__)
-
-# Version injected into the host page
-_MCP_CLI_VERSION = "0.13"
 
 # Strict regex for CSP source values — reject anything that could break out
 # of an HTML attribute or inject additional directives.
@@ -288,7 +287,7 @@ class AppHostServer:
             tool_name=safe_tool_name,
             port=app_info.port,
             csp_attr=csp_attr,
-            mcp_cli_version=_MCP_CLI_VERSION,
+            mcp_cli_version=APP_VERSION,
             init_timeout=DEFAULT_APP_INIT_TIMEOUT,
         )
         host_page_bytes = host_page.encode("utf-8")
