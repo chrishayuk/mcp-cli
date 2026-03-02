@@ -243,6 +243,12 @@ mcp-cli --help
 pip install -e ".[apps]"
 ```
 
+4. **Set up server configuration**:
+```bash
+cp server_config.example.json server_config.json
+# Edit server_config.json — keep only the servers you need
+```
+
 ### Using Different Models
 
 ```bash

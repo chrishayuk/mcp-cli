@@ -140,7 +140,7 @@ def process_options(
     cfg = load_config(config_file)
 
     if not cfg:
-        logger.warning(f"Could not load config file: {config_file}")
+        logger.debug(f"Could not load config file: {config_file}")
         # Return empty configuration
         return [], user_specified, {}
 

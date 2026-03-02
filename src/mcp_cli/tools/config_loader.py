@@ -108,7 +108,7 @@ class ConfigLoader:
                     return config
                 except Exception as e:
                     logger.error(f"Error loading bundled config: {e}")
-            logger.warning(f"Config file not found: {self.config_file}")
+            logger.debug(f"Config file not found: {self.config_file}")
             return {}
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in config: {e}")
@@ -161,7 +161,7 @@ class ConfigLoader:
                     return config
                 except Exception as e:
                     logger.error(f"Error loading bundled config: {e}")
-            logger.warning(f"Config file not found: {self.config_file}")
+            logger.debug(f"Config file not found: {self.config_file}")
             return {}
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in config: {e}")
