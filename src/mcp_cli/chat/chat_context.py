@@ -152,6 +152,7 @@ class ChatContext:
         self.openai_tools: list[dict[str, Any]] = []
         self.tool_name_mapping: dict[str, str] = {}
         self._tool_index: dict[str, ToolInfo] = {}
+        self.no_tools: bool = False
 
         logger.debug(f"ChatContext created with {self.provider}/{self.model}")
 
