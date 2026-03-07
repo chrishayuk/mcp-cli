@@ -175,6 +175,11 @@ def main_callback(
         "--attach",
         help="Attach files to the first message (repeatable: --attach img.png --attach code.py).",
     ),
+    no_tools: bool = typer.Option(
+        False,
+        "--no-tools",
+        help="Disable tool calling — chat with the LLM directly without MCP tools.",
+    ),
 ) -> None:
     """MCP CLI - If no subcommand is given, start chat mode."""
 
@@ -383,8 +388,11 @@ def main_callback(
             logger.debug("Initializing tool manager")
             from mcp_cli.run_command import _init_tool_manager
 
+            # --no-tools: skip MCP server connections entirely
+            _servers = [] if no_tools else servers
+            _server_names = {} if no_tools else server_names
             tm = await _init_tool_manager(
-                config_file, servers, server_names, init_timeout, runtime_config
+                config_file, _servers, _server_names, init_timeout, runtime_config
             )
 
             logger.debug("Starting chat mode handler")
@@ -407,6 +415,7 @@ def main_callback(
                 dashboard_port=dashboard_port,
                 multi_agent=multi_agent,
                 initial_attachments=attach,
+                no_tools=no_tools,
             )
             logger.debug(f"Chat mode completed with success: {success}")
         except asyncio.TimeoutError:
@@ -536,6 +545,11 @@ def _chat_command(
         "--attach",
         help="Attach files to the first message (repeatable: --attach img.png --attach code.py).",
     ),
+    no_tools: bool = typer.Option(
+        False,
+        "--no-tools",
+        help="Disable tool calling — chat with the LLM directly without MCP tools.",
+    ),
 ) -> None:
     """Start chat mode (same as default behavior without subcommand)."""
     # Re-configure logging based on user options
@@ -655,8 +669,11 @@ def _chat_command(
             logger.debug("Initializing tool manager")
             from mcp_cli.run_command import _init_tool_manager
 
+            # --no-tools: skip MCP server connections entirely
+            _servers = [] if no_tools else servers
+            _server_names = {} if no_tools else server_names
             tm = await _init_tool_manager(
-                config_file, servers, server_names, init_timeout
+                config_file, _servers, _server_names, init_timeout
             )
 
             logger.debug("Starting chat mode handler")
@@ -676,6 +693,7 @@ def _chat_command(
                 dashboard_port=dashboard_port,
                 multi_agent=multi_agent,
                 initial_attachments=attach,
+                no_tools=no_tools,
             )
             logger.debug(f"Chat mode completed with success: {success}")
         except asyncio.TimeoutError:

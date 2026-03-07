@@ -55,6 +55,7 @@ async def handle_chat_mode(
     agent_id: str = "default",
     multi_agent: bool = False,
     initial_attachments: list[str] | None = None,
+    no_tools: bool = False,
 ) -> bool:
     """
     Launch the interactive chat loop with streaming support.
@@ -130,6 +131,8 @@ async def handle_chat_mode(
         if not await ctx.initialize(on_progress=on_progress):
             output.error("Failed to initialize chat context.")
             return False
+
+        ctx.no_tools = no_tools
 
         # Stage initial attachments from --attach CLI flag
         if initial_attachments:

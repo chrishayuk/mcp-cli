@@ -314,6 +314,7 @@ Global options available for all modes and commands:
 - `--dashboard`: Launch a real-time browser dashboard UI alongside chat mode
 - `--attach`: Attach files to the first message (repeatable: `--attach img.png --attach code.py`)
 - `--plan-tools`: Enable model-driven planning — the LLM autonomously creates and executes multi-step plans
+- `--no-tools`: Disable MCP tool calling entirely — chat directly with the LLM without connecting to any MCP servers
 
 ### Environment Variables
 

@@ -91,6 +91,18 @@
     },
     "view_demo": {
        "url": "https://mcp-view-demo.fly.dev/mcp"
+    },
+    "pdf": {
+      "command": "uv",
+      "args": ["--directory", "/Users/christopherhay/chris-source/chuk-ai/mcp-servers/chuk-mcp-pdf", "run", "chuk-mcp-pdf", "stdio"]
+    },
+    "code-raptor": {                                                                                                                    
+        "command": "uv",                                                                                                                    
+        "args": [
+          "run",
+          "--directory", "/Users/christopherhay/chris-source/chuk-ai/mcp-servers/chuk-mcp-code-raptor",
+          "chuk-mcp-code-raptor", "stdio"
+        ]
     }
   }
 }

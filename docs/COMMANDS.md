@@ -352,6 +352,24 @@ The model calls these when it determines a task requires multi-step coordination
 
 See [PLANNING.md](./PLANNING.md) for full documentation.
 
+### Direct LLM Chat (No Tools)
+
+Skip MCP server connections entirely and chat directly with the LLM:
+
+```bash
+# No tool calling — MCP servers are not connected
+mcp-cli --no-tools
+mcp-cli --no-tools --provider openai --model gpt-4o
+mcp-cli chat --no-tools --provider anthropic --model claude-sonnet-4-6
+```
+
+When `--no-tools` is set:
+- No MCP servers are initialized (no network connections attempted)
+- The LLM receives no tool definitions
+- The model responds conversationally only
+
+This is useful when you want a fast, lightweight chat session without the overhead of server connections, or when using a model that handles tools poorly.
+
 ### Token Usage
 
 Track API token consumption across your conversation:

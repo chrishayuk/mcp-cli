@@ -209,18 +209,22 @@ class ConversationProcessor:
                             return
 
                     # Ensure OpenAI tools are loaded for function calling
-                    if not getattr(self.context, "openai_tools", None):
-                        await self._load_tools()
+                    if not getattr(self.context, "no_tools", False):
+                        if not getattr(self.context, "openai_tools", None):
+                            await self._load_tools()
 
-                    # Inject internal tools (plan, VM, memory) even when
-                    # openai_tools were pre-loaded by ChatContext.
-                    await self._inject_internal_tools()
+                        # Inject internal tools (plan, VM, memory) even when
+                        # openai_tools were pre-loaded by ChatContext.
+                        await self._inject_internal_tools()
 
                     # REMOVED: Sanitization logic - now handled by universal tool compatibility
                     # The OpenAI client automatically handles tool name sanitization and restoration
 
-                    # Always pass tools - let the model decide what to do
-                    tools_for_completion = self.context.openai_tools
+                    # Pass tools unless --no-tools was requested
+                    if getattr(self.context, "no_tools", False):
+                        tools_for_completion = None
+                    else:
+                        tools_for_completion = self.context.openai_tools
                     logger.debug(
                         f"Passing {len(tools_for_completion) if tools_for_completion else 0} tools to completion"
                     )
