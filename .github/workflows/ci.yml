@@ -107,7 +107,7 @@ jobs:
            run: mv .coverage ".coverage.${{ strategy.job-index }}"
 
          - name: Upload coverage artifact
-           uses: actions/upload-artifact@v6
+           uses: actions/upload-artifact@v7
            with:
               name: coverage-${{ strategy.job-index }}
               path: .coverage.${{ strategy.job-index }}
